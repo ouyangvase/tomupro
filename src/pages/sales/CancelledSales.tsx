@@ -44,13 +44,17 @@ export default function CancelledSales() {
   const columns: Column<Order>[] = [
     { 
       key: 'order_date', 
-      header: 'Order Date', 
+      header: 'Date', 
       sortable: true, 
       width: '100px',
-      render: (o) => format(new Date(o.order_date), 'MMM dd, yyyy') 
+      render: (o) => format(new Date(o.order_date), 'MMM dd') 
     },
-    { key: 'customer_name', header: 'Customer', sortable: true },
-    { key: 'phone', header: 'Phone' },
+    { 
+      key: 'order_code', 
+      header: 'Order Ref', 
+      sortable: true,
+      render: (o) => <span className="font-mono text-sm">{o.order_code}</span>
+    },
     { 
       key: 'area', 
       header: 'Area', 
@@ -59,16 +63,49 @@ export default function CancelledSales() {
       filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a!, value: a! })) 
     },
     { 
-      key: 'total_qty', 
-      header: 'Qty', 
-      width: '80px',
-      render: (o) => <Badge variant="secondary">{o.total_qty}</Badge> 
+      key: 'items_summary', 
+      header: 'Items', 
+      render: (o) => {
+        const itemCount = o.order_items?.length || 0;
+        return (
+          <div className="text-sm">
+            <span className="font-medium">{itemCount} SKU</span>
+            <span className="text-muted-foreground"> · {o.total_qty} units</span>
+          </div>
+        );
+      }
     },
     { 
       key: 'total_amount', 
       header: 'Amount', 
       sortable: true, 
-      render: (o) => `$${Number(o.total_amount).toFixed(2)}` 
+      render: (o) => <span className="font-medium">${Number(o.total_amount).toFixed(2)}</span>
+    },
+    { 
+      key: 'payment_method', 
+      header: 'Payment', 
+      width: '80px',
+      render: (o) => <Badge variant="outline">{o.payment_method}</Badge> 
+    },
+    { 
+      key: 'runner_id', 
+      header: 'Runner', 
+      render: (o) => {
+        if (!o.runner) return <span className="text-muted-foreground">—</span>;
+        return <span>{o.runner.display_name}</span>;
+      }
+    },
+    { 
+      key: 'runner_status', 
+      header: 'Delivery', 
+      width: '120px',
+      render: (o) => <StatusBadge status={o.runner_status} type="runner" /> 
+    },
+    { 
+      key: 'reconciliation_status', 
+      header: 'Reconciliation', 
+      width: '140px',
+      render: (o) => <StatusBadge status={o.reconciliation_status} type="reconciliation" /> 
     },
     { 
       key: 'cancel_reason', 
@@ -80,27 +117,6 @@ export default function CancelledSales() {
           {o.cancel_reason || 'No reason'}
         </Badge>
       )
-    },
-    { 
-      key: 'cancel_notes', 
-      header: 'Notes', 
-      render: (o) => (
-        <span className="text-sm text-muted-foreground max-w-[200px] truncate block">
-          {o.cancel_notes || '—'}
-        </span>
-      )
-    },
-    { 
-      key: 'updated_at', 
-      header: 'Cancelled At', 
-      sortable: true,
-      render: (o) => format(new Date(o.updated_at), 'MMM dd, HH:mm') 
-    },
-    { 
-      key: 'status', 
-      header: 'Status', 
-      width: '100px',
-      render: (o) => <StatusBadge status={o.status} type="order" /> 
     },
   ];
 

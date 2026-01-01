@@ -206,17 +206,10 @@ export default function RunnerInbox() {
       render: (order) => new Date(order.order_date).toLocaleDateString(),
     },
     {
-      key: 'customer_name',
-      header: 'Customer',
+      key: 'order_code',
+      header: 'Order Ref',
       sortable: true,
-      filterable: true,
-    },
-    {
-      key: 'address',
-      header: 'Address',
-      render: (order) => (
-        <span className="text-sm">{order.address}</span>
-      ),
+      render: (order) => <span className="font-mono text-sm">{order.order_code}</span>,
     },
     {
       key: 'area',
@@ -226,15 +219,29 @@ export default function RunnerInbox() {
       filterOptions: areaOptions,
     },
     {
+      key: 'items_summary',
+      header: 'Items',
+      render: (order) => {
+        const itemCount = order.order_items?.length || 0;
+        return (
+          <div className="text-sm">
+            <span className="font-medium">{itemCount} SKU</span>
+            <span className="text-muted-foreground"> · {order.total_qty} units</span>
+          </div>
+        );
+      },
+    },
+    {
       key: 'total_amount',
       header: 'Amount',
       sortable: true,
-      render: (order) => order.total_amount.toLocaleString(),
+      render: (order) => <span className="font-medium">${Number(order.total_amount).toFixed(2)}</span>,
     },
     {
       key: 'payment_method',
       header: 'Payment',
       filterable: true,
+      render: (order) => <Badge variant="outline">{order.payment_method}</Badge>,
     },
     {
       key: 'runner_status',
