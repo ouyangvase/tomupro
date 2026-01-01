@@ -37,14 +37,11 @@ Deno.serve(async (req) => {
     const { orderId, runnerId } = await req.json();
     
     if (!orderId) {
-      console.error('Missing orderId');
       return new Response(
         JSON.stringify({ success: false, error: 'Missing orderId' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    console.log(`Processing delivery for order ${orderId} by runner ${runnerId}`);
 
     // Fetch the order
     const { data: order, error: orderError } = await supabase
@@ -54,7 +51,6 @@ Deno.serve(async (req) => {
       .single();
 
     if (orderError || !order) {
-      console.error('Order not found:', orderError);
       return new Response(
         JSON.stringify({ success: false, error: 'Order not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -63,7 +59,6 @@ Deno.serve(async (req) => {
 
     // Idempotency check - if already deducted, return success
     if (order.stock_deducted) {
-      console.log(`Order ${orderId} already has stock deducted, skipping`);
       return new Response(
         JSON.stringify({ success: true, message: 'Stock already deducted', alreadyProcessed: true }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -84,7 +79,6 @@ Deno.serve(async (req) => {
     }
 
     if (!warehouseId) {
-      console.error('No fulfillment warehouse found');
       return new Response(
         JSON.stringify({ success: false, error: 'No fulfillment warehouse found' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -98,7 +92,6 @@ Deno.serve(async (req) => {
       .eq('order_id', orderId);
 
     if (itemsError) {
-      console.error('Error fetching order items:', itemsError);
       return new Response(
         JSON.stringify({ success: false, error: 'Error fetching order items' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -109,14 +102,12 @@ Deno.serve(async (req) => {
     const itemsWithoutProduct = (orderItems || []).filter(item => !item.product_id);
     
     if (itemsWithoutProduct.length > 0) {
-      console.log(`Order ${orderId} has items without product_id, setting to DISPUTE`);
-      
       const missingLabels = itemsWithoutProduct
         .map(item => item.sku_label || 'Unknown')
         .join(', ');
 
       // Update order to DISPUTE status
-      const { error: disputeError } = await supabase
+      await supabase
         .from('orders')
         .update({
           runner_status: 'DELIVERED',
@@ -126,10 +117,6 @@ Deno.serve(async (req) => {
           dispute_notes: `Delivery marked but SKU mapping missing for items: ${missingLabels}. Please assign SKU in order items.`,
         })
         .eq('id', orderId);
-
-      if (disputeError) {
-        console.error('Error updating order to DISPUTE:', disputeError);
-      }
 
       // Log audit
       await supabase.from('audit_logs').insert({
@@ -167,8 +154,6 @@ Deno.serve(async (req) => {
     }
 
     // All validations passed - create stock movements
-    console.log(`Creating ${orderItems?.length} stock movements for order ${orderId}`);
-    
     const stockMovements = (orderItems || []).map(item => ({
       warehouse_id: warehouseId,
       product_id: item.product_id,
@@ -184,7 +169,6 @@ Deno.serve(async (req) => {
       .insert(stockMovements);
 
     if (movementsError) {
-      console.error('Error creating stock movements:', movementsError);
       return new Response(
         JSON.stringify({ success: false, error: 'Error creating stock movements' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -202,7 +186,6 @@ Deno.serve(async (req) => {
       .eq('id', orderId);
 
     if (updateError) {
-      console.error('Error updating order:', updateError);
       return new Response(
         JSON.stringify({ success: false, error: 'Error updating order status' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -219,20 +202,14 @@ Deno.serve(async (req) => {
       after_json: { runner_status: 'DELIVERED', stock_deducted: true },
     });
 
-    // Log audit for stock deduction
+    // Log audit for stock deduction (minimal data)
     await supabase.from('audit_logs').insert({
       entity_type: 'order',
       entity_id: orderId,
       action: 'STOCK_DEDUCTED',
       actor_id: runnerId,
-      after_json: { 
-        movements_count: stockMovements.length, 
-        warehouse_id: warehouseId,
-        items: orderItems?.map(i => ({ product_id: i.product_id, qty: -i.qty })),
-      },
+      after_json: { movements_count: stockMovements.length },
     });
-
-    console.log(`Successfully processed delivery for order ${orderId}`);
 
     return new Response(
       JSON.stringify({ 
@@ -244,7 +221,6 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Unexpected error:', error);
     return new Response(
       JSON.stringify({ success: false, error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

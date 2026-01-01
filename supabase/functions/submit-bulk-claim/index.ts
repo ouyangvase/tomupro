@@ -31,7 +31,6 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
     if (authError || !user) {
-      console.error('Auth error:', authError);
       return new Response(
         JSON.stringify({ success: false, error: 'Invalid authentication' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -39,7 +38,6 @@ serve(async (req) => {
     }
 
     const { orderIds, note } = await req.json();
-    console.log(`Processing bulk claim for runner ${user.id}, orders:`, orderIds);
 
     if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
       return new Response(
@@ -55,7 +53,6 @@ serve(async (req) => {
       .in('id', orderIds);
 
     if (ordersError) {
-      console.error('Error fetching orders:', ordersError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to fetch orders' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -70,14 +67,9 @@ serve(async (req) => {
     );
 
     if (invalidOrders && invalidOrders.length > 0) {
-      const reasons = invalidOrders.map(o => {
-        if (o.runner_id !== user.id) return `Order ${o.id} does not belong to you`;
-        if (o.runner_status !== 'DELIVERED') return `Order ${o.id} is not delivered`;
-        if (o.reconciliation_status === 'CLAIMED') return `Order ${o.id} is already claimed`;
-        return `Order ${o.id} is invalid`;
-      });
+      // Return generic error without exposing order IDs
       return new Response(
-        JSON.stringify({ success: false, error: reasons.join('; ') }),
+        JSON.stringify({ success: false, error: 'Some orders are invalid or not authorized' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -99,23 +91,20 @@ serve(async (req) => {
         runner_id: user.id,
         total_amount: totalAmount,
         status: 'ADMIN_ACK_PENDING',
-        note: note || null,
+        note: note ? String(note).slice(0, 500) : null, // Limit note length
       })
       .select()
       .single();
 
     if (batchError) {
-      console.error('Error creating claim batch:', batchError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to create claim batch' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Created claim batch:', batch.id);
-
     // Insert batch items
-    const batchItems = orderIds.map(orderId => ({
+    const batchItems = orderIds.map((orderId: string) => ({
       batch_id: batch.id,
       order_id: orderId,
     }));
@@ -125,7 +114,6 @@ serve(async (req) => {
       .insert(batchItems);
 
     if (itemsError) {
-      console.error('Error inserting batch items:', itemsError);
       // Rollback: delete the batch
       await supabase.from('claim_batches').delete().eq('id', batch.id);
       return new Response(
@@ -135,14 +123,10 @@ serve(async (req) => {
     }
 
     // Update orders reconciliation_status to ADMIN_ACK_PENDING
-    const { error: updateError } = await supabase
+    await supabase
       .from('orders')
       .update({ reconciliation_status: 'ADMIN_ACK_PENDING' })
       .in('id', orderIds);
-
-    if (updateError) {
-      console.error('Error updating orders:', updateError);
-    }
 
     // Get all admin users to notify
     const { data: adminUsers } = await supabase
@@ -156,22 +140,16 @@ serve(async (req) => {
       const notifications = adminUsers.map(admin => ({
         user_id: admin.id,
         title: 'New Claim Batch Submitted',
-        message: `Runner ${runnerProfile?.display_name || 'Unknown'} submitted claim batch for ${orderIds.length} orders, total ${totalAmount.toLocaleString()}`,
+        message: `Runner ${runnerProfile?.display_name || 'A runner'} submitted claim batch for ${orderIds.length} orders, total ${totalAmount.toLocaleString()}`,
         type: 'claim_batch',
         reference_type: 'claim_batch',
         reference_id: batch.id,
       }));
 
-      const { error: notifError } = await supabase
-        .from('notifications')
-        .insert(notifications);
-
-      if (notifError) {
-        console.error('Error creating notifications:', notifError);
-      }
+      await supabase.from('notifications').insert(notifications);
     }
 
-    // Log audit
+    // Log audit (minimal data)
     await supabase.from('audit_logs').insert({
       actor_id: user.id,
       action: 'BULK_CLAIM_SUBMITTED',
@@ -179,8 +157,6 @@ serve(async (req) => {
       entity_id: batch.id,
       after_json: { order_count: orderIds.length, total_amount: totalAmount },
     });
-
-    console.log(`Successfully created claim batch ${batch.id} for ${orderIds.length} orders`);
 
     return new Response(
       JSON.stringify({ 
@@ -193,7 +169,6 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Unexpected error:', error);
     return new Response(
       JSON.stringify({ success: false, error: 'An unexpected error occurred' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
