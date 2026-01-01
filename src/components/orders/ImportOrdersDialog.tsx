@@ -150,26 +150,26 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
         }
       }
 
-      // Group validated rows by order_ref
+      // Group validated rows by order_code
       const orderGroups = new Map<string, {
-        orderRef: string;
+        orderCode: string;
         orderData: ValidatedOrderLine;
         items: { sku_name_or_code: string; qty: number; price: number }[];
       }>();
       
       for (let i = 0; i < validation.valid.length; i++) {
         const row = validation.valid[i];
-        const orderRef = row.order_ref?.trim() || `auto-${Date.now()}-${i}`;
+        const orderCode = row.order_code;
         
-        if (!orderGroups.has(orderRef)) {
-          orderGroups.set(orderRef, {
-            orderRef,
+        if (!orderGroups.has(orderCode)) {
+          orderGroups.set(orderCode, {
+            orderCode,
             orderData: row,
             items: [],
           });
         }
 
-        const group = orderGroups.get(orderRef)!;
+        const group = orderGroups.get(orderCode)!;
         if (row.sku_name_or_code?.trim()) {
           group.items.push({
             sku_name_or_code: row.sku_name_or_code,
@@ -182,7 +182,7 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
       const newErrors: string[] = validation.errors.map(e => `Row ${e.row}: ${e.message}`);
       let created = 0;
 
-      for (const [orderRef, group] of orderGroups) {
+      for (const [orderCode, group] of orderGroups) {
         try {
           // Calculate totals - price IS the line amount (no multiplication by qty)
           let totalQty = 0;
@@ -196,6 +196,7 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
           const { data: order, error: orderError } = await supabase
             .from('orders')
             .insert({
+              order_code: orderCode,
               customer_name: group.orderData.customer_name,
               phone: group.orderData.phone,
               address: group.orderData.address,
@@ -214,7 +215,7 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
             .single();
 
           if (orderError) {
-            newErrors.push(`Order ${orderRef}: ${orderError.message}`);
+            newErrors.push(`Order ${orderCode}: ${orderError.message}`);
             continue;
           }
 
@@ -234,7 +235,7 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
 
           created++;
         } catch (err: any) {
-          newErrors.push(`Order ${orderRef}: ${err.message}`);
+          newErrors.push(`Order ${orderCode}: ${err.message}`);
         }
       }
 

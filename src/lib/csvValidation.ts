@@ -70,7 +70,7 @@ function parseFlexibleDate(value: string): string {
 
 // Validation schema for CSV order line imports
 export const orderLineSchema = z.object({
-  order_ref: z.string().max(100).optional().default(''),
+  order_code: z.string().min(1, 'Order code is required').max(100, 'Order code too long'),
   order_date: z.string().transform(parseFlexibleDate),
   customer_name: z.string().min(1, 'Customer name is required').max(255, 'Customer name too long'),
   phone: z.string().min(1, 'Phone is required').max(50, 'Phone too long'),
@@ -113,7 +113,7 @@ export function validateOrderLines(rows: Record<string, string>[]): ValidationRe
   rows.forEach((row, index) => {
     try {
       const validated = orderLineSchema.parse({
-        order_ref: sanitizeString(row.order_ref),
+        order_code: sanitizeString(row.order_code),
         order_date: sanitizeString(row.order_date),
         customer_name: sanitizeString(row.customer_name),
         phone: sanitizeString(row.phone),

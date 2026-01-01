@@ -76,8 +76,8 @@ function parseCSVLine(line: string): string[] {
 
 export function downloadTemplate(type: 'orders' | 'order_lines') {
   const templates = {
-    orders: 'customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes\n"John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-15","Rush order"',
-    order_lines: 'order_ref,order_date,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes,sku_name_or_code,qty,price\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget A",2,29.99\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget B",1,49.99\n"ORD-002","2024-01-15","Jane Smith","555-5678","456 Oak Ave","Uptown","Social","TRANSFER","2024-01-21","Gift order","Premium Pack",1,99.99'
+    orders: 'order_code,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes\n"ORD-001","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-15","Rush order"',
+    order_lines: 'order_code,order_date,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes,sku_name_or_code,qty,price\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget A",2,29.99\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget B",1,49.99\n"ORD-002","2024-01-15","Jane Smith","555-5678","456 Oak Ave","Uptown","Social","TRANSFER","2024-01-21","Gift order","Premium Pack",1,99.99'
   };
 
   const blob = new Blob([templates[type]], { type: 'text/csv;charset=utf-8;' });
@@ -87,9 +87,9 @@ export function downloadTemplate(type: 'orders' | 'order_lines') {
   link.click();
 }
 
-// Export order lines (one row per order item)
+// Export order lines (one row per order item) - with new extended format
 export interface OrderLineExport {
-  order_ref: string;
+  order_code: string;
   order_date: string;
   customer_name: string;
   phone: string;
@@ -99,10 +99,15 @@ export interface OrderLineExport {
   payment_method: string;
   expected_pickup_date: string;
   notes: string;
-  sku_name_or_code: string;
+  salesperson_name: string;
+  runner_name: string;
+  status: string;
+  runner_status: string;
+  reconciliation_status: string;
+  sku_code: string;
+  sku_name: string;
   qty: number;
-  price: number;
-  line_total: number;
+  amount: number;
 }
 
 export function exportOrderLines(
@@ -113,11 +118,13 @@ export function exportOrderLines(
   
   for (const order of orders) {
     const orderItems = order.order_items || [];
+    const salespersonName = order.salesperson?.display_name || '';
+    const runnerName = order.runner?.display_name || '';
     
     if (orderItems.length === 0) {
       // Export order with empty item line
       lines.push({
-        order_ref: order.id,
+        order_code: order.order_code || order.id,
         order_date: order.order_date || '',
         customer_name: order.customer_name || '',
         phone: order.phone || '',
@@ -127,16 +134,21 @@ export function exportOrderLines(
         payment_method: order.payment_method || '',
         expected_pickup_date: order.expected_pickup_date || '',
         notes: order.notes || '',
-        sku_name_or_code: '',
+        salesperson_name: salespersonName,
+        runner_name: runnerName,
+        status: order.status || '',
+        runner_status: order.runner_status || '',
+        reconciliation_status: order.reconciliation_status || '',
+        sku_code: '',
+        sku_name: '',
         qty: 0,
-        price: 0,
-        line_total: 0,
+        amount: 0,
       });
     } else {
       // Export one line per order item
       for (const item of orderItems) {
         lines.push({
-          order_ref: order.id,
+          order_code: order.order_code || order.id,
           order_date: order.order_date || '',
           customer_name: order.customer_name || '',
           phone: order.phone || '',
@@ -146,17 +158,22 @@ export function exportOrderLines(
           payment_method: order.payment_method || '',
           expected_pickup_date: order.expected_pickup_date || '',
           notes: order.notes || '',
-          sku_name_or_code: item.product?.sku_code || item.product?.sku_name || item.sku_label || '',
+          salesperson_name: salespersonName,
+          runner_name: runnerName,
+          status: order.status || '',
+          runner_status: order.runner_status || '',
+          reconciliation_status: order.reconciliation_status || '',
+          sku_code: item.product?.sku_code || '',
+          sku_name: item.product?.sku_name || item.sku_label || '',
           qty: item.qty || 0,
-          price: Number(item.price) || 0,
-          line_total: Number(item.line_total) || 0,
+          amount: Number(item.line_total) || 0,
         });
       }
     }
   }
 
   const columns = [
-    { key: 'order_ref', header: 'order_ref' },
+    { key: 'order_code', header: 'order_code' },
     { key: 'order_date', header: 'order_date' },
     { key: 'customer_name', header: 'customer_name' },
     { key: 'phone', header: 'phone' },
@@ -166,11 +183,30 @@ export function exportOrderLines(
     { key: 'payment_method', header: 'payment_method' },
     { key: 'expected_pickup_date', header: 'expected_pickup_date' },
     { key: 'notes', header: 'notes' },
-    { key: 'sku_name_or_code', header: 'sku_name_or_code' },
+    { key: 'salesperson_name', header: 'salesperson_name' },
+    { key: 'runner_name', header: 'runner_name' },
+    { key: 'status', header: 'status' },
+    { key: 'runner_status', header: 'runner_status' },
+    { key: 'reconciliation_status', header: 'reconciliation_status' },
+    { key: 'sku_code', header: 'sku_code' },
+    { key: 'sku_name', header: 'sku_name' },
     { key: 'qty', header: 'qty' },
-    { key: 'price', header: 'price' },
-    { key: 'line_total', header: 'line_total' },
+    { key: 'amount', header: 'amount' },
   ];
 
   exportToCSV(lines as any, columns, filename);
+}
+
+// Export only selected orders
+export function exportSelectedOrderLines(
+  orders: any[],
+  selectedIds: string[],
+  filename: string
+) {
+  if (selectedIds.length === 0) {
+    return false; // Return false to indicate no selection
+  }
+  const selectedOrders = orders.filter(o => selectedIds.includes(o.id));
+  exportOrderLines(selectedOrders, filename);
+  return true;
 }
