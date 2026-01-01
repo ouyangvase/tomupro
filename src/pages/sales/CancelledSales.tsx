@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { RotateCcw } from 'lucide-react';
-import { exportToCSV } from '@/lib/csv';
+import { exportOrderLines } from '@/lib/csv';
 import type { Order, OrderStatus } from '@/types/database';
 
 export default function CancelledSales() {
@@ -118,19 +118,7 @@ export default function CancelledSales() {
   };
 
   const handleExport = () => {
-    const exportColumns = [
-      { key: 'order_date', header: 'Order Date' },
-      { key: 'customer_name', header: 'Customer Name' },
-      { key: 'phone', header: 'Phone' },
-      { key: 'address', header: 'Address' },
-      { key: 'area', header: 'Area' },
-      { key: 'total_qty', header: 'Total Qty' },
-      { key: 'total_amount', header: 'Total Amount' },
-      { key: 'cancel_reason', header: 'Cancel Reason' },
-      { key: 'cancel_notes', header: 'Cancel Notes' },
-      { key: 'updated_at', header: 'Cancelled At' },
-    ];
-    exportToCSV(orders as any, exportColumns, 'cancelled_orders');
+    exportOrderLines(orders, 'cancelled_orders');
   };
 
   return (

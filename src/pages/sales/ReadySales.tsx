@@ -26,7 +26,7 @@ import { format } from 'date-fns';
 import { Truck, UserCheck } from 'lucide-react';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
-import { exportToCSV } from '@/lib/csv';
+import { exportOrderLines } from '@/lib/csv';
 import type { Order } from '@/types/database';
 
 export default function ReadySales() {
@@ -190,19 +190,7 @@ export default function ReadySales() {
   };
 
   const handleExport = () => {
-    const exportColumns = [
-      { key: 'order_date', header: 'Order Date' },
-      { key: 'customer_name', header: 'Customer Name' },
-      { key: 'phone', header: 'Phone' },
-      { key: 'address', header: 'Address' },
-      { key: 'area', header: 'Area' },
-      { key: 'total_qty', header: 'Total Qty' },
-      { key: 'total_amount', header: 'Total Amount' },
-      { key: 'payment_method', header: 'Payment Method' },
-      { key: 'runner_status', header: 'Runner Status' },
-      { key: 'reconciliation_status', header: 'Reconciliation Status' },
-    ];
-    exportToCSV(orders as any, exportColumns, 'ready_orders');
+    exportOrderLines(orders, 'ready_orders');
   };
 
   const unassignedCount = orders.filter(o => o.runner_status === 'UNASSIGNED').length;

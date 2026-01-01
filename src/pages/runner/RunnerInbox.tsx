@@ -3,11 +3,12 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useOrders, useUpdateOrder } from '@/hooks/useOrders';
+import { useOrders, useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
+import { exportOrderLines } from '@/lib/csv';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
 import { Package, CheckCircle, XCircle, DollarSign, Truck } from 'lucide-react';
 
@@ -33,9 +34,24 @@ export default function RunnerInbox() {
   const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
   const updateOrder = useUpdateOrder();
 
+  const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
+  
+  const bulkUpdateOrders = useBulkUpdateOrders();
+
+  const handleBulkTake = () => {
+    bulkUpdateOrders.mutate({
+      ids: selectedRows,
+      updates: { runner_status: 'TAKEN' },
+    });
+    setSelectedRows([]);
+  };
+
+  const handleExport = () => {
+    exportOrderLines(orders || [], 'runner_inbox');
+  };
 
   const handleTakeJob = async (order: Order) => {
     const beforeStatus = order.runner_status;
@@ -219,6 +235,18 @@ export default function RunnerInbox() {
           columns={columns}
           loading={isLoading}
           keyField="id"
+          selectable
+          selectedRows={selectedRows}
+          onSelectionChange={setSelectedRows}
+          onExport={handleExport}
+          bulkActions={
+            selectedRows.length > 0 ? (
+              <Button size="sm" onClick={handleBulkTake}>
+                <Truck className="h-4 w-4 mr-2" />
+                Take Jobs ({selectedRows.length})
+              </Button>
+            ) : undefined
+          }
         />
       </div>
 
