@@ -10,7 +10,7 @@ import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
-import { exportOrderLines } from '@/lib/csv';
+import { exportSelectedOrderLines } from '@/lib/csv';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -105,7 +105,18 @@ export default function RunnerInbox() {
   };
 
   const handleExport = () => {
-    exportOrderLines(orders || [], 'runner_inbox');
+    if (selectedRows.length === 0) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'No orders selected', 
+        description: 'Please select at least 1 order to export.' 
+      });
+      return;
+    }
+    const success = exportSelectedOrderLines(orders || [], selectedRows, 'runner_inbox_selected');
+    if (success) {
+      toast({ title: 'Export complete', description: `Exported ${selectedRows.length} order(s)` });
+    }
   };
 
   const handleTakeJob = async (order: Order) => {
