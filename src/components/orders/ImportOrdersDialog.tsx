@@ -197,8 +197,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
             totalAmount += item.price; // price = line amount directly
           }
 
-          // Create order
-          const orderCode = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+          // Create order with short order code
+          const orderCode = group.orderData.order_ref || `ORD-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
           const { data: order, error: orderError } = await supabase
             .from('orders')
             .insert([{
