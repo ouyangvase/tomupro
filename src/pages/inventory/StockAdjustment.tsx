@@ -19,28 +19,64 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWarehouses, useStockBalance } from '@/hooks/useInventory';
 import { useProducts } from '@/hooks/useProducts';
 import { useCreateStockMovement } from '@/hooks/useStockMovements';
+import { useUploadAttachment } from '@/hooks/useAttachments';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
-import { Wrench, Plus, Minus } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { Wrench, Upload, X } from 'lucide-react';
+import type { MovementType } from '@/types/database';
+
+// Fetch recent adjustments
+function useRecentAdjustments() {
+  return useQuery({
+    queryKey: ['recent-adjustments'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('stock_movements')
+        .select('*')
+        .in('movement_type', ['RETURN', 'ADJUSTMENT'])
+        .eq('reference_type', 'MANUAL')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
 
 export default function StockAdjustment() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const { toast } = useToast();
   const { data: warehouses } = useWarehouses();
   const { data: products } = useProducts();
   const { data: stockBalance } = useStockBalance();
+  const { data: recentAdjustments } = useRecentAdjustments();
   const createMovement = useCreateStockMovement();
+  const uploadAttachment = useUploadAttachment();
 
   const [warehouseId, setWarehouseId] = useState('');
   const [productId, setProductId] = useState('');
-  const [adjustmentType, setAdjustmentType] = useState<'add' | 'subtract'>('add');
-  const [quantity, setQuantity] = useState('');
+  const [movementType, setMovementType] = useState<'RETURN' | 'ADJUSTMENT'>('ADJUSTMENT');
+  const [qtyChange, setQtyChange] = useState('');
   const [reason, setReason] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isAdmin = role === 'admin';
 
@@ -49,9 +85,26 @@ export default function StockAdjustment() {
     b => b.warehouse_id === warehouseId && b.product_id === productId
   )?.balance_qty || 0;
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setProofFile(file);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setProofFile(null);
+  };
+
   const handleSubmit = async () => {
-    if (!warehouseId || !productId || !quantity || !reason) {
-      toast({ variant: 'destructive', title: 'Please fill all fields' });
+    if (!warehouseId || !productId || !qtyChange || !reason) {
+      toast({ variant: 'destructive', title: 'Please fill all required fields' });
+      return;
+    }
+
+    const qty = parseInt(qtyChange);
+    if (isNaN(qty) || qty === 0) {
+      toast({ variant: 'destructive', title: 'Please enter a valid quantity (non-zero)' });
       return;
     }
 
@@ -59,42 +112,74 @@ export default function StockAdjustment() {
   };
 
   const handleConfirm = async () => {
-    const qtyChange = adjustmentType === 'add' 
-      ? parseInt(quantity) 
-      : -parseInt(quantity);
+    const qty = parseInt(qtyChange);
+    setIsSubmitting(true);
 
     try {
+      // Create stock movement
       const movement = await createMovement.mutateAsync({
         warehouse_id: warehouseId,
         product_id: productId,
-        movement_type: 'ADJUSTMENT',
-        qty_change: qtyChange,
+        movement_type: movementType as MovementType,
+        qty_change: qty,
         reference_type: 'MANUAL',
       });
 
+      // Upload proof if provided
+      let proofUrl: string | null = null;
+      if (proofFile) {
+        const result = await uploadAttachment.mutateAsync({
+          file: proofFile,
+          bucket: 'attachments',
+          type: 'other',
+        });
+        proofUrl = result?.url;
+      }
+
+      // Log audit with full details
       await logAudit({
         entity_type: 'stock_movement',
         entity_id: movement.id,
-        action: 'ADJUSTMENT_CREATED',
+        action: movementType === 'RETURN' ? 'RETURN_CREATED' : 'ADJUSTMENT_CREATED',
         after_json: {
           warehouse_id: warehouseId,
+          warehouse_name: warehouses?.find(w => w.id === warehouseId)?.name,
           product_id: productId,
-          qty_change: qtyChange,
+          product_name: products?.find(p => p.id === productId)?.sku_name,
+          qty_change: qty,
+          movement_type: movementType,
           reason,
+          proof_url: proofUrl,
+          created_by: user?.id,
         },
       });
 
-      toast({ title: 'Stock adjustment recorded' });
+      toast({ 
+        title: movementType === 'RETURN' ? 'Return recorded' : 'Stock adjustment recorded',
+        description: `${qty > 0 ? '+' : ''}${qty} units for ${products?.find(p => p.id === productId)?.sku_name}`,
+      });
 
       // Reset form
       setWarehouseId('');
       setProductId('');
-      setQuantity('');
+      setQtyChange('');
       setReason('');
+      setProofFile(null);
       setConfirmDialogOpen(false);
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: (error as Error).message });
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const getProductName = (productId: string) => {
+    const product = products?.find(p => p.id === productId);
+    return product ? `${product.sku_name}${product.sku_code ? ` (${product.sku_code})` : ''}` : '-';
+  };
+
+  const getWarehouseName = (warehouseId: string) => {
+    return warehouses?.find(w => w.id === warehouseId)?.name || '-';
   };
 
   if (!isAdmin) {
@@ -118,123 +203,181 @@ export default function StockAdjustment() {
           <Wrench className="h-8 w-8 text-primary" />
           <div>
             <h1 className="text-2xl font-bold">Stock Adjustment</h1>
-            <p className="text-muted-foreground">Manually adjust inventory quantities</p>
+            <p className="text-muted-foreground">Handle returns and inventory corrections</p>
           </div>
         </div>
 
-        <Card className="max-w-xl">
-          <CardHeader>
-            <CardTitle>New Adjustment</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Warehouse *</Label>
-              <Select value={warehouseId} onValueChange={setWarehouseId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select warehouse..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses?.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Product *</Label>
-              <Select value={productId} onValueChange={setProductId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select product..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {products?.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.sku_name} {p.sku_code && `(${p.sku_code})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {warehouseId && productId && (
-                <p className="text-sm text-muted-foreground">
-                  Current balance: <strong>{currentBalance}</strong>
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Adjustment Type *</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={adjustmentType === 'add' ? 'default' : 'outline'}
-                  onClick={() => setAdjustmentType('add')}
-                  className="flex-1"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-                <Button
-                  type="button"
-                  variant={adjustmentType === 'subtract' ? 'destructive' : 'outline'}
-                  onClick={() => setAdjustmentType('subtract')}
-                  className="flex-1"
-                >
-                  <Minus className="h-4 w-4 mr-1" />
-                  Subtract
-                </Button>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Adjustment Form */}
+          <Card>
+            <CardHeader>
+              <CardTitle>New Adjustment</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Warehouse *</Label>
+                <Select value={warehouseId} onValueChange={setWarehouseId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select warehouse..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {warehouses?.map((w) => (
+                      <SelectItem key={w.id} value={w.id}>
+                        {w.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label>Quantity *</Label>
-              <Input
-                type="number"
-                min={1}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="Enter quantity"
-              />
-              {quantity && warehouseId && productId && (
-                <p className="text-sm text-muted-foreground">
-                  New balance will be:{' '}
-                  <strong>
-                    {adjustmentType === 'add'
-                      ? Number(currentBalance) + parseInt(quantity || '0')
-                      : Number(currentBalance) - parseInt(quantity || '0')}
-                  </strong>
+              <div className="space-y-2">
+                <Label>Product *</Label>
+                <Select value={productId} onValueChange={setProductId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select product..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products?.filter(p => p.is_active).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.sku_name} {p.sku_code && `• ${p.sku_code}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {warehouseId && productId && (
+                  <p className="text-sm text-muted-foreground">
+                    Current balance: <strong>{currentBalance}</strong>
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Movement Type *</Label>
+                <Select value={movementType} onValueChange={(v) => setMovementType(v as 'RETURN' | 'ADJUSTMENT')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="RETURN">Return (usually +qty)</SelectItem>
+                    <SelectItem value="ADJUSTMENT">Adjustment (+/- qty)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Quantity Change * (use negative for deductions)</Label>
+                <Input
+                  type="number"
+                  value={qtyChange}
+                  onChange={(e) => setQtyChange(e.target.value)}
+                  placeholder="e.g. 5 or -3"
+                />
+                {qtyChange && warehouseId && productId && (
+                  <p className="text-sm text-muted-foreground">
+                    New balance will be:{' '}
+                    <strong className={parseInt(qtyChange) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                      {Number(currentBalance) + (parseInt(qtyChange) || 0)}
+                    </strong>
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Reason *</Label>
+                <Textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Enter reason for adjustment..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Proof/Attachment (optional)</Label>
+                {proofFile ? (
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <span className="text-sm truncate flex-1">{proofFile.name}</span>
+                    <Button variant="ghost" size="icon" onClick={handleRemoveFile}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleFileChange}
+                      className="cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <Button
+                onClick={handleSubmit}
+                disabled={!warehouseId || !productId || !qtyChange || !reason}
+                className="w-full"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Submit Adjustment
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Recent Adjustments */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Adjustments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentAdjustments && recentAdjustments.length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Date</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recentAdjustments.map((adj) => (
+                        <TableRow key={adj.id}>
+                          <TableCell className="text-sm">
+                            {format(new Date(adj.created_at), 'MMM dd, HH:mm')}
+                          </TableCell>
+                          <TableCell className="text-sm truncate max-w-[150px]">
+                            {getProductName(adj.product_id)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={adj.movement_type === 'RETURN' ? 'secondary' : 'outline'}>
+                              {adj.movement_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={`text-right font-medium ${adj.qty_change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {adj.qty_change > 0 ? '+' : ''}{adj.qty_change}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No recent adjustments
                 </p>
               )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Reason *</Label>
-              <Textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Enter reason for adjustment..."
-                rows={3}
-              />
-            </div>
-
-            <Button
-              onClick={handleSubmit}
-              disabled={!warehouseId || !productId || !quantity || !reason}
-              className="w-full"
-            >
-              Submit Adjustment
-            </Button>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Confirmation Dialog */}
       <Dialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Adjustment</DialogTitle>
+            <DialogTitle>Confirm {movementType === 'RETURN' ? 'Return' : 'Adjustment'}</DialogTitle>
           </DialogHeader>
           <div className="py-4 space-y-2">
             <p>
@@ -246,27 +389,36 @@ export default function StockAdjustment() {
               {products?.find(p => p.id === productId)?.sku_name}
             </p>
             <p>
-              <strong>Change:</strong>{' '}
-              <span className={adjustmentType === 'add' ? 'text-green-600' : 'text-red-600'}>
-                {adjustmentType === 'add' ? '+' : '-'}{quantity}
+              <strong>Type:</strong>{' '}
+              <Badge variant={movementType === 'RETURN' ? 'secondary' : 'outline'}>
+                {movementType}
+              </Badge>
+            </p>
+            <p>
+              <strong>Quantity Change:</strong>{' '}
+              <span className={parseInt(qtyChange) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                {parseInt(qtyChange) > 0 ? '+' : ''}{qtyChange}
               </span>
             </p>
             <p>
               <strong>New Balance:</strong>{' '}
-              {adjustmentType === 'add'
-                ? Number(currentBalance) + parseInt(quantity || '0')
-                : Number(currentBalance) - parseInt(quantity || '0')}
+              {Number(currentBalance) + (parseInt(qtyChange) || 0)}
             </p>
             <p>
               <strong>Reason:</strong> {reason}
             </p>
+            {proofFile && (
+              <p>
+                <strong>Attachment:</strong> {proofFile.name}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleConfirm} disabled={createMovement.isPending}>
-              {createMovement.isPending ? 'Saving...' : 'Confirm'}
+            <Button onClick={handleConfirm} disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Confirm'}
             </Button>
           </DialogFooter>
         </DialogContent>

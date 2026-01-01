@@ -12,7 +12,8 @@ import {
   X,
   Users,
   Inbox,
-  Receipt
+  Receipt,
+  Wrench
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -60,6 +61,7 @@ const reconciliationItems: NavItem[] = [
 const inventoryItems: NavItem[] = [
   { title: "Inbound Pending", url: "/inbound/pending", icon: Package, roles: ['admin', 'salesperson'] },
   { title: "Stock Balance", url: "/inventory", icon: WarehouseIcon, roles: ['admin', 'manager', 'salesperson', 'runner'] },
+  { title: "Adjustments", url: "/inventory/adjustment", icon: Wrench, roles: ['admin'] },
   { title: "Products", url: "/products", icon: Package, roles: ['admin', 'manager', 'salesperson'] },
 ];
 
