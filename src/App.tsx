@@ -18,6 +18,7 @@ import InboundPending from "./pages/inbound/InboundPending";
 import ReconciliationSP from "./pages/reconciliation/ReconciliationSP";
 import ReconciliationAdmin from "./pages/reconciliation/ReconciliationAdmin";
 import DisputeCenter from "./pages/disputes/DisputeCenter";
+import ClaimsHistory from "./pages/claims/ClaimsHistory";
 import StockAdjustment from "./pages/inventory/StockAdjustment";
 import ReasonsSettings from "./pages/settings/ReasonsSettings";
 import UsersSettings from "./pages/settings/UsersSettings";
@@ -62,6 +63,7 @@ function AppRoutes() {
       <Route path="/reconciliation/sp" element={<ProtectedRoute><ReconciliationSP /></ProtectedRoute>} />
       <Route path="/reconciliation/admin" element={<ProtectedRoute><ReconciliationAdmin /></ProtectedRoute>} />
       <Route path="/disputes" element={<ProtectedRoute><DisputeCenter /></ProtectedRoute>} />
+      <Route path="/claims" element={<ProtectedRoute><ClaimsHistory /></ProtectedRoute>} />
       <Route path="/inbound/pending" element={<ProtectedRoute><InboundPending /></ProtectedRoute>} />
       <Route path="/inventory" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
       <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />

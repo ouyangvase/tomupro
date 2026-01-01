@@ -11,7 +11,8 @@ import {
   ClipboardList,
   X,
   Users,
-  Inbox
+  Inbox,
+  Receipt
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -50,6 +51,7 @@ const runnerItems: NavItem[] = [
 ];
 
 const reconciliationItems: NavItem[] = [
+  { title: "Claims History", url: "/claims", icon: Receipt, roles: ['admin', 'salesperson'] },
   { title: "SP Reconciliation", url: "/reconciliation/sp", icon: FileCheck, roles: ['admin', 'salesperson'] },
   { title: "Admin Reconciliation", url: "/reconciliation/admin", icon: PackageCheck, roles: ['admin'] },
   { title: "Dispute Center", url: "/disputes", icon: AlertTriangle, roles: ['admin', 'manager'] },
