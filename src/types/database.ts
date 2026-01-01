@@ -44,6 +44,7 @@ export interface Product {
 
 export interface Order {
   id: string;
+  order_code: string;
   order_date: string;
   customer_name: string;
   phone: string;

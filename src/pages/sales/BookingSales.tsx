@@ -49,15 +49,10 @@ export default function BookingSales() {
       render: (o) => format(new Date(o.order_date), 'MMM dd') 
     },
     { 
-      key: 'customer_name', 
-      header: 'Customer', 
+      key: 'order_code', 
+      header: 'Order Ref', 
       sortable: true,
-      editable: isEditable,
-    },
-    { 
-      key: 'phone', 
-      header: 'Phone',
-      editable: isEditable,
+      render: (o) => <span className="font-mono text-sm">{o.order_code}</span>
     },
     { 
       key: 'area', 
@@ -68,20 +63,6 @@ export default function BookingSales() {
       filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a!, value: a! })) 
     },
     { 
-      key: 'channel', 
-      header: 'Channel', 
-      filterable: true,
-      editable: isEditable, 
-      filterOptions: [...new Set(orders.map(o => o.channel).filter(Boolean))].map(c => ({ label: c!, value: c! })) 
-    },
-    { 
-      key: 'expected_pickup_date', 
-      header: 'Expected', 
-      sortable: true,
-      width: '100px',
-      render: (o) => o.expected_pickup_date ? format(new Date(o.expected_pickup_date), 'MMM dd') : '—' 
-    },
-    { 
       key: 'items_summary', 
       header: 'Items', 
       render: (o) => {
@@ -89,10 +70,16 @@ export default function BookingSales() {
         return (
           <div className="text-sm">
             <span className="font-medium">{itemCount} SKU</span>
-            <span className="text-muted-foreground"> · {o.total_qty} units · ${Number(o.total_amount).toFixed(0)}</span>
+            <span className="text-muted-foreground"> · {o.total_qty} units</span>
           </div>
         );
       }
+    },
+    { 
+      key: 'total_amount', 
+      header: 'Amount', 
+      sortable: true, 
+      render: (o) => <span className="font-medium">${Number(o.total_amount).toFixed(2)}</span>
     },
     { 
       key: 'payment_method', 
@@ -101,26 +88,41 @@ export default function BookingSales() {
       render: (o) => <Badge variant="outline">{o.payment_method}</Badge> 
     },
     { 
-      key: 'reminder_state', 
-      header: 'Reminder', 
-      width: '100px',
+      key: 'runner_id', 
+      header: 'Runner', 
       render: (o) => {
-        const state = calculateReminderState(o);
-        const props = getReminderBadgeProps(state);
-        if (!props) return <span className="text-muted-foreground text-sm">—</span>;
-        return (
-          <Badge variant={props.variant} className="flex items-center gap-1">
-            <AlertCircle className="h-3 w-3" />
-            {props.text}
-          </Badge>
-        );
+        if (!o.runner) return <span className="text-muted-foreground">—</span>;
+        return <span>{o.runner.display_name}</span>;
       }
     },
     { 
-      key: 'status', 
-      header: 'Status', 
-      width: '100px',
-      render: (o) => <StatusBadge status={o.status} type="order" /> 
+      key: 'runner_status', 
+      header: 'Delivery', 
+      width: '120px',
+      filterable: true,
+      filterOptions: [
+        { label: 'Unassigned', value: 'UNASSIGNED' },
+        { label: 'Assigned', value: 'ASSIGNED' },
+        { label: 'Taken', value: 'TAKEN' },
+        { label: 'Delivered', value: 'DELIVERED' },
+        { label: 'Failed', value: 'FAILED_DELIVERY' },
+      ],
+      render: (o) => <StatusBadge status={o.runner_status} type="runner" /> 
+    },
+    { 
+      key: 'reconciliation_status', 
+      header: 'Reconciliation', 
+      width: '140px',
+      filterable: true,
+      filterOptions: [
+        { label: 'Not Claimed', value: 'NOT_CLAIMED' },
+        { label: 'Claimed', value: 'CLAIMED' },
+        { label: 'SP Ack Pending', value: 'SP_ACK_PENDING' },
+        { label: 'Admin Ack Pending', value: 'ADMIN_ACK_PENDING' },
+        { label: 'Settled', value: 'SETTLED' },
+        { label: 'Dispute', value: 'DISPUTE' },
+      ],
+      render: (o) => <StatusBadge status={o.reconciliation_status} type="reconciliation" /> 
     },
   ];
 

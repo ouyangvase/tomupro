@@ -76,7 +76,12 @@ export default function ReadySales() {
       width: '100px',
       render: (o) => format(new Date(o.order_date), 'MMM dd') 
     },
-    { key: 'customer_name', header: 'Customer', sortable: true },
+    { 
+      key: 'order_code', 
+      header: 'Order Ref', 
+      sortable: true,
+      render: (o) => <span className="font-mono text-sm">{o.order_code}</span>
+    },
     { 
       key: 'area', 
       header: 'Area', 
