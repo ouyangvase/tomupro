@@ -3,17 +3,25 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { Product } from '@/types/database';
 
-export function useProducts() {
+export function useProducts(includeInactive = false) {
   return useQuery({
-    queryKey: ['products'],
+    queryKey: ['products', includeInactive],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('products')
-        .select('*')
-        .eq('is_active', true)
+        .select(`
+          *,
+          creator:profiles!products_created_by_fkey(id, display_name)
+        `)
         .order('sku_name', { ascending: true });
+      
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
-      return data as Product[];
+      return data as (Product & { creator?: { id: string; display_name: string } })[];
     },
   });
 }
@@ -35,6 +43,75 @@ export function useCreateProduct() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast({ title: 'Product created successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
+export function useUpdateProduct() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: Partial<Product> & { id: string }) => {
+      const { data, error } = await supabase
+        .from('products')
+        .update(updates as any)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast({ title: 'Product updated successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
+export function useDeleteProduct() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast({ title: 'Product deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
+export function useBulkUpdateProducts() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ ids, updates }: { ids: string[]; updates: Partial<Product> }) => {
+      const { error } = await supabase
+        .from('products')
+        .update(updates as any)
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast({ title: 'Products updated successfully' });
     },
     onError: (error: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: error.message });

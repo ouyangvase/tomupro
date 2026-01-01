@@ -22,6 +22,7 @@ import StockAdjustment from "./pages/inventory/StockAdjustment";
 import ReasonsSettings from "./pages/settings/ReasonsSettings";
 import UsersSettings from "./pages/settings/UsersSettings";
 import BindingsSettings from "./pages/settings/BindingsSettings";
+import ProductsPage from "./pages/products/ProductsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,7 +64,7 @@ function AppRoutes() {
       <Route path="/inbound/pending" element={<ProtectedRoute><InboundPending /></ProtectedRoute>} />
       <Route path="/inventory" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
       <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
-      <Route path="/products" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
       <Route path="/settings/reasons" element={<ProtectedRoute><ReasonsSettings /></ProtectedRoute>} />
       <Route path="/settings/users" element={<ProtectedRoute><UsersSettings /></ProtectedRoute>} />
       <Route path="/settings/bindings" element={<ProtectedRoute><BindingsSettings /></ProtectedRoute>} />

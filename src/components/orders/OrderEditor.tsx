@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Trash2 } from 'lucide-react';
+import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -35,6 +35,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import {
   Table,
   TableBody,
@@ -79,6 +87,71 @@ interface LocalOrderItem {
   line_total: number;
   notes: string;
   isNew?: boolean;
+}
+
+interface ProductComboboxProps {
+  products: { id: string; sku_code: string | null; sku_name: string }[];
+  value: string | null;
+  onSelect: (productId: string | null, productName?: string) => void;
+}
+
+function ProductCombobox({ products, value, onSelect }: ProductComboboxProps) {
+  const [open, setOpen] = useState(false);
+  
+  const selectedProduct = products.find(p => p.id === value);
+  
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-8 w-full justify-between text-left font-normal"
+        >
+          <span className="truncate">
+            {selectedProduct
+              ? `${selectedProduct.sku_code ? selectedProduct.sku_code + ' - ' : ''}${selectedProduct.sku_name}`
+              : 'Custom / Select...'}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search products..." />
+          <CommandList>
+            <CommandEmpty>No product found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="__custom__"
+                onSelect={() => {
+                  onSelect(null);
+                  setOpen(false);
+                }}
+              >
+                <Check className={cn("mr-2 h-4 w-4", !value ? "opacity-100" : "opacity-0")} />
+                Custom (type below)
+              </CommandItem>
+              {products.map((p) => (
+                <CommandItem
+                  key={p.id}
+                  value={`${p.sku_code || ''} ${p.sku_name}`}
+                  onSelect={() => {
+                    onSelect(p.id, p.sku_name);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
+                  {p.sku_code ? `${p.sku_code} - ` : ''}{p.sku_name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProps) {
@@ -132,9 +205,9 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
     }
   }, [order, mode, form]);
 
-  // Initialize items from existing order items
+  // Initialize items from existing order items - use order.id as stable dependency
   useEffect(() => {
-    if (existingItems.length > 0) {
+    if (mode === 'edit' && existingItems.length > 0) {
       setItems(existingItems.map(item => ({
         id: item.id,
         product_id: item.product_id,
@@ -144,10 +217,11 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
         line_total: Number(item.line_total),
         notes: item.notes || '',
       })));
-    } else if (mode === 'create') {
+    } else if (mode === 'create' || (mode === 'edit' && existingItems.length === 0)) {
       setItems([{ product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
     }
-  }, [existingItems, mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, mode]);
 
   const addItem = () => {
     setItems([...items, { product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
@@ -415,27 +489,21 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
                     {items.map((item, index) => (
                       <TableRow key={index}>
                         <TableCell>
-                          <Select
-                            value={item.product_id || 'custom'}
-                            onValueChange={(v) => updateItem(index, 'product_id', v === 'custom' ? null : v)}
-                          >
-                            <SelectTrigger className="h-8">
-                              <SelectValue placeholder="Select product..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="custom">Custom (type below)</SelectItem>
-                              {products.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>
-                                  {p.sku_code ? `${p.sku_code} - ` : ''}{p.sku_name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <ProductCombobox
+                            products={products}
+                            value={item.product_id}
+                            onSelect={(productId, productName) => {
+                              updateItem(index, 'product_id', productId);
+                              if (productName) {
+                                updateItem(index, 'sku_label', productName);
+                              }
+                            }}
+                          />
                           {!item.product_id && (
                             <Input
                               value={item.sku_label}
                               onChange={(e) => updateItem(index, 'sku_label', e.target.value)}
-                              placeholder="SKU label"
+                              placeholder="Custom SKU label"
                               className="mt-1 h-8"
                             />
                           )}
