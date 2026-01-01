@@ -17,11 +17,12 @@ const loginSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
+// Only allow basic roles for self-registration - admin/manager must be assigned by existing admins
 const signupSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   displayName: z.string().min(2, 'Display name must be at least 2 characters').max(100, 'Display name must be less than 100 characters'),
-  role: z.enum(['admin', 'manager', 'salesperson', 'runner']),
+  role: z.enum(['salesperson', 'runner']),
 });
 
 export default function Auth() {
@@ -211,8 +212,6 @@ export default function Auth() {
                     <SelectContent>
                       <SelectItem value="salesperson">Salesperson</SelectItem>
                       <SelectItem value="runner">Runner</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
