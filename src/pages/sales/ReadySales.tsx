@@ -43,7 +43,17 @@ export default function ReadySales() {
     salespersonId: role === 'salesperson' ? profile?.id : undefined 
   });
   
-  const { data: bindings = [] } = useBindings(profile?.id);
+  // Determine which salesperson to use for bindings lookup
+  // For admin/manager, use the first selected order's salesperson
+  // For salesperson, use their own id
+  const selectedOrdersData = orders.filter((o) => selectedRows.includes(o.id));
+  const bindingSalespersonId = role === 'salesperson' 
+    ? profile?.id 
+    : selectedOrdersData[0]?.salesperson_id;
+  
+  const { data: bindings = [] } = useBindings(
+    bindingSalespersonId ? { salespersonId: bindingSalespersonId, active: true } : undefined
+  );
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
 
@@ -279,7 +289,9 @@ export default function ReadySales() {
               <SelectContent>
                 {bindings.length === 0 ? (
                   <div className="p-2 text-sm text-muted-foreground">
-                    No runners bound to your account. Contact admin to set up bindings.
+                    {role === 'salesperson' 
+                      ? 'No runners bound to your account. Contact admin to set up bindings.'
+                      : 'No runners bound to this salesperson. Set up bindings in Settings > Bindings.'}
                   </div>
                 ) : (
                   bindings.map((binding) => (
