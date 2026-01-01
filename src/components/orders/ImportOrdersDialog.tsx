@@ -307,22 +307,22 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
-        <DialogHeader>
-          <DialogTitle className="text-lg sm:text-xl">Import Orders</DialogTitle>
-          <DialogDescription className="text-xs sm:text-sm">
-            Import orders with multi-SKU lines from a CSV file. order_ref is required.
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto p-3 sm:p-6">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="text-base sm:text-lg">Import Orders</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm leading-relaxed">
+            Upload a CSV file with orders. Accepts various header formats (e.g., "Order Ref", "order_ref", "OrderRef").
           </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="upload" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-2 h-8 sm:h-9">
             <TabsTrigger value="upload" className="text-xs sm:text-sm">Upload CSV</TabsTrigger>
             <TabsTrigger value="templates" className="text-xs sm:text-sm">Templates</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="upload" className="space-y-3 sm:space-y-4">
-            <div className="border-2 border-dashed rounded-lg p-4 sm:p-8 text-center">
+          <TabsContent value="upload" className="space-y-3 mt-3">
+            <div className="border-2 border-dashed rounded-lg p-4 sm:p-6 text-center">
               <Input
                 ref={fileInputRef}
                 type="file"
@@ -330,128 +330,143 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
                 onChange={handleFileChange}
                 className="hidden"
               />
-              <FileSpreadsheet className="h-8 w-8 sm:h-12 sm:w-12 mx-auto text-muted-foreground mb-3 sm:mb-4" />
-              <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4 break-all">
-                {file ? file.name : 'Drop a CSV file here or click to browse'}
+              <FileSpreadsheet className="h-6 w-6 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-2 sm:mb-3" />
+              <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 break-all px-2">
+                {file ? file.name : 'Select a CSV file to import'}
               </p>
-              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                Select File
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-8">
+                <Upload className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5" />
+                <span className="text-xs sm:text-sm">Select File</span>
               </Button>
             </div>
 
             {preview.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-xs sm:text-sm">Preview (first 5 rows)</Label>
-                <div className="border rounded-lg overflow-x-auto -mx-2 sm:mx-0">
-                  <table className="w-full text-xs sm:text-sm min-w-[600px]">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Preview (first 5 rows)</Label>
+                <div className="border rounded-lg overflow-x-auto text-xs">
+                  <table className="w-full min-w-[400px]">
                     <thead className="bg-muted/50">
                       <tr>
-                        {Object.keys(preview[0]).map((key) => (
-                          <th key={key} className="px-2 sm:px-3 py-1.5 sm:py-2 text-left font-medium whitespace-nowrap text-xs">
+                        {Object.keys(preview[0]).slice(0, 6).map((key) => (
+                          <th key={key} className="px-2 py-1.5 text-left font-medium whitespace-nowrap">
                             {key}
                           </th>
                         ))}
+                        {Object.keys(preview[0]).length > 6 && (
+                          <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">
+                            +{Object.keys(preview[0]).length - 6} more
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
-                      {preview.map((row, i) => (
+                      {preview.slice(0, 3).map((row, i) => (
                         <tr key={i} className="border-t">
-                          {Object.values(row).map((val, j) => (
-                            <td key={j} className="px-2 sm:px-3 py-1.5 sm:py-2 max-w-[100px] sm:max-w-[150px] truncate text-xs">
-                              {val}
+                          {Object.values(row).slice(0, 6).map((val, j) => (
+                            <td key={j} className="px-2 py-1.5 max-w-[80px] truncate">
+                              {val || <span className="text-muted-foreground italic">empty</span>}
                             </td>
                           ))}
+                          {Object.keys(row).length > 6 && (
+                            <td className="px-2 py-1.5 text-muted-foreground">...</td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+                {preview.length > 3 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    +{preview.length - 3} more rows in preview
+                  </p>
+                )}
               </div>
             )}
 
             {successCount > 0 && (
-              <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
+              <div className="bg-primary/10 border border-primary/30 rounded-lg p-2.5 sm:p-3">
                 <div className="flex items-center gap-2 text-primary">
-                  <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                  <span className="font-medium text-xs sm:text-sm">Successfully imported {successCount} orders</span>
+                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span className="font-medium text-xs sm:text-sm">Imported {successCount} orders</span>
                 </div>
               </div>
             )}
 
             {errors.length > 0 && (
-              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 text-destructive">
-                    <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                    <span className="font-medium text-xs sm:text-sm">Import Errors ({errors.filter(e => e.trim()).length})</span>
+              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2.5 sm:p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5 text-destructive">
+                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="font-medium text-xs sm:text-sm">Errors ({errors.filter(e => e.trim()).length})</span>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-destructive hover:text-destructive hover:bg-destructive/20"
+                    className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/20"
                     onClick={clearErrors}
                   >
                     <X className="h-3 w-3 mr-1" />
-                    Clear & Retry
+                    Clear
                   </Button>
                 </div>
-                <ul className="text-xs sm:text-sm text-destructive space-y-1 max-h-32 sm:max-h-40 overflow-y-auto">
-                  {errors.filter(e => e.trim()).map((err, i) => (
-                    <li key={i} className="break-words">{err}</li>
+                <ul className="text-xs text-destructive space-y-0.5 max-h-24 overflow-y-auto">
+                  {errors.filter(e => e.trim()).slice(0, 10).map((err, i) => (
+                    <li key={i} className="break-words leading-relaxed">{err}</li>
                   ))}
+                  {errors.filter(e => e.trim()).length > 10 && (
+                    <li className="text-destructive/70 italic">+{errors.filter(e => e.trim()).length - 10} more errors</li>
+                  )}
                 </ul>
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="templates" className="space-y-3 sm:space-y-4">
-            <div className="grid gap-3 sm:gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 p-3 sm:p-4 border rounded-lg">
+          <TabsContent value="templates" className="space-y-3 mt-3">
+            <div className="grid gap-2.5">
+              <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-sm">Order Lines Template</h4>
-                  <p className="text-xs text-muted-foreground">
-                    One row per SKU line. Group by order_ref (required).
+                  <h4 className="font-medium text-xs sm:text-sm">Order Lines Template</h4>
+                  <p className="text-xs text-muted-foreground truncate">
+                    Multi-SKU per order (group by order_ref)
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => downloadTemplate('order_lines')} className="shrink-0">
-                  <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                  Download
+                <Button variant="outline" size="sm" onClick={() => downloadTemplate('order_lines')} className="shrink-0 h-7 sm:h-8">
+                  <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                  <span className="text-xs">Download</span>
                 </Button>
               </div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 p-3 sm:p-4 border rounded-lg">
+              <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-sm">Simple Orders Template</h4>
-                  <p className="text-xs text-muted-foreground">
-                    Basic order import without line items
+                  <h4 className="font-medium text-xs sm:text-sm">Simple Orders Template</h4>
+                  <p className="text-xs text-muted-foreground truncate">
+                    Basic orders without items
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => downloadTemplate('orders')} className="shrink-0">
-                  <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                  Download
+                <Button variant="outline" size="sm" onClick={() => downloadTemplate('orders')} className="shrink-0 h-7 sm:h-8">
+                  <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                  <span className="text-xs">Download</span>
                 </Button>
               </div>
             </div>
             
-            <div className="bg-muted/50 rounded-lg p-3 sm:p-4 text-xs sm:text-sm space-y-2">
-              <h4 className="font-medium text-sm">Import Logic</h4>
-              <ul className="list-disc list-inside space-y-1 text-muted-foreground text-xs">
-                <li><strong>order_ref is REQUIRED</strong> - system will not auto-generate</li>
-                <li>Rows with same <code className="bg-muted px-1 rounded">order_ref</code> grouped into one order</li>
-                <li>Products matched by <code className="bg-muted px-1 rounded">sku_code</code> then <code className="bg-muted px-1 rounded">sku_name</code></li>
-                <li><strong>Salesperson:</strong> Only your own products are allowed; invalid SKUs will fail entire import</li>
-                <li>Dates accept multiple formats (M/D/YYYY, D/M/YYYY, YYYY-MM-DD)</li>
-              </ul>
+            <div className="bg-muted/50 rounded-lg p-2.5 sm:p-3 space-y-1.5">
+              <h4 className="font-medium text-xs sm:text-sm">Accepted Headers</h4>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p><strong>order_ref:</strong> "Order Ref", "order_ref", "Reference", etc.</p>
+                <p><strong>customer_name:</strong> "Customer Name", "customer", "Name", etc.</p>
+                <p><strong>phone:</strong> "Phone", "Tel", "Mobile", "Contact", etc.</p>
+                <p><strong>sku:</strong> "SKU", "Product", "sku_code", "sku_name", etc.</p>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
+        <DialogFooter className="flex-row gap-2 pt-2 sm:pt-3">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="flex-1 sm:flex-none h-8">
             Cancel
           </Button>
-          <Button size="sm" onClick={handleImport} disabled={!file || importing || errors.length > 0} className="w-full sm:w-auto">
-            {importing ? 'Importing...' : 'Import Orders'}
+          <Button size="sm" onClick={handleImport} disabled={!file || importing || errors.length > 0} className="flex-1 sm:flex-none h-8">
+            {importing ? 'Importing...' : 'Import'}
           </Button>
         </DialogFooter>
       </DialogContent>

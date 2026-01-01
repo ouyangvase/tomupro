@@ -29,18 +29,49 @@ export function exportToCSV<T extends Record<string, unknown>>(
   link.click();
 }
 
+// Header normalization map - accepts various formats for each field
+const HEADER_ALIASES: Record<string, string[]> = {
+  order_ref: ['order_ref', 'orderref', 'order ref', 'order reference', 'orderreference', 'ref', 'reference'],
+  order_date: ['order_date', 'orderdate', 'order date', 'date'],
+  customer_name: ['customer_name', 'customername', 'customer name', 'customer', 'name', 'cust_name', 'custname'],
+  phone: ['phone', 'phone_number', 'phonenumber', 'phone number', 'tel', 'telephone', 'mobile', 'contact'],
+  address: ['address', 'delivery_address', 'deliveryaddress', 'delivery address', 'addr'],
+  area: ['area', 'region', 'zone', 'district', 'location'],
+  channel: ['channel', 'sales_channel', 'saleschannel', 'sales channel', 'source'],
+  payment_method: ['payment_method', 'paymentmethod', 'payment method', 'payment', 'pay_method', 'paymethod'],
+  expected_pickup_date: ['expected_pickup_date', 'expectedpickupdate', 'expected pickup date', 'pickup_date', 'pickupdate', 'pickup date', 'delivery_date', 'deliverydate', 'delivery date'],
+  notes: ['notes', 'note', 'remarks', 'remark', 'comment', 'comments'],
+  sku_name_or_code: ['sku_name_or_code', 'skunameorcode', 'sku name or code', 'sku', 'sku_code', 'skucode', 'sku code', 'sku_name', 'skuname', 'sku name', 'product', 'product_code', 'productcode', 'product code', 'item'],
+  qty: ['qty', 'quantity', 'count', 'amount', 'units'],
+  price: ['price', 'unit_price', 'unitprice', 'unit price', 'line_amount', 'lineamount', 'line amount', 'total', 'line_total', 'linetotal', 'line total'],
+};
+
+function normalizeHeader(header: string): string {
+  const normalized = header.toLowerCase().trim().replace(/[\s_-]+/g, ' ').replace(/\s+/g, ' ');
+  
+  for (const [standardName, aliases] of Object.entries(HEADER_ALIASES)) {
+    if (aliases.some(alias => alias === normalized || alias === normalized.replace(/\s/g, '_') || alias === normalized.replace(/\s/g, ''))) {
+      return standardName;
+    }
+  }
+  
+  // Default: convert to snake_case
+  return normalized.replace(/\s+/g, '_');
+}
+
 export function parseCSV(csvText: string): Record<string, string>[] {
   const lines = csvText.split('\n').filter(line => line.trim());
   if (lines.length < 2) return [];
 
-  const headers = parseCSVLine(lines[0]);
+  const rawHeaders = parseCSVLine(lines[0]);
+  const headers = rawHeaders.map(normalizeHeader);
   const rows: Record<string, string>[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const values = parseCSVLine(lines[i]);
     const row: Record<string, string> = {};
     headers.forEach((header, index) => {
-      row[header.toLowerCase().replace(/\s+/g, '_')] = values[index] || '';
+      row[header] = values[index] || '';
     });
     rows.push(row);
   }
