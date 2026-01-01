@@ -76,7 +76,7 @@ function parseCSVLine(line: string): string[] {
 
 export function downloadTemplate(type: 'orders' | 'order_lines') {
   const templates = {
-    orders: 'customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes\n"John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-15","Rush order"',
+    orders: 'order_ref,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes\n"ORD-001","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-15","Rush order"',
     order_lines: 'order_ref,order_date,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes,sku_name_or_code,qty,price\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget A",2,29.99\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget B",1,49.99\n"ORD-002","2024-01-15","Jane Smith","555-5678","456 Oak Ave","Uptown","Social","TRANSFER","2024-01-21","Gift order","Premium Pack",1,99.99'
   };
 
