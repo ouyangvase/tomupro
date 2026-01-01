@@ -28,6 +28,24 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    // Validate the request is from an authorized source (cron job or admin with service key)
+    const authHeader = req.headers.get('Authorization');
+    const expectedKey = `Bearer ${supabaseServiceKey}`;
+    
+    // Allow requests with service role key OR from internal cron (no auth header but from Supabase infrastructure)
+    const isServiceRole = authHeader === expectedKey;
+    const isInternalCron = !authHeader && req.headers.get('x-supabase-request-id');
+    
+    if (!isServiceRole && !isInternalCron) {
+      console.error('Unauthorized access attempt to generate-daily-digest');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log('Authorized request received, generating daily digest...');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const today = new Date().toISOString().split('T')[0];

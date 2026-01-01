@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.submit-bulk-claim]
 verify_jwt = false
+
+[functions.generate-daily-digest]
+verify_jwt = false
