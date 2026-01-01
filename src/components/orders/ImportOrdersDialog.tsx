@@ -268,22 +268,22 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>Import Orders</DialogTitle>
-          <DialogDescription>
-            Import orders with multi-SKU lines from a CSV file. Each row represents one order item line.
+          <DialogTitle className="text-lg sm:text-xl">Import Orders</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
+            Import orders with multi-SKU lines from a CSV file.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="upload" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="upload">Upload CSV</TabsTrigger>
-            <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="upload" className="text-xs sm:text-sm">Upload CSV</TabsTrigger>
+            <TabsTrigger value="templates" className="text-xs sm:text-sm">Templates</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="upload" className="space-y-4">
-            <div className="border-2 border-dashed rounded-lg p-8 text-center">
+          <TabsContent value="upload" className="space-y-3 sm:space-y-4">
+            <div className="border-2 border-dashed rounded-lg p-4 sm:p-8 text-center">
               <Input
                 ref={fileInputRef}
                 type="file"
@@ -291,25 +291,25 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
                 onChange={handleFileChange}
                 className="hidden"
               />
-              <FileSpreadsheet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-sm text-muted-foreground mb-4">
+              <FileSpreadsheet className="h-8 w-8 sm:h-12 sm:w-12 mx-auto text-muted-foreground mb-3 sm:mb-4" />
+              <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4 break-all">
                 {file ? file.name : 'Drop a CSV file here or click to browse'}
               </p>
-              <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="h-4 w-4 mr-2" />
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 Select File
               </Button>
             </div>
 
             {preview.length > 0 && (
               <div className="space-y-2">
-                <Label>Preview (first 5 rows)</Label>
-                <div className="border rounded-lg overflow-x-auto">
-                  <table className="w-full text-sm">
+                <Label className="text-xs sm:text-sm">Preview (first 5 rows)</Label>
+                <div className="border rounded-lg overflow-x-auto -mx-2 sm:mx-0">
+                  <table className="w-full text-xs sm:text-sm min-w-[600px]">
                     <thead className="bg-muted/50">
                       <tr>
                         {Object.keys(preview[0]).map((key) => (
-                          <th key={key} className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                          <th key={key} className="px-2 sm:px-3 py-1.5 sm:py-2 text-left font-medium whitespace-nowrap text-xs">
                             {key}
                           </th>
                         ))}
@@ -319,7 +319,7 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
                       {preview.map((row, i) => (
                         <tr key={i} className="border-t">
                           {Object.values(row).map((val, j) => (
-                            <td key={j} className="px-3 py-2 max-w-[150px] truncate">
+                            <td key={j} className="px-2 sm:px-3 py-1.5 sm:py-2 max-w-[100px] sm:max-w-[150px] truncate text-xs">
                               {val}
                             </td>
                           ))}
@@ -332,74 +332,74 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
             )}
 
             {successCount > 0 && (
-              <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-                <div className="flex items-center gap-2 text-primary mb-2">
-                  <CheckCircle className="h-4 w-4" />
-                  <span className="font-medium">Successfully imported {successCount} orders</span>
+              <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
+                <div className="flex items-center gap-2 text-primary">
+                  <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                  <span className="font-medium text-xs sm:text-sm">Successfully imported {successCount} orders</span>
                 </div>
               </div>
             )}
 
             {errors.length > 0 && (
-              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
+              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 sm:p-4">
                 <div className="flex items-center gap-2 text-destructive mb-2">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="font-medium">Import Errors ({errors.length})</span>
+                  <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                  <span className="font-medium text-xs sm:text-sm">Import Errors ({errors.length})</span>
                 </div>
-                <ul className="text-sm text-destructive space-y-1 max-h-32 overflow-y-auto">
+                <ul className="text-xs sm:text-sm text-destructive space-y-1 max-h-24 sm:max-h-32 overflow-y-auto">
                   {errors.map((err, i) => (
-                    <li key={i}>{err}</li>
+                    <li key={i} className="break-words">{err}</li>
                   ))}
                 </ul>
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="templates" className="space-y-4">
-            <div className="grid gap-4">
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Order Lines Template (Recommended)</h4>
-                  <p className="text-sm text-muted-foreground">
-                    One row per SKU line. Group by order_ref to create multi-item orders.
+          <TabsContent value="templates" className="space-y-3 sm:space-y-4">
+            <div className="grid gap-3 sm:gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 p-3 sm:p-4 border rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-sm">Order Lines Template</h4>
+                  <p className="text-xs text-muted-foreground">
+                    One row per SKU line. Group by order_ref.
                   </p>
                 </div>
-                <Button variant="outline" onClick={() => downloadTemplate('order_lines')}>
-                  <Download className="h-4 w-4 mr-2" />
+                <Button variant="outline" size="sm" onClick={() => downloadTemplate('order_lines')} className="shrink-0">
+                  <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   Download
                 </Button>
               </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Simple Orders Template</h4>
-                  <p className="text-sm text-muted-foreground">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 p-3 sm:p-4 border rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-sm">Simple Orders Template</h4>
+                  <p className="text-xs text-muted-foreground">
                     Basic order import without line items
                   </p>
                 </div>
-                <Button variant="outline" onClick={() => downloadTemplate('orders')}>
-                  <Download className="h-4 w-4 mr-2" />
+                <Button variant="outline" size="sm" onClick={() => downloadTemplate('orders')} className="shrink-0">
+                  <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   Download
                 </Button>
               </div>
             </div>
             
-            <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-2">
-              <h4 className="font-medium">Import Logic</h4>
-              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li>Rows with the same <code className="bg-muted px-1 rounded">order_ref</code> are grouped into one order</li>
-                <li>Products are matched by <code className="bg-muted px-1 rounded">sku_code</code> first, then <code className="bg-muted px-1 rounded">sku_name</code></li>
-                <li>If no product match found, a new product is created automatically</li>
-                <li>Order totals are calculated from line items</li>
+            <div className="bg-muted/50 rounded-lg p-3 sm:p-4 text-xs sm:text-sm space-y-2">
+              <h4 className="font-medium text-sm">Import Logic</h4>
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground text-xs">
+                <li>Rows with same <code className="bg-muted px-1 rounded">order_ref</code> grouped into one order</li>
+                <li>Products matched by <code className="bg-muted px-1 rounded">sku_code</code> then <code className="bg-muted px-1 rounded">sku_name</code></li>
+                <li>New products created if no match found</li>
+                <li>Dates accept multiple formats (M/D/YYYY, D/M/YYYY, YYYY-MM-DD)</li>
               </ul>
             </div>
           </TabsContent>
         </Tabs>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button onClick={handleImport} disabled={!file || importing}>
+          <Button size="sm" onClick={handleImport} disabled={!file || importing} className="w-full sm:w-auto">
             {importing ? 'Importing...' : 'Import Orders'}
           </Button>
         </DialogFooter>
