@@ -14,13 +14,13 @@ import { z } from 'zod';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 const signupSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  displayName: z.string().min(2, 'Display name must be at least 2 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  displayName: z.string().min(2, 'Display name must be at least 2 characters').max(100, 'Display name must be less than 100 characters'),
   role: z.enum(['admin', 'manager', 'salesperson', 'runner']),
 });
 
