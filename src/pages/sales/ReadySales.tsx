@@ -24,32 +24,40 @@ import {
 } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { Truck, UserCheck } from 'lucide-react';
+import { OrderEditor } from '@/components/orders/OrderEditor';
+import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
+import { exportToCSV } from '@/lib/csv';
 import type { Order } from '@/types/database';
 
 export default function ReadySales() {
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedRunner, setSelectedRunner] = useState<string>('');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   
   const { data: orders = [], isLoading } = useOrders({ 
     status: 'READY',
-    salespersonId: profile?.role === 'salesperson' ? profile.id : undefined 
+    salespersonId: role === 'salesperson' ? profile?.id : undefined 
   });
   
   const { data: bindings = [] } = useBindings(profile?.id);
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
 
+  const isEditable = role === 'admin' || role === 'salesperson';
+
   const columns: Column<Order>[] = [
     { 
       key: 'order_date', 
       header: 'Date', 
       sortable: true, 
-      render: (o) => format(new Date(o.order_date), 'MMM dd, yyyy') 
+      width: '100px',
+      render: (o) => format(new Date(o.order_date), 'MMM dd') 
     },
     { key: 'customer_name', header: 'Customer', sortable: true },
-    { key: 'phone', header: 'Phone' },
     { 
       key: 'area', 
       header: 'Area', 
@@ -58,19 +66,28 @@ export default function ReadySales() {
       filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a!, value: a! })) 
     },
     { 
-      key: 'total_qty', 
-      header: 'Qty', 
-      render: (o) => <Badge variant="secondary">{o.total_qty}</Badge> 
+      key: 'items_summary', 
+      header: 'Items', 
+      render: (o) => {
+        const itemCount = o.order_items?.length || 0;
+        return (
+          <div className="text-sm">
+            <span className="font-medium">{itemCount} SKU</span>
+            <span className="text-muted-foreground"> · {o.total_qty} units</span>
+          </div>
+        );
+      }
     },
     { 
       key: 'total_amount', 
       header: 'Amount', 
       sortable: true, 
-      render: (o) => `$${Number(o.total_amount).toFixed(2)}` 
+      render: (o) => <span className="font-medium">${Number(o.total_amount).toFixed(2)}</span>
     },
     { 
       key: 'payment_method', 
       header: 'Payment', 
+      width: '80px',
       render: (o) => <Badge variant="outline">{o.payment_method}</Badge> 
     },
     { 
@@ -79,7 +96,7 @@ export default function ReadySales() {
       filterable: true,
       filterOptions: bindings.map(b => ({ label: b.runner?.display_name || 'Unknown', value: b.runner_id })),
       render: (o) => {
-        if (!o.runner) return <span className="text-muted-foreground">—</span>;
+        if (!o.runner) return <span className="text-muted-foreground">Unassigned</span>;
         return (
           <div className="flex items-center gap-2">
             <Truck className="h-4 w-4 text-muted-foreground" />
@@ -90,7 +107,8 @@ export default function ReadySales() {
     },
     { 
       key: 'runner_status', 
-      header: 'Delivery Status', 
+      header: 'Delivery', 
+      width: '120px',
       filterable: true,
       filterOptions: [
         { label: 'Unassigned', value: 'UNASSIGNED' },
@@ -104,6 +122,7 @@ export default function ReadySales() {
     { 
       key: 'reconciliation_status', 
       header: 'Reconciliation', 
+      width: '140px',
       filterable: true,
       filterOptions: [
         { label: 'Not Claimed', value: 'NOT_CLAIMED' },
@@ -116,6 +135,12 @@ export default function ReadySales() {
       render: (o) => <StatusBadge status={o.reconciliation_status} type="reconciliation" /> 
     },
   ];
+
+  const handleRowClick = (order: Order) => {
+    if (!isEditable) return;
+    setEditingOrder(order);
+    setEditorOpen(true);
+  };
 
   const handleAssignRunner = () => {
     if (!selectedRunner || selectedRows.length === 0) return;
@@ -133,11 +158,41 @@ export default function ReadySales() {
     setSelectedRows([]);
   };
 
-  const handleCancel = () => {
-    selectedRows.forEach(id => {
-      updateOrder.mutate({ id, status: 'CANCELLED', cancel_reason: 'Cancelled by user' });
+  const handleCancelConfirm = (reason: string, notes: string) => {
+    bulkUpdateOrders.mutate({
+      ids: selectedRows,
+      updates: { 
+        status: 'CANCELLED', 
+        cancel_reason: reason, 
+        cancel_notes: notes 
+      },
+    });
+    setCancelDialogOpen(false);
+    setSelectedRows([]);
+  };
+
+  const handleDispute = () => {
+    bulkUpdateOrders.mutate({
+      ids: selectedRows,
+      updates: { reconciliation_status: 'DISPUTE' },
     });
     setSelectedRows([]);
+  };
+
+  const handleExport = () => {
+    const exportColumns = [
+      { key: 'order_date', header: 'Order Date' },
+      { key: 'customer_name', header: 'Customer Name' },
+      { key: 'phone', header: 'Phone' },
+      { key: 'address', header: 'Address' },
+      { key: 'area', header: 'Area' },
+      { key: 'total_qty', header: 'Total Qty' },
+      { key: 'total_amount', header: 'Total Amount' },
+      { key: 'payment_method', header: 'Payment Method' },
+      { key: 'runner_status', header: 'Runner Status' },
+      { key: 'reconciliation_status', header: 'Reconciliation Status' },
+    ];
+    exportToCSV(orders as any, exportColumns, 'ready_orders');
   };
 
   const unassignedCount = orders.filter(o => o.runner_status === 'UNASSIGNED').length;
@@ -158,29 +213,53 @@ export default function ReadySales() {
           data={orders}
           columns={columns}
           keyField="id"
-          selectable
+          selectable={isEditable}
           selectedRows={selectedRows}
           onSelectionChange={setSelectedRows}
+          onRowClick={handleRowClick}
           loading={isLoading}
           emptyMessage="No ready orders"
-          onExport={() => {}}
+          onExport={handleExport}
           bulkActions={
-            <div className="flex gap-2">
-              <Button 
-                size="sm" 
-                onClick={() => setAssignDialogOpen(true)}
-                disabled={selectedRows.length === 0}
-              >
-                <UserCheck className="h-4 w-4 mr-2" />
-                Assign Runner
-              </Button>
-              <Button size="sm" variant="destructive" onClick={handleCancel}>
-                Cancel
-              </Button>
-            </div>
+            isEditable && selectedRows.length > 0 ? (
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  onClick={() => setAssignDialogOpen(true)}
+                >
+                  <UserCheck className="h-4 w-4 mr-2" />
+                  Assign Runner
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleDispute}>
+                  Mark Dispute
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="destructive" 
+                  onClick={() => setCancelDialogOpen(true)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : undefined
           }
         />
       </div>
+
+      <OrderEditor
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        order={editingOrder}
+        mode="edit"
+      />
+
+      <CancelOrderDialog
+        open={cancelDialogOpen}
+        onOpenChange={setCancelDialogOpen}
+        orderCount={selectedRows.length}
+        onConfirm={handleCancelConfirm}
+        loading={bulkUpdateOrders.isPending}
+      />
 
       {/* Assign Runner Dialog */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
