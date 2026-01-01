@@ -81,11 +81,14 @@ export function useCreateOrder() {
 
   return useMutation({
     mutationFn: async (order: Partial<Order>) => {
-      // Generate a short order_code if not provided
-      const orderCode = (order as any).order_code || `ORD-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+      // order_code is REQUIRED - user must provide it
+      const orderCode = (order as any).order_code;
+      if (!orderCode || !orderCode.trim()) {
+        throw new Error('Order Reference is required');
+      }
       const { data, error } = await supabase
         .from('orders')
-        .insert({ ...order, order_code: orderCode } as any)
+        .insert({ ...order, order_code: orderCode.trim() } as any)
         .select()
         .single();
       if (error) throw error;

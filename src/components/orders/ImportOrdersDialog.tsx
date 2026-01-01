@@ -11,55 +11,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X } from 'lucide-react';
 import { parseCSV, downloadTemplate } from '@/lib/csv';
 import { validateOrderLines, type ValidatedOrderLine } from '@/lib/csvValidation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProducts, useCreateProduct } from '@/hooks/useProducts';
+import { useProducts } from '@/hooks/useProducts';
 
 interface ImportOrdersDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultStatus?: 'BOOKING' | 'READY';
-}
-
-interface ParsedOrderLine {
-  order_ref: string;
-  order_date: string;
-  customer_name: string;
-  phone: string;
-  address: string;
-  area: string;
-  channel: string;
-  payment_method: string;
-  expected_pickup_date: string;
-  notes: string;
-  sku_name_or_code: string;
-  qty: string;
-  price: string;
-}
-
-interface GroupedOrder {
-  orderRef: string;
-  orderData: {
-    order_date: string;
-    customer_name: string;
-    phone: string;
-    address: string;
-    area: string;
-    channel: string;
-    payment_method: string;
-    expected_pickup_date: string;
-    notes: string;
-  };
-  items: {
-    sku_name_or_code: string;
-    qty: number;
-    price: number;
-  }[];
 }
 
 export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKING' }: ImportOrdersDialogProps) {
@@ -71,13 +35,23 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const products = role === 'salesperson' 
     ? allProducts.filter((p: any) => p.owner_user_id === profile?.id)
     : allProducts;
-  const createProduct = useCreateProduct();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
   const [importing, setImporting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [successCount, setSuccessCount] = useState(0);
+
+  // Clear all state and reset file input
+  const clearErrors = () => {
+    setErrors([]);
+    setFile(null);
+    setPreview([]);
+    setSuccessCount(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -90,6 +64,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     }
 
     setFile(selectedFile);
+    // Clear errors when user selects a new file
     setErrors([]);
     setSuccessCount(0);
 
@@ -105,33 +80,73 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     setPreview(rows.slice(0, 5));
   };
 
-  const findOrCreateProduct = async (skuNameOrCode: string): Promise<string | null> => {
+  /**
+   * Validates SKU ownership for a salesperson - ALL-OR-NOTHING approach
+   * Returns { valid: boolean, errors: string[] }
+   */
+  const validateSkuOwnership = (
+    validatedRows: ValidatedOrderLine[],
+    salespersonProducts: typeof products
+  ): { valid: boolean; errors: string[] } => {
+    const skuErrors: string[] = [];
+
+    for (let i = 0; i < validatedRows.length; i++) {
+      const row = validatedRows[i];
+      const csvRowNum = i + 2; // +2 for header row + 1-indexed
+      const skuValue = row.sku_name_or_code?.trim();
+
+      // Skip if no SKU provided (custom item)
+      if (!skuValue) continue;
+
+      // Try to find by sku_code first (exact match)
+      const codeMatches = salespersonProducts.filter(
+        (p: any) => p.sku_code?.toLowerCase() === skuValue.toLowerCase()
+      );
+
+      if (codeMatches.length === 1) {
+        // Found exactly one by sku_code - valid
+        continue;
+      }
+
+      if (codeMatches.length > 1) {
+        skuErrors.push(`Row ${csvRowNum}: Multiple products with sku_code="${skuValue}"; please use unique sku_code`);
+        continue;
+      }
+
+      // No code match, try to find by sku_name
+      const nameMatches = salespersonProducts.filter(
+        (p: any) => p.sku_name.toLowerCase() === skuValue.toLowerCase()
+      );
+
+      if (nameMatches.length === 0) {
+        skuErrors.push(`Row ${csvRowNum}: SKU not found in your product list (sku_name_or_code="${skuValue}")`);
+      } else if (nameMatches.length > 1) {
+        skuErrors.push(`Row ${csvRowNum}: SKU name is ambiguous (${nameMatches.length} matches); please use sku_code (sku_name="${skuValue}")`);
+      }
+      // If exactly one name match, it's valid
+    }
+
+    return {
+      valid: skuErrors.length === 0,
+      errors: skuErrors,
+    };
+  };
+
+  /**
+   * Find product ID by SKU (already validated)
+   */
+  const findProductId = (skuNameOrCode: string): string | null => {
     if (!skuNameOrCode.trim()) return null;
 
     // Try to find by sku_code first
-    let product = products.find(p => p.sku_code?.toLowerCase() === skuNameOrCode.toLowerCase());
+    let product = products.find((p: any) => p.sku_code?.toLowerCase() === skuNameOrCode.toLowerCase());
     
     // Try to find by sku_name
     if (!product) {
-      product = products.find(p => p.sku_name.toLowerCase() === skuNameOrCode.toLowerCase());
+      product = products.find((p: any) => p.sku_name.toLowerCase() === skuNameOrCode.toLowerCase());
     }
 
-    if (product) return product.id;
-
-    // Create new product if user can create
-    if (profile?.role === 'salesperson' || profile?.role === 'admin') {
-      try {
-        const newProduct = await createProduct.mutateAsync({
-          sku_name: skuNameOrCode,
-          created_by: profile.id,
-        });
-        return newProduct.id;
-      } catch {
-        return null;
-      }
-    }
-
-    return null;
+    return product?.id || null;
   };
 
   const handleImport = async () => {
@@ -145,17 +160,35 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       const text = await file.text();
       const rows = parseCSV(text);
       
-      // Validate all rows first
+      // Step 1: Validate all rows with zod schema (includes order_ref required check)
       const validation = validateOrderLines(rows);
       if (validation.errors.length > 0) {
         setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
-        if (validation.valid.length === 0) {
+        setImporting(false);
+        return;
+      }
+
+      if (validation.valid.length === 0) {
+        setErrors(['No valid rows found in the file']);
+        setImporting(false);
+        return;
+      }
+
+      // Step 2: Validate SKU ownership (ALL-OR-NOTHING for salesperson)
+      if (role === 'salesperson') {
+        const skuValidation = validateSkuOwnership(validation.valid, products);
+        if (!skuValidation.valid) {
+          setErrors([
+            'Import FAILED: Invalid SKUs found. No orders were imported.',
+            '',
+            ...skuValidation.errors,
+          ]);
           setImporting(false);
           return;
         }
       }
 
-      // Group validated rows by order_ref
+      // Step 3: Group validated rows by order_ref
       const orderGroups = new Map<string, {
         orderRef: string;
         orderData: ValidatedOrderLine;
@@ -164,7 +197,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       
       for (let i = 0; i < validation.valid.length; i++) {
         const row = validation.valid[i];
-        const orderRef = row.order_ref?.trim() || `auto-${Date.now()}-${i}`;
+        const orderRef = row.order_ref.trim();
         
         if (!orderGroups.has(orderRef)) {
           orderGroups.set(orderRef, {
@@ -184,7 +217,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         }
       }
 
-      const newErrors: string[] = validation.errors.map(e => `Row ${e.row}: ${e.message}`);
+      // Step 4: Create orders and items
+      const newErrors: string[] = [];
       let created = 0;
 
       for (const [orderRef, group] of orderGroups) {
@@ -197,12 +231,11 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
             totalAmount += item.price; // price = line amount directly
           }
 
-          // Create order with short order code
-          const orderCode = group.orderData.order_ref || `ORD-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+          // Create order with user-provided order_ref as order_code
           const { data: order, error: orderError } = await supabase
             .from('orders')
             .insert([{
-              order_code: orderCode,
+              order_code: orderRef,
               customer_name: group.orderData.customer_name,
               phone: group.orderData.phone,
               address: group.orderData.address,
@@ -227,7 +260,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
           // Create order items
           for (const item of group.items) {
-            const productId = await findOrCreateProduct(item.sku_name_or_code);
+            const productId = findProductId(item.sku_name_or_code);
             
             await supabase.from('order_items').insert({
               order_id: order.id,
@@ -254,7 +287,6 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           description: `Successfully imported ${created} order(s)${newErrors.length > 0 ? ` with ${newErrors.length} error(s)` : ''}`,
         });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['products'] });
       }
 
       if (newErrors.length === 0) {
@@ -279,7 +311,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         <DialogHeader>
           <DialogTitle className="text-lg sm:text-xl">Import Orders</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
-            Import orders with multi-SKU lines from a CSV file.
+            Import orders with multi-SKU lines from a CSV file. order_ref is required.
           </DialogDescription>
         </DialogHeader>
 
@@ -349,12 +381,23 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
             {errors.length > 0 && (
               <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 sm:p-4">
-                <div className="flex items-center gap-2 text-destructive mb-2">
-                  <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                  <span className="font-medium text-xs sm:text-sm">Import Errors ({errors.length})</span>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 text-destructive">
+                    <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                    <span className="font-medium text-xs sm:text-sm">Import Errors ({errors.filter(e => e.trim()).length})</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-destructive hover:text-destructive hover:bg-destructive/20"
+                    onClick={clearErrors}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Clear & Retry
+                  </Button>
                 </div>
-                <ul className="text-xs sm:text-sm text-destructive space-y-1 max-h-24 sm:max-h-32 overflow-y-auto">
-                  {errors.map((err, i) => (
+                <ul className="text-xs sm:text-sm text-destructive space-y-1 max-h-32 sm:max-h-40 overflow-y-auto">
+                  {errors.filter(e => e.trim()).map((err, i) => (
                     <li key={i} className="break-words">{err}</li>
                   ))}
                 </ul>
@@ -368,7 +411,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
                 <div className="flex-1 min-w-0">
                   <h4 className="font-medium text-sm">Order Lines Template</h4>
                   <p className="text-xs text-muted-foreground">
-                    One row per SKU line. Group by order_ref.
+                    One row per SKU line. Group by order_ref (required).
                   </p>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => downloadTemplate('order_lines')} className="shrink-0">
@@ -393,9 +436,10 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
             <div className="bg-muted/50 rounded-lg p-3 sm:p-4 text-xs sm:text-sm space-y-2">
               <h4 className="font-medium text-sm">Import Logic</h4>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground text-xs">
+                <li><strong>order_ref is REQUIRED</strong> - system will not auto-generate</li>
                 <li>Rows with same <code className="bg-muted px-1 rounded">order_ref</code> grouped into one order</li>
                 <li>Products matched by <code className="bg-muted px-1 rounded">sku_code</code> then <code className="bg-muted px-1 rounded">sku_name</code></li>
-                <li>New products created if no match found</li>
+                <li><strong>Salesperson:</strong> Only your own products are allowed; invalid SKUs will fail entire import</li>
                 <li>Dates accept multiple formats (M/D/YYYY, D/M/YYYY, YYYY-MM-DD)</li>
               </ul>
             </div>
@@ -406,7 +450,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button size="sm" onClick={handleImport} disabled={!file || importing} className="w-full sm:w-auto">
+          <Button size="sm" onClick={handleImport} disabled={!file || importing || errors.length > 0} className="w-full sm:w-auto">
             {importing ? 'Importing...' : 'Import Orders'}
           </Button>
         </DialogFooter>
