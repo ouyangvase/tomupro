@@ -71,6 +71,7 @@ import { OrderClaimsHistory } from '@/components/orders/OrderClaimsHistory';
 import type { Order, OrderItem } from '@/types/database';
 
 const orderSchema = z.object({
+  order_code: z.string().min(1, 'Order Reference is required'),
   customer_name: z.string().min(1, 'Customer name is required'),
   phone: z.string().min(1, 'Phone is required'),
   address: z.string().min(1, 'Address is required'),
@@ -193,6 +194,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema),
     defaultValues: {
+      order_code: '',
       customer_name: '',
       phone: '',
       address: '',
@@ -207,6 +209,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   useEffect(() => {
     if (order && mode === 'edit') {
       form.reset({
+        order_code: order.order_code || '',
         customer_name: order.customer_name,
         phone: order.phone,
         address: order.address,
@@ -218,6 +221,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       });
     } else {
       form.reset({
+        order_code: '',
         customer_name: '',
         phone: '',
         address: '',
@@ -297,6 +301,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
       const orderData = {
         ...values,
+        order_code: values.order_code,
         expected_pickup_date: values.expected_pickup_date ? format(values.expected_pickup_date, 'yyyy-MM-dd') : null,
         total_qty: totals.total_qty,
         total_amount: totals.total_amount,
@@ -386,7 +391,20 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmitWithWarning)} className="space-y-6 mt-6">
-            {/* Customer Info */}
+            {/* Order Ref + Customer Info */}
+            <FormField
+              control={form.control}
+              name="order_code"
+              render={({ field }) => (
+                <FormItem className="col-span-2">
+                  <FormLabel>Order Reference *</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="e.g. ORD-001" disabled={mode === 'edit'} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
