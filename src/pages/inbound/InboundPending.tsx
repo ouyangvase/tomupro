@@ -14,12 +14,18 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInboundShipments, useUpdateInboundShipment, useUpdateInboundItem } from '@/hooks/useInboundShipments';
@@ -28,14 +34,95 @@ import { useWarehouses } from '@/hooks/useInventory';
 import { useCreateBulkStockMovements } from '@/hooks/useStockMovements';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import type { InboundShipment, InboundItem, InboundStatus } from '@/types/database';
-import { Package, CheckCircle, AlertTriangle, Image, ExternalLink } from 'lucide-react';
+import { Package, CheckCircle, AlertTriangle, ExternalLink, Check, ChevronsUpDown, Plus } from 'lucide-react';
 
 const statusColors: Record<InboundStatus, string> = {
   PENDING_SP_ACK: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
   ACKNOWLEDGED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   DISPUTE: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
+
+interface InboundProductComboboxProps {
+  products: { id: string; sku_code: string | null; sku_name: string }[];
+  value: string;
+  newProductName?: string;
+  defaultNewName: string;
+  onChange: (productId: string, newProductName?: string) => void;
+}
+
+function InboundProductCombobox({ products, value, newProductName, defaultNewName, onChange }: InboundProductComboboxProps) {
+  const [open, setOpen] = useState(false);
+  
+  const selectedProduct = products.find(p => p.id === value);
+  const isCreatingNew = value === '' && newProductName !== undefined;
+  
+  return (
+    <div className="space-y-2">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between text-left font-normal"
+          >
+            <span className="truncate">
+              {isCreatingNew
+                ? '+ Create New Product'
+                : selectedProduct
+                ? `${selectedProduct.sku_name}${selectedProduct.sku_code ? ` (${selectedProduct.sku_code})` : ''}`
+                : 'Select product...'}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[300px] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Search products..." />
+            <CommandList>
+              <CommandEmpty>No product found.</CommandEmpty>
+              <CommandGroup>
+                <CommandItem
+                  value="__create_new__"
+                  onSelect={() => {
+                    onChange('', defaultNewName);
+                    setOpen(false);
+                  }}
+                >
+                  <Plus className={cn("mr-2 h-4 w-4", isCreatingNew ? "opacity-100" : "opacity-50")} />
+                  + Create New Product
+                </CommandItem>
+                {products.map((p) => (
+                  <CommandItem
+                    key={p.id}
+                    value={`${p.sku_code || ''} ${p.sku_name}`}
+                    onSelect={() => {
+                      onChange(p.id, undefined);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
+                    {p.sku_name}{p.sku_code && ` (${p.sku_code})`}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      
+      {isCreatingNew && (
+        <Input
+          placeholder="New product name"
+          value={newProductName || ''}
+          onChange={(e) => onChange('', e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function InboundPending() {
   const { user } = useAuth();
@@ -319,50 +406,25 @@ export default function InboundPending() {
                         />
                       </div>
 
-                      {/* Product mapping */}
+                      {/* Product mapping with searchable combobox */}
                       <div className="space-y-2">
                         <Label>Product *</Label>
-                        <Select
-                          value={itemAcks[item.id]?.productId || 'NEW'}
-                          onValueChange={(v) =>
+                        <InboundProductCombobox
+                          products={products || []}
+                          value={itemAcks[item.id]?.productId || ''}
+                          newProductName={itemAcks[item.id]?.newProductName}
+                          defaultNewName={item.temp_sku_label || ''}
+                          onChange={(productId, newProductName) =>
                             setItemAcks({
                               ...itemAcks,
                               [item.id]: {
                                 ...itemAcks[item.id],
-                                productId: v === 'NEW' ? '' : v,
-                                newProductName: v === 'NEW' ? item.temp_sku_label || '' : undefined,
+                                productId,
+                                newProductName,
                               },
                             })
                           }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select product..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="NEW">+ Create New Product</SelectItem>
-                            {products?.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.sku_name} {p.sku_code && `(${p.sku_code})`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-
-                        {itemAcks[item.id]?.productId === '' && (
-                          <Input
-                            placeholder="New product name"
-                            value={itemAcks[item.id]?.newProductName || ''}
-                            onChange={(e) =>
-                              setItemAcks({
-                                ...itemAcks,
-                                [item.id]: {
-                                  ...itemAcks[item.id],
-                                  newProductName: e.target.value,
-                                },
-                              })
-                            }
-                          />
-                        )}
+                        />
                       </div>
                     </div>
                   </CardContent>
