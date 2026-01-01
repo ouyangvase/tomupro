@@ -691,7 +691,6 @@ export type Database = {
           id: string
           next_delivery_date: string | null
           notes: string | null
-          order_code: string
           order_date: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           phone: string
@@ -725,7 +724,6 @@ export type Database = {
           id?: string
           next_delivery_date?: string | null
           notes?: string | null
-          order_code: string
           order_date?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone: string
@@ -759,7 +757,6 @@ export type Database = {
           id?: string
           next_delivery_date?: string | null
           notes?: string | null
-          order_code?: string
           order_date?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone?: string
@@ -810,7 +807,6 @@ export type Database = {
           created_by: string
           id: string
           is_active: boolean
-          owner_user_id: string
           sku_code: string | null
           sku_name: string
           updated_at: string | null
@@ -820,7 +816,6 @@ export type Database = {
           created_by: string
           id?: string
           is_active?: boolean
-          owner_user_id: string
           sku_code?: string | null
           sku_name: string
           updated_at?: string | null
@@ -830,7 +825,6 @@ export type Database = {
           created_by?: string
           id?: string
           is_active?: boolean
-          owner_user_id?: string
           sku_code?: string | null
           sku_name?: string
           updated_at?: string | null
@@ -839,13 +833,6 @@ export type Database = {
           {
             foreignKeyName: "products_created_by_fkey"
             columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "products_owner_user_id_fkey"
-            columns: ["owner_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]

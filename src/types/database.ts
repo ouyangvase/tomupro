@@ -38,14 +38,12 @@ export interface Product {
   sku_code: string | null;
   sku_name: string;
   created_by: string;
-  owner_user_id: string;
   created_at: string;
   is_active: boolean;
 }
 
 export interface Order {
   id: string;
-  order_code: string;
   order_date: string;
   customer_name: string;
   phone: string;
@@ -74,9 +72,9 @@ export interface Order {
   delivered_at: string | null;
   created_at: string;
   updated_at: string;
-  // Joined fields (partial for joins)
-  salesperson?: Partial<Profile>;
-  runner?: Partial<Profile>;
+  // Joined fields
+  salesperson?: Profile;
+  runner?: Profile;
   order_items?: OrderItem[];
 }
 

@@ -13,8 +13,7 @@ import {
   Users,
   Inbox,
   Receipt,
-  Wrench,
-  LayoutDashboard
+  Wrench
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,14 +39,6 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   roles: string[];
 }
-
-// Dashboard item accessible to all roles
-const dashboardItem: NavItem = { 
-  title: "Dashboard", 
-  url: "/", 
-  icon: LayoutDashboard, 
-  roles: ['admin', 'manager', 'salesperson', 'runner'] 
-};
 
 const salesItems: NavItem[] = [
   { title: "Booking Sales", url: "/sales/booking", icon: ClipboardList, roles: ['admin', 'manager', 'salesperson'] },
@@ -132,29 +123,6 @@ export function AppSidebar() {
       </SidebarHeader>
       
       <SidebarContent className="px-2 py-4">
-        {/* Dashboard - always first */}
-        {dashboardItem.roles.includes(userRole) && (
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={dashboardItem.url} 
-                      end 
-                      className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent transition-colors"
-                      activeClassName="bg-primary text-primary-foreground"
-                    >
-                      <dashboardItem.icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span className="truncate">{dashboardItem.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
         {filterItems(salesItems).length > 0 && (
           <SidebarGroup>
             {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sales</SidebarGroupLabel>}

@@ -21,7 +21,7 @@ export function useOrders(filters?: OrderFilters) {
           *,
           salesperson:profiles!orders_salesperson_id_fkey(id, display_name, email),
           runner:profiles!orders_runner_id_fkey(id, display_name, email),
-          order_items(*, product:products(id, sku_name, sku_code))
+          order_items(*)
         `)
         .order('created_at', { ascending: false });
 
@@ -43,7 +43,7 @@ export function useOrders(filters?: OrderFilters) {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as unknown as Order[];
+      return data as Order[];
     },
   });
 }

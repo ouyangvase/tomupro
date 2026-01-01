@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck, Plus, Upload } from 'lucide-react';
+import { Truck, UserCheck, Lock } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -31,21 +31,17 @@ import {
 } from '@/components/ui/tooltip';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
-import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { exportOrderLines } from '@/lib/csv';
-import { useToast } from '@/hooks/use-toast';
 import type { Order } from '@/types/database';
 
 export default function ReadySales() {
   const { profile, role } = useAuth();
-  const { toast } = useToast();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedRunner, setSelectedRunner] = useState<string>('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
   
   const { data: orders = [], isLoading } = useOrders({ 
     status: 'READY',
@@ -199,12 +195,7 @@ export default function ReadySales() {
   };
 
   const handleExport = () => {
-    if (selectedRows.length === 0) {
-      toast({ title: 'Please select at least 1 order to export', variant: 'destructive' });
-      return;
-    }
-    const selectedOrders = orders.filter(o => selectedRows.includes(o.id));
-    exportOrderLines(selectedOrders, 'ready_orders');
+    exportOrderLines(orders, 'ready_orders');
   };
 
   const unassignedCount = orders.filter(o => o.runner_status === 'UNASSIGNED').length;
