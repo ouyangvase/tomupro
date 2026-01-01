@@ -239,9 +239,9 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
     const newItems = [...items];
     (newItems[index] as any)[field] = value;
     
-    // Auto-calculate line_total
-    if (field === 'qty' || field === 'price') {
-      newItems[index].line_total = newItems[index].qty * newItems[index].price;
+    // price IS the line amount, so line_total = price directly (no multiplication)
+    if (field === 'price') {
+      newItems[index].line_total = newItems[index].price;
     }
     
     // Auto-fill sku_label from product
@@ -480,8 +480,7 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
                     <TableRow className="bg-muted/50">
                       <TableHead className="w-[200px]">Product</TableHead>
                       <TableHead className="w-[80px]">Qty</TableHead>
-                      <TableHead className="w-[100px]">Price</TableHead>
-                      <TableHead className="w-[100px]">Total</TableHead>
+                      <TableHead className="w-[100px]">Line Amount</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -522,13 +521,11 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
                             type="number"
                             value={item.price}
                             onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
-                            className="h-8 w-20"
+                            className="h-8 w-24"
                             min={0}
                             step={0.01}
+                            placeholder="Line amount"
                           />
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          ${item.line_total.toFixed(2)}
                         </TableCell>
                         <TableCell>
                           <Button

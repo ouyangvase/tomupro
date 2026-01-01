@@ -172,12 +172,12 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
             continue;
           }
 
-          // Calculate totals
+          // Calculate totals - price IS the line amount (no multiplication by qty)
           let totalQty = 0;
           let totalAmount = 0;
           for (const item of group.items) {
             totalQty += item.qty;
-            totalAmount += item.qty * item.price;
+            totalAmount += item.price; // price = line amount directly
           }
 
           // Create order
@@ -216,7 +216,7 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
               sku_label: item.sku_name_or_code,
               qty: item.qty,
               price: item.price,
-              line_total: item.qty * item.price,
+              line_total: item.price, // price = line amount directly
             });
           }
 
