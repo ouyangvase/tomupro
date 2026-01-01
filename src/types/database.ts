@@ -11,6 +11,7 @@ export type InboundStatus = 'PENDING_SP_ACK' | 'ACKNOWLEDGED' | 'DISPUTE';
 export type MovementType = 'INBOUND' | 'SALE_DEDUCT' | 'ADJUSTMENT' | 'RETURN';
 export type ReferenceType = 'INBOUND_ITEM' | 'ORDER_ITEM' | 'MANUAL';
 export type AttachmentType = 'transfer_proof' | 'receipt_photo' | 'chat_screenshot' | 'delivery_photo' | 'inbound_photo' | 'other';
+export type ClaimBatchStatus = 'ADMIN_ACK_PENDING' | 'CLAIMED';
 
 export interface Profile {
   id: string;
@@ -110,6 +111,29 @@ export interface Claim {
   proof_url: string | null;
   created_by: string;
   created_at: string;
+}
+
+export interface ClaimBatch {
+  id: string;
+  runner_id: string;
+  total_amount: number;
+  status: ClaimBatchStatus;
+  submitted_at: string;
+  admin_ack_at: string | null;
+  admin_ack_by: string | null;
+  note: string | null;
+  // Joined fields
+  runner?: Profile;
+  items?: ClaimBatchItem[];
+}
+
+export interface ClaimBatchItem {
+  id: string;
+  batch_id: string;
+  order_id: string;
+  created_at: string;
+  // Joined fields
+  order?: Order;
 }
 
 export interface InboundShipment {
