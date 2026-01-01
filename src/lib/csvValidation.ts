@@ -1,9 +1,77 @@
 import { z } from 'zod';
 
+/**
+ * Parses various date formats and returns YYYY-MM-DD or empty string
+ * Supports: YYYY-MM-DD, M/D/YYYY, D/M/YYYY, MM/DD/YYYY, DD/MM/YYYY, etc.
+ */
+function parseFlexibleDate(value: string): string {
+  if (!value || !value.trim()) return '';
+  
+  const trimmed = value.trim();
+  
+  // Already in YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  
+  // Handle slash-separated formats (M/D/YYYY, D/M/YYYY, MM/DD/YYYY, etc.)
+  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, part1, part2, year] = slashMatch;
+    const num1 = parseInt(part1, 10);
+    const num2 = parseInt(part2, 10);
+    
+    // Heuristic: if first number > 12, assume D/M/YYYY, otherwise M/D/YYYY
+    let month: number, day: number;
+    if (num1 > 12) {
+      day = num1;
+      month = num2;
+    } else if (num2 > 12) {
+      month = num1;
+      day = num2;
+    } else {
+      // Default to M/D/YYYY (US format)
+      month = num1;
+      day = num2;
+    }
+    
+    // Validate ranges
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+  
+  // Handle dash-separated formats (D-M-YYYY, M-D-YYYY)
+  const dashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashMatch) {
+    const [, part1, part2, year] = dashMatch;
+    const num1 = parseInt(part1, 10);
+    const num2 = parseInt(part2, 10);
+    
+    let month: number, day: number;
+    if (num1 > 12) {
+      day = num1;
+      month = num2;
+    } else if (num2 > 12) {
+      month = num1;
+      day = num2;
+    } else {
+      month = num1;
+      day = num2;
+    }
+    
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+  
+  return '';
+}
+
 // Validation schema for CSV order line imports
 export const orderLineSchema = z.object({
   order_ref: z.string().max(100).optional().default(''),
-  order_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)').optional().or(z.literal('')),
+  order_date: z.string().transform(parseFlexibleDate),
   customer_name: z.string().min(1, 'Customer name is required').max(255, 'Customer name too long'),
   phone: z.string().min(1, 'Phone is required').max(50, 'Phone too long'),
   address: z.string().min(1, 'Address is required').max(500, 'Address too long'),
@@ -13,7 +81,7 @@ export const orderLineSchema = z.object({
     const upper = val?.toUpperCase?.() || '';
     return upper === 'TRANSFER' ? 'TRANSFER' : 'COD';
   }),
-  expected_pickup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format').optional().or(z.literal('')),
+  expected_pickup_date: z.string().transform(parseFlexibleDate),
   notes: z.string().max(1000).optional().default(''),
   sku_name_or_code: z.string().max(255).optional().default(''),
   qty: z.string().transform((val) => {
