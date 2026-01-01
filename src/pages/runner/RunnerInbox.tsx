@@ -3,14 +3,17 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useOrders, useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
 import { exportOrderLines } from '@/lib/csv';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
-import { Package, CheckCircle, XCircle, DollarSign, Truck } from 'lucide-react';
+import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2 } from 'lucide-react';
 
 const runnerStatusColors: Record<RunnerStatus, string> = {
   UNASSIGNED: 'bg-muted text-muted-foreground',
@@ -38,13 +41,15 @@ const runnerStatusOptions = [
 
 export default function RunnerInbox() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
-  const updateOrder = useUpdateOrder();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
+  const [processingDelivery, setProcessingDelivery] = useState<string | null>(null);
   
   const bulkUpdateOrders = useBulkUpdateOrders();
 
@@ -69,34 +74,75 @@ export default function RunnerInbox() {
 
   const handleTakeJob = async (order: Order) => {
     const beforeStatus = order.runner_status;
-    await updateOrder.mutateAsync({
-      id: order.id,
-      runner_status: 'TAKEN',
-    });
-    await logAudit({
-      entity_type: 'order',
-      entity_id: order.id,
-      action: 'JOB_TAKEN',
-      before_json: { runner_status: beforeStatus },
-      after_json: { runner_status: 'TAKEN' },
-    });
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ runner_status: 'TAKEN' })
+        .eq('id', order.id);
+      
+      if (error) throw error;
+      
+      await logAudit({
+        entity_type: 'order',
+        entity_id: order.id,
+        action: 'JOB_TAKEN',
+        before_json: { runner_status: beforeStatus },
+        after_json: { runner_status: 'TAKEN' },
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast({ title: 'Job taken successfully' });
+    } catch (error) {
+      console.error('Error taking job:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to take job' });
+    }
   };
 
   const handleMarkDelivered = async (order: Order) => {
-    const beforeStatus = order.runner_status;
-    await updateOrder.mutateAsync({
-      id: order.id,
-      runner_status: 'DELIVERED',
-      delivered_at: new Date().toISOString(),
-    });
-    await logAudit({
-      entity_type: 'order',
-      entity_id: order.id,
-      action: 'ORDER_DELIVERED',
-      before_json: { runner_status: beforeStatus },
-      after_json: { runner_status: 'DELIVERED', delivered_at: new Date().toISOString() },
-    });
-    // TODO: Create notification for salesperson
+    if (processingDelivery) return;
+    
+    setProcessingDelivery(order.id);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('process-delivery', {
+        body: { orderId: order.id, runnerId: user?.id },
+      });
+
+      if (error) {
+        console.error('Edge function error:', error);
+        toast({ 
+          variant: 'destructive', 
+          title: 'Delivery Error', 
+          description: error.message || 'Failed to process delivery' 
+        });
+        return;
+      }
+
+      if (data.success) {
+        toast({ 
+          title: data.alreadyProcessed ? 'Already Processed' : 'Delivered',
+          description: data.message,
+        });
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      } else {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Delivery Blocked', 
+          description: data.error || 'Could not complete delivery',
+        });
+        // Refresh to show updated dispute status
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      }
+    } catch (error) {
+      console.error('Error processing delivery:', error);
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error', 
+        description: 'Failed to process delivery' 
+      });
+    } finally {
+      setProcessingDelivery(null);
+    }
   };
 
   const handleOpenFailedDialog = (order: Order) => {
@@ -197,12 +243,17 @@ export default function RunnerInbox() {
               <Button
                 size="sm"
                 variant="default"
+                disabled={processingDelivery === order.id}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleMarkDelivered(order);
                 }}
               >
-                <CheckCircle className="h-4 w-4 mr-1" />
+                {processingDelivery === order.id ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                )}
                 Delivered
               </Button>
               <Button
