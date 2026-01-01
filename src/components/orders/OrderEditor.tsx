@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown } from 'lucide-react';
+import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -52,6 +52,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useProducts } from '@/hooks/useProducts';
 import { useOrderItems, useCreateOrderItem, useUpdateOrderItem, useDeleteOrderItem, calculateOrderTotals } from '@/hooks/useOrderItems';
 import { useUpdateOrder, useCreateOrder } from '@/hooks/useOrders';
@@ -156,7 +167,7 @@ function ProductCombobox({ products, value, onSelect }: ProductComboboxProps) {
 }
 
 export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProps) {
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
   const { data: products = [] } = useProducts();
   const { data: existingItems = [] } = useOrderItems(order?.id);
   const createOrder = useCreateOrder();
@@ -166,6 +177,13 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
   const deleteOrderItem = useDeleteOrderItem();
 
   const [items, setItems] = useState<LocalOrderItem[]>([]);
+  const [showDeliveredWarning, setShowDeliveredWarning] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState<OrderFormValues | null>(null);
+  
+  // Check if order is delivered and user is not admin
+  const isDelivered = order?.runner_status === 'DELIVERED';
+  const isAdmin = role === 'admin';
+  const isLocked = isDelivered && !isAdmin;
 
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema),
@@ -258,6 +276,16 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
 
   const totals = calculateOrderTotals(items as any);
 
+  const handleSubmitWithWarning = (values: OrderFormValues) => {
+    // If order is delivered and user is admin, show warning first
+    if (isDelivered && isAdmin) {
+      setPendingSubmit(values);
+      setShowDeliveredWarning(true);
+    } else {
+      onSubmit(values);
+    }
+  };
+
   const onSubmit = async (values: OrderFormValues) => {
     try {
       let orderId = order?.id;
@@ -312,18 +340,46 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
     }
   };
 
+  const handleConfirmDeliveredEdit = () => {
+    if (pendingSubmit) {
+      onSubmit(pendingSubmit);
+    }
+    setShowDeliveredWarning(false);
+    setPendingSubmit(null);
+  };
+
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{mode === 'create' ? 'New Order' : 'Edit Order'}</SheetTitle>
+          <div className="flex items-center gap-2">
+            <SheetTitle>{mode === 'create' ? 'New Order' : 'Edit Order'}</SheetTitle>
+            {isDelivered && (
+              <Badge variant={isLocked ? 'destructive' : 'secondary'} className="flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                {isLocked ? 'Locked' : 'Delivered'}
+              </Badge>
+            )}
+          </div>
           <SheetDescription>
-            {mode === 'create' ? 'Create a new order with line items' : 'Update order details and items'}
+            {mode === 'create' 
+              ? 'Create a new order with line items' 
+              : isLocked 
+                ? 'This order is delivered and locked. Only admins can modify it.'
+                : 'Update order details and items'}
           </SheetDescription>
         </SheetHeader>
 
+        {isLocked && (
+          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md flex items-center gap-2 text-sm text-destructive">
+            <Lock className="h-4 w-4 flex-shrink-0" />
+            <span>This order has been delivered. Contact an admin to make changes.</span>
+          </div>
+        )}
+
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-6">
+          <form onSubmit={form.handleSubmit(handleSubmitWithWarning)} className="space-y-6 mt-6">
             {/* Customer Info */}
             <div className="grid grid-cols-2 gap-4">
               <FormField
@@ -563,7 +619,10 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createOrder.isPending || updateOrder.isPending}>
+              <Button 
+                type="submit" 
+                disabled={createOrder.isPending || updateOrder.isPending || isLocked}
+              >
                 {createOrder.isPending || updateOrder.isPending ? 'Saving...' : 'Save Order'}
               </Button>
             </div>
@@ -571,5 +630,28 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
         </Form>
       </SheetContent>
     </Sheet>
+
+    {/* Admin warning dialog for editing delivered orders */}
+    <AlertDialog open={showDeliveredWarning} onOpenChange={setShowDeliveredWarning}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            Modify Delivered Order?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            This order has already been delivered. Stock has been deducted. 
+            Are you sure you want to modify this order?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setPendingSubmit(null)}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmDeliveredEdit}>
+            Yes, Modify Order
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

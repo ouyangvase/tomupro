@@ -23,7 +23,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck } from 'lucide-react';
+import { Truck, UserCheck, Lock } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { exportOrderLines } from '@/lib/csv';
@@ -220,25 +225,58 @@ export default function ReadySales() {
           onExport={handleExport}
           bulkActions={
             isEditable && selectedRows.length > 0 ? (
-              <div className="flex gap-2">
-                <Button 
-                  size="sm" 
-                  onClick={() => setAssignDialogOpen(true)}
-                >
-                  <UserCheck className="h-4 w-4 mr-2" />
-                  Assign Runner
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleDispute}>
-                  Mark Dispute
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="destructive" 
-                  onClick={() => setCancelDialogOpen(true)}
-                >
-                  Cancel
-                </Button>
-              </div>
+              (() => {
+                const selectedOrdersInfo = orders.filter(o => selectedRows.includes(o.id));
+                const hasDeliveredOrders = selectedOrdersInfo.some(o => o.runner_status === 'DELIVERED');
+                const isAdmin = role === 'admin';
+                const canCancel = isAdmin || !hasDeliveredOrders;
+                
+                return (
+                  <div className="flex gap-2 items-center">
+                    <Button 
+                      size="sm" 
+                      onClick={() => setAssignDialogOpen(true)}
+                    >
+                      <UserCheck className="h-4 w-4 mr-2" />
+                      Assign Runner
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleDispute}>
+                      Mark Dispute
+                    </Button>
+                    {canCancel ? (
+                      <Button 
+                        size="sm" 
+                        variant="destructive" 
+                        onClick={() => setCancelDialogOpen(true)}
+                      >
+                        Cancel
+                      </Button>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button 
+                              size="sm" 
+                              variant="destructive" 
+                              disabled
+                            >
+                              Cancel
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delivered order is locked. Only admin can modify.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {hasDeliveredOrders && !isAdmin && (
+                      <Badge variant="secondary" className="ml-2">
+                        Selection includes delivered orders
+                      </Badge>
+                    )}
+                  </div>
+                );
+              })()
             ) : undefined
           }
         />
