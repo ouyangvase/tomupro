@@ -27,6 +27,9 @@ import UsersSettings from "./pages/settings/UsersSettings";
 import BindingsSettings from "./pages/settings/BindingsSettings";
 import ProfilePage from "./pages/settings/ProfilePage";
 import ProductsPage from "./pages/products/ProductsPage";
+import NotificationCenter from "./pages/notifications/NotificationCenter";
+import ManagerOversight from "./pages/manager/ManagerOversight";
+import AdminOverview from "./pages/admin/AdminOverview";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -76,6 +79,9 @@ function AppRoutes() {
       <Route path="/settings/users" element={<ProtectedRoute><UsersSettings /></ProtectedRoute>} />
       <Route path="/settings/bindings" element={<ProtectedRoute><BindingsSettings /></ProtectedRoute>} />
       <Route path="/settings/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+      <Route path="/notifications" element={<ProtectedRoute><NotificationCenter /></ProtectedRoute>} />
+      <Route path="/manager/oversight" element={<ProtectedRoute><ManagerOversight /></ProtectedRoute>} />
+      <Route path="/admin/overview" element={<ProtectedRoute><AdminOverview /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>

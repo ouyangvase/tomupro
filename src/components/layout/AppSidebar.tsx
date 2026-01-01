@@ -58,6 +58,8 @@ const reconciliationItems: NavItem[] = [
   { title: "Admin Reconciliation", url: "/reconciliation/admin", icon: PackageCheck, roles: ['admin'] },
   { title: "Claim Batches", url: "/admin/claim-batches", icon: Receipt, roles: ['admin'] },
   { title: "Dispute Center", url: "/disputes", icon: AlertTriangle, roles: ['admin', 'manager'] },
+  { title: "Manager Oversight", url: "/manager/oversight", icon: BarChart3, roles: ['manager', 'admin'] },
+  { title: "Admin Overview", url: "/admin/overview", icon: BarChart3, roles: ['admin'] },
 ];
 
 const inventoryItems: NavItem[] = [
