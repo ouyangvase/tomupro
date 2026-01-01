@@ -61,6 +61,19 @@ export function useCreateInboundShipment() {
         .select()
         .single();
       if (error) throw error;
+
+      // Create notification for salesperson
+      await supabase.from('notifications').insert({
+        user_id: shipment.salesperson_id,
+        title: 'Inbound Pending Acknowledgment',
+        message: `Inbound pending your acknowledgment: Tracking ${shipment.tracking_no}`,
+        type: 'INBOUND_PENDING',
+        entity_type: 'INBOUND',
+        reference_type: 'INBOUND',
+        reference_id: data.id,
+        priority: 'MEDIUM',
+      });
+
       return data;
     },
     onSuccess: () => {
@@ -78,7 +91,18 @@ export function useUpdateInboundShipment() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<InboundShipment> & { id: string }) => {
+    mutationFn: async ({ id, notifyRunner, ...updates }: Partial<InboundShipment> & { id: string; notifyRunner?: boolean }) => {
+      // Fetch original to get runner_id if we need to notify
+      let runnerId: string | null = null;
+      if (notifyRunner || (updates as any).status === 'ACKNOWLEDGED') {
+        const { data: original } = await supabase
+          .from('inbound_shipments')
+          .select('runner_id')
+          .eq('id', id)
+          .single();
+        runnerId = original?.runner_id || null;
+      }
+
       const { data, error } = await supabase
         .from('inbound_shipments')
         .update(updates as Record<string, unknown>)
@@ -86,6 +110,21 @@ export function useUpdateInboundShipment() {
         .select()
         .single();
       if (error) throw error;
+
+      // Notify runner when acknowledged
+      if ((updates as any).status === 'ACKNOWLEDGED' && runnerId) {
+        await supabase.from('notifications').insert({
+          user_id: runnerId,
+          title: 'Inbound Acknowledged',
+          message: 'Inbound shipment has been acknowledged by salesperson.',
+          type: 'INBOUND_ACKED',
+          entity_type: 'INBOUND',
+          reference_type: 'INBOUND',
+          reference_id: id,
+          priority: 'LOW',
+        });
+      }
+
       return data;
     },
     onSuccess: () => {

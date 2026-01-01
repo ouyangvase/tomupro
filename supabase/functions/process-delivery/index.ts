@@ -202,13 +202,16 @@ Deno.serve(async (req) => {
       after_json: { runner_status: 'DELIVERED', stock_deducted: true },
     });
 
-    // Log audit for stock deduction (minimal data)
-    await supabase.from('audit_logs').insert({
-      entity_type: 'order',
-      entity_id: orderId,
-      action: 'STOCK_DEDUCTED',
-      actor_id: runnerId,
-      after_json: { movements_count: stockMovements.length },
+    // Create notification for salesperson
+    await supabase.from('notifications').insert({
+      user_id: order.salesperson_id,
+      type: 'DELIVERED',
+      title: 'Order Delivered',
+      message: `Order delivered and stock deducted from warehouse.`,
+      entity_type: 'ORDER',
+      reference_type: 'ORDER',
+      reference_id: orderId,
+      priority: 'MEDIUM',
     });
 
     return new Response(
