@@ -20,6 +20,7 @@ import ReconciliationAdmin from "./pages/reconciliation/ReconciliationAdmin";
 import DisputeCenter from "./pages/disputes/DisputeCenter";
 import StockAdjustment from "./pages/inventory/StockAdjustment";
 import ReasonsSettings from "./pages/settings/ReasonsSettings";
+import UsersSettings from "./pages/settings/UsersSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,6 +64,7 @@ function AppRoutes() {
       <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
       <Route path="/products" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/settings/reasons" element={<ProtectedRoute><ReasonsSettings /></ProtectedRoute>} />
+      <Route path="/settings/users" element={<ProtectedRoute><UsersSettings /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
