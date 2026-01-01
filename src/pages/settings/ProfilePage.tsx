@@ -124,8 +124,8 @@ const ProfilePage = () => {
       return;
     }
 
-    if (newPassword.length < 6) {
-      toast({ title: 'Password too short', description: 'Password must be at least 6 characters', variant: 'destructive' });
+    if (newPassword.length < 8) {
+      toast({ title: 'Password too short', description: 'Password must be at least 8 characters', variant: 'destructive' });
       return;
     }
 
