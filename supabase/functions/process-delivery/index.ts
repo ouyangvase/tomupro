@@ -30,11 +30,40 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     
-    // Use service role for bypassing RLS
+    // First, authenticate the user from the Authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('Missing Authorization header');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Use anon key client to verify the user's JWT
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    
+    if (authError || !user) {
+      console.error('Authentication failed:', authError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const authenticatedUserId = user.id;
+    console.log('Authenticated user:', authenticatedUserId);
+    
+    // Use service role for database operations (bypassing RLS)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    const { orderId, runnerId } = await req.json();
+    const { orderId } = await req.json();
     
     if (!orderId) {
       return new Response(
@@ -54,6 +83,15 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: 'Order not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Authorization check: Validate the authenticated user is the assigned runner for this order
+    if (order.runner_id !== authenticatedUserId) {
+      console.error('Authorization failed: User', authenticatedUserId, 'is not the runner for order', orderId);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Not authorized to process this order' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -123,7 +161,7 @@ Deno.serve(async (req) => {
         entity_type: 'order',
         entity_id: orderId,
         action: 'DELIVERY_DISPUTE',
-        actor_id: runnerId,
+        actor_id: authenticatedUserId,
         before_json: { runner_status: order.runner_status, reconciliation_status: 'NOT_CLAIMED' },
         after_json: { 
           runner_status: 'DELIVERED', 
@@ -161,7 +199,7 @@ Deno.serve(async (req) => {
       qty_change: -item.qty,
       reference_type: 'ORDER_ITEM',
       reference_id: item.id,
-      created_by: runnerId || order.runner_id,
+      created_by: authenticatedUserId,
     }));
 
     const { error: movementsError } = await supabase
@@ -197,7 +235,7 @@ Deno.serve(async (req) => {
       entity_type: 'order',
       entity_id: orderId,
       action: 'ORDER_DELIVERED',
-      actor_id: runnerId,
+      actor_id: authenticatedUserId,
       before_json: { runner_status: order.runner_status, stock_deducted: false },
       after_json: { runner_status: 'DELIVERED', stock_deducted: true },
     });
