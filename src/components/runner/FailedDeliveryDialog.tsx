@@ -16,8 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useReasons } from '@/hooks/useReasons';
 import { useUpdateOrder } from '@/hooks/useOrders';
 import { logAudit } from '@/hooks/useAuditLogs';
 import type { Order, FailedNextStep } from '@/types/database';
@@ -34,18 +33,7 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
   const [nextDeliveryDate, setNextDeliveryDate] = useState('');
   const updateOrder = useUpdateOrder();
 
-  const { data: failedReasons } = useQuery({
-    queryKey: ['failed_reasons'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('failed_reasons')
-        .select('*')
-        .eq('is_active', true)
-        .order('reason');
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { data: failedReasons } = useReasons('FAILED_DELIVERY', true);
 
   const handleSubmit = async () => {
     if (!order || !failedReason) return;
@@ -103,8 +91,8 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
               </SelectTrigger>
               <SelectContent>
                 {failedReasons?.map((r) => (
-                  <SelectItem key={r.id} value={r.reason}>
-                    {r.reason}
+                  <SelectItem key={r.id} value={r.label}>
+                    {r.label}
                   </SelectItem>
                 ))}
               </SelectContent>

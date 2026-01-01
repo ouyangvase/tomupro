@@ -2,9 +2,9 @@ import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -12,8 +12,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useClaimsByOrders } from '@/hooks/useClaims';
+import { useReasons } from '@/hooks/useReasons';
 import { logAudit } from '@/hooks/useAuditLogs';
 import type { Order, Claim } from '@/types/database';
 import { CheckCircle, AlertTriangle, Shield, Users } from 'lucide-react';
@@ -28,7 +36,10 @@ export default function ReconciliationAdmin() {
 
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
   const [disputeNotes, setDisputeNotes] = useState('');
+
+  const { data: disputeReasons } = useReasons('DISPUTE', true);
 
   // Group by salesperson
   const groupedBySP = useMemo(() => {
@@ -71,7 +82,7 @@ export default function ReconciliationAdmin() {
   };
 
   const handleDispute = async () => {
-    if (selectedOrders.length === 0) return;
+    if (selectedOrders.length === 0 || !disputeReason) return;
 
     for (const orderId of selectedOrders) {
       await logAudit({
@@ -79,7 +90,7 @@ export default function ReconciliationAdmin() {
         entity_id: orderId,
         action: 'ADMIN_DISPUTED',
         before_json: { reconciliation_status: 'ADMIN_ACK_PENDING' },
-        after_json: { reconciliation_status: 'DISPUTE', dispute_notes: disputeNotes },
+        after_json: { reconciliation_status: 'DISPUTE', dispute_reason: disputeReason, dispute_notes: disputeNotes },
       });
     }
 
@@ -87,10 +98,12 @@ export default function ReconciliationAdmin() {
       ids: selectedOrders,
       updates: { 
         reconciliation_status: 'DISPUTE',
+        dispute_reason: disputeReason,
         dispute_notes: disputeNotes,
       },
     });
     setSelectedOrders([]);
+    setDisputeReason('');
     setDisputeNotes('');
     setDisputeDialogOpen(false);
   };
@@ -223,19 +236,41 @@ export default function ReconciliationAdmin() {
           <DialogHeader>
             <DialogTitle>Dispute Selected Orders</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="Enter dispute notes..."
-              value={disputeNotes}
-              onChange={(e) => setDisputeNotes(e.target.value)}
-              rows={4}
-            />
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Dispute Reason *</Label>
+              <Select value={disputeReason} onValueChange={setDisputeReason}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select reason..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {disputeReasons?.map((r) => (
+                    <SelectItem key={r.id} value={r.label}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Additional Notes</Label>
+              <Textarea
+                placeholder="Enter dispute notes..."
+                value={disputeNotes}
+                onChange={(e) => setDisputeNotes(e.target.value)}
+                rows={4}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDisputeDialogOpen(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDispute}>
+            <Button 
+              variant="destructive" 
+              onClick={handleDispute}
+              disabled={!disputeReason}
+            >
               Submit Dispute
             </Button>
           </DialogFooter>

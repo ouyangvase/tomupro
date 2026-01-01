@@ -686,6 +686,44 @@ export type Database = {
         }
         Relationships: []
       }
+      reasons: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          label: string
+          reason_type: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean
+          label: string
+          reason_type: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          reason_type?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reasons_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_movements: {
         Row: {
           created_at: string

@@ -17,8 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useReasons } from '@/hooks/useReasons';
 
 interface CancelOrderDialogProps {
   open: boolean;
@@ -38,18 +37,7 @@ export function CancelOrderDialog({
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
 
-  const { data: cancelReasons = [] } = useQuery({
-    queryKey: ['cancel-reasons'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('cancel_reasons')
-        .select('*')
-        .eq('is_active', true)
-        .order('reason');
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { data: cancelReasons = [] } = useReasons('CANCEL', true);
 
   const handleConfirm = () => {
     if (!reason) return;
@@ -77,8 +65,8 @@ export function CancelOrderDialog({
               </SelectTrigger>
               <SelectContent>
                 {cancelReasons.map((r) => (
-                  <SelectItem key={r.id} value={r.reason}>
-                    {r.reason}
+                  <SelectItem key={r.id} value={r.label}>
+                    {r.label}
                   </SelectItem>
                 ))}
               </SelectContent>
