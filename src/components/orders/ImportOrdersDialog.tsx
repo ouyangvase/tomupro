@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
 import { parseCSV, downloadTemplate } from '@/lib/csv';
+import { validateOrderLines, type ValidatedOrderLine } from '@/lib/csvValidation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -77,12 +78,25 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
+    // Validate file size (max 5MB)
+    if (selectedFile.size > 5 * 1024 * 1024) {
+      toast({ variant: 'destructive', title: 'File too large', description: 'Maximum file size is 5MB' });
+      return;
+    }
+
     setFile(selectedFile);
     setErrors([]);
     setSuccessCount(0);
 
     const text = await selectedFile.text();
     const rows = parseCSV(text);
+    
+    // Validate rows and show preview
+    const validation = validateOrderLines(rows);
+    if (validation.errors.length > 0) {
+      setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
+    }
+    
     setPreview(rows.slice(0, 5));
   };
 
@@ -124,29 +138,33 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
 
     try {
       const text = await file.text();
-      const rows = parseCSV(text) as unknown as ParsedOrderLine[];
-
-      // Group rows by order_ref
-      const orderGroups = new Map<string, GroupedOrder>();
+      const rows = parseCSV(text);
       
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
+      // Validate all rows first
+      const validation = validateOrderLines(rows);
+      if (validation.errors.length > 0) {
+        setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
+        if (validation.valid.length === 0) {
+          setImporting(false);
+          return;
+        }
+      }
+
+      // Group validated rows by order_ref
+      const orderGroups = new Map<string, {
+        orderRef: string;
+        orderData: ValidatedOrderLine;
+        items: { sku_name_or_code: string; qty: number; price: number }[];
+      }>();
+      
+      for (let i = 0; i < validation.valid.length; i++) {
+        const row = validation.valid[i];
         const orderRef = row.order_ref?.trim() || `auto-${Date.now()}-${i}`;
         
         if (!orderGroups.has(orderRef)) {
           orderGroups.set(orderRef, {
             orderRef,
-            orderData: {
-              order_date: row.order_date || new Date().toISOString().split('T')[0],
-              customer_name: row.customer_name || '',
-              phone: row.phone || '',
-              address: row.address || '',
-              area: row.area || '',
-              channel: row.channel || '',
-              payment_method: row.payment_method || 'COD',
-              expected_pickup_date: row.expected_pickup_date || '',
-              notes: row.notes || '',
-            },
+            orderData: row,
             items: [],
           });
         }
@@ -155,23 +173,17 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
         if (row.sku_name_or_code?.trim()) {
           group.items.push({
             sku_name_or_code: row.sku_name_or_code,
-            qty: parseInt(row.qty) || 1,
-            price: parseFloat(row.price) || 0,
+            qty: row.qty,
+            price: row.price,
           });
         }
       }
 
-      const newErrors: string[] = [];
+      const newErrors: string[] = validation.errors.map(e => `Row ${e.row}: ${e.message}`);
       let created = 0;
 
       for (const [orderRef, group] of orderGroups) {
         try {
-          // Validate required fields
-          if (!group.orderData.customer_name || !group.orderData.phone || !group.orderData.address) {
-            newErrors.push(`Order ${orderRef}: Missing required fields (customer_name, phone, address)`);
-            continue;
-          }
-
           // Calculate totals - price IS the line amount (no multiplication by qty)
           let totalQty = 0;
           let totalAmount = 0;
@@ -191,7 +203,7 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
               channel: group.orderData.channel || null,
               notes: group.orderData.notes || null,
               order_date: group.orderData.order_date || new Date().toISOString().split('T')[0],
-              payment_method: (group.orderData.payment_method?.toUpperCase() === 'TRANSFER' ? 'TRANSFER' : 'COD') as 'COD' | 'TRANSFER',
+              payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
               salesperson_id: profile.id,
               status: 'BOOKING',

@@ -48,7 +48,7 @@ export function useUpdateUser() {
           .eq('user_id', id);
 
         if (roleError) {
-          console.error('Error updating user_roles:', roleError);
+          throw roleError;
         }
       }
 
@@ -84,7 +84,7 @@ export async function ensureWarehouseForRole(
     .eq('warehouse_type', warehouseType);
 
   if (fetchError) {
-    console.error('Error checking warehouses:', fetchError);
+    // Silently return - warehouse check is non-critical
     return;
   }
 
@@ -109,9 +109,7 @@ export async function ensureWarehouseForRole(
       name: `${displayName}'s Warehouse`,
     });
 
-  if (createError) {
-    console.error('Error creating warehouse:', createError);
-  }
+  // Warehouse creation failure is non-critical - admin can create manually
 }
 
 export async function deactivateWarehousesForUser(

@@ -128,8 +128,7 @@ export default function RunnerInbox() {
       
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast({ title: 'Job taken successfully' });
-    } catch (error) {
-      console.error('Error taking job:', error);
+    } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to take job' });
     }
   };
@@ -145,11 +144,10 @@ export default function RunnerInbox() {
       });
 
       if (error) {
-        console.error('Edge function error:', error);
         toast({ 
           variant: 'destructive', 
           title: 'Delivery Error', 
-          description: error.message || 'Failed to process delivery' 
+          description: 'Failed to process delivery' 
         });
         return;
       }
@@ -168,8 +166,7 @@ export default function RunnerInbox() {
         });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       }
-    } catch (error) {
-      console.error('Error processing delivery:', error);
+    } catch {
       toast({ 
         variant: 'destructive', 
         title: 'Error', 

@@ -336,7 +336,7 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
 
       onOpenChange(false);
     } catch (error) {
-      console.error('Failed to save order:', error);
+      // Error is already handled by mutation hooks with toast notifications
     }
   };
 
