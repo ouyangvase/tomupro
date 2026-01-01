@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,13 @@ const reconciliationColors: Record<ReconciliationStatus, string> = {
   DISPUTE: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
 
+const runnerStatusOptions = [
+  { label: 'Assigned', value: 'ASSIGNED' },
+  { label: 'Taken', value: 'TAKEN' },
+  { label: 'Delivered', value: 'DELIVERED' },
+  { label: 'Failed Delivery', value: 'FAILED_DELIVERY' },
+];
+
 export default function RunnerInbox() {
   const { user } = useAuth();
   const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
@@ -40,6 +47,13 @@ export default function RunnerInbox() {
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
   
   const bulkUpdateOrders = useBulkUpdateOrders();
+
+  // Extract unique areas for filter dropdown
+  const areaOptions = useMemo(() => {
+    if (!orders) return [];
+    const uniqueAreas = [...new Set(orders.map(o => o.area).filter(Boolean))];
+    return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
+  }, [orders]);
 
   const handleBulkTake = () => {
     bulkUpdateOrders.mutate({
@@ -120,6 +134,7 @@ export default function RunnerInbox() {
       header: 'Area',
       sortable: true,
       filterable: true,
+      filterOptions: areaOptions,
     },
     {
       key: 'total_amount',
@@ -135,7 +150,9 @@ export default function RunnerInbox() {
     {
       key: 'runner_status',
       header: 'Status',
+      sortable: true,
       filterable: true,
+      filterOptions: runnerStatusOptions,
       render: (order) => (
         <Badge className={runnerStatusColors[order.runner_status]}>
           {order.runner_status.replace('_', ' ')}
