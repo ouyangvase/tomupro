@@ -159,7 +159,7 @@ export default function RunnerInbound() {
                   <SelectContent>
                     {salespersons.map((sp) => (
                       <SelectItem key={sp.id} value={sp.id}>
-                        {sp.display_name}
+                        {sp.display_name} {sp.email ? `(${sp.email})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
