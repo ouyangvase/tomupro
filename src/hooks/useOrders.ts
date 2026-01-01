@@ -43,7 +43,7 @@ export function useOrders(filters?: OrderFilters) {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as Order[];
+      return data as unknown as Order[];
     },
   });
 }

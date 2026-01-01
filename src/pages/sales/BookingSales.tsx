@@ -16,12 +16,14 @@ import {
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
-import { exportOrderLines } from '@/lib/csv';
+import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { calculateReminderState, getReminderBadgeProps } from '@/lib/reminders';
 import type { Order } from '@/types/database';
+import { useToast } from '@/hooks/use-toast';
 
 export default function BookingSales() {
   const { profile, role } = useAuth();
+  const { toast } = useToast();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -165,6 +167,14 @@ export default function BookingSales() {
     exportOrderLines(orders, 'booking_orders');
   };
 
+  const handleExportSelected = () => {
+    if (selectedRows.length === 0) {
+      toast({ title: 'Please select at least 1 order to export', variant: 'destructive' });
+      return;
+    }
+    exportSelectedOrderLines(orders, selectedRows, 'booking_orders_selected');
+  };
+
   const handleCreateNew = () => {
     setEditingOrder(null);
     setEditorOpen(true);
@@ -211,6 +221,9 @@ export default function BookingSales() {
                   <div className="flex gap-2 items-center">
                     <Button size="sm" onClick={handleConvertToReady}>
                       Convert to Ready
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleExportSelected}>
+                      Export Selected
                     </Button>
                     <Button size="sm" variant="outline" onClick={handleDispute}>
                       Mark Dispute

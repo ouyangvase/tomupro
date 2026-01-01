@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck, Lock } from 'lucide-react';
+import { Truck, UserCheck, Lock, Plus } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -31,17 +31,21 @@ import {
 } from '@/components/ui/tooltip';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
-import { exportOrderLines } from '@/lib/csv';
+import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
+import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
+import { useToast } from '@/hooks/use-toast';
 import type { Order } from '@/types/database';
 
 export default function ReadySales() {
   const { profile, role } = useAuth();
+  const { toast } = useToast();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedRunner, setSelectedRunner] = useState<string>('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   
   const { data: orders = [], isLoading } = useOrders({ 
     status: 'READY',
@@ -198,6 +202,19 @@ export default function ReadySales() {
     exportOrderLines(orders, 'ready_orders');
   };
 
+  const handleExportSelected = () => {
+    if (selectedRows.length === 0) {
+      toast({ title: 'Please select at least 1 order to export', variant: 'destructive' });
+      return;
+    }
+    exportSelectedOrderLines(orders, selectedRows, 'ready_orders_selected');
+  };
+
+  const handleCreateNew = () => {
+    setEditingOrder(null);
+    setEditorOpen(true);
+  };
+
   const unassignedCount = orders.filter(o => o.runner_status === 'UNASSIGNED').length;
 
   return (
@@ -210,6 +227,12 @@ export default function ReadySales() {
               Orders ready for delivery • {unassignedCount} awaiting runner assignment
             </p>
           </div>
+          {isEditable && (
+            <Button onClick={handleCreateNew}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Order
+            </Button>
+          )}
         </div>
 
         <DataGrid
@@ -223,6 +246,7 @@ export default function ReadySales() {
           loading={isLoading}
           emptyMessage="No ready orders"
           onExport={handleExport}
+          onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
           bulkActions={
             isEditable && selectedRows.length > 0 ? (
               (() => {
@@ -239,6 +263,9 @@ export default function ReadySales() {
                     >
                       <UserCheck className="h-4 w-4 mr-2" />
                       Assign Runner
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleExportSelected}>
+                      Export Selected
                     </Button>
                     <Button size="sm" variant="outline" onClick={handleDispute}>
                       Mark Dispute
@@ -286,7 +313,14 @@ export default function ReadySales() {
         open={editorOpen}
         onOpenChange={setEditorOpen}
         order={editingOrder}
-        mode="edit"
+        mode={editingOrder ? 'edit' : 'create'}
+        defaultStatus="READY"
+      />
+
+      <ImportOrdersDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        defaultStatus="READY"
       />
 
       <CancelOrderDialog
