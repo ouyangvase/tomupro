@@ -88,6 +88,7 @@ interface OrderEditorProps {
   onOpenChange: (open: boolean) => void;
   order?: Order | null;
   mode: 'create' | 'edit';
+  defaultStatus?: 'BOOKING' | 'READY';
 }
 
 interface LocalOrderItem {
@@ -166,9 +167,13 @@ function ProductCombobox({ products, value, onSelect }: ProductComboboxProps) {
   );
 }
 
-export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProps) {
+export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = 'BOOKING' }: OrderEditorProps) {
   const { profile, role } = useAuth();
-  const { data: products = [] } = useProducts();
+  const { data: allProducts = [] } = useProducts();
+  // Filter products for salespersons - only show their own products
+  const products = role === 'salesperson' 
+    ? allProducts.filter((p: any) => p.owner_user_id === profile?.id)
+    : allProducts;
   const { data: existingItems = [] } = useOrderItems(order?.id);
   const createOrder = useCreateOrder();
   const updateOrder = useUpdateOrder();
@@ -301,6 +306,7 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
         const result = await createOrder.mutateAsync({
           ...orderData,
           salesperson_id: profile!.id,
+          status: defaultStatus,
         } as any);
         orderId = result.id;
       } else if (order) {

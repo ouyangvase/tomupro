@@ -23,6 +23,7 @@ import { useProducts, useCreateProduct } from '@/hooks/useProducts';
 interface ImportOrdersDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  defaultStatus?: 'BOOKING' | 'READY';
 }
 
 interface ParsedOrderLine {
@@ -61,11 +62,15 @@ interface GroupedOrder {
   }[];
 }
 
-export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogProps) {
-  const { profile } = useAuth();
+export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKING' }: ImportOrdersDialogProps) {
+  const { profile, role } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: products = [] } = useProducts();
+  const { data: allProducts = [] } = useProducts();
+  // Filter products for salespersons - only show their own products
+  const products = role === 'salesperson' 
+    ? allProducts.filter((p: any) => p.owner_user_id === profile?.id)
+    : allProducts;
   const createProduct = useCreateProduct();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -193,9 +198,11 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
           }
 
           // Create order
+          const orderCode = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
           const { data: order, error: orderError } = await supabase
             .from('orders')
-            .insert({
+            .insert([{
+              order_code: orderCode,
               customer_name: group.orderData.customer_name,
               phone: group.orderData.phone,
               address: group.orderData.address,
@@ -206,10 +213,10 @@ export function ImportOrdersDialog({ open, onOpenChange }: ImportOrdersDialogPro
               payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
               salesperson_id: profile.id,
-              status: 'BOOKING',
+              status: defaultStatus,
               total_qty: totalQty,
               total_amount: totalAmount,
-            })
+            }])
             .select()
             .single();
 

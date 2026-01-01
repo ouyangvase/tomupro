@@ -13,7 +13,8 @@ import {
   Users,
   Inbox,
   Receipt,
-  Wrench
+  Wrench,
+  LayoutDashboard
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -41,6 +42,7 @@ interface NavItem {
 }
 
 const salesItems: NavItem[] = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ['admin', 'manager', 'salesperson', 'runner'] },
   { title: "Booking Sales", url: "/sales/booking", icon: ClipboardList, roles: ['admin', 'manager', 'salesperson'] },
   { title: "Ready Sales", url: "/sales/ready", icon: ShoppingCart, roles: ['admin', 'manager', 'salesperson'] },
   { title: "Cancelled Sales", url: "/sales/cancelled", icon: X, roles: ['admin', 'manager', 'salesperson'] },
