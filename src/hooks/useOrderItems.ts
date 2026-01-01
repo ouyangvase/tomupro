@@ -91,8 +91,9 @@ export function useDeleteOrderItem() {
 }
 
 // Calculate totals from order items
+// Note: price IS the line amount (not unit price), so total_amount = SUM(price)
 export function calculateOrderTotals(items: OrderItem[]) {
   const total_qty = items.reduce((sum, item) => sum + (item.qty || 0), 0);
-  const total_amount = items.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+  const total_amount = items.reduce((sum, item) => sum + Number(item.price || 0), 0);
   return { total_qty, total_amount };
 }
