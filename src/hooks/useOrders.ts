@@ -81,9 +81,11 @@ export function useCreateOrder() {
 
   return useMutation({
     mutationFn: async (order: Partial<Order>) => {
+      // Generate a short order_code if not provided
+      const orderCode = (order as any).order_code || `ORD-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
       const { data, error } = await supabase
         .from('orders')
-        .insert(order as any)
+        .insert({ ...order, order_code: orderCode } as any)
         .select()
         .single();
       if (error) throw error;
