@@ -13,9 +13,12 @@ import ReadySales from "./pages/sales/ReadySales";
 import CancelledSales from "./pages/sales/CancelledSales";
 import InventoryBalance from "./pages/InventoryBalance";
 import RunnerInbox from "./pages/runner/RunnerInbox";
+import RunnerInbound from "./pages/runner/RunnerInbound";
+import InboundPending from "./pages/inbound/InboundPending";
 import ReconciliationSP from "./pages/reconciliation/ReconciliationSP";
 import ReconciliationAdmin from "./pages/reconciliation/ReconciliationAdmin";
 import DisputeCenter from "./pages/disputes/DisputeCenter";
+import StockAdjustment from "./pages/inventory/StockAdjustment";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -50,12 +53,13 @@ function AppRoutes() {
       <Route path="/sales/ready" element={<ProtectedRoute><ReadySales /></ProtectedRoute>} />
       <Route path="/sales/cancelled" element={<ProtectedRoute><CancelledSales /></ProtectedRoute>} />
       <Route path="/runner/inbox" element={<ProtectedRoute><RunnerInbox /></ProtectedRoute>} />
-      <Route path="/runner/inbound" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/runner/inbound" element={<ProtectedRoute><RunnerInbound /></ProtectedRoute>} />
       <Route path="/reconciliation/sp" element={<ProtectedRoute><ReconciliationSP /></ProtectedRoute>} />
       <Route path="/reconciliation/admin" element={<ProtectedRoute><ReconciliationAdmin /></ProtectedRoute>} />
       <Route path="/disputes" element={<ProtectedRoute><DisputeCenter /></ProtectedRoute>} />
-      <Route path="/inbound/pending" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/inbound/pending" element={<ProtectedRoute><InboundPending /></ProtectedRoute>} />
       <Route path="/inventory" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
+      <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
       <Route path="/products" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
