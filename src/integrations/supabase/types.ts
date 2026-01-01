@@ -312,6 +312,33 @@ export type Database = {
           },
         ]
       }
+      daily_task_snapshots: {
+        Row: {
+          created_at: string | null
+          id: string
+          metrics: Json
+          owner_user_id: string
+          role: string
+          snapshot_date: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          metrics?: Json
+          owner_user_id: string
+          role: string
+          snapshot_date: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          metrics?: Json
+          owner_user_id?: string
+          role?: string
+          snapshot_date?: string
+        }
+        Relationships: []
+      }
       expected_date_history: {
         Row: {
           changed_at: string
@@ -480,10 +507,14 @@ export type Database = {
       }
       notifications: {
         Row: {
+          body: string | null
           created_at: string
+          entity_type: string | null
           id: string
           is_read: boolean
           message: string
+          priority: string | null
+          recipient_role: string | null
           reference_id: string | null
           reference_type: string | null
           title: string
@@ -491,10 +522,14 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          body?: string | null
           created_at?: string
+          entity_type?: string | null
           id?: string
           is_read?: boolean
           message: string
+          priority?: string | null
+          recipient_role?: string | null
           reference_id?: string | null
           reference_type?: string | null
           title: string
@@ -502,10 +537,14 @@ export type Database = {
           user_id: string
         }
         Update: {
+          body?: string | null
           created_at?: string
+          entity_type?: string | null
           id?: string
           is_read?: boolean
           message?: string
+          priority?: string | null
+          recipient_role?: string | null
           reference_id?: string | null
           reference_type?: string | null
           title?: string
@@ -913,6 +952,33 @@ export type Database = {
           email?: string | null
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      user_notification_settings: {
+        Row: {
+          created_at: string | null
+          digest_time_local: string | null
+          email_enabled: boolean | null
+          in_app_enabled: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          digest_time_local?: string | null
+          email_enabled?: boolean | null
+          in_app_enabled?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          digest_time_local?: string | null
+          email_enabled?: boolean | null
+          in_app_enabled?: boolean | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
