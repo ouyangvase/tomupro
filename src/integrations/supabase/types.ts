@@ -402,6 +402,42 @@ export type Database = {
         }
         Relationships: []
       }
+      group_members: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          member_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          member_user_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          member_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "manager_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_member_user_id_fkey"
+            columns: ["member_user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inbound_items: {
         Row: {
           created_at: string
@@ -448,13 +484,6 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "inbound_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "stock_balance_view"
-            referencedColumns: ["product_id"]
-          },
         ]
       }
       inbound_shipments: {
@@ -500,6 +529,35 @@ export type Database = {
             foreignKeyName: "inbound_shipments_salesperson_id_fkey"
             columns: ["salesperson_id"]
             isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manager_groups: {
+        Row: {
+          created_at: string
+          id: string
+          manager_user_id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          manager_user_id: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          manager_user_id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_groups_manager_user_id_fkey"
+            columns: ["manager_user_id"]
+            isOneToOne: true
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -609,13 +667,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "order_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "stock_balance_view"
-            referencedColumns: ["product_id"]
           },
         ]
       }
@@ -909,13 +960,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "stock_movements_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "stock_balance_view"
-            referencedColumns: ["product_id"]
-          },
-          {
             foreignKeyName: "stock_movements_warehouse_id_fkey"
             columns: ["warehouse_id"]
             isOneToOne: false
@@ -927,6 +971,177 @@ export type Database = {
             columns: ["warehouse_id"]
             isOneToOne: false
             referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfer_items: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          qty: number
+          transfer_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          qty: number
+          transfer_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          qty?: number
+          transfer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_items_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfers: {
+        Row: {
+          created_at: string
+          created_by: string
+          from_owner_id: string
+          from_warehouse_id: string
+          id: string
+          notes: string | null
+          to_owner_id: string
+          to_warehouse_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          from_owner_id: string
+          from_warehouse_id: string
+          id?: string
+          notes?: string | null
+          to_owner_id: string
+          to_warehouse_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          from_owner_id?: string
+          from_warehouse_id?: string
+          id?: string
+          notes?: string | null
+          to_owner_id?: string
+          to_warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_from_owner_id_fkey"
+            columns: ["from_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
+            columns: ["from_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "stock_balance_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
+            columns: ["from_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_owner_id_fkey"
+            columns: ["to_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
+            columns: ["to_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "stock_balance_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
+            columns: ["to_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_visibility_overrides: {
+        Row: {
+          can_view: boolean
+          created_at: string
+          created_by: string
+          id: string
+          owner_user_id: string
+          viewer_user_id: string
+        }
+        Insert: {
+          can_view?: boolean
+          created_at?: string
+          created_by: string
+          id?: string
+          owner_user_id: string
+          viewer_user_id: string
+        }
+        Update: {
+          can_view?: boolean
+          created_at?: string
+          created_by?: string
+          id?: string
+          owner_user_id?: string
+          viewer_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_visibility_overrides_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_visibility_overrides_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_visibility_overrides_viewer_user_id_fkey"
+            columns: ["viewer_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1054,6 +1269,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "warehouses_owner_user_id_fkey"
             columns: ["owner_user_id"]
             isOneToOne: false
@@ -1064,6 +1286,10 @@ export type Database = {
       }
     }
     Functions: {
+      can_view_stock: {
+        Args: { owner_id: string; viewer_id: string }
+        Returns: boolean
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -1089,7 +1315,13 @@ export type Database = {
       claim_method: "TRANSFER" | "CASH" | "OTHER"
       failed_next_step: "RESCHEDULE" | "SALESPERSON_CONTACT"
       inbound_status: "PENDING_SP_ACK" | "ACKNOWLEDGED" | "DISPUTE"
-      movement_type: "INBOUND" | "SALE_DEDUCT" | "ADJUSTMENT" | "RETURN"
+      movement_type:
+        | "INBOUND"
+        | "SALE_DEDUCT"
+        | "ADJUSTMENT"
+        | "RETURN"
+        | "TRANSFER_OUT"
+        | "TRANSFER_IN"
       order_status: "BOOKING" | "READY" | "CANCELLED"
       payment_method: "COD" | "TRANSFER"
       reconciliation_status:
@@ -1247,7 +1479,14 @@ export const Constants = {
       claim_method: ["TRANSFER", "CASH", "OTHER"],
       failed_next_step: ["RESCHEDULE", "SALESPERSON_CONTACT"],
       inbound_status: ["PENDING_SP_ACK", "ACKNOWLEDGED", "DISPUTE"],
-      movement_type: ["INBOUND", "SALE_DEDUCT", "ADJUSTMENT", "RETURN"],
+      movement_type: [
+        "INBOUND",
+        "SALE_DEDUCT",
+        "ADJUSTMENT",
+        "RETURN",
+        "TRANSFER_OUT",
+        "TRANSFER_IN",
+      ],
       order_status: ["BOOKING", "READY", "CANCELLED"],
       payment_method: ["COD", "TRANSFER"],
       reconciliation_status: [
