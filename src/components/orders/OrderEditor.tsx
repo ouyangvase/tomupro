@@ -56,6 +56,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useOrderItems, useCreateOrderItem, useUpdateOrderItem, useDeleteOrderItem, calculateOrderTotals } from '@/hooks/useOrderItems';
 import { useUpdateOrder, useCreateOrder } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
+import { OrderClaimsHistory } from '@/components/orders/OrderClaimsHistory';
 import type { Order, OrderItem } from '@/types/database';
 
 const orderSchema = z.object({
@@ -549,6 +550,14 @@ export function OrderEditor({ open, onOpenChange, order, mode }: OrderEditorProp
                 <span>Total Amount: <strong>${totals.total_amount.toFixed(2)}</strong></span>
               </div>
             </div>
+
+            {/* Claims History - only show in edit mode */}
+            {mode === 'edit' && order && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Claims History</h3>
+                <OrderClaimsHistory orderId={order.id} />
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
