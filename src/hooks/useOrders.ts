@@ -15,12 +15,11 @@ export function useOrders(filters?: OrderFilters) {
   return useQuery({
     queryKey: ['orders', filters],
     queryFn: async () => {
+      // First, get all orders
       let query = supabase
         .from('orders')
         .select(`
           *,
-          salesperson:profiles!orders_salesperson_id_fkey(id, display_name, email),
-          runner:profiles!orders_runner_id_fkey(id, display_name, email),
           order_items(*)
         `)
         .order('created_at', { ascending: false });
@@ -41,9 +40,37 @@ export function useOrders(filters?: OrderFilters) {
         query = query.eq('reconciliation_status', filters.reconciliationStatus);
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as unknown as Order[];
+      const { data: ordersData, error: ordersError } = await query;
+      if (ordersError) throw ordersError;
+
+      // Get unique user IDs (salesperson + runner)
+      const userIds = new Set<string>();
+      ordersData?.forEach(order => {
+        if (order.salesperson_id) userIds.add(order.salesperson_id);
+        if (order.runner_id) userIds.add(order.runner_id);
+      });
+
+      // Fetch user directory for these IDs (accessible to all authenticated users)
+      let usersMap: Record<string, { id: string; display_name: string; email: string | null }> = {};
+      if (userIds.size > 0) {
+        const { data: usersData } = await supabase
+          .from('user_directory')
+          .select('id, display_name, email')
+          .in('id', Array.from(userIds));
+        
+        usersData?.forEach(user => {
+          usersMap[user.id] = user;
+        });
+      }
+
+      // Combine orders with user data
+      const orders = ordersData?.map(order => ({
+        ...order,
+        salesperson: order.salesperson_id ? usersMap[order.salesperson_id] : null,
+        runner: order.runner_id ? usersMap[order.runner_id] : null,
+      }));
+
+      return orders as unknown as Order[];
     },
   });
 }
