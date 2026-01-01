@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
-import { useBindings } from '@/hooks/useBindings';
+import { useSalespersons } from '@/hooks/useUserDirectory';
 import { useCreateInboundShipment, useCreateInboundItem, uploadInboundPhoto } from '@/hooks/useInboundShipments';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
@@ -31,7 +31,7 @@ interface InboundItemDraft {
 export default function RunnerInbound() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { data: bindings } = useBindings({ runnerId: user?.id, active: true });
+  const { data: salespersons = [] } = useSalespersons();
   const createShipment = useCreateInboundShipment();
   const createItem = useCreateInboundItem();
 
@@ -41,9 +41,6 @@ export default function RunnerInbound() {
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<InboundItemDraft[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Get unique salespersons from bindings
-  const salespersons = bindings?.map(b => b.salesperson).filter(Boolean) || [];
 
   const addItem = () => {
     setItems([
@@ -161,12 +158,15 @@ export default function RunnerInbound() {
                   </SelectTrigger>
                   <SelectContent>
                     {salespersons.map((sp) => (
-                      <SelectItem key={sp?.id} value={sp?.id || ''}>
-                        {sp?.display_name}
+                      <SelectItem key={sp.id} value={sp.id}>
+                        {sp.display_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!salespersonId && (
+                  <p className="text-xs text-destructive">Salesperson is required</p>
+                )}
               </div>
 
               <div className="space-y-2">
