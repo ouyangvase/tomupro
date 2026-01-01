@@ -7,7 +7,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { Plus, AlertCircle } from 'lucide-react';
+import { Plus, AlertCircle, Lock } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
@@ -196,21 +201,54 @@ export default function BookingSales() {
           onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
           bulkActions={
             isEditable && selectedRows.length > 0 ? (
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleConvertToReady}>
-                  Convert to Ready
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleDispute}>
-                  Mark Dispute
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="destructive" 
-                  onClick={() => setCancelDialogOpen(true)}
-                >
-                  Cancel
-                </Button>
-              </div>
+              (() => {
+                const selectedOrdersInfo = orders.filter(o => selectedRows.includes(o.id));
+                const hasDeliveredOrders = selectedOrdersInfo.some(o => o.runner_status === 'DELIVERED');
+                const isAdmin = role === 'admin';
+                const canCancel = isAdmin || !hasDeliveredOrders;
+                
+                return (
+                  <div className="flex gap-2 items-center">
+                    <Button size="sm" onClick={handleConvertToReady}>
+                      Convert to Ready
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleDispute}>
+                      Mark Dispute
+                    </Button>
+                    {canCancel ? (
+                      <Button 
+                        size="sm" 
+                        variant="destructive" 
+                        onClick={() => setCancelDialogOpen(true)}
+                      >
+                        Cancel
+                      </Button>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button 
+                              size="sm" 
+                              variant="destructive" 
+                              disabled
+                            >
+                              Cancel
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delivered order is locked. Only admin can modify.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {hasDeliveredOrders && !isAdmin && (
+                      <Badge variant="secondary" className="ml-2">
+                        Selection includes delivered orders
+                      </Badge>
+                    )}
+                  </div>
+                );
+              })()
             ) : undefined
           }
         />
