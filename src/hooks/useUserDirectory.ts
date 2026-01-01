@@ -5,6 +5,7 @@ import type { AppRole } from '@/types/database';
 interface UserDirectoryEntry {
   id: string;
   display_name: string;
+  email: string | null;
   role: AppRole;
   created_at: string;
 }
@@ -15,7 +16,7 @@ export function useUserDirectory(role?: AppRole) {
     queryFn: async () => {
       let query = supabase
         .from('user_directory')
-        .select('*')
+        .select('id, display_name, email, role, created_at')
         .order('display_name', { ascending: true });
       
       if (role) {
