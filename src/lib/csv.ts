@@ -30,7 +30,7 @@ export function exportToCSV<T extends Record<string, unknown>>(
 }
 
 // Header normalization map - accepts various formats for each field
-const HEADER_ALIASES: Record<string, string[]> = {
+export const HEADER_ALIASES: Record<string, string[]> = {
   order_ref: ['order_ref', 'orderref', 'order ref', 'order reference', 'orderreference', 'ref', 'reference'],
   order_date: ['order_date', 'orderdate', 'order date', 'date'],
   customer_name: ['customer_name', 'customername', 'customer name', 'customer', 'name', 'cust_name', 'custname'],
@@ -77,6 +77,26 @@ export function parseCSV(csvText: string): Record<string, string>[] {
   }
 
   return rows;
+}
+
+// Parse CSV without normalizing headers - returns raw headers and rows
+export function parseCSVRaw(csvText: string): { headers: string[]; rows: Record<string, string>[] } {
+  const lines = csvText.split('\n').filter(line => line.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+
+  const headers = parseCSVLine(lines[0]);
+  const rows: Record<string, string>[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] || '';
+    });
+    rows.push(row);
+  }
+
+  return { headers, rows };
 }
 
 function parseCSVLine(line: string): string[] {
