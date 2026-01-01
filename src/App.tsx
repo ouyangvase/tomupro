@@ -22,6 +22,7 @@ import StockAdjustment from "./pages/inventory/StockAdjustment";
 import ReasonsSettings from "./pages/settings/ReasonsSettings";
 import UsersSettings from "./pages/settings/UsersSettings";
 import BindingsSettings from "./pages/settings/BindingsSettings";
+import ProfilePage from "./pages/settings/ProfilePage";
 import ProductsPage from "./pages/products/ProductsPage";
 import NotFound from "./pages/NotFound";
 
@@ -68,6 +69,7 @@ function AppRoutes() {
       <Route path="/settings/reasons" element={<ProtectedRoute><ReasonsSettings /></ProtectedRoute>} />
       <Route path="/settings/users" element={<ProtectedRoute><UsersSettings /></ProtectedRoute>} />
       <Route path="/settings/bindings" element={<ProtectedRoute><BindingsSettings /></ProtectedRoute>} />
+      <Route path="/settings/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>

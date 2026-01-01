@@ -62,6 +62,7 @@ const inventoryItems: NavItem[] = [
 ];
 
 const settingsItems: NavItem[] = [
+  { title: "Profile", url: "/settings/profile", icon: Settings, roles: ['admin', 'manager', 'salesperson', 'runner'] },
   { title: "Bindings", url: "/settings/bindings", icon: Users, roles: ['admin', 'salesperson'] },
   { title: "Users", url: "/settings/users", icon: Users, roles: ['admin', 'manager'] },
   { title: "Reasons", url: "/settings/reasons", icon: Settings, roles: ['admin'] },

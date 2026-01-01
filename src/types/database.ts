@@ -17,7 +17,10 @@ export interface Profile {
   role: AppRole;
   display_name: string;
   email: string;
+  is_active: boolean;
+  avatar_url: string | null;
   created_at: string;
+  updated_at: string | null;
 }
 
 export interface Warehouse {

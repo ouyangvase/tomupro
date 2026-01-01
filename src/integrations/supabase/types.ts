@@ -667,25 +667,34 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           created_at: string
           display_name: string
           email: string
           id: string
+          is_active: boolean
           role: Database["public"]["Enums"]["app_role"]
+          updated_at: string | null
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           display_name: string
           email: string
           id: string
+          is_active?: boolean
           role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           display_name?: string
           email?: string
           id?: string
+          is_active?: boolean
           role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
         }
         Relationships: []
       }
