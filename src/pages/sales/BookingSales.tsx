@@ -11,7 +11,7 @@ import { Plus, AlertCircle } from 'lucide-react';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
-import { exportToCSV } from '@/lib/csv';
+import { exportOrderLines } from '@/lib/csv';
 import { calculateReminderState, getReminderBadgeProps } from '@/lib/reminders';
 import type { Order } from '@/types/database';
 
@@ -157,21 +157,7 @@ export default function BookingSales() {
   };
 
   const handleExport = () => {
-    const exportColumns = [
-      { key: 'order_date', header: 'Order Date' },
-      { key: 'customer_name', header: 'Customer Name' },
-      { key: 'phone', header: 'Phone' },
-      { key: 'address', header: 'Address' },
-      { key: 'area', header: 'Area' },
-      { key: 'channel', header: 'Channel' },
-      { key: 'expected_pickup_date', header: 'Expected Pickup Date' },
-      { key: 'total_qty', header: 'Total Qty' },
-      { key: 'total_amount', header: 'Total Amount' },
-      { key: 'payment_method', header: 'Payment Method' },
-      { key: 'notes', header: 'Notes' },
-      { key: 'status', header: 'Status' },
-    ];
-    exportToCSV(orders as any, exportColumns, 'booking_orders');
+    exportOrderLines(orders, 'booking_orders');
   };
 
   const handleCreateNew = () => {
