@@ -8,6 +8,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
+import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
+import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { exportOrderLines } from '@/lib/csv';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -39,11 +41,19 @@ const runnerStatusOptions = [
   { label: 'Failed Delivery', value: 'FAILED_DELIVERY' },
 ];
 
+const reconciliationStatusOptions = [
+  { label: 'Not Claimed', value: 'NOT_CLAIMED' },
+  { label: 'Admin Pending', value: 'ADMIN_ACK_PENDING' },
+  { label: 'Claimed', value: 'CLAIMED' },
+  { label: 'Dispute', value: 'DISPUTE' },
+];
+
 export default function RunnerInbox() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
+  const { data: userDirectory = [] } = useUserDirectory();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -52,6 +62,7 @@ export default function RunnerInbox() {
   const [processingDelivery, setProcessingDelivery] = useState<string | null>(null);
   
   const bulkUpdateOrders = useBulkUpdateOrders();
+  const submitBulkClaim = useSubmitBulkClaim();
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {
@@ -60,11 +71,36 @@ export default function RunnerInbox() {
     return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
   }, [orders]);
 
+  // Salesperson filter options
+  const salespersonOptions = useMemo(() => {
+    const salespersons = userDirectory.filter(u => u.role === 'salesperson');
+    return salespersons.map(sp => ({
+      label: `${sp.display_name} (${sp.email})`,
+      value: sp.id,
+    }));
+  }, [userDirectory]);
+
+  // Check if selected orders can be bulk claimed
+  const canBulkClaim = useMemo(() => {
+    if (selectedRows.length === 0) return false;
+    return selectedRows.every(id => {
+      const order = orders?.find(o => o.id === id);
+      return order && 
+        order.runner_status === 'DELIVERED' && 
+        order.reconciliation_status === 'NOT_CLAIMED';
+    });
+  }, [selectedRows, orders]);
+
   const handleBulkTake = () => {
     bulkUpdateOrders.mutate({
       ids: selectedRows,
       updates: { runner_status: 'TAKEN' },
     });
+    setSelectedRows([]);
+  };
+
+  const handleBulkClaim = async () => {
+    await submitBulkClaim.mutateAsync({ orderIds: selectedRows });
     setSelectedRows([]);
   };
 
@@ -130,7 +166,6 @@ export default function RunnerInbox() {
           title: 'Delivery Blocked', 
           description: data.error || 'Could not complete delivery',
         });
-        // Refresh to show updated dispute status
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       }
     } catch (error) {
@@ -209,15 +244,18 @@ export default function RunnerInbox() {
       key: 'reconciliation_status',
       header: 'Reconciliation',
       filterable: true,
+      filterOptions: reconciliationStatusOptions,
       render: (order) => (
         <Badge className={reconciliationColors[order.reconciliation_status]}>
-          {order.reconciliation_status.replace('_', ' ')}
+          {order.reconciliation_status.replace(/_/g, ' ')}
         </Badge>
       ),
     },
     {
-      key: 'salesperson',
+      key: 'salesperson_id',
       header: 'Salesperson',
+      filterable: true,
+      filterOptions: salespersonOptions,
       render: (order) => order.salesperson?.display_name || '-',
     },
     {
@@ -309,10 +347,27 @@ export default function RunnerInbox() {
           onExport={handleExport}
           bulkActions={
             selectedRows.length > 0 ? (
-              <Button size="sm" onClick={handleBulkTake}>
-                <Truck className="h-4 w-4 mr-2" />
-                Take Jobs ({selectedRows.length})
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleBulkTake}>
+                  <Truck className="h-4 w-4 mr-2" />
+                  Take Jobs ({selectedRows.length})
+                </Button>
+                {canBulkClaim && (
+                  <Button 
+                    size="sm" 
+                    variant="secondary"
+                    onClick={handleBulkClaim}
+                    disabled={submitBulkClaim.isPending}
+                  >
+                    {submitBulkClaim.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <DollarSign className="h-4 w-4 mr-2" />
+                    )}
+                    Claim Selected ({selectedRows.length})
+                  </Button>
+                )}
+              </div>
             ) : undefined
           }
         />

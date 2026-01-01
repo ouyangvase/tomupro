@@ -180,6 +180,90 @@ export type Database = {
         }
         Relationships: []
       }
+      claim_batch_items: {
+        Row: {
+          batch_id: string
+          created_at: string
+          id: string
+          order_id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          id?: string
+          order_id: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          id?: string
+          order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claim_batch_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "claim_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claim_batch_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      claim_batches: {
+        Row: {
+          admin_ack_at: string | null
+          admin_ack_by: string | null
+          id: string
+          note: string | null
+          runner_id: string
+          status: Database["public"]["Enums"]["claim_batch_status"]
+          submitted_at: string
+          total_amount: number
+        }
+        Insert: {
+          admin_ack_at?: string | null
+          admin_ack_by?: string | null
+          id?: string
+          note?: string | null
+          runner_id: string
+          status?: Database["public"]["Enums"]["claim_batch_status"]
+          submitted_at?: string
+          total_amount?: number
+        }
+        Update: {
+          admin_ack_at?: string | null
+          admin_ack_by?: string | null
+          id?: string
+          note?: string | null
+          runner_id?: string
+          status?: Database["public"]["Enums"]["claim_batch_status"]
+          submitted_at?: string
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claim_batches_admin_ack_by_fkey"
+            columns: ["admin_ack_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claim_batches_runner_id_fkey"
+            columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       claims: {
         Row: {
           amount: number
@@ -935,6 +1019,7 @@ export type Database = {
         | "delivery_photo"
         | "inbound_photo"
         | "other"
+      claim_batch_status: "ADMIN_ACK_PENDING" | "CLAIMED"
       claim_method: "TRANSFER" | "CASH" | "OTHER"
       failed_next_step: "RESCHEDULE" | "SALESPERSON_CONTACT"
       inbound_status: "PENDING_SP_ACK" | "ACKNOWLEDGED" | "DISPUTE"
@@ -1092,6 +1177,7 @@ export const Constants = {
         "inbound_photo",
         "other",
       ],
+      claim_batch_status: ["ADMIN_ACK_PENDING", "CLAIMED"],
       claim_method: ["TRANSFER", "CASH", "OTHER"],
       failed_next_step: ["RESCHEDULE", "SALESPERSON_CONTACT"],
       inbound_status: ["PENDING_SP_ACK", "ACKNOWLEDGED", "DISPUTE"],

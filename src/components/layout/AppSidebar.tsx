@@ -49,12 +49,14 @@ const salesItems: NavItem[] = [
 const runnerItems: NavItem[] = [
   { title: "Runner Inbox", url: "/runner/inbox", icon: Inbox, roles: ['admin', 'runner'] },
   { title: "Runner Inbound", url: "/runner/inbound", icon: Package, roles: ['admin', 'runner'] },
+  { title: "My Claim Batches", url: "/runner/claims", icon: Receipt, roles: ['runner'] },
 ];
 
 const reconciliationItems: NavItem[] = [
   { title: "Claims History", url: "/claims", icon: Receipt, roles: ['admin', 'salesperson'] },
   { title: "SP Reconciliation", url: "/reconciliation/sp", icon: FileCheck, roles: ['admin', 'salesperson'] },
   { title: "Admin Reconciliation", url: "/reconciliation/admin", icon: PackageCheck, roles: ['admin'] },
+  { title: "Claim Batches", url: "/admin/claim-batches", icon: Receipt, roles: ['admin'] },
   { title: "Dispute Center", url: "/disputes", icon: AlertTriangle, roles: ['admin', 'manager'] },
 ];
 

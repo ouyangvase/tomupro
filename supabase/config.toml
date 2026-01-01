@@ -2,3 +2,6 @@ project_id = "fitonksgqfxnpljiylkn"
 
 [functions.process-delivery]
 verify_jwt = false
+
+[functions.submit-bulk-claim]
+verify_jwt = false
