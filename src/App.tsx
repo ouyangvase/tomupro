@@ -9,6 +9,8 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import BookingSales from "./pages/sales/BookingSales";
+import ReadySales from "./pages/sales/ReadySales";
+import CancelledSales from "./pages/sales/CancelledSales";
 import InventoryBalance from "./pages/InventoryBalance";
 import NotFound from "./pages/NotFound";
 
@@ -41,8 +43,8 @@ function AppRoutes() {
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/sales/booking" element={<ProtectedRoute><BookingSales /></ProtectedRoute>} />
-      <Route path="/sales/ready" element={<ProtectedRoute><BookingSales /></ProtectedRoute>} />
-      <Route path="/sales/cancelled" element={<ProtectedRoute><BookingSales /></ProtectedRoute>} />
+      <Route path="/sales/ready" element={<ProtectedRoute><ReadySales /></ProtectedRoute>} />
+      <Route path="/sales/cancelled" element={<ProtectedRoute><CancelledSales /></ProtectedRoute>} />
       <Route path="/runner/inbox" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/runner/inbound" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/reconciliation/sp" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

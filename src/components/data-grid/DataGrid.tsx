@@ -48,7 +48,7 @@ export interface Column<T> {
   editOptions?: { label: string; value: string }[];
 }
 
-interface DataGridProps<T> {
+interface DataGridProps<T extends object> {
   data: T[];
   columns: Column<T>[];
   keyField: keyof T;
@@ -66,7 +66,7 @@ interface DataGridProps<T> {
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export function DataGrid<T extends Record<string, unknown>>({
+export function DataGrid<T extends object>({
   data,
   columns,
   keyField,
