@@ -15,7 +15,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
-import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2 } from 'lucide-react';
+import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2, MessageCircle } from 'lucide-react';
+import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const runnerStatusColors: Record<RunnerStatus, string> = {
   UNASSIGNED: 'bg-muted text-muted-foreground',
@@ -210,6 +212,37 @@ export default function RunnerInbox() {
       header: 'Order Ref',
       sortable: true,
       render: (order) => <span className="font-mono text-sm">{order.order_code}</span>,
+    },
+    {
+      key: 'customer_name',
+      header: 'Customer',
+      sortable: true,
+      render: (order) => order.customer_name || '-',
+    },
+    {
+      key: 'phone',
+      header: 'Phone',
+      render: (order) => (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href={generateWhatsAppUrl(order)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 text-green-600 hover:text-green-700 hover:underline font-medium"
+              >
+                <MessageCircle className="h-4 w-4" />
+                {formatPhoneDisplay(order.phone)}
+              </a>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Chat customer on WhatsApp</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ),
     },
     {
       key: 'area',
