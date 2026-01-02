@@ -126,7 +126,7 @@ export default function Auth() {
           <div className="mx-auto h-12 w-12 rounded-xl bg-primary flex items-center justify-center mb-4">
             <Truck className="h-7 w-7 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl">Ecom Ops</CardTitle>
+          <CardTitle className="text-2xl">TOMU PRO</CardTitle>
           <CardDescription>
             Orders + Runner + Reconciliation + Inventory
           </CardDescription>
