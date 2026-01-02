@@ -300,21 +300,6 @@ export default function RunnerInbox() {
           {order.runner_status === 'FAILED_DELIVERY' && (
             <FailedDeliveryInfo order={order} compact />
           )}
-          {order.runner_status === 'FAILED_DELIVERY' && order.next_delivery_date && order.failed_next_step === 'RESCHEDULE' && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
-                    <Calendar className="h-3 w-3 mr-1" />
-                    {format(parseISO(order.next_delivery_date), 'MMM dd')}
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Next delivery scheduled</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
         </div>
       ),
     },
