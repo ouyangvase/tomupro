@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Truck } from 'lucide-react';
+import tomuLogo from '@/assets/tomu-logo.png';
 import type { AppRole } from '@/types/database';
 import { z } from 'zod';
 
@@ -123,9 +123,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto h-12 w-12 rounded-xl bg-primary flex items-center justify-center mb-4">
-            <Truck className="h-7 w-7 text-primary-foreground" />
-          </div>
+          <img src={tomuLogo} alt="TOMU PRO Logo" className="mx-auto h-20 w-20 object-contain mb-4" />
           <CardTitle className="text-2xl">TOMU PRO</CardTitle>
           <CardDescription>
             Orders + Runner + Reconciliation + Inventory
