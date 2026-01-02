@@ -1,4 +1,5 @@
-import { Package, ShoppingCart, Truck, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard } from "lucide-react";
+import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
@@ -153,9 +154,7 @@ export function AppSidebar() {
   return <Sidebar className={cn("border-r bg-card", collapsed ? "w-16" : "w-64")}>
       <SidebarHeader className="p-4 border-b">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <Truck className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <img src={tomuLogo} alt="TOMU Logo" className="h-8 w-8 object-contain" />
           {!collapsed && <div>
               <h2 className="font-bold text-lg">TOMU</h2>
               <p className="text-xs text-muted-foreground capitalize">{userRole}</p>
