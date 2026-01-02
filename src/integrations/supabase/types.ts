@@ -687,6 +687,7 @@ export type Database = {
             | Database["public"]["Enums"]["failed_next_step"]
             | null
           failed_reason: string | null
+          failed_remark: string | null
           fulfillment_warehouse_id: string | null
           id: string
           next_delivery_date: string | null
@@ -721,6 +722,7 @@ export type Database = {
             | Database["public"]["Enums"]["failed_next_step"]
             | null
           failed_reason?: string | null
+          failed_remark?: string | null
           fulfillment_warehouse_id?: string | null
           id?: string
           next_delivery_date?: string | null
@@ -755,6 +757,7 @@ export type Database = {
             | Database["public"]["Enums"]["failed_next_step"]
             | null
           failed_reason?: string | null
+          failed_remark?: string | null
           fulfillment_warehouse_id?: string | null
           id?: string
           next_delivery_date?: string | null

@@ -32,6 +32,7 @@ import {
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
+import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
 import type { Order } from '@/types/database';
@@ -132,7 +133,7 @@ export default function ReadySales() {
     { 
       key: 'runner_status', 
       header: 'Delivery', 
-      width: '120px',
+      width: '180px',
       filterable: true,
       filterOptions: [
         { label: 'Unassigned', value: 'UNASSIGNED' },
@@ -141,7 +142,14 @@ export default function ReadySales() {
         { label: 'Delivered', value: 'DELIVERED' },
         { label: 'Failed', value: 'FAILED_DELIVERY' },
       ],
-      render: (o) => <StatusBadge status={o.runner_status} type="runner" /> 
+      render: (o) => (
+        <div className="flex items-center gap-2">
+          <StatusBadge status={o.runner_status} type="runner" />
+          {o.runner_status === 'FAILED_DELIVERY' && (
+            <FailedDeliveryInfo order={o} compact />
+          )}
+        </div>
+      )
     },
     { 
       key: 'reconciliation_status', 
