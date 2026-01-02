@@ -140,8 +140,9 @@ export function downloadTemplate(type: 'orders' | 'order_lines') {
 
 // Export order lines (one row per order item) - with extended fields for salesperson/runner
 export interface OrderLineExport {
+  order_ref: string;
   order_id: string;
-  created_at: string;
+  order_date: string;
   customer_name: string;
   phone: string;
   address: string;
@@ -155,10 +156,14 @@ export interface OrderLineExport {
   status: string;
   runner_status: string;
   reconciliation_status: string;
+  failed_reason: string;
+  failed_remark: string;
+  next_delivery_date: string;
   sku_code: string;
   sku_name: string;
   qty: number;
   amount: number;
+  total_amount: number;
 }
 
 export function exportOrderLines(
@@ -173,8 +178,9 @@ export function exportOrderLines(
     if (orderItems.length === 0) {
       // Export order with empty item line
       lines.push({
+        order_ref: order.order_code || '',
         order_id: order.id,
-        created_at: order.created_at || '',
+        order_date: order.order_date || '',
         customer_name: order.customer_name || '',
         phone: order.phone || '',
         address: order.address || '',
@@ -188,17 +194,22 @@ export function exportOrderLines(
         status: order.status || '',
         runner_status: order.runner_status || '',
         reconciliation_status: order.reconciliation_status || '',
+        failed_reason: order.failed_reason || '',
+        failed_remark: order.failed_remark || '',
+        next_delivery_date: order.next_delivery_date || '',
         sku_code: '',
         sku_name: '',
         qty: 0,
         amount: 0,
+        total_amount: Number(order.total_amount) || 0,
       });
     } else {
       // Export one line per order item
       for (const item of orderItems) {
         lines.push({
+          order_ref: order.order_code || '',
           order_id: order.id,
-          created_at: order.created_at || '',
+          order_date: order.order_date || '',
           customer_name: order.customer_name || '',
           phone: order.phone || '',
           address: order.address || '',
@@ -212,18 +223,23 @@ export function exportOrderLines(
           status: order.status || '',
           runner_status: order.runner_status || '',
           reconciliation_status: order.reconciliation_status || '',
+          failed_reason: order.failed_reason || '',
+          failed_remark: order.failed_remark || '',
+          next_delivery_date: order.next_delivery_date || '',
           sku_code: item.product?.sku_code || '',
           sku_name: item.product?.sku_name || item.sku_label || '',
           qty: item.qty || 0,
           amount: Number(item.line_total) || 0,
+          total_amount: Number(order.total_amount) || 0,
         });
       }
     }
   }
 
   const columns = [
+    { key: 'order_ref', header: 'order_ref' },
     { key: 'order_id', header: 'order_id' },
-    { key: 'created_at', header: 'created_at' },
+    { key: 'order_date', header: 'order_date' },
     { key: 'customer_name', header: 'customer_name' },
     { key: 'phone', header: 'phone' },
     { key: 'address', header: 'address' },
@@ -237,10 +253,14 @@ export function exportOrderLines(
     { key: 'status', header: 'status' },
     { key: 'runner_status', header: 'runner_status' },
     { key: 'reconciliation_status', header: 'reconciliation_status' },
+    { key: 'failed_reason', header: 'failed_reason' },
+    { key: 'failed_remark', header: 'failed_remark' },
+    { key: 'next_delivery_date', header: 'next_delivery_date' },
     { key: 'sku_code', header: 'sku_code' },
     { key: 'sku_name', header: 'sku_name' },
     { key: 'qty', header: 'qty' },
     { key: 'amount', header: 'amount' },
+    { key: 'total_amount', header: 'total_amount' },
   ];
 
   exportToCSV(lines as any, columns, filename);
