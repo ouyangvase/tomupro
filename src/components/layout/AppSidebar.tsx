@@ -38,7 +38,12 @@ const runnerItems: NavItem[] = [{
   title: "Runner Inbox",
   url: "/runner/inbox",
   icon: Inbox,
-  roles: ['admin', 'runner']
+  roles: ['runner']
+}, {
+  title: "Runner Inbox (All)",
+  url: "/admin/runner-inbox",
+  icon: Inbox,
+  roles: ['admin']
 }, {
   title: "Runner Inbound",
   url: "/runner/inbound",
@@ -66,8 +71,13 @@ const reconciliationItems: NavItem[] = [{
   icon: PackageCheck,
   roles: ['admin']
 }, {
-  title: "Claim Batches",
+  title: "Claim Batches (Pending)",
   url: "/admin/claim-batches",
+  icon: Receipt,
+  roles: ['admin']
+}, {
+  title: "Claim Batches History",
+  url: "/admin/claim-batches-history",
   icon: Receipt,
   roles: ['admin']
 }, {
