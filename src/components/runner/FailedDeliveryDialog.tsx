@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { useReasons } from '@/hooks/useReasons';
 import { useUpdateOrder } from '@/hooks/useOrders';
 import { logAudit } from '@/hooks/useAuditLogs';
@@ -29,6 +30,7 @@ interface FailedDeliveryDialogProps {
 
 export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDeliveryDialogProps) {
   const [failedReason, setFailedReason] = useState('');
+  const [failedRemark, setFailedRemark] = useState('');
   const [failedNextStep, setFailedNextStep] = useState<FailedNextStep>('SALESPERSON_CONTACT');
   const [nextDeliveryDate, setNextDeliveryDate] = useState('');
   const updateOrder = useUpdateOrder();
@@ -36,7 +38,7 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
   const { data: failedReasons } = useReasons('FAILED_DELIVERY', true);
 
   const handleSubmit = async () => {
-    if (!order || !failedReason) return;
+    if (!order || !failedReason || !failedRemark.trim()) return;
 
     const beforeStatus = order.runner_status;
 
@@ -44,6 +46,7 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
       id: order.id,
       runner_status: 'FAILED_DELIVERY',
       failed_reason: failedReason,
+      failed_remark: failedRemark.trim(),
       failed_next_step: failedNextStep,
       next_delivery_date: failedNextStep === 'RESCHEDULE' ? nextDeliveryDate : null,
     });
@@ -54,13 +57,30 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
       entity_id: order.id,
       action: 'DELIVERY_FAILED',
       before_json: { runner_status: beforeStatus },
-      after_json: { runner_status: 'FAILED_DELIVERY', failed_reason: failedReason, failed_next_step: failedNextStep },
+      after_json: { 
+        runner_status: 'FAILED_DELIVERY', 
+        failed_reason: failedReason, 
+        failed_remark: failedRemark.trim(),
+        failed_next_step: failedNextStep,
+        next_delivery_date: failedNextStep === 'RESCHEDULE' ? nextDeliveryDate : null,
+      },
     });
 
-    // TODO: Create notification for salesperson
+    // Create notification for salesperson
+    const { createNotification } = await import('@/lib/notifications');
+    await createNotification({
+      recipientUserId: order.salesperson_id,
+      type: 'FAILED_DELIVERY',
+      title: 'Delivery Failed',
+      message: `Failed delivery for ${order.customer_name}. Reason: ${failedReason}. ${failedNextStep === 'RESCHEDULE' && nextDeliveryDate ? `Next delivery: ${nextDeliveryDate}` : 'Not rescheduled.'}`,
+      entityType: 'ORDER',
+      entityId: order.id,
+      priority: 'HIGH',
+    });
 
     // Reset and close
     setFailedReason('');
+    setFailedRemark('');
     setFailedNextStep('SALESPERSON_CONTACT');
     setNextDeliveryDate('');
     onOpenChange(false);
@@ -100,6 +120,17 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="failedRemark">Your Remark / Notes <span className="text-destructive">*</span></Label>
+            <Textarea
+              id="failedRemark"
+              placeholder="Describe what happened during the delivery attempt..."
+              value={failedRemark}
+              onChange={(e) => setFailedRemark(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="nextStep">Next Step</Label>
             <Select value={failedNextStep} onValueChange={(v) => setFailedNextStep(v as FailedNextStep)}>
               <SelectTrigger>
@@ -132,7 +163,7 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
           <Button
             variant="destructive"
             onClick={handleSubmit}
-            disabled={!failedReason || (failedNextStep === 'RESCHEDULE' && !nextDeliveryDate) || updateOrder.isPending}
+            disabled={!failedReason || !failedRemark.trim() || (failedNextStep === 'RESCHEDULE' && !nextDeliveryDate) || updateOrder.isPending}
           >
             {updateOrder.isPending ? 'Saving...' : 'Mark as Failed'}
           </Button>

@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
 import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle } from 'lucide-react';
+import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import {
   Sheet,
   SheetContent,
@@ -386,6 +387,12 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
           <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md flex items-center gap-2 text-sm text-destructive">
             <Lock className="h-4 w-4 flex-shrink-0" />
             <span>This order has been delivered. Contact an admin to make changes.</span>
+          </div>
+        )}
+
+        {order && order.runner_status === 'FAILED_DELIVERY' && (
+          <div className="mt-4">
+            <FailedDeliveryInfo order={order} />
           </div>
         )}
 

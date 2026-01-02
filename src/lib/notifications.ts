@@ -4,6 +4,7 @@ type NotificationType =
   | 'BOOKING_DUE' 
   | 'RUNNER_ASSIGNED' 
   | 'DELIVERED' 
+  | 'FAILED_DELIVERY'
   | 'CLAIM_SUBMITTED' 
   | 'CLAIM_ACKED' 
   | 'DISPUTE' 

@@ -5,6 +5,18 @@ export type PaymentMethod = 'COD' | 'TRANSFER';
 export type OrderStatus = 'BOOKING' | 'READY' | 'CANCELLED';
 export type RunnerStatus = 'UNASSIGNED' | 'ASSIGNED' | 'TAKEN' | 'DELIVERED' | 'FAILED_DELIVERY';
 export type FailedNextStep = 'RESCHEDULE' | 'SALESPERSON_CONTACT';
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id: string | null;
+  sku_label: string | null;
+  qty: number;
+  price: number;
+  line_total: number;
+  notes: string | null;
+  created_at: string;
+}
 export type ReconciliationStatus = 'NOT_CLAIMED' | 'CLAIMED' | 'SP_ACK_PENDING' | 'ADMIN_ACK_PENDING' | 'SETTLED' | 'DISPUTE';
 export type ClaimMethod = 'TRANSFER' | 'CASH' | 'OTHER';
 export type InboundStatus = 'PENDING_SP_ACK' | 'ACKNOWLEDGED' | 'DISPUTE';
@@ -63,6 +75,7 @@ export interface Order {
   total_amount: number;
   runner_status: RunnerStatus;
   failed_reason: string | null;
+  failed_remark: string | null;
   failed_next_step: FailedNextStep | null;
   next_delivery_date: string | null;
   reconciliation_status: ReconciliationStatus;
