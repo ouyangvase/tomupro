@@ -37,8 +37,10 @@ export interface Product {
   id: string;
   sku_code: string | null;
   sku_name: string;
+  owner_user_id: string;
   created_by: string;
   created_at: string;
+  updated_at: string | null;
   is_active: boolean;
 }
 

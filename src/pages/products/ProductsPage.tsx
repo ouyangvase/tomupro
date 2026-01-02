@@ -75,6 +75,7 @@ export default function ProductsPage() {
         sku_name: formData.sku_name,
         sku_code: formData.sku_code || null,
         created_by: profile!.id,
+        owner_user_id: profile!.id,
       });
     }
     setDialogOpen(false);
