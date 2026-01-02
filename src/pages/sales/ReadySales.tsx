@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useOrders, useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useBindings } from '@/hooks/useBindings';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -33,6 +34,7 @@ import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
+import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
 import type { Order } from '@/types/database';
@@ -40,6 +42,7 @@ import type { Order } from '@/types/database';
 export default function ReadySales() {
   const { profile, role } = useAuth();
   const { toast } = useToast();
+  const { data: userDirectory = [] } = useUserDirectory();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedRunner, setSelectedRunner] = useState<string>('');
@@ -47,11 +50,32 @@ export default function ReadySales() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   
   const { data: orders = [], isLoading } = useOrders({ 
     status: 'READY',
     salespersonId: role === 'salesperson' ? profile?.id : undefined 
   });
+
+  // Apply panel filters to orders
+  const filteredOrders = useMemo(() => {
+    return applyOrderFilters(orders, panelFilters);
+  }, [orders, panelFilters]);
+
+  // Extract unique areas for filter dropdown
+  const areaOptions = useMemo(() => {
+    const uniqueAreas = [...new Set(orders.map(o => o.area).filter(Boolean))];
+    return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
+  }, [orders]);
+
+  // Salesperson filter options (for admin/manager)
+  const salespersonOptions = useMemo(() => {
+    const salespersons = userDirectory.filter(u => u.role === 'salesperson');
+    return salespersons.map(sp => ({
+      label: sp.display_name,
+      value: sp.id,
+    }));
+  }, [userDirectory]);
   
   // Determine which salesperson to use for bindings lookup
   // For admin/manager, use the first selected order's salesperson
@@ -248,8 +272,19 @@ export default function ReadySales() {
           )}
         </div>
 
+        <OrderFiltersPanel
+          filters={panelFilters}
+          onFiltersChange={setPanelFilters}
+          areaOptions={areaOptions}
+          salespersonOptions={salespersonOptions}
+          showSalespersonFilter={role === 'admin' || role === 'manager'}
+          showOrderStatus={false}
+          showRunnerStatus={true}
+          showReconciliationStatus={true}
+        />
+
         <DataGrid
-          data={orders}
+          data={filteredOrders}
           columns={columns}
           keyField="id"
           selectable={isEditable}

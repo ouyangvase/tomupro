@@ -8,6 +8,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
+import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
+import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { exportSelectedOrderLines } from '@/lib/csv';
@@ -15,9 +17,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
-import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2, MessageCircle } from 'lucide-react';
+import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2, MessageCircle, Calendar } from 'lucide-react';
 import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { format, parseISO } from 'date-fns';
 
 const runnerStatusColors: Record<RunnerStatus, string> = {
   UNASSIGNED: 'bg-muted text-muted-foreground',
@@ -62,9 +65,16 @@ export default function RunnerInbox() {
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
   const [processingDelivery, setProcessingDelivery] = useState<string | null>(null);
+  const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   
   const bulkUpdateOrders = useBulkUpdateOrders();
   const submitBulkClaim = useSubmitBulkClaim();
+
+  // Apply panel filters to orders
+  const filteredOrders = useMemo(() => {
+    if (!orders) return [];
+    return applyOrderFilters(orders, panelFilters);
+  }, [orders, panelFilters]);
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {
@@ -283,9 +293,29 @@ export default function RunnerInbox() {
       filterable: true,
       filterOptions: runnerStatusOptions,
       render: (order) => (
-        <Badge className={runnerStatusColors[order.runner_status]}>
-          {order.runner_status.replace('_', ' ')}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className={runnerStatusColors[order.runner_status]}>
+            {order.runner_status.replace('_', ' ')}
+          </Badge>
+          {order.runner_status === 'FAILED_DELIVERY' && (
+            <FailedDeliveryInfo order={order} compact />
+          )}
+          {order.runner_status === 'FAILED_DELIVERY' && order.next_delivery_date && order.failed_next_step === 'RESCHEDULE' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
+                    <Calendar className="h-3 w-3 mr-1" />
+                    {format(parseISO(order.next_delivery_date), 'MMM dd')}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Next delivery scheduled</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       ),
     },
     {
@@ -384,8 +414,19 @@ export default function RunnerInbox() {
           </div>
         </div>
 
+        <OrderFiltersPanel
+          filters={panelFilters}
+          onFiltersChange={setPanelFilters}
+          areaOptions={areaOptions}
+          salespersonOptions={salespersonOptions}
+          showSalespersonFilter={true}
+          showOrderStatus={false}
+          showRunnerStatus={true}
+          showReconciliationStatus={true}
+        />
+
         <DataGrid
-          data={orders || []}
+          data={filteredOrders}
           columns={columns}
           loading={isLoading}
           keyField="id"
