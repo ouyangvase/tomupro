@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle } from 'lucide-react';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { RunnerReviewInfo } from '@/components/orders/RunnerReviewInfo';
+import { RescheduleHistorySection } from '@/components/orders/RescheduleHistorySection';
 import {
   Sheet,
   SheetContent,
@@ -401,6 +402,13 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         {order && (
           <div className="mt-4">
             <RunnerReviewInfo order={order} />
+          </div>
+        )}
+
+        {/* Reschedule History */}
+        {order && (
+          <div className="mt-4">
+            <RescheduleHistorySection orderId={order.id} currentCycleNo={order.reschedule_cycle_no} />
           </div>
         )}
 

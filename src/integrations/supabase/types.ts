@@ -1365,6 +1365,70 @@ export type Database = {
           },
         ]
       }
+      reschedule_history: {
+        Row: {
+          comment: string | null
+          created_at: string
+          cycle_no: number
+          from_status: string | null
+          id: string
+          next_delivery_date: string | null
+          order_id: string
+          reason_id: string | null
+          rescheduled_at: string
+          rescheduled_by: string | null
+          to_status: string | null
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          cycle_no?: number
+          from_status?: string | null
+          id?: string
+          next_delivery_date?: string | null
+          order_id: string
+          reason_id?: string | null
+          rescheduled_at?: string
+          rescheduled_by?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          cycle_no?: number
+          from_status?: string | null
+          id?: string
+          next_delivery_date?: string | null
+          order_id?: string
+          reason_id?: string | null
+          rescheduled_at?: string
+          rescheduled_by?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reschedule_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reschedule_history_reason_id_fkey"
+            columns: ["reason_id"]
+            isOneToOne: false
+            referencedRelation: "reasons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reschedule_history_rescheduled_by_fkey"
+            columns: ["rescheduled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       runner_drivers: {
         Row: {
           created_at: string

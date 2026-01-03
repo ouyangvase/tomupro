@@ -33,6 +33,8 @@ interface Order {
   runner_status: string;
   runner_accept_status: string | null;
   driver?: { display_name: string } | null;
+  reschedule_cycle_no?: number;
+  operational_status?: string;
 }
 
 interface RunnerReviewModalProps {
@@ -96,6 +98,8 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
       actionType: actionType || undefined,
       actionDueDate: actionDueDate ? format(actionDueDate, 'yyyy-MM-dd') : undefined,
       salespersonActionRequired: shouldNotifySalesperson,
+      currentRescheduleCycleNo: order.reschedule_cycle_no || 0,
+      currentOperationalStatus: order.operational_status || order.driver_status || 'UNKNOWN',
     });
 
     handleClose();

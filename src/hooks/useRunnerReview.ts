@@ -11,6 +11,8 @@ interface ReviewParams {
   actionType?: string;
   actionDueDate?: string;
   salespersonActionRequired?: boolean;
+  currentRescheduleCycleNo?: number;
+  currentOperationalStatus?: string;
 }
 
 export function useRunnerReviewOrder() {
@@ -40,11 +42,20 @@ export function useRunnerReviewOrder() {
 
       // Determine runner_status based on outcome
       let runnerStatus: string | undefined;
+      let operationalStatus: string | undefined;
       if (params.outcome === 'CONFIRM_DELIVERED') {
         runnerStatus = 'DELIVERED';
+        operationalStatus = 'DELIVERED_FINAL';
       } else if (params.outcome === 'CONFIRM_FAILED') {
         runnerStatus = 'FAILED_DELIVERY';
+        operationalStatus = 'DRIVER_FAILED';
+      } else if (params.outcome === 'RESCHEDULE') {
+        operationalStatus = 'RESCHEDULED';
       }
+
+      const newCycleNo = params.outcome === 'RESCHEDULE' 
+        ? (params.currentRescheduleCycleNo || 0) + 1 
+        : params.currentRescheduleCycleNo || 0;
 
       const updateData: Record<string, unknown> = {
         runner_review_status: 'REVIEWED',
@@ -63,6 +74,11 @@ export function useRunnerReviewOrder() {
       if (params.nextDeliveryDate) {
         updateData.next_delivery_date = params.nextDeliveryDate;
         updateData.reschedule_flag = true;
+        updateData.reschedule_cycle_no = newCycleNo;
+      }
+
+      if (operationalStatus) {
+        updateData.operational_status = operationalStatus;
       }
 
       if (params.actionType) {
@@ -89,10 +105,25 @@ export function useRunnerReviewOrder() {
         .eq('id', params.orderId);
 
       if (error) throw error;
+
+      // Record reschedule history if this is a reschedule
+      if (params.outcome === 'RESCHEDULE') {
+        await supabase.from('reschedule_history').insert({
+          order_id: params.orderId,
+          cycle_no: newCycleNo,
+          from_status: params.currentOperationalStatus || 'UNKNOWN',
+          to_status: 'RESCHEDULED',
+          next_delivery_date: params.nextDeliveryDate,
+          reason_id: params.reasonId || null,
+          comment: params.comment || null,
+          rescheduled_by: user.user.id,
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['reschedule-history'] });
       toast.success('Order reviewed and updated');
     },
     onError: (error) => {
