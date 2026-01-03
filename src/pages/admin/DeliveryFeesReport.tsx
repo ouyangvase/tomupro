@@ -8,9 +8,24 @@ import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import { CalendarIcon, FileText, TrendingUp, DollarSign, Users } from 'lucide-react';
+import { CalendarIcon, FileText, TrendingUp, DollarSign, Users, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 interface RunnerDeliveryFeesSummary {
   runner_id: string;
@@ -21,18 +36,35 @@ interface RunnerDeliveryFeesSummary {
   total_net_amount: number;
 }
 
+interface ClaimDetail {
+  id: string;
+  gross_amount: number;
+  delivery_fee: number;
+  net_claim_amount: number;
+  created_at: string;
+  order: {
+    id: string;
+    order_code: string;
+    customer_name: string;
+    area: string | null;
+    delivered_at: string | null;
+    payment_method: string;
+  };
+}
+
 export default function DeliveryFeesReport() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
+  const [selectedRunner, setSelectedRunner] = useState<RunnerDeliveryFeesSummary | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const { data: reportData = [], isLoading } = useQuery({
     queryKey: ['delivery-fees-report', dateRange?.from, dateRange?.to],
     queryFn: async () => {
       if (!dateRange?.from || !dateRange?.to) return [];
 
-      // Query claims with runner info via orders
       const { data: claims, error } = await supabase
         .from('claims')
         .select(`
@@ -52,7 +84,6 @@ export default function DeliveryFeesReport() {
 
       if (error) throw error;
 
-      // Get runner names from user_directory
       const runnerIds = [...new Set(claims?.map(c => c.order?.runner_id).filter(Boolean) as string[])];
       
       const { data: runners } = await supabase
@@ -62,7 +93,6 @@ export default function DeliveryFeesReport() {
 
       const runnerMap = new Map(runners?.map(r => [r.id, r.display_name]) || []);
 
-      // Aggregate by runner
       const aggregated = new Map<string, RunnerDeliveryFeesSummary>();
 
       claims?.forEach(claim => {
@@ -91,6 +121,41 @@ export default function DeliveryFeesReport() {
     enabled: !!dateRange?.from && !!dateRange?.to,
   });
 
+  // Fetch detailed claims for selected runner
+  const { data: runnerClaims = [], isLoading: isLoadingDetails } = useQuery({
+    queryKey: ['runner-claims-detail', selectedRunner?.runner_id, dateRange?.from, dateRange?.to],
+    queryFn: async () => {
+      if (!selectedRunner || !dateRange?.from || !dateRange?.to) return [];
+
+      const { data, error } = await supabase
+        .from('claims')
+        .select(`
+          id,
+          gross_amount,
+          delivery_fee,
+          net_claim_amount,
+          created_at,
+          order:orders!inner(
+            id,
+            order_code,
+            customer_name,
+            area,
+            delivered_at,
+            payment_method,
+            runner_id
+          )
+        `)
+        .eq('order.runner_id', selectedRunner.runner_id)
+        .gte('created_at', dateRange.from.toISOString())
+        .lte('created_at', dateRange.to.toISOString())
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data as ClaimDetail[];
+    },
+    enabled: !!selectedRunner && !!dateRange?.from && !!dateRange?.to,
+  });
+
   const totals = useMemo(() => {
     return reportData.reduce(
       (acc, row) => ({
@@ -103,11 +168,22 @@ export default function DeliveryFeesReport() {
     );
   }, [reportData]);
 
+  const handleRowClick = (row: RunnerDeliveryFeesSummary) => {
+    setSelectedRunner(row);
+    setDetailsOpen(true);
+  };
+
   const columns: Column<RunnerDeliveryFeesSummary>[] = [
     {
       key: 'runner_name',
       header: 'Runner',
       sortable: true,
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <span>{row.runner_name}</span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </div>
+      ),
     },
     {
       key: 'total_orders',
@@ -262,8 +338,104 @@ export default function DeliveryFeesReport() {
           keyField="runner_id"
           emptyMessage="No delivery fees data for the selected period"
           onExport={() => {}}
+          onRowClick={handleRowClick}
         />
       </div>
+
+      {/* Runner Details Dialog */}
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="max-w-5xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Delivery Fees Details - {selectedRunner?.runner_name}</DialogTitle>
+            <DialogDescription>
+              {dateRange?.from && dateRange?.to && (
+                <>
+                  {format(dateRange.from, 'LLL dd, y')} - {format(dateRange.to, 'LLL dd, y')}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Runner Summary */}
+          {selectedRunner && (
+            <div className="grid grid-cols-4 gap-4 mb-4">
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-xs text-muted-foreground">Orders</p>
+                <p className="text-xl font-bold">{selectedRunner.total_orders}</p>
+              </div>
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-xs text-muted-foreground">Gross Amount</p>
+                <p className="text-xl font-bold">RM {selectedRunner.total_gross_amount.toFixed(2)}</p>
+              </div>
+              <div className="p-3 bg-primary/10 rounded-lg">
+                <p className="text-xs text-muted-foreground">Delivery Fees</p>
+                <p className="text-xl font-bold text-primary">RM {selectedRunner.total_delivery_fees.toFixed(2)}</p>
+              </div>
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-xs text-muted-foreground">Net Amount</p>
+                <p className="text-xl font-bold">RM {selectedRunner.total_net_amount.toFixed(2)}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Orders Table */}
+          {isLoadingDetails ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Order</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Area</TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead className="text-right">Gross</TableHead>
+                  <TableHead className="text-right">Delivery Fee</TableHead>
+                  <TableHead className="text-right">Net</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {runnerClaims.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      No orders found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  runnerClaims.map((claim) => (
+                    <TableRow key={claim.id}>
+                      <TableCell className="text-sm">
+                        {claim.order?.delivered_at 
+                          ? format(new Date(claim.order.delivered_at), 'MMM dd, HH:mm')
+                          : format(new Date(claim.created_at), 'MMM dd, HH:mm')
+                        }
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        ORD-{claim.order?.order_code}
+                      </TableCell>
+                      <TableCell>{claim.order?.customer_name}</TableCell>
+                      <TableCell>{claim.order?.area || '-'}</TableCell>
+                      <TableCell>{claim.order?.payment_method}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        RM {Number(claim.gross_amount || 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-primary font-medium">
+                        RM {Number(claim.delivery_fee || 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-medium">
+                        RM {Number(claim.net_claim_amount || 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
