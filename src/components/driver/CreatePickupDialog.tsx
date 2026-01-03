@@ -123,7 +123,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Driver</Label>
               <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
@@ -131,13 +131,16 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                   <SelectValue placeholder="Select driver" />
                 </SelectTrigger>
                 <SelectContent>
-                  {drivers?.filter(d => d.is_active).map(driver => (
-                    <SelectItem key={driver.driver_id} value={driver.driver_id}>
-                      {driver.driver?.display_name}
+                  {drivers?.filter(d => d.driver?.is_active !== false).map(driverRecord => (
+                    <SelectItem key={driverRecord.driver_id} value={driverRecord.driver_id}>
+                      {driverRecord.driver?.display_name || 'Unknown Driver'}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {drivers && drivers.length === 0 && (
+                <p className="text-xs text-muted-foreground">No drivers found. Add drivers in Driver Management first.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Pickup Date</Label>
