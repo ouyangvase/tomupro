@@ -74,8 +74,10 @@ export default function DriverReturnsPage() {
                 <div className="space-y-2">
                   {ret.items?.map(item => (
                     <div key={item.id} className="flex justify-between text-sm">
-                      <span>{item.product?.sku_name}</span>
-                      <span className="font-medium">x {item.qty}</span>
+                      <span className="font-medium">
+                        {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
+                      </span>
+                      <span className="font-medium">× {item.qty}</span>
                     </div>
                   ))}
                 </div>
@@ -119,8 +121,10 @@ export default function DriverReturnsPage() {
                 <div className="space-y-1">
                   {ret.items?.map(item => (
                     <div key={item.id} className="flex justify-between text-sm">
-                      <span>{item.product?.sku_name}</span>
-                      <span className="font-medium">x {item.qty}</span>
+                      <span className="font-medium">
+                        {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
+                      </span>
+                      <span className="font-medium">× {item.qty}</span>
                     </div>
                   ))}
                 </div>

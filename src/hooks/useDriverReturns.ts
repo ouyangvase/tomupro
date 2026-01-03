@@ -83,6 +83,21 @@ export function useCreateReturn() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Validate quantities against allocated stock
+      const { data: allocatedStock } = await supabase
+        .from('driver_allocated_stock')
+        .select('*')
+        .eq('driver_id', user.id);
+
+      for (const item of params.items) {
+        const allocated = allocatedStock?.find(a => a.product_id === item.product_id);
+        const pendingQty = allocated?.pending_qty || 0;
+        if (item.qty > pendingQty) {
+          const productName = allocated?.sku_name || 'Unknown product';
+          throw new Error(`Cannot return ${item.qty} of ${productName}. Only ${pendingQty} pending.`);
+        }
+      }
+
       // Create return
       const { data: returnData, error: returnError } = await supabase
         .from('driver_returns')
