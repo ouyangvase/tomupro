@@ -40,13 +40,17 @@ export function useRunnerPickups() {
   return useQuery({
     queryKey: ['runner-pickups'],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { data, error } = await supabase
         .from('driver_pickups')
         .select(`
           *,
-          driver:profiles!driver_pickups_driver_id_fkey(display_name),
-          items:driver_pickup_items(*, product:products(sku_name, sku_code))
+          driver:profiles!driver_pickups_driver_id_fkey(id, display_name, email),
+          items:driver_pickup_items(*, product:products(id, sku_name, sku_code))
         `)
+        .eq('runner_id', user.id)
         .order('pickup_date', { ascending: false });
       if (error) throw error;
       return data as DriverPickup[];
@@ -66,8 +70,8 @@ export function useDriverPickups() {
         .from('driver_pickups')
         .select(`
           *,
-          runner:profiles!driver_pickups_runner_id_fkey(display_name),
-          items:driver_pickup_items(*, product:products(sku_name, sku_code))
+          runner:profiles!driver_pickups_runner_id_fkey(id, display_name, email),
+          items:driver_pickup_items(*, product:products(id, sku_name, sku_code))
         `)
         .eq('driver_id', user.id)
         .order('pickup_date', { ascending: false });

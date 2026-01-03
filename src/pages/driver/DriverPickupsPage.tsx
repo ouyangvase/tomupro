@@ -75,7 +75,12 @@ export default function DriverPickupsPage() {
                         {pickup.items?.map(item => {
                           return (
                             <TableRow key={item.id}>
-                              <TableCell className="text-sm">{item.product?.sku_name}</TableCell>
+                              <TableCell className="text-sm">
+                                <span className="font-medium">{item.product?.sku_name || 'Unknown'}</span>
+                                {item.product?.sku_code && (
+                                  <span className="text-muted-foreground ml-1 text-xs">({item.product.sku_code})</span>
+                                )}
+                              </TableCell>
                               <TableCell className="text-center">
                                 {item.required_qty !== null ? (
                                   <Badge variant="secondary">{item.required_qty}</Badge>
@@ -85,7 +90,7 @@ export default function DriverPickupsPage() {
                               </TableCell>
                               <TableCell className="text-center">
                                 {item.buffer_qty > 0 ? (
-                                  <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
                                     +{item.buffer_qty}
                                   </Badge>
                                 ) : (
@@ -175,7 +180,12 @@ export default function DriverPickupsPage() {
                   <TableBody>
                     {pickup.items?.map(item => (
                       <TableRow key={item.id}>
-                        <TableCell className="text-sm">{item.product?.sku_name}</TableCell>
+                        <TableCell className="text-sm">
+                          <span className="font-medium">{item.product?.sku_name || 'Unknown'}</span>
+                          {item.product?.sku_code && (
+                            <span className="text-muted-foreground ml-1 text-xs">({item.product.sku_code})</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-center text-muted-foreground">
                           {item.required_qty ?? '-'}
                         </TableCell>
