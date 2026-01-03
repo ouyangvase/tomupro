@@ -40,9 +40,14 @@ const runnerQuickActions: NavItem[] = [{
   icon: Inbox,
   roles: ['runner']
 }, {
+  title: "Driver Inbox",
+  url: "/runner/driver-inbox",
+  icon: Truck,
+  roles: ['runner']
+}, {
   title: "Driver Management",
   url: "/runner/drivers",
-  icon: Truck,
+  icon: Users,
   roles: ['runner']
 }, {
   title: "Live Map",

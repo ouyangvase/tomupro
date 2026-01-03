@@ -417,3 +417,84 @@ export function useGenerateDriverCode() {
     },
   });
 }
+
+// Unassign driver from order
+export function useUnassignDriverFromOrder() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const { data, error } = await supabase
+        .from('orders')
+        .update({
+          driver_id: null,
+          driver_status: 'UNASSIGNED',
+        })
+        .eq('id', orderId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
+      toast.success('Driver unassigned from order');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to unassign: ${error.message}`);
+    },
+  });
+}
+
+// Get orders for runner's driver inbox (all orders where runner_id = current user)
+export function useRunnerDriverOrders() {
+  return useQuery({
+    queryKey: ['runner-driver-orders'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          order_items(*)
+        `)
+        .eq('runner_id', user.id)
+        .neq('status', 'CANCELLED')
+        .order('order_date', { ascending: false });
+
+      if (error) throw error;
+
+      // Get unique user IDs
+      const userIds = new Set<string>();
+      data?.forEach(order => {
+        if (order.salesperson_id) userIds.add(order.salesperson_id);
+        if (order.runner_id) userIds.add(order.runner_id);
+        if (order.driver_id) userIds.add(order.driver_id);
+      });
+
+      // Fetch user directory
+      let usersMap: Record<string, { id: string; display_name: string; email: string | null }> = {};
+      if (userIds.size > 0) {
+        const { data: usersData } = await supabase
+          .from('user_directory')
+          .select('id, display_name, email')
+          .in('id', Array.from(userIds));
+        
+        usersData?.forEach(user => {
+          usersMap[user.id] = user;
+        });
+      }
+
+      return data?.map(order => ({
+        ...order,
+        salesperson: order.salesperson_id ? usersMap[order.salesperson_id] : null,
+        runner: order.runner_id ? usersMap[order.runner_id] : null,
+        driver: order.driver_id ? usersMap[order.driver_id] : null,
+      })) || [];
+    },
+  });
+}
