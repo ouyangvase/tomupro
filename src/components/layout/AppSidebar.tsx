@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,7 +17,7 @@ const salesItems: NavItem[] = [{
   title: "Dashboard",
   url: "/",
   icon: LayoutDashboard,
-  roles: ['admin', 'manager', 'salesperson', 'runner']
+  roles: ['admin', 'manager', 'salesperson', 'runner', 'driver']
 }, {
   title: "Booking Sales",
   url: "/sales/booking",
@@ -59,6 +59,18 @@ const runnerItems: NavItem[] = [{
   url: "/runner/delivery-charges",
   icon: DollarSign,
   roles: ['runner']
+}, {
+  title: "Driver Management",
+  url: "/runner/drivers",
+  icon: Truck,
+  roles: ['runner']
+}];
+
+const driverItems: NavItem[] = [{
+  title: "My Deliveries",
+  url: "/driver/inbox",
+  icon: Inbox,
+  roles: ['driver']
 }];
 const reconciliationItems: NavItem[] = [{
   title: "Claims History",
@@ -136,7 +148,7 @@ const settingsItems: NavItem[] = [{
   title: "Profile",
   url: "/settings/profile",
   icon: Settings,
-  roles: ['admin', 'manager', 'salesperson', 'runner']
+  roles: ['admin', 'manager', 'salesperson', 'runner', 'driver']
 }, {
   title: "Bindings",
   url: "/settings/bindings",
@@ -199,6 +211,13 @@ export function AppSidebar() {
             {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Runner</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>{renderMenuItems(runnerItems)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>}
+
+        {filterItems(driverItems).length > 0 && <SidebarGroup>
+            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Driver</SidebarGroupLabel>}
+            <SidebarGroupContent>
+              <SidebarMenu>{renderMenuItems(driverItems)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>}
 
