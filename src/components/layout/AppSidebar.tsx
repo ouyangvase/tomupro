@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -69,6 +69,16 @@ const runnerItems: NavItem[] = [{
   url: "/runner/driver-pickups",
   icon: PackageCheck,
   roles: ['runner']
+}, {
+  title: "Driver Returns",
+  url: "/runner/driver-returns",
+  icon: RotateCcw,
+  roles: ['runner']
+}, {
+  title: "Driver Ranking",
+  url: "/runner/driver-ranking",
+  icon: Trophy,
+  roles: ['runner']
 }];
 
 const driverItems: NavItem[] = [{
@@ -80,6 +90,16 @@ const driverItems: NavItem[] = [{
   title: "My Pickups",
   url: "/driver/pickups",
   icon: Package,
+  roles: ['driver']
+}, {
+  title: "My Returns",
+  url: "/driver/returns",
+  icon: RotateCcw,
+  roles: ['driver']
+}, {
+  title: "Ranking",
+  url: "/driver/ranking",
+  icon: Trophy,
   roles: ['driver']
 }];
 const reconciliationItems: NavItem[] = [{

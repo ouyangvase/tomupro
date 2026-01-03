@@ -502,6 +502,110 @@ export type Database = {
           },
         ]
       }
+      driver_return_items: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          qty: number
+          return_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          qty: number
+          return_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          qty?: number
+          return_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_return_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_return_items_return_id_fkey"
+            columns: ["return_id"]
+            isOneToOne: false
+            referencedRelation: "driver_returns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      driver_returns: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          created_at: string
+          driver_id: string
+          id: string
+          notes: string | null
+          related_pickup_id: string | null
+          runner_id: string
+          status: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          driver_id: string
+          id?: string
+          notes?: string | null
+          related_pickup_id?: string | null
+          runner_id: string
+          status?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          driver_id?: string
+          id?: string
+          notes?: string | null
+          related_pickup_id?: string | null
+          runner_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_returns_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_returns_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_returns_related_pickup_id_fkey"
+            columns: ["related_pickup_id"]
+            isOneToOne: false
+            referencedRelation: "driver_pickups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_returns_runner_id_fkey"
+            columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expected_date_history: {
         Row: {
           changed_at: string
@@ -562,6 +666,36 @@ export type Database = {
           id?: string
           is_active?: boolean
           reason?: string
+        }
+        Relationships: []
+      }
+      feature_settings: {
+        Row: {
+          created_at: string
+          id: string
+          scope_id: string | null
+          scope_type: string
+          setting_key: string
+          updated_at: string
+          value_boolean: boolean | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          scope_id?: string | null
+          scope_type: string
+          setting_key: string
+          updated_at?: string
+          value_boolean?: boolean | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          scope_id?: string | null
+          scope_type?: string
+          setting_key?: string
+          updated_at?: string
+          value_boolean?: boolean | null
         }
         Relationships: []
       }
@@ -1506,6 +1640,35 @@ export type Database = {
           },
         ]
       }
+      driver_monthly_ranking: {
+        Row: {
+          delivered_count: number | null
+          driver_id: string | null
+          driver_name: string | null
+          failed_count: number | null
+          month: string | null
+          rank_in_team: number | null
+          runner_id: string | null
+          runner_name: string | null
+          total_amount: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "runner_drivers_runner_id_fkey"
+            columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_balance_view: {
         Row: {
           balance_qty: number | null
@@ -1571,6 +1734,10 @@ export type Database = {
       }
       is_driver_of_runner: {
         Args: { p_driver_id: string; p_runner_id: string }
+        Returns: boolean
+      }
+      is_ranking_visible_for_driver: {
+        Args: { p_driver_id: string }
         Returns: boolean
       }
     }
