@@ -12,10 +12,12 @@ import { useOrders } from '@/hooks/useOrders';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { ActionResolutionDialog } from '@/components/sales/ActionResolutionDialog';
 import { 
   AlertCircle, ExternalLink, MessageSquare, Clock, User, 
-  CalendarClock, Loader2, RefreshCw 
+  CalendarClock, Loader2, RefreshCw, Play 
 } from 'lucide-react';
+import type { Order } from '@/types/database';
 
 const actionTypeColors: Record<string, string> = {
   FOLLOWUP_CUSTOMER: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
@@ -44,6 +46,8 @@ export default function SalespersonActionInbox() {
   const { data: allOrders = [], isLoading, refetch } = useOrders();
   
   const [actionTypeFilter, setActionTypeFilter] = useState<string>('all');
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
 
   // Filter orders requiring salesperson action (for current salesperson)
   const actionRequiredOrders = useMemo(() => {
@@ -110,6 +114,11 @@ export default function SalespersonActionInbox() {
     reviewers.forEach(r => { map[r.id] = r.display_name; });
     return map;
   }, [reviewers]);
+
+  const handleActionClick = (order: Order) => {
+    setSelectedOrder(order);
+    setActionDialogOpen(true);
+  };
 
   if (isLoading) {
     return (
@@ -274,15 +283,25 @@ export default function SalespersonActionInbox() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7"
-                          onClick={() => navigate(`/order/${order.id}`)}
-                        >
-                          <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                          View
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            className="h-7"
+                            onClick={() => handleActionClick(order)}
+                          >
+                            <Play className="h-3.5 w-3.5 mr-1" />
+                            Action
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7"
+                            onClick={() => navigate(`/order/${order.id}`)}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                            View
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -292,6 +311,14 @@ export default function SalespersonActionInbox() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Action Resolution Dialog */}
+      <ActionResolutionDialog
+        order={selectedOrder}
+        open={actionDialogOpen}
+        onOpenChange={setActionDialogOpen}
+        onSuccess={() => refetch()}
+      />
     </AppLayout>
   );
 }

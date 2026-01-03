@@ -9,9 +9,14 @@ interface RoutePoint {
   orderCode?: string;
 }
 
+interface GeoJSONLineString {
+  type: 'LineString';
+  coordinates: [number, number][];
+}
+
 interface OptimizedRoute {
   driverId: string;
-  geometry: GeoJSON.LineString;
+  geometry: GeoJSONLineString;
   distance: number; // in meters
   duration: number; // in seconds
   waypoints: RoutePoint[];
@@ -19,7 +24,7 @@ interface OptimizedRoute {
 
 interface DirectionsResponse {
   routes: Array<{
-    geometry: GeoJSON.LineString;
+    geometry: GeoJSONLineString;
     distance: number;
     duration: number;
   }>;
