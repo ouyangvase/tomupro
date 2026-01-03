@@ -4,21 +4,26 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useRunnerPickups, useCancelPickup } from '@/hooks/useDriverPickups';
+import { useRunnerPickups, useCancelPickup, useDeletePickup } from '@/hooks/useDriverPickups';
 import { CreatePickupDialog } from '@/components/driver/CreatePickupDialog';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Plus, Package, CheckCircle, XCircle, Clock, Send } from 'lucide-react';
+import { Plus, Package, CheckCircle, XCircle, Clock, Send, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 export default function DriverPickups() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [passingPickupId, setPassingPickupId] = useState<string | null>(null);
   const { data: pickups, isLoading } = useRunnerPickups();
   const cancelPickup = useCancelPickup();
+  const deletePickup = useDeletePickup();
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
 
   const pendingPickups = pickups?.filter(p => p.status === 'PENDING_DRIVER_ACK') || [];
   const acknowledgedPickups = pickups?.filter(p => p.status === 'DRIVER_ACKED') || [];
@@ -68,7 +73,7 @@ export default function DriverPickups() {
           <TableHead>Items (Req + Buffer = Total)</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Acknowledged At</TableHead>
-          {showActions && <TableHead className="text-right">Actions</TableHead>}
+          {(showActions || isAdmin) && <TableHead className="text-right">Actions</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -101,29 +106,57 @@ export default function DriverPickups() {
                 ? format(new Date(pickup.acknowledged_at), 'dd MMM HH:mm')
                 : '-'}
             </TableCell>
-            {showActions && (
+            {(showActions || isAdmin) && (
               <TableCell className="text-right">
-                {pickup.status === 'PENDING_DRIVER_ACK' && (
-                  <div className="flex gap-1 justify-end">
-                    <Button
-                      size="sm"
-                      variant="default"
-                      onClick={() => handlePassPickup(pickup.id, pickup.driver_id, pickup.pickup_date)}
-                      disabled={passingPickupId === pickup.id}
-                    >
-                      <Send className="h-3 w-3 mr-1" />
-                      Pass
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => cancelPickup.mutate(pickup.id)}
-                      disabled={cancelPickup.isPending}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                )}
+                <div className="flex gap-1 justify-end">
+                  {showActions && pickup.status === 'PENDING_DRIVER_ACK' && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => handlePassPickup(pickup.id, pickup.driver_id, pickup.pickup_date)}
+                        disabled={passingPickupId === pickup.id}
+                      >
+                        <Send className="h-3 w-3 mr-1" />
+                        Pass
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => cancelPickup.mutate(pickup.id)}
+                        disabled={cancelPickup.isPending}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  )}
+                  {isAdmin && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="destructive">
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Pickup?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete this pickup record and all its items. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deletePickup.mutate(pickup.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
               </TableCell>
             )}
           </TableRow>

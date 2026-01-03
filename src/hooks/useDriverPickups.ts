@@ -220,6 +220,38 @@ export function useCancelPickup() {
   });
 }
 
+// Delete pickup (admin only)
+export function useDeletePickup() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (pickupId: string) => {
+      // First delete pickup items
+      const { error: itemsError } = await supabase
+        .from('driver_pickup_items')
+        .delete()
+        .eq('pickup_id', pickupId);
+      if (itemsError) throw itemsError;
+
+      // Then delete the pickup
+      const { error } = await supabase
+        .from('driver_pickups')
+        .delete()
+        .eq('id', pickupId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
+      toast({ title: 'Pickup deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
 // Fetch driver allocated stock view
 export function useDriverAllocatedStock(driverId?: string) {
   return useQuery({
