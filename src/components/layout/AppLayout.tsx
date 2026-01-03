@@ -1,13 +1,19 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { PushNotificationPrompt } from "@/components/notifications/PushNotificationPrompt";
+import { useRealtimeNotifications } from "@/hooks/useNotificationSystem";
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
-export function AppLayout({
-  children
-}: AppLayoutProps) {
-  return <SidebarProvider>
+
+export function AppLayout({ children }: AppLayoutProps) {
+  // Subscribe to realtime notifications
+  useRealtimeNotifications();
+
+  return (
+    <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
@@ -25,5 +31,7 @@ export function AppLayout({
           </main>
         </div>
       </div>
-    </SidebarProvider>;
+      <PushNotificationPrompt />
+    </SidebarProvider>
+  );
 }

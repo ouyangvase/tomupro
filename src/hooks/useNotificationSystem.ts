@@ -148,53 +148,124 @@ export function useUpdateNotificationSettings() {
   });
 }
 
-// Hook for real-time notification polling and toast display
-export function useNotificationPoller() {
+// Hook for real-time notification subscription
+export function useRealtimeNotifications() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const [lastChecked, setLastChecked] = useState<string | null>(null);
-
-  const checkNewNotifications = useCallback(async () => {
-    if (!user) return;
-
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('is_read', false)
-      .eq('priority', 'HIGH')
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    if (data && data.length > 0) {
-      const newNotifications = lastChecked 
-        ? data.filter(n => n.created_at > lastChecked)
-        : [];
-
-      // Show toast for new HIGH priority notifications
-      newNotifications.forEach(n => {
-        toast.info(n.title, { description: n.message });
-      });
-
-      if (data.length > 0) {
-        setLastChecked(data[0].created_at);
-      }
-    }
-  }, [user, lastChecked]);
 
   useEffect(() => {
     if (!user) return;
 
-    // Initial check
-    checkNewNotifications();
+    const channel = supabase
+      .channel('notifications-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('New notification received:', payload.new);
+          const newNotification = payload.new as Notification;
+          
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+          
+          // Show toast for new notifications
+          if (newNotification.priority === 'HIGH') {
+            toast.info(newNotification.title, { 
+              description: newNotification.message,
+              duration: 10000,
+            });
+          } else {
+            toast(newNotification.title, { 
+              description: newNotification.message,
+              duration: 5000,
+            });
+          }
 
-    // Set up polling interval
+          // Trigger browser notification if permission granted
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(newNotification.title, {
+              body: newNotification.message,
+              icon: '/favicon.ico',
+              tag: newNotification.id,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, queryClient]);
+}
+
+// Hook to request and manage push notification permission
+export function usePushNotifications() {
+  const [permission, setPermission] = useState<NotificationPermission>(
+    'Notification' in window ? Notification.permission : 'denied'
+  );
+  const [isSupported, setIsSupported] = useState(false);
+
+  useEffect(() => {
+    setIsSupported('Notification' in window);
+  }, []);
+
+  const requestPermission = useCallback(async () => {
+    if (!('Notification' in window)) {
+      toast.error('Push notifications are not supported in this browser');
+      return false;
+    }
+
+    try {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      
+      if (result === 'granted') {
+        toast.success('Push notifications enabled!');
+        return true;
+      } else if (result === 'denied') {
+        toast.error('Push notifications were denied');
+        return false;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+      toast.error('Failed to enable push notifications');
+      return false;
+    }
+  }, []);
+
+  return {
+    permission,
+    isSupported,
+    requestPermission,
+    isEnabled: permission === 'granted',
+  };
+}
+
+// Legacy polling hook - kept for backward compatibility
+export function useNotificationPoller() {
+  // This is now replaced by useRealtimeNotifications
+  // Keeping for backward compatibility
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Just invalidate queries periodically as fallback
     const interval = setInterval(() => {
-      checkNewNotifications();
       queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-    }, 30000);
+    }, 60000); // Check every minute as fallback
 
     return () => clearInterval(interval);
-  }, [user, checkNewNotifications, queryClient]);
+  }, [user, queryClient]);
 }
 
 // Hook for daily task snapshots (manager/admin)
