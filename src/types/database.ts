@@ -208,9 +208,14 @@ export interface Notification {
   title: string;
   message: string;
   type: string;
-  is_read: boolean;
+  priority?: string;
+  recipient_role?: string;
   reference_type: string | null;
   reference_id: string | null;
+  entity_type?: string;
+  status_from?: string;
+  status_to?: string;
+  is_read: boolean;
   created_at: string;
 }
 

@@ -575,6 +575,8 @@ export type Database = {
           recipient_role: string | null
           reference_id: string | null
           reference_type: string | null
+          status_from: string | null
+          status_to: string | null
           title: string
           type: string
           user_id: string
@@ -590,6 +592,8 @@ export type Database = {
           recipient_role?: string | null
           reference_id?: string | null
           reference_type?: string | null
+          status_from?: string | null
+          status_to?: string | null
           title: string
           type: string
           user_id: string
@@ -605,6 +609,8 @@ export type Database = {
           recipient_role?: string | null
           reference_id?: string | null
           reference_type?: string | null
+          status_from?: string | null
+          status_to?: string | null
           title?: string
           type?: string
           user_id?: string
