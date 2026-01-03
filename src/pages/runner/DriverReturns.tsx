@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useRunnerReturns, useAcknowledgeReturn } from '@/hooks/useDriverReturns';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { RotateCcw, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -89,7 +90,8 @@ export default function DriverReturns() {
   );
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <AppLayout>
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <RotateCcw className="h-6 w-6" />
@@ -159,5 +161,6 @@ export default function DriverReturns() {
         </TabsContent>
       </Tabs>
     </div>
+    </AppLayout>
   );
 }

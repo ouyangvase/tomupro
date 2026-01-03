@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRunnerPickups, useCancelPickup } from '@/hooks/useDriverPickups';
 import { CreatePickupDialog } from '@/components/driver/CreatePickupDialog';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { Plus, Package, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -94,7 +95,8 @@ export default function DriverPickups() {
   );
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <AppLayout>
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -172,5 +174,6 @@ export default function DriverPickups() {
 
       <CreatePickupDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
     </div>
+    </AppLayout>
   );
 }
