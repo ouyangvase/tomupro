@@ -75,11 +75,8 @@ export default function DriverPickupsPage() {
                         {pickup.items?.map(item => {
                           return (
                             <TableRow key={item.id}>
-                              <TableCell className="text-sm">
-                                <span className="font-medium">{item.product?.sku_name || 'Unknown'}</span>
-                                {item.product?.sku_code && (
-                                  <span className="text-muted-foreground ml-1 text-xs">({item.product.sku_code})</span>
-                                )}
+                              <TableCell className="text-sm font-medium">
+                                {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
                               </TableCell>
                               <TableCell className="text-center">
                                 {item.required_qty !== null ? (
@@ -180,11 +177,8 @@ export default function DriverPickupsPage() {
                   <TableBody>
                     {pickup.items?.map(item => (
                       <TableRow key={item.id}>
-                        <TableCell className="text-sm">
-                          <span className="font-medium">{item.product?.sku_name || 'Unknown'}</span>
-                          {item.product?.sku_code && (
-                            <span className="text-muted-foreground ml-1 text-xs">({item.product.sku_code})</span>
-                          )}
+                        <TableCell className="text-sm font-medium">
+                          {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
                         </TableCell>
                         <TableCell className="text-center text-muted-foreground">
                           {item.required_qty ?? '-'}
