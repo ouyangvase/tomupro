@@ -64,12 +64,22 @@ const runnerItems: NavItem[] = [{
   url: "/runner/drivers",
   icon: Truck,
   roles: ['runner']
+}, {
+  title: "Driver Pickups",
+  url: "/runner/driver-pickups",
+  icon: PackageCheck,
+  roles: ['runner']
 }];
 
 const driverItems: NavItem[] = [{
   title: "My Deliveries",
   url: "/driver/inbox",
   icon: Inbox,
+  roles: ['driver']
+}, {
+  title: "My Pickups",
+  url: "/driver/pickups",
+  icon: Package,
   roles: ['driver']
 }];
 const reconciliationItems: NavItem[] = [{

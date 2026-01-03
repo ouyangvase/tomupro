@@ -16,7 +16,9 @@ import RunnerInbox from "./pages/runner/RunnerInbox";
 import RunnerInbound from "./pages/runner/RunnerInbound";
 import RunnerClaimBatches from "./pages/runner/RunnerClaimBatches";
 import DriverManagement from "./pages/runner/DriverManagement";
+import DriverPickups from "./pages/runner/DriverPickups";
 import DriverInbox from "./pages/driver/DriverInbox";
+import DriverPickupsPage from "./pages/driver/DriverPickupsPage";
 import InboundPending from "./pages/inbound/InboundPending";
 import ReconciliationSP from "./pages/reconciliation/ReconciliationSP";
 import ReconciliationAdmin from "./pages/reconciliation/ReconciliationAdmin";
@@ -74,7 +76,9 @@ function AppRoutes() {
       <Route path="/runner/inbound" element={<ProtectedRoute><RunnerInbound /></ProtectedRoute>} />
       <Route path="/runner/claims" element={<ProtectedRoute><RunnerClaimBatches /></ProtectedRoute>} />
       <Route path="/runner/drivers" element={<ProtectedRoute><DriverManagement /></ProtectedRoute>} />
+      <Route path="/runner/driver-pickups" element={<ProtectedRoute><DriverPickups /></ProtectedRoute>} />
       <Route path="/driver/inbox" element={<ProtectedRoute><DriverInbox /></ProtectedRoute>} />
+      <Route path="/driver/pickups" element={<ProtectedRoute><DriverPickupsPage /></ProtectedRoute>} />
       <Route path="/reconciliation/sp" element={<ProtectedRoute><ReconciliationSP /></ProtectedRoute>} />
       <Route path="/reconciliation/admin" element={<ProtectedRoute><ReconciliationAdmin /></ProtectedRoute>} />
       <Route path="/admin/claim-batches" element={<ProtectedRoute><ClaimBatchesAdmin /></ProtectedRoute>} />

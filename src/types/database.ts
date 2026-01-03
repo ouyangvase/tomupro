@@ -22,10 +22,11 @@ export interface OrderItem {
 export type ReconciliationStatus = 'NOT_CLAIMED' | 'CLAIMED' | 'SP_ACK_PENDING' | 'ADMIN_ACK_PENDING' | 'SETTLED' | 'DISPUTE';
 export type ClaimMethod = 'TRANSFER' | 'CASH' | 'OTHER';
 export type InboundStatus = 'PENDING_SP_ACK' | 'ACKNOWLEDGED' | 'DISPUTE';
-export type MovementType = 'INBOUND' | 'SALE_DEDUCT' | 'ADJUSTMENT' | 'RETURN';
+export type MovementType = 'INBOUND' | 'SALE_DEDUCT' | 'ADJUSTMENT' | 'RETURN' | 'TRANSFER_OUT' | 'TRANSFER_IN' | 'DRIVER_ALLOCATE_PREDEDUCT' | 'DRIVER_RETURN';
 export type ReferenceType = 'INBOUND_ITEM' | 'ORDER_ITEM' | 'MANUAL';
 export type AttachmentType = 'transfer_proof' | 'receipt_photo' | 'chat_screenshot' | 'delivery_photo' | 'inbound_photo' | 'other';
 export type ClaimBatchStatus = 'ADMIN_ACK_PENDING' | 'CLAIMED';
+export type PickupStatus = 'PENDING_DRIVER_ACK' | 'DRIVER_ACKED' | 'CANCELLED';
 
 // Runner Driver relationship
 export interface RunnerDriver {
@@ -255,4 +256,38 @@ export interface FailedReason {
   reason: string;
   is_active: boolean;
   created_at: string;
+}
+
+// Driver Pickup types
+export interface DriverPickup {
+  id: string;
+  pickup_date: string;
+  runner_id: string;
+  driver_id: string;
+  status: PickupStatus;
+  notes: string | null;
+  created_at: string;
+  acknowledged_at: string | null;
+  runner?: Profile;
+  driver?: Profile;
+  items?: DriverPickupItem[];
+}
+
+export interface DriverPickupItem {
+  id: string;
+  pickup_id: string;
+  product_id: string;
+  qty: number;
+  created_at: string;
+  product?: Product;
+}
+
+export interface DriverAllocatedStock {
+  driver_id: string;
+  product_id: string;
+  sku_name: string;
+  sku_code: string | null;
+  allocated_qty: number;
+  delivered_qty: number;
+  pending_qty: number;
 }

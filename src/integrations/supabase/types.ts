@@ -415,6 +415,93 @@ export type Database = {
           },
         ]
       }
+      driver_pickup_items: {
+        Row: {
+          created_at: string
+          id: string
+          pickup_id: string
+          product_id: string
+          qty: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          pickup_id: string
+          product_id: string
+          qty: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          pickup_id?: string
+          product_id?: string
+          qty?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_pickup_items_pickup_id_fkey"
+            columns: ["pickup_id"]
+            isOneToOne: false
+            referencedRelation: "driver_pickups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_pickup_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      driver_pickups: {
+        Row: {
+          acknowledged_at: string | null
+          created_at: string
+          driver_id: string
+          id: string
+          notes: string | null
+          pickup_date: string
+          runner_id: string
+          status: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          created_at?: string
+          driver_id: string
+          id?: string
+          notes?: string | null
+          pickup_date?: string
+          runner_id: string
+          status?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          created_at?: string
+          driver_id?: string
+          id?: string
+          notes?: string | null
+          pickup_date?: string
+          runner_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_pickups_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_pickups_runner_id_fkey"
+            columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expected_date_history: {
         Row: {
           changed_at: string
@@ -1392,6 +1479,33 @@ export type Database = {
       }
     }
     Views: {
+      driver_allocated_stock: {
+        Row: {
+          allocated_qty: number | null
+          delivered_qty: number | null
+          driver_id: string | null
+          pending_qty: number | null
+          product_id: string | null
+          sku_code: string | null
+          sku_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_balance_view: {
         Row: {
           balance_qty: number | null
@@ -1415,6 +1529,16 @@ export type Database = {
       get_delivery_charge: {
         Args: { p_area: string; p_runner_id: string }
         Returns: number
+      }
+      get_driver_blocking_orders: {
+        Args: { p_driver_id: string }
+        Returns: {
+          customer_name: string
+          driver_status: string
+          order_code: string
+          order_date: string
+          order_id: string
+        }[]
       }
       get_driver_parent_runner: {
         Args: { p_driver_id: string }
@@ -1471,6 +1595,8 @@ export type Database = {
         | "RETURN"
         | "TRANSFER_OUT"
         | "TRANSFER_IN"
+        | "DRIVER_ALLOCATE_PREDEDUCT"
+        | "DRIVER_RETURN"
       order_status: "BOOKING" | "READY" | "CANCELLED"
       payment_method: "COD" | "TRANSFER"
       reconciliation_status:
@@ -1636,6 +1762,8 @@ export const Constants = {
         "RETURN",
         "TRANSFER_OUT",
         "TRANSFER_IN",
+        "DRIVER_ALLOCATE_PREDEDUCT",
+        "DRIVER_RETURN",
       ],
       order_status: ["BOOKING", "READY", "CANCELLED"],
       payment_method: ["COD", "TRANSFER"],
