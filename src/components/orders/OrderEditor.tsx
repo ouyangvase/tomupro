@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { format } from 'date-fns';
 import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle } from 'lucide-react';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
+import { RunnerReviewInfo } from '@/components/orders/RunnerReviewInfo';
 import {
   Sheet,
   SheetContent,
@@ -393,6 +394,13 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         {order && order.runner_status === 'FAILED_DELIVERY' && (
           <div className="mt-4">
             <FailedDeliveryInfo order={order} />
+          </div>
+        )}
+
+        {/* Runner Review Info */}
+        {order && (
+          <div className="mt-4">
+            <RunnerReviewInfo order={order} />
           </div>
         )}
 

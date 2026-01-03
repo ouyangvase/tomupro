@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,6 +32,11 @@ const salesItems: NavItem[] = [{
   title: "Cancelled Sales",
   url: "/sales/cancelled",
   icon: X,
+  roles: ['admin', 'manager', 'salesperson']
+}, {
+  title: "Action Required",
+  url: "/sales/action-required",
+  icon: AlertCircle,
   roles: ['admin', 'manager', 'salesperson']
 }];
 const runnerQuickActions: NavItem[] = [{

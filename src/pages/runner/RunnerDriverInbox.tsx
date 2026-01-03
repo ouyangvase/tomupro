@@ -19,7 +19,7 @@ import { format, parseISO } from 'date-fns';
 import { 
   Truck, Users, CheckCircle, XCircle, Clock, Package, 
   MessageCircle, MapPin, Calendar,
-  Loader2, RefreshCw, User, ExternalLink, ArrowRight
+  Loader2, RefreshCw, User, ExternalLink, ArrowRight, ClipboardCheck
 } from 'lucide-react';
 import { RunnerReviewModal } from '@/components/runner/RunnerReviewModal';
 import type { Order } from '@/types/database';
@@ -70,6 +70,7 @@ export default function RunnerDriverInbox() {
   const [driverFilter, setDriverFilter] = useState<string>('all');
   const [driverStatusFilter, setDriverStatusFilter] = useState<string>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<string>('all');
 
   // Driver workload info
   const { data: selectedDriverOrderCount } = useDriverOrderCount(selectedDriver || undefined);
@@ -124,9 +125,16 @@ export default function RunnerDriverInbox() {
     if (areaFilter !== 'all') {
       filtered = filtered.filter(o => o.area === areaFilter);
     }
+    if (reviewStatusFilter !== 'all') {
+      if (reviewStatusFilter === 'REVIEWED') {
+        filtered = filtered.filter(o => o.runner_review_status === 'REVIEWED');
+      } else if (reviewStatusFilter === 'PENDING') {
+        filtered = filtered.filter(o => !o.runner_review_status || o.runner_review_status === 'NOT_REVIEWED');
+      }
+    }
 
     return filtered;
-  }, [orders, driverFilter, driverStatusFilter, areaFilter]);
+  }, [orders, driverFilter, driverStatusFilter, areaFilter, reviewStatusFilter]);
 
   // TAB C: Orders pending runner acceptance
   const pendingAcceptanceOrders = useMemo(() => {
@@ -453,6 +461,19 @@ export default function RunnerDriverInbox() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label className="text-xs">Review Status</Label>
+                    <Select value={reviewStatusFilter} onValueChange={setReviewStatusFilter}>
+                      <SelectTrigger className="w-[140px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="PENDING">Pending Review</SelectItem>
+                        <SelectItem value="REVIEWED">Reviewed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -461,12 +482,13 @@ export default function RunnerDriverInbox() {
             <Card>
               <CardContent className="p-0">
                 <Table>
-                  <TableHeader>
+                <TableHeader>
                     <TableRow>
                       <TableHead>Order Ref</TableHead>
                       <TableHead>Driver</TableHead>
                       <TableHead>Driver Status</TableHead>
                       <TableHead>Runner Accept</TableHead>
+                      <TableHead>Review Status</TableHead>
                       <TableHead>Failed Reason</TableHead>
                       <TableHead>Remark</TableHead>
                       <TableHead>Next Delivery</TableHead>
@@ -477,7 +499,7 @@ export default function RunnerDriverInbox() {
                   <TableBody>
                     {driverUpdatesOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                           No driver orders found
                         </TableCell>
                       </TableRow>
@@ -503,6 +525,18 @@ export default function RunnerDriverInbox() {
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {order.runner_review_status === 'REVIEWED' ? (
+                              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                                <ClipboardCheck className="h-3 w-3 mr-1" />
+                                Reviewed
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-muted-foreground">
+                                Pending
+                              </Badge>
                             )}
                           </TableCell>
                           <TableCell className="text-sm text-red-600">

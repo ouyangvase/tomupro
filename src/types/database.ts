@@ -107,6 +107,18 @@ export interface Order {
   cancel_reason: string | null;
   cancel_notes: string | null;
   delivered_at: string | null;
+  // Runner review fields
+  runner_review_status: string | null;
+  runner_final_outcome: string | null;
+  runner_failed_reason_id: string | null;
+  runner_comment: string | null;
+  runner_reviewed_at: string | null;
+  runner_reviewed_by: string | null;
+  salesperson_action_required: boolean | null;
+  salesperson_action_type: string | null;
+  salesperson_action_due_date: string | null;
+  last_status_note: string | null;
+  reschedule_flag: boolean | null;
   created_at: string;
   updated_at: string;
   // Joined fields
