@@ -21,7 +21,8 @@ export interface DriverPickupItem {
   pickup_id: string;
   product_id: string;
   qty: number;
-  suggested_qty: number | null;
+  required_qty: number | null;
+  buffer_qty: number;
   created_at: string;
   product?: { sku_name: string; sku_code: string | null };
 }
@@ -101,7 +102,7 @@ export function useCreatePickup() {
       driver_id: string;
       pickup_date: string;
       notes?: string;
-      items: { product_id: string; qty: number; suggested_qty?: number }[];
+      items: { product_id: string; qty: number; required_qty?: number; buffer_qty?: number }[];
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -127,7 +128,7 @@ export function useCreatePickup() {
         .single();
       if (pickupError) throw pickupError;
 
-      // Create pickup items with suggested_qty for audit
+      // Create pickup items with required_qty and buffer_qty for audit
       if (params.items.length > 0) {
         const { error: itemsError } = await supabase
           .from('driver_pickup_items')
@@ -135,7 +136,8 @@ export function useCreatePickup() {
             pickup_id: pickup.id,
             product_id: item.product_id,
             qty: item.qty,
-            suggested_qty: item.suggested_qty || null,
+            required_qty: item.required_qty || null,
+            buffer_qty: item.buffer_qty || 0,
           })));
         if (itemsError) throw itemsError;
       }

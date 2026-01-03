@@ -278,6 +278,8 @@ export interface DriverPickupItem {
   pickup_id: string;
   product_id: string;
   qty: number;
+  required_qty: number | null;
+  buffer_qty: number;
   created_at: string;
   product?: Product;
 }

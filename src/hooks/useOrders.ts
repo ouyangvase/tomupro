@@ -43,11 +43,12 @@ export function useOrders(filters?: OrderFilters) {
       const { data: ordersData, error: ordersError } = await query;
       if (ordersError) throw ordersError;
 
-      // Get unique user IDs (salesperson + runner)
+      // Get unique user IDs (salesperson + runner + driver)
       const userIds = new Set<string>();
       ordersData?.forEach(order => {
         if (order.salesperson_id) userIds.add(order.salesperson_id);
         if (order.runner_id) userIds.add(order.runner_id);
+        if (order.driver_id) userIds.add(order.driver_id);
       });
 
       // Fetch user directory for these IDs (accessible to all authenticated users)
@@ -68,6 +69,7 @@ export function useOrders(filters?: OrderFilters) {
         ...order,
         salesperson: order.salesperson_id ? usersMap[order.salesperson_id] : null,
         runner: order.runner_id ? usersMap[order.runner_id] : null,
+        driver: order.driver_id ? usersMap[order.driver_id] : null,
       }));
 
       return orders as unknown as Order[];
