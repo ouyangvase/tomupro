@@ -16,7 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ActionResolutionDialog } from '@/components/sales/ActionResolutionDialog';
 import { BulkActionResolutionDialog } from '@/components/sales/BulkActionResolutionDialog';
 import { 
-  AlertCircle, ExternalLink, MessageSquare, User, 
+  AlertCircle, MessageSquare, User, 
   CalendarClock, Loader2, RefreshCw, Play, ListChecks 
 } from 'lucide-react';
 import type { Order } from '@/types/database';
@@ -355,25 +355,14 @@ export default function SalespersonActionInbox() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            className="h-7"
-                            onClick={() => handleActionClick(order)}
-                          >
-                            <Play className="h-3.5 w-3.5 mr-1" />
-                            Action
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7"
-                            onClick={() => navigate(`/order/${order.id}`)}
-                          >
-                            <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                            View
-                          </Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          className="h-7"
+                          onClick={() => handleActionClick(order)}
+                        >
+                          <Play className="h-3.5 w-3.5 mr-1" />
+                          Action
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
