@@ -225,18 +225,19 @@ export function useDriverAllocatedStock(driverId?: string) {
   return useQuery({
     queryKey: ['driver-allocated-stock', driverId],
     queryFn: async () => {
-      let query = supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // If no driverId provided, use current user (for driver's own view)
+      const targetDriverId = driverId || user.id;
+      
+      const { data, error } = await supabase
         .from('driver_allocated_stock')
-        .select('*');
+        .select('*')
+        .eq('driver_id', targetDriverId);
       
-      if (driverId) {
-        query = query.eq('driver_id', driverId);
-      }
-      
-      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
-    enabled: driverId !== '',
   });
 }
