@@ -109,10 +109,11 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const hasBlockingOrders = blockingOrders && blockingOrders.length > 0;
   const hasSuggestions = suggestedQty && suggestedQty.length > 0;
 
-  // Get product name by id
+  // Get product name by id - format: SKU Code / SKU Name
   const getProductName = (productId: string) => {
     const product = products?.find(p => p.id === productId);
-    return product ? `${product.sku_name}${product.sku_code ? ` (${product.sku_code})` : ''}` : '';
+    if (!product) return 'Unknown';
+    return `${product.sku_code || 'N/A'} / ${product.sku_name}`;
   };
 
   return (
@@ -234,7 +235,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                               <SelectContent>
                                 {products?.map(product => (
                                   <SelectItem key={product.id} value={product.id}>
-                                    {product.sku_name} {product.sku_code && `(${product.sku_code})`}
+                                    {product.sku_code || 'N/A'} / {product.sku_name}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
