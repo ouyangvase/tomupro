@@ -25,6 +25,7 @@ import DriverRoutePage from "./pages/driver/DriverRoutePage";
 import DriverAnalyticsPage from "./pages/driver/DriverAnalyticsPage";
 import DriverReturns from "./pages/runner/DriverReturns";
 import DriverRanking from "./pages/runner/DriverRanking";
+import DriverLocationsPage from "./pages/runner/DriverLocationsPage";
 import InboundPending from "./pages/inbound/InboundPending";
 import ReconciliationSP from "./pages/reconciliation/ReconciliationSP";
 import ReconciliationAdmin from "./pages/reconciliation/ReconciliationAdmin";
@@ -85,6 +86,7 @@ function AppRoutes() {
       <Route path="/runner/driver-pickups" element={<ProtectedRoute><DriverPickups /></ProtectedRoute>} />
       <Route path="/runner/driver-returns" element={<ProtectedRoute><DriverReturns /></ProtectedRoute>} />
       <Route path="/runner/driver-ranking" element={<ProtectedRoute><DriverRanking /></ProtectedRoute>} />
+      <Route path="/runner/driver-locations" element={<ProtectedRoute><DriverLocationsPage /></ProtectedRoute>} />
       <Route path="/driver/inbox" element={<ProtectedRoute><DriverInbox /></ProtectedRoute>} />
       <Route path="/driver/pickups" element={<ProtectedRoute><DriverPickupsPage /></ProtectedRoute>} />
       <Route path="/driver/returns" element={<ProtectedRoute><DriverReturnsPage /></ProtectedRoute>} />

@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -79,6 +79,11 @@ const runnerItems: NavItem[] = [{
   url: "/runner/driver-ranking",
   icon: Trophy,
   roles: ['runner']
+}, {
+  title: "Live Map",
+  url: "/runner/driver-locations",
+  icon: MapPin,
+  roles: ['runner', 'admin']
 }];
 
 const driverItems: NavItem[] = [{
