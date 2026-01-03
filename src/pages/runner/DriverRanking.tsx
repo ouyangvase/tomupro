@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRunnerDriverRanking, useFeatureSetting, useToggleFeatureSetting } from '@/hooks/useDriverRanking';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { Trophy, Medal, Award } from 'lucide-react';
 
 export default function DriverRanking() {
@@ -45,7 +46,8 @@ export default function DriverRanking() {
   }) || [];
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <AppLayout>
+    <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -157,5 +159,6 @@ export default function DriverRanking() {
         </CardContent>
       </Card>
     </div>
+    </AppLayout>
   );
 }
