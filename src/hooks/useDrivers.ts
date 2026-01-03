@@ -27,6 +27,29 @@ export function useRunnerDrivers(runnerId?: string) {
   });
 }
 
+// Get drivers for current runner (self)
+export function useMyDrivers() {
+  return useQuery({
+    queryKey: ['my-drivers'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+      
+      const { data, error } = await supabase
+        .from('runner_drivers')
+        .select(`
+          *,
+          driver:driver_id(id, display_name, email, role)
+        `)
+        .eq('runner_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data as unknown as RunnerDriver[];
+    },
+  });
+}
+
 // Get all drivers (for admin)
 export function useAllDrivers() {
   return useQuery({
