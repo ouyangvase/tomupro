@@ -227,6 +227,31 @@ export default function DriverManagement() {
                           {driverWorkloads[rd.driver_id] || 0} active orders
                         </span>
                       </div>
+
+                      {/* Email */}
+                      {(driverData?.email || userById.get(rd.driver_id)?.email) && (
+                        <div className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm text-muted-foreground truncate">
+                              {driverData?.email || userById.get(rd.driver_id)?.email}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => {
+                              const email = driverData?.email || userById.get(rd.driver_id)?.email;
+                              if (email) {
+                                navigator.clipboard.writeText(email);
+                                toast.success('Email copied');
+                              }
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
                       
                       <div className="flex items-center justify-between p-2 bg-muted rounded-md">
                         <div className="flex items-center gap-2">
