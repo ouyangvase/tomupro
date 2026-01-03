@@ -1786,15 +1786,6 @@ export type Database = {
         Args: { p_driver_id: string }
         Returns: string
       }
-      get_driver_returnable_items: {
-        Args: never
-        Returns: {
-          available_qty: number
-          product_id: string
-          sku_code: string
-          sku_name: string
-        }[]
-      }
       get_stock_balance: {
         Args: never
         Returns: {

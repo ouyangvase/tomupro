@@ -94,23 +94,15 @@ export function useDriverParentRunner() {
       if (error) throw error;
       if (!data) return null;
       
-      // Fetch runner display name from user directory (drivers may not have direct profile read access)
-      const { data: runnerDir, error: dirError } = await supabase
-        .from('user_directory')
+      // Fetch the runner profile separately
+      const { data: runnerProfile, error: profileError } = await supabase
+        .from('profiles')
         .select('id, display_name, email, role')
         .eq('id', data.runner_id)
         .maybeSingle();
-
-      if (dirError) throw dirError;
-      if (runnerDir) return runnerDir as unknown as Profile;
-
-      // Fallback: still return runner id so features (like returns) can work
-      return {
-        id: data.runner_id,
-        display_name: 'Runner',
-        email: null,
-        role: 'runner',
-      } as unknown as Profile | null;
+      
+      if (profileError) throw profileError;
+      return runnerProfile as Profile | null;
     },
   });
 }

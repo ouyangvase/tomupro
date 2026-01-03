@@ -8,9 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { useCreateReturn, useDriverReturnableItems } from '@/hooks/useDriverReturns';
+import { useCreateReturn } from '@/hooks/useDriverReturns';
 import { useDriverParentRunner } from '@/hooks/useDrivers';
 import { useDriverPickups } from '@/hooks/useDriverPickups';
+import { useDriverAllocatedStock } from '@/hooks/useDriverPickups';
 import { Plus, Trash2, Package, Sparkles, AlertCircle } from 'lucide-react';
 
 interface CreateReturnDialogProps {
@@ -33,7 +34,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
   const { data: parentRunner } = useDriverParentRunner();
   const { data: pickups } = useDriverPickups();
-  const { data: returnableItems, isLoading: loadingReturnable } = useDriverReturnableItems();
+  const { data: allocatedStock } = useDriverAllocatedStock();
   const createReturn = useCreateReturn();
 
   const acknowledgedPickups = pickups?.filter(p => p.status === 'DRIVER_ACKED') || [];
@@ -44,15 +45,18 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     return acknowledgedPickups.find(p => p.id === relatedPickupId);
   }, [relatedPickupId, acknowledgedPickups]);
 
-  // Returnable items (excludes failed deliveries)
+  // Calculate pending (undelivered) items from allocated stock
   const pendingItems = useMemo(() => {
-    return (returnableItems || []).map(item => ({
-      product_id: item.product_id,
-      product_name: item.sku_name || 'Unknown',
-      sku_code: item.sku_code || null,
-      pending_qty: Number(item.available_qty || 0),
-    }));
-  }, [returnableItems]);
+    if (!allocatedStock) return [];
+    return allocatedStock
+      .filter(item => (item.pending_qty || 0) > 0)
+      .map(item => ({
+        product_id: item.product_id,
+        product_name: item.sku_name || 'Unknown',
+        sku_code: item.sku_code || null,
+        pending_qty: item.pending_qty || 0,
+      }));
+  }, [allocatedStock]);
 
   // Get items from selected pickup
   const pickupItems = useMemo(() => {
@@ -68,9 +72,9 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   // Auto-populate items when pickup is selected
   useEffect(() => {
     if (selectedPickup && pendingItems.length > 0) {
-      // Find items that are in both the pickup and returnable list
+      // Find items that are in both the pickup and pending
       const suggestedItems: ReturnItem[] = [];
-
+      
       for (const pickupItem of pickupItems) {
         const pending = pendingItems.find(p => p.product_id === pickupItem.product_id);
         if (pending && pending.pending_qty > 0) {
@@ -83,10 +87,10 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
           });
         }
       }
-
+      
       setItems(suggestedItems);
     } else if (!selectedPickup || relatedPickupId === 'none') {
-      // If no pickup selected, suggest all returnable items
+      // If no pickup selected, show all pending items
       if (pendingItems.length > 0) {
         setItems(pendingItems.map(p => ({
           product_id: p.product_id,
@@ -216,18 +220,18 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
               <Sparkles className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-700 dark:text-amber-400">Smart Suggestion</AlertTitle>
               <AlertDescription className="text-amber-600 dark:text-amber-300">
-                Suggested items are returnable now (excludes failed deliveries). Adjust quantities as needed.
+                Showing undelivered items based on your allocated stock. Adjust quantities as needed.
               </AlertDescription>
             </Alert>
           )}
 
           {/* No pending items warning */}
-          {!loadingReturnable && pendingItems.length === 0 && (
+          {pendingItems.length === 0 && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>No Returnable Items</AlertTitle>
+              <AlertTitle>No Pending Items</AlertTitle>
               <AlertDescription>
-                There are no items available to return (failed deliveries are excluded).
+                You have no undelivered items to return. All allocated stock has been delivered.
               </AlertDescription>
             </Alert>
           )}
@@ -248,7 +252,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                 size="sm" 
                 variant="outline" 
                 onClick={addItem}
-                disabled={loadingReturnable || availableToAdd.length === 0}
+                disabled={availableToAdd.length === 0}
               >
                 <Plus className="h-4 w-4 mr-1" /> Add Item
               </Button>
