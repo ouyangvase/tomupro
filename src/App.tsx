@@ -34,6 +34,7 @@ import ManagerOversight from "./pages/manager/ManagerOversight";
 import AdminOverview from "./pages/admin/AdminOverview";
 import RunnerDeliveryCharges from "./pages/runner/RunnerDeliveryCharges";
 import DeliveryChargesAdmin from "./pages/admin/DeliveryChargesAdmin";
+import DeliveryFeesReport from "./pages/admin/DeliveryFeesReport";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -90,6 +91,7 @@ function AppRoutes() {
       <Route path="/admin/overview" element={<ProtectedRoute><AdminOverview /></ProtectedRoute>} />
       <Route path="/runner/delivery-charges" element={<ProtectedRoute><RunnerDeliveryCharges /></ProtectedRoute>} />
       <Route path="/admin/delivery-charges" element={<ProtectedRoute><DeliveryChargesAdmin /></ProtectedRoute>} />
+      <Route path="/admin/delivery-fees-report" element={<ProtectedRoute><DeliveryFeesReport /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
