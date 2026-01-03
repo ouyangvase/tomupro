@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import tomuLogo from '@/assets/tomu-logo.png';
-import type { AppRole } from '@/types/database';
+
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -17,12 +17,11 @@ const loginSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
-// Only allow driver role for self-registration - other roles must be assigned by existing admins
+// Only allow user role for self-registration - other roles must be assigned by existing admins
 const signupSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   displayName: z.string().min(2, 'Display name must be at least 2 characters').max(100, 'Display name must be less than 100 characters'),
-  role: z.literal('driver'),
 });
 
 export default function Auth() {
@@ -39,7 +38,6 @@ export default function Auth() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<AppRole>('driver');
 
   useEffect(() => {
     if (user) {
@@ -83,8 +81,7 @@ export default function Auth() {
     const result = signupSchema.safeParse({ 
       email: signupEmail, 
       password: signupPassword, 
-      displayName, 
-      role 
+      displayName
     });
     
     if (!result.success) {
@@ -97,7 +94,7 @@ export default function Auth() {
     }
     
     setLoading(true);
-    const { error } = await signUp(signupEmail, signupPassword, displayName, role);
+    const { error } = await signUp(signupEmail, signupPassword, displayName, 'user');
     setLoading(false);
     
     if (error) {
@@ -200,17 +197,6 @@ export default function Auth() {
                     onChange={(e) => setSignupPassword(e.target.value)}
                     required
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
-                  <Select value={role} onValueChange={(v) => setRole(v as AppRole)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="driver">Driver</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? 'Creating account...' : 'Create Account'}

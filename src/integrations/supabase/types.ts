@@ -1816,7 +1816,13 @@ export type Database = {
       link_driver_to_runner_by_code: { Args: { p_code: string }; Returns: Json }
     }
     Enums: {
-      app_role: "admin" | "manager" | "salesperson" | "runner" | "driver"
+      app_role:
+        | "admin"
+        | "manager"
+        | "salesperson"
+        | "runner"
+        | "driver"
+        | "user"
       attachment_type:
         | "transfer_proof"
         | "receipt_photo"
@@ -1982,7 +1988,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "manager", "salesperson", "runner", "driver"],
+      app_role: ["admin", "manager", "salesperson", "runner", "driver", "user"],
       attachment_type: [
         "transfer_proof",
         "receipt_photo",
