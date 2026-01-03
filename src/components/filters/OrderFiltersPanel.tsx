@@ -23,10 +23,12 @@ export interface OrderFilters {
   month?: string;
   dateMode?: 'created' | 'delivered';
   runnerStatus?: string;
+  driverStatus?: string;
   orderStatus?: string;
   reconciliationStatus?: string;
   area?: string;
   salespersonId?: string;
+  driverId?: string;
   paymentMethod?: string;
 }
 
@@ -40,9 +42,12 @@ interface OrderFiltersPanelProps {
   onFiltersChange: (filters: OrderFilters) => void;
   areaOptions?: FilterOption[];
   salespersonOptions?: FilterOption[];
+  driverOptions?: FilterOption[];
   showSalespersonFilter?: boolean;
+  showDriverFilter?: boolean;
   showOrderStatus?: boolean;
   showRunnerStatus?: boolean;
+  showDriverStatus?: boolean;
   showReconciliationStatus?: boolean;
 }
 
@@ -75,6 +80,14 @@ const runnerStatusOptions: FilterOption[] = [
   { label: 'Failed Delivery', value: 'FAILED_DELIVERY' },
 ];
 
+const driverStatusOptions: FilterOption[] = [
+  { label: 'Unassigned', value: 'UNASSIGNED' },
+  { label: 'Assigned', value: 'ASSIGNED' },
+  { label: 'Out for Delivery', value: 'OUT_FOR_DELIVERY' },
+  { label: 'Driver Delivered', value: 'DRIVER_DELIVERED' },
+  { label: 'Driver Failed', value: 'DRIVER_FAILED' },
+];
+
 const orderStatusOptions: FilterOption[] = [
   { label: 'Booking', value: 'BOOKING' },
   { label: 'Ready', value: 'READY' },
@@ -100,9 +113,12 @@ export function OrderFiltersPanel({
   onFiltersChange,
   areaOptions = [],
   salespersonOptions = [],
+  driverOptions = [],
   showSalespersonFilter = false,
+  showDriverFilter = false,
   showOrderStatus = false,
   showRunnerStatus = true,
+  showDriverStatus = false,
   showReconciliationStatus = true,
 }: OrderFiltersPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -112,10 +128,12 @@ export function OrderFiltersPanel({
     if (filters.year) count++;
     if (filters.month) count++;
     if (filters.runnerStatus) count++;
+    if (filters.driverStatus) count++;
     if (filters.orderStatus) count++;
     if (filters.reconciliationStatus) count++;
     if (filters.area) count++;
     if (filters.salespersonId) count++;
+    if (filters.driverId) count++;
     if (filters.paymentMethod) count++;
     return count;
   }, [filters]);
@@ -248,6 +266,25 @@ export function OrderFiltersPanel({
                   </Select>
                 </div>
               )}
+              {showDriverStatus && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Driver Status</Label>
+                  <Select
+                    value={filters.driverStatus || 'all'}
+                    onValueChange={(v) => updateFilter('driverStatus', v)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      {driverStatusOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {showOrderStatus && (
                 <div className="space-y-1.5">
                   <Label className="text-xs">Order Status</Label>
@@ -345,6 +382,25 @@ export function OrderFiltersPanel({
                   </Select>
                 </div>
               )}
+              {showDriverFilter && driverOptions.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Driver</Label>
+                  <Select
+                    value={filters.driverId || 'all'}
+                    onValueChange={(v) => updateFilter('driverId', v)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      {driverOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
         </CollapsibleContent>
@@ -366,6 +422,8 @@ export function applyOrderFilters<T extends {
   delivered_at?: string | null;
   next_delivery_date?: string | null;
   runner_status?: string;
+  driver_status?: string | null;
+  driver_id?: string | null;
   status?: string;
   reconciliation_status?: string;
   area?: string | null;
@@ -390,10 +448,12 @@ export function applyOrderFilters<T extends {
 
     // Status filters
     if (filters.runnerStatus && order.runner_status !== filters.runnerStatus) return false;
+    if (filters.driverStatus && order.driver_status !== filters.driverStatus) return false;
     if (filters.orderStatus && order.status !== filters.orderStatus) return false;
     if (filters.reconciliationStatus && order.reconciliation_status !== filters.reconciliationStatus) return false;
     if (filters.area && order.area !== filters.area) return false;
     if (filters.salespersonId && order.salesperson_id !== filters.salespersonId) return false;
+    if (filters.driverId && order.driver_id !== filters.driverId) return false;
     if (filters.paymentMethod && order.payment_method !== filters.paymentMethod) return false;
 
     return true;

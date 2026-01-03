@@ -2,15 +2,18 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useDriverReturns } from '@/hooks/useDriverReturns';
+import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
 import { CreateReturnDialog } from '@/components/driver/CreateReturnDialog';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { RotateCcw, Plus, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { RotateCcw, Plus, CheckCircle, Clock, XCircle, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function DriverReturnsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const { data: returns, isLoading } = useDriverReturns();
+  const { data: returnRequired, isLoading: isLoadingReturn } = useDriverReturnRequired();
 
   const pendingReturns = returns?.filter(r => r.status === 'PENDING_RUNNER_ACK') || [];
   const acknowledgedReturns = returns?.filter(r => r.status === 'RUNNER_ACKED') || [];
@@ -52,6 +55,37 @@ export default function DriverReturnsPage() {
           New Return
         </Button>
       </div>
+
+      {/* Return Required Banner */}
+      {returnRequired?.isReturnRequired && (
+        <Alert variant="destructive" className="border-red-500">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Daily Return Required</AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">
+              You have {returnRequired.totalSuggestedReturn} item(s) that need to be returned before you can receive new pickups.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {returnRequired.items.slice(0, 5).map(item => (
+                <Badge key={item.product_id} variant="outline" className="border-red-300 bg-red-50">
+                  {item.sku_code || 'N/A'} / {item.sku_name}: {item.suggested_return_qty}
+                </Badge>
+              ))}
+              {returnRequired.items.length > 5 && (
+                <Badge variant="outline">+{returnRequired.items.length - 5} more</Badge>
+              )}
+            </div>
+            <Button 
+              size="sm" 
+              variant="destructive"
+              onClick={() => setCreateDialogOpen(true)}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Submit Return Now
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Pending Returns */}
       {pendingReturns.length > 0 && (

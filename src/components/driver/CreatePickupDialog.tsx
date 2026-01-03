@@ -11,7 +11,8 @@ import { useCreatePickup, useDriverBlockingOrders } from '@/hooks/useDriverPicku
 import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
 import { useSuggestedPickupQty, SuggestedQuantity } from '@/hooks/useSuggestedPickupQty';
-import { Plus, Trash2, AlertCircle, Sparkles, AlertTriangle } from 'lucide-react';
+import { useCanDriverReceivePickup } from '@/hooks/useDriverReturnRequired';
+import { Plus, Trash2, AlertCircle, Sparkles, AlertTriangle, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const { data: products } = useProducts();
   const { data: blockingOrders, isLoading: loadingBlocking } = useDriverBlockingOrders(selectedDriverId || undefined);
   const { data: suggestedQty, isLoading: loadingSuggestion } = useSuggestedPickupQty(selectedDriverId || undefined, pickupDate);
+  const { canReceivePickup, returnRequired, returnItems, totalToReturn, isLoading: loadingReturnCheck } = useCanDriverReceivePickup(selectedDriverId || undefined);
   const createPickup = useCreatePickup();
 
   // Auto-populate items when driver or date changes
@@ -107,6 +109,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   };
 
   const hasBlockingOrders = blockingOrders && blockingOrders.length > 0;
+  const hasReturnRequired = selectedDriverId && returnRequired;
   const hasSuggestions = suggestedQty && suggestedQty.length > 0;
 
   // Get product name by id - format: SKU Code / SKU Name
@@ -166,6 +169,24 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                     </li>
                   ))}
                   {blockingOrders.length > 5 && <li>...and {blockingOrders.length - 5} more</li>}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {selectedDriverId && hasReturnRequired && (
+            <Alert variant="destructive">
+              <RotateCcw className="h-4 w-4" />
+              <AlertTitle>Return Required Before Pickup</AlertTitle>
+              <AlertDescription>
+                Driver must submit a return for {totalToReturn} item(s) before receiving new pickups:
+                <ul className="mt-2 list-disc list-inside">
+                  {returnItems.slice(0, 5).map(item => (
+                    <li key={item.product_id}>
+                      {item.sku_code || 'N/A'} / {item.sku_name} - {item.suggested_return_qty} to return
+                    </li>
+                  ))}
+                  {returnItems.length > 5 && <li>...and {returnItems.length - 5} more items</li>}
                 </ul>
               </AlertDescription>
             </Alert>
@@ -310,6 +331,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                 !selectedDriverId ||
                 items.length === 0 ||
                 hasBlockingOrders ||
+                hasReturnRequired ||
                 (hasLowerThanRequired && !confirmLowerQty) ||
                 createPickup.isPending
               }

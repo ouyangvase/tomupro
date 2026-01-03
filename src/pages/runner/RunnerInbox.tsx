@@ -455,9 +455,12 @@ export default function RunnerInbox() {
           onFiltersChange={setPanelFilters}
           areaOptions={areaOptions}
           salespersonOptions={salespersonOptions}
+          driverOptions={driverOptions}
           showSalespersonFilter={true}
+          showDriverFilter={true}
           showOrderStatus={false}
           showRunnerStatus={true}
+          showDriverStatus={true}
           showReconciliationStatus={true}
         />
 
