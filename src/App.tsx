@@ -18,6 +18,7 @@ import RunnerInbound from "./pages/runner/RunnerInbound";
 import RunnerClaimBatches from "./pages/runner/RunnerClaimBatches";
 import DriverManagement from "./pages/runner/DriverManagement";
 import DriverPickups from "./pages/runner/DriverPickups";
+import RunnerAllocatedStock from "./pages/runner/RunnerAllocatedStock";
 import DriverInbox from "./pages/driver/DriverInbox";
 import DriverPickupsPage from "./pages/driver/DriverPickupsPage";
 import DriverReturnsPage from "./pages/driver/DriverReturnsPage";
@@ -98,6 +99,7 @@ function AppRoutes() {
       <Route path="/runner/drivers" element={<ProtectedRoute><DriverManagement /></ProtectedRoute>} />
       <Route path="/runner/driver-pickups" element={<ProtectedRoute><DriverPickups /></ProtectedRoute>} />
       <Route path="/runner/driver-returns" element={<ProtectedRoute><DriverReturns /></ProtectedRoute>} />
+      <Route path="/runner/allocated-stock" element={<ProtectedRoute><RunnerAllocatedStock /></ProtectedRoute>} />
       <Route path="/runner/driver-ranking" element={<ProtectedRoute><DriverRanking /></ProtectedRoute>} />
       <Route path="/runner/driver-locations" element={<ProtectedRoute><DriverLocationsPage /></ProtectedRoute>} />
       <Route path="/driver/inbox" element={<ProtectedRoute><DriverInbox /></ProtectedRoute>} />
