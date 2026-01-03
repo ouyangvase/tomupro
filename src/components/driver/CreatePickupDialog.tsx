@@ -40,7 +40,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const { data: products } = useProducts();
   const { data: blockingOrders, isLoading: loadingBlocking } = useDriverBlockingOrders(selectedDriverId || undefined);
   const { data: suggestedQty, isLoading: loadingSuggestion } = useSuggestedPickupQty(selectedDriverId || undefined, pickupDate);
-  const { canReceivePickup, returnRequired, returnItems, totalToReturn, isLoading: loadingReturnCheck } = useCanDriverReceivePickup(selectedDriverId || undefined);
+  const { canReceivePickup, returnRequired, mustReturnItems, totalMustReturn, isLoading: loadingReturnCheck } = useCanDriverReceivePickup(selectedDriverId || undefined);
   const createPickup = useCreatePickup();
 
   // Auto-populate items when driver or date changes
@@ -182,14 +182,14 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
               <RotateCcw className="h-4 w-4" />
               <AlertTitle>Return Required Before Pickup</AlertTitle>
               <AlertDescription>
-                Driver must submit a return for {totalToReturn} item(s) before receiving new pickups:
+                Driver must submit a return for {totalMustReturn} item(s) before receiving new pickups:
                 <ul className="mt-2 list-disc list-inside">
-                  {returnItems.slice(0, 5).map(item => (
+                  {mustReturnItems.slice(0, 5).map(item => (
                     <li key={item.product_id}>
                       {item.sku_code || 'N/A'} / {item.sku_name} - {item.suggested_return_qty} to return
                     </li>
                   ))}
-                  {returnItems.length > 5 && <li>...and {returnItems.length - 5} more items</li>}
+                  {mustReturnItems.length > 5 && <li>...and {mustReturnItems.length - 5} more items</li>}
                 </ul>
               </AlertDescription>
             </Alert>
