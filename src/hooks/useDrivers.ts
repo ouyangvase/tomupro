@@ -43,9 +43,10 @@ export function useMyDrivers() {
         .from('runner_drivers')
         .select(`
           *,
-          driver:driver_id(id, display_name, email, role)
+          driver:profiles!runner_drivers_driver_id_fkey(id, display_name, email, role, is_active)
         `)
         .eq('runner_id', user.id)
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
