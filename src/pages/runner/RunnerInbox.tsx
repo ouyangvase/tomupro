@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
@@ -12,15 +13,15 @@ import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
+import { useMyDrivers, useAssignOrderToDriver } from '@/hooks/useDrivers';
 import { exportSelectedOrderLines } from '@/lib/csv';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
-import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2, MessageCircle, Calendar } from 'lucide-react';
+import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2, MessageCircle, User } from 'lucide-react';
 import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { format, parseISO } from 'date-fns';
 
 const runnerStatusColors: Record<RunnerStatus, string> = {
   UNASSIGNED: 'bg-muted text-muted-foreground',
@@ -59,6 +60,8 @@ export default function RunnerInbox() {
   const queryClient = useQueryClient();
   const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
   const { data: userDirectory = [] } = useUserDirectory();
+  const { data: myDrivers = [] } = useMyDrivers();
+  const assignOrderToDriver = useAssignOrderToDriver();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -91,6 +94,19 @@ export default function RunnerInbox() {
       value: sp.id,
     }));
   }, [userDirectory]);
+
+  // Driver filter options
+  const driverOptions = useMemo(() => {
+    return myDrivers.map(d => ({
+      label: d.driver?.display_name || 'Unknown',
+      value: d.driver_id,
+    }));
+  }, [myDrivers]);
+
+  // Handle driver assignment
+  const handleAssignDriver = (orderId: string, driverId: string) => {
+    assignOrderToDriver.mutate({ orderId, driverId });
+  };
 
   // Check if selected orders can be bulk claimed
   const canBulkClaim = useMemo(() => {
@@ -230,15 +246,6 @@ export default function RunnerInbox() {
       render: (order) => order.customer_name || '-',
     },
     {
-      key: 'driver_id',
-      header: 'Driver',
-      render: (order) => (
-        <span className={order.driver?.display_name ? '' : 'text-muted-foreground italic'}>
-          {order.driver?.display_name || 'Unassigned'}
-        </span>
-      ),
-    },
-    {
       key: 'phone',
       header: 'Phone',
       render: (order) => (
@@ -309,6 +316,41 @@ export default function RunnerInbox() {
           {order.runner_status === 'FAILED_DELIVERY' && (
             <FailedDeliveryInfo order={order} compact />
           )}
+        </div>
+      ),
+    },
+    {
+      key: 'driver_id',
+      header: 'Driver',
+      filterable: true,
+      filterOptions: driverOptions,
+      render: (order) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Select
+            value={order.driver_id || ''}
+            onValueChange={(value) => handleAssignDriver(order.id, value)}
+            disabled={order.runner_status === 'DELIVERED'}
+          >
+            <SelectTrigger className="w-[140px] h-8">
+              <SelectValue placeholder="Assign driver">
+                {order.driver?.display_name ? (
+                  <span className="flex items-center gap-1.5">
+                    <User className="h-3 w-3" />
+                    {order.driver.display_name}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">Unassigned</span>
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {myDrivers.map((d) => (
+                <SelectItem key={d.driver_id} value={d.driver_id}>
+                  {d.driver?.display_name || 'Unknown'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       ),
     },
