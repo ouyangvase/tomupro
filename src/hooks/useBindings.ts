@@ -19,13 +19,10 @@ export function useBindings(filters?: BindingFilters | string) {
   return useQuery({
     queryKey: ['bindings', normalizedFilters],
     queryFn: async () => {
+      // First, fetch bindings
       let query = supabase
         .from('bindings')
-        .select(`
-          *,
-          salesperson:profiles!bindings_salesperson_id_fkey(id, display_name, email),
-          runner:profiles!bindings_runner_id_fkey(id, display_name, email)
-        `);
+        .select('*');
 
       // Handle active filter - by default only active unless includeInactive is true
       if (normalizedFilters.includeInactive) {
@@ -40,13 +37,36 @@ export function useBindings(filters?: BindingFilters | string) {
         query = query.eq('salesperson_id', normalizedFilters.salespersonId);
       }
 
-      if (normalizedFilters.runnerId) {
-        query = query.eq('runner_id', normalizedFilters.runnerId);
+      const { data: bindingsData, error: bindingsError } = await query;
+      if (bindingsError) throw bindingsError;
+
+      if (!bindingsData || bindingsData.length === 0) {
+        return [] as Binding[];
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as Binding[];
+      // Fetch user directory for runner and salesperson names
+      const userIds = [
+        ...new Set([
+          ...bindingsData.map(b => b.runner_id),
+          ...bindingsData.map(b => b.salesperson_id),
+        ])
+      ];
+
+      const { data: users, error: usersError } = await supabase
+        .from('user_directory')
+        .select('id, display_name, email, role')
+        .in('id', userIds);
+
+      if (usersError) throw usersError;
+
+      const userMap = new Map(users?.map(u => [u.id, u]) || []);
+
+      // Merge user data into bindings
+      return bindingsData.map(binding => ({
+        ...binding,
+        runner: userMap.get(binding.runner_id) as Binding['runner'],
+        salesperson: userMap.get(binding.salesperson_id) as Binding['salesperson'],
+      })) as Binding[];
     },
   });
 }
@@ -55,17 +75,40 @@ export function useAllBindings() {
   return useQuery({
     queryKey: ['bindings', 'all'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: bindingsData, error: bindingsError } = await supabase
         .from('bindings')
-        .select(`
-          *,
-          salesperson:profiles!bindings_salesperson_id_fkey(id, display_name, email),
-          runner:profiles!bindings_runner_id_fkey(id, display_name, email)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return data as Binding[];
+      if (bindingsError) throw bindingsError;
+
+      if (!bindingsData || bindingsData.length === 0) {
+        return [] as Binding[];
+      }
+
+      // Fetch user directory for runner and salesperson names
+      const userIds = [
+        ...new Set([
+          ...bindingsData.map(b => b.runner_id),
+          ...bindingsData.map(b => b.salesperson_id),
+        ])
+      ];
+
+      const { data: users, error: usersError } = await supabase
+        .from('user_directory')
+        .select('id, display_name, email, role')
+        .in('id', userIds);
+
+      if (usersError) throw usersError;
+
+      const userMap = new Map(users?.map(u => [u.id, u]) || []);
+
+      // Merge user data into bindings
+      return bindingsData.map(binding => ({
+        ...binding,
+        runner: userMap.get(binding.runner_id) as Binding['runner'],
+        salesperson: userMap.get(binding.salesperson_id) as Binding['salesperson'],
+      })) as Binding[];
     },
   });
 }
