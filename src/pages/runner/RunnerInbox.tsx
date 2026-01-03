@@ -9,12 +9,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
+import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers, useAssignOrderToDriver } from '@/hooks/useDrivers';
 import { exportSelectedOrderLines } from '@/lib/csv';
+import { formatBND } from '@/lib/currency';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -67,6 +69,7 @@ export default function RunnerInbox() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
+  const [bulkClaimDialogOpen, setBulkClaimDialogOpen] = useState(false);
   const [processingDelivery, setProcessingDelivery] = useState<string | null>(null);
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   
@@ -119,6 +122,15 @@ export default function RunnerInbox() {
     });
   }, [selectedRows, orders]);
 
+  // Get orders that can be claimed for the dialog
+  const claimableOrders = useMemo(() => {
+    return orders?.filter(o => 
+      selectedRows.includes(o.id) && 
+      o.runner_status === 'DELIVERED' && 
+      o.reconciliation_status === 'NOT_CLAIMED'
+    ) || [];
+  }, [selectedRows, orders]);
+
   const handleBulkTake = () => {
     bulkUpdateOrders.mutate({
       ids: selectedRows,
@@ -127,9 +139,14 @@ export default function RunnerInbox() {
     setSelectedRows([]);
   };
 
-  const handleBulkClaim = async () => {
-    await submitBulkClaim.mutateAsync({ orderIds: selectedRows });
+  const handleOpenBulkClaimDialog = () => {
+    setBulkClaimDialogOpen(true);
+  };
+
+  const handleBulkClaimSubmit = async (exchangeRate: number, note?: string) => {
+    await submitBulkClaim.mutateAsync({ orderIds: selectedRows, note, exchangeRate });
     setSelectedRows([]);
+    setBulkClaimDialogOpen(false);
   };
 
   const handleExport = () => {
@@ -292,9 +309,9 @@ export default function RunnerInbox() {
     },
     {
       key: 'total_amount',
-      header: 'Amount',
+      header: 'Amount (BND)',
       sortable: true,
-      render: (order) => <span className="font-medium">${Number(order.total_amount).toFixed(2)}</span>,
+      render: (order) => <span className="font-medium">{formatBND(order.total_amount)}</span>,
     },
     {
       key: 'payment_method',
@@ -501,7 +518,7 @@ export default function RunnerInbox() {
                   <Button 
                     size="sm" 
                     variant="secondary"
-                    onClick={handleBulkClaim}
+                    onClick={handleOpenBulkClaimDialog}
                     disabled={submitBulkClaim.isPending}
                   >
                     {submitBulkClaim.isPending ? (
@@ -528,6 +545,14 @@ export default function RunnerInbox() {
         order={selectedOrder}
         open={failedDialogOpen}
         onOpenChange={setFailedDialogOpen}
+      />
+
+      <BulkClaimDialog
+        open={bulkClaimDialogOpen}
+        onOpenChange={setBulkClaimDialogOpen}
+        orders={claimableOrders}
+        onSubmit={handleBulkClaimSubmit}
+        isSubmitting={submitBulkClaim.isPending}
       />
     </AppLayout>
   );

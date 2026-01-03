@@ -36,6 +36,7 @@ import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
+import { formatBND } from '@/lib/currency';
 import { useToast } from '@/hooks/use-toast';
 import type { Order } from '@/types/database';
 
@@ -141,9 +142,9 @@ export default function ReadySales() {
     },
     { 
       key: 'total_amount', 
-      header: 'Amount', 
+      header: 'Amount (BND)', 
       sortable: true, 
-      render: (o) => <span className="font-medium">${Number(o.total_amount).toFixed(2)}</span>
+      render: (o) => <span className="font-medium">{formatBND(o.total_amount)}</span>
     },
     { 
       key: 'payment_method', 

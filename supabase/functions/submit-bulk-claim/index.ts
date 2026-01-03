@@ -48,11 +48,20 @@ serve(async (req) => {
       );
     }
 
-    const { orderIds, note } = await req.json();
+    const { orderIds, note, exchangeRate } = await req.json();
 
     if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
       return new Response(
         JSON.stringify({ success: false, error: 'No orders provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate exchange rate
+    const rate = Number(exchangeRate);
+    if (!exchangeRate || isNaN(rate) || rate <= 0 || rate > 99.9999) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Valid exchange rate (BND→RM) is required (0.0001 - 99.9999)' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -135,10 +144,11 @@ serve(async (req) => {
       );
     }
 
-    // Calculate total amounts
+    // Calculate total amounts (all in BND)
     const totalGrossAmount = ordersWithCharges.reduce((sum, o) => sum + Number(o.total_amount), 0);
     const totalDeliveryFees = ordersWithCharges.reduce((sum, o) => sum + (o.delivery_fee || 0), 0);
-    const totalNetAmount = ordersWithCharges.reduce((sum, o) => sum + (o.net_claim_amount || 0), 0);
+    const totalNetBND = ordersWithCharges.reduce((sum, o) => sum + (o.net_claim_amount || 0), 0);
+    const totalNetRM = Number((totalNetBND * rate).toFixed(2));
 
     // Get runner's display name for notification
     const { data: runnerProfile } = await supabase
@@ -147,12 +157,15 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    // Create claim batch with net amount (after delivery fees)
+    // Create claim batch with BND and RM amounts
     const { data: batch, error: batchError } = await supabase
       .from('claim_batches')
       .insert({
         runner_id: user.id,
-        total_amount: totalNetAmount, // Net amount after delivery fees
+        total_amount: totalNetBND, // Keep for backward compatibility
+        total_bnd: totalNetBND,
+        exchange_rate_to_rm: rate,
+        total_rm: totalNetRM,
         status: 'ADMIN_ACK_PENDING',
         note: note ? String(note).slice(0, 500) : null,
       })
@@ -160,6 +173,7 @@ serve(async (req) => {
       .single();
 
     if (batchError) {
+      console.error('Batch creation error:', batchError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to create claim batch' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -213,7 +227,9 @@ serve(async (req) => {
         order_count: orderIds.length, 
         gross_amount: totalGrossAmount,
         delivery_fees: totalDeliveryFees,
-        net_amount: totalNetAmount,
+        net_amount_bnd: totalNetBND,
+        exchange_rate: rate,
+        net_amount_rm: totalNetRM,
       },
     });
 
@@ -224,7 +240,9 @@ serve(async (req) => {
         orderCount: orderIds.length,
         grossAmount: totalGrossAmount,
         deliveryFees: totalDeliveryFees,
-        netAmount: totalNetAmount,
+        netAmountBND: totalNetBND,
+        exchangeRate: rate,
+        netAmountRM: totalNetRM,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

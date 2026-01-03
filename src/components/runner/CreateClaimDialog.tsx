@@ -25,6 +25,7 @@ import { useCreateClaimWithDeliveryFee } from '@/hooks/useClaims';
 import { useActiveDeliveryCharges } from '@/hooks/useDeliveryCharges';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
+import { formatBND } from '@/lib/currency';
 import type { Order, ClaimMethod } from '@/types/database';
 
 interface CreateClaimDialogProps {
@@ -132,7 +133,7 @@ export function CreateClaimDialog({ order, open, onOpenChange }: CreateClaimDial
               <Truck className="h-4 w-4" />
               <AlertTitle>Delivery Charge Applied</AlertTitle>
               <AlertDescription>
-                Area: {matchingCharge.area} — RM {Number(matchingCharge.charge_amount).toFixed(2)}
+                Area: {matchingCharge.area} — {formatBND(matchingCharge.charge_amount)}
               </AlertDescription>
             </Alert>
           )}
@@ -143,16 +144,16 @@ export function CreateClaimDialog({ order, open, onOpenChange }: CreateClaimDial
             <div className="bg-card border rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Gross Amount (Order Total)</span>
-                <span className="font-mono">RM {grossAmount.toFixed(2)}</span>
+                <span className="font-mono">{formatBND(grossAmount)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Delivery Fee ({order.area || 'N/A'})</span>
-                <span className="font-mono text-destructive">- RM {deliveryFee.toFixed(2)}</span>
+                <span className="font-mono text-destructive">- {formatBND(deliveryFee)}</span>
               </div>
               <Separator />
               <div className="flex justify-between font-medium">
                 <span>Net Claim Amount</span>
-                <span className="font-mono text-lg">RM {netClaimAmount.toFixed(2)}</span>
+                <span className="font-mono text-lg">{formatBND(netClaimAmount)}</span>
               </div>
             </div>
           </div>
@@ -193,7 +194,7 @@ export function CreateClaimDialog({ order, open, onOpenChange }: CreateClaimDial
             onClick={handleSubmit}
             disabled={!canSubmit || createClaim.isPending}
           >
-            {createClaim.isPending ? 'Submitting...' : `Submit Claim (RM ${netClaimAmount.toFixed(2)})`}
+            {createClaim.isPending ? 'Submitting...' : `Submit Claim (${formatBND(netClaimAmount)})`}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -71,6 +71,7 @@ import { useOrderItems, useCreateOrderItem, useUpdateOrderItem, useDeleteOrderIt
 import { useUpdateOrder, useCreateOrder } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderClaimsHistory } from '@/components/orders/OrderClaimsHistory';
+import { formatBND } from '@/lib/currency';
 import type { Order, OrderItem } from '@/types/database';
 
 const orderSchema = z.object({
@@ -650,7 +651,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
               <div className="flex justify-end gap-8 text-sm">
                 <span>Total Qty: <strong>{totals.total_qty}</strong></span>
-                <span>Total Amount: <strong>${totals.total_amount.toFixed(2)}</strong></span>
+                <span>Total Amount: <strong>{formatBND(totals.total_amount)}</strong></span>
               </div>
             </div>
 

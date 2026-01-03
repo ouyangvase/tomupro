@@ -220,32 +220,41 @@ export type Database = {
         Row: {
           admin_ack_at: string | null
           admin_ack_by: string | null
+          exchange_rate_to_rm: number | null
           id: string
           note: string | null
           runner_id: string
           status: Database["public"]["Enums"]["claim_batch_status"]
           submitted_at: string
           total_amount: number
+          total_bnd: number | null
+          total_rm: number | null
         }
         Insert: {
           admin_ack_at?: string | null
           admin_ack_by?: string | null
+          exchange_rate_to_rm?: number | null
           id?: string
           note?: string | null
           runner_id: string
           status?: Database["public"]["Enums"]["claim_batch_status"]
           submitted_at?: string
           total_amount?: number
+          total_bnd?: number | null
+          total_rm?: number | null
         }
         Update: {
           admin_ack_at?: string | null
           admin_ack_by?: string | null
+          exchange_rate_to_rm?: number | null
           id?: string
           note?: string | null
           runner_id?: string
           status?: Database["public"]["Enums"]["claim_batch_status"]
           submitted_at?: string
           total_amount?: number
+          total_bnd?: number | null
+          total_rm?: number | null
         }
         Relationships: [
           {

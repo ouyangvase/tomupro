@@ -24,6 +24,7 @@ import { useClaimsByOrders } from '@/hooks/useClaims';
 import { useReasons } from '@/hooks/useReasons';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
+import { formatBND } from '@/lib/currency';
 import type { Order, Claim } from '@/types/database';
 import { CheckCircle, AlertTriangle, DollarSign, Users } from 'lucide-react';
 
@@ -130,17 +131,17 @@ export default function ReconciliationSP() {
     },
     {
       key: 'total_amount',
-      header: 'Order Amount',
+      header: 'Amount (BND)',
       sortable: true,
-      render: (order) => order.total_amount.toLocaleString(),
+      render: (order) => formatBND(order.total_amount),
     },
     {
       key: 'claimed_amount',
-      header: 'Claimed',
+      header: 'Claimed (BND)',
       render: (order) => {
         const orderClaims = getClaimsForOrder(order.id);
         const total = orderClaims.reduce((sum, c) => sum + c.amount, 0);
-        return total.toLocaleString();
+        return formatBND(total);
       },
     },
     {
@@ -189,7 +190,7 @@ export default function ReconciliationSP() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {group.totalClaimed.toLocaleString()}
+                  {formatBND(group.totalClaimed)}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {group.orders.length} orders
