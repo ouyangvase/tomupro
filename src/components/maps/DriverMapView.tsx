@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,12 @@ import { useMyDrivers } from "@/hooks/useDrivers";
 import { useOrders } from "@/hooks/useOrders";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
+
+declare global {
+  interface Window {
+    initGoogleMaps?: () => void;
+  }
+}
 
 interface DriverMapViewProps {
   runnerId?: string;
@@ -79,35 +84,50 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
     fetchApiKey();
   }, []);
 
-  // Initialize Google Maps
+  // Initialize Google Maps via script tag
   useEffect(() => {
     if (!apiKey || !mapContainer.current || mapRef.current) return;
 
-    // Set API options
-    setOptions({
-      key: apiKey,
-      v: "weekly",
-    });
-
-    // Import the maps library
-    importLibrary('maps').then(({ Map }) => {
-      if (!mapContainer.current) return;
-      
-      mapRef.current = new Map(mapContainer.current, {
-        center: { lat: 4.5353, lng: 114.7277 }, // Brunei center
+    // Check if Google Maps is already loaded
+    if (window.google?.maps) {
+      mapRef.current = new google.maps.Map(mapContainer.current, {
+        center: { lat: 4.5353, lng: 114.7277 },
         zoom: 10,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: true,
         zoomControl: true,
       });
-
       infoWindowRef.current = new google.maps.InfoWindow();
       setMapReady(true);
-    }).catch((err) => {
-      console.error('Error loading Google Maps:', err);
+      return;
+    }
+
+    // Load Google Maps via script tag
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=marker`;
+    script.async = true;
+    script.defer = true;
+    
+    script.onload = () => {
+      if (!mapContainer.current) return;
+      mapRef.current = new google.maps.Map(mapContainer.current, {
+        center: { lat: 4.5353, lng: 114.7277 },
+        zoom: 10,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+        zoomControl: true,
+      });
+      infoWindowRef.current = new google.maps.InfoWindow();
+      setMapReady(true);
+    };
+
+    script.onerror = () => {
       setLoadError('Failed to load Google Maps');
-    });
+    };
+
+    document.head.appendChild(script);
 
     return () => {
       // Cleanup markers
