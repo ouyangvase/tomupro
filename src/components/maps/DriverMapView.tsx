@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,14 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, MapPin, Navigation, Package } from "lucide-react";
+import { RefreshCw, MapPin, Navigation, Package, Route } from "lucide-react";
 import { useDriverLatestLocations } from "@/hooks/useDriverLocations";
 import { useMyDrivers } from "@/hooks/useDrivers";
 import { useOrders } from "@/hooks/useOrders";
 import { useGeocoding } from "@/hooks/useGeocoding";
+import { useRouteDrawing } from "@/hooks/useRouteDrawing";
 import { format } from "date-fns";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN || "";
+const ROUTE_SOURCE_ID = "driver-route";
+const ROUTE_LAYER_ID = "driver-route-layer";
 
 interface DriverMapViewProps {
   runnerId?: string;
@@ -26,6 +29,8 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
   const orderMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
   const [showOrders, setShowOrders] = useState(true);
+  const [showRoute, setShowRoute] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
 
   const { data: drivers } = useMyDrivers();
   const driverIds = drivers?.map((d) => d.driver_id) || [];
@@ -36,9 +41,17 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
   });
 
   const { geocodeOrders, geocodedOrders, isGeocoding } = useGeocoding();
+  const { 
+    calculateRoute, 
+    clearRoute, 
+    routes, 
+    isCalculating,
+    formatDistance,
+    formatDuration 
+  } = useRouteDrawing();
 
-  // Get orders for selected driver
   const driverOrders = orders?.filter((o) => o.driver_id === selectedDriver) || [];
+  const selectedRoute = selectedDriver ? routes.get(selectedDriver) : null;
 
   // Geocode orders when they change
   useEffect(() => {
@@ -55,6 +68,40 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
     }
   }, [orders, geocodeOrders]);
 
+  // Calculate route when driver is selected
+  const recalculateRoute = useCallback(async () => {
+    if (!selectedDriver || !geocodedOrders || !locations) return;
+
+    const driverLocation = locations.find((l) => l.driver_id === selectedDriver);
+    if (!driverLocation?.latitude || !driverLocation?.longitude) return;
+
+    const driverDestinations = geocodedOrders
+      .filter((o) => o.driverId === selectedDriver)
+      .map((o) => ({
+        longitude: o.longitude,
+        latitude: o.latitude,
+        orderId: o.orderId,
+        orderCode: o.orderCode,
+      }));
+
+    if (driverDestinations.length === 0) {
+      clearRoute(selectedDriver);
+      return;
+    }
+
+    await calculateRoute(
+      selectedDriver,
+      { longitude: driverLocation.longitude, latitude: driverLocation.latitude },
+      driverDestinations
+    );
+  }, [selectedDriver, geocodedOrders, locations, calculateRoute, clearRoute]);
+
+  useEffect(() => {
+    if (showRoute && selectedDriver) {
+      recalculateRoute();
+    }
+  }, [selectedDriver, showRoute, recalculateRoute]);
+
   useEffect(() => {
     if (!mapContainer.current || !MAPBOX_TOKEN) return;
 
@@ -69,10 +116,67 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
 
     map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
+    map.current.on("load", () => {
+      // Add route source and layer
+      map.current!.addSource(ROUTE_SOURCE_ID, {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "LineString",
+            coordinates: [],
+          },
+        },
+      });
+
+      map.current!.addLayer({
+        id: ROUTE_LAYER_ID,
+        type: "line",
+        source: ROUTE_SOURCE_ID,
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "#3b82f6",
+          "line-width": 4,
+          "line-opacity": 0.8,
+        },
+      });
+
+      setMapReady(true);
+    });
+
     return () => {
       map.current?.remove();
     };
   }, []);
+
+  // Update route on map
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+
+    const source = map.current.getSource(ROUTE_SOURCE_ID) as mapboxgl.GeoJSONSource;
+    if (!source) return;
+
+    if (showRoute && selectedRoute) {
+      source.setData({
+        type: "Feature",
+        properties: {},
+        geometry: selectedRoute.geometry,
+      });
+    } else {
+      source.setData({
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: [],
+        },
+      });
+    }
+  }, [selectedRoute, showRoute, mapReady]);
 
   // Update driver markers
   useEffect(() => {
@@ -84,10 +188,11 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
     locations.forEach((location) => {
       if (!location.latitude || !location.longitude) return;
 
+      const isSelected = selectedDriver === location.driver_id;
       const el = document.createElement("div");
       el.className = "driver-marker";
       el.innerHTML = `
-        <div style="width: 40px; height: 40px; background: hsl(var(--primary)); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 3px solid white; cursor: pointer;">
+        <div style="width: ${isSelected ? 48 : 40}px; height: ${isSelected ? 48 : 40}px; background: ${isSelected ? '#22c55e' : 'hsl(var(--primary))'}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 3px solid white; cursor: pointer; transition: all 0.2s;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="4"/>
             <path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>
@@ -96,7 +201,9 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
       `;
 
       el.addEventListener("click", () => {
-        setSelectedDriver(location.driver_id);
+        setSelectedDriver(
+          selectedDriver === location.driver_id ? null : location.driver_id
+        );
       });
 
       const marker = new mapboxgl.Marker(el)
@@ -118,7 +225,7 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
     });
 
     fitMapToBounds();
-  }, [locations]);
+  }, [locations, selectedDriver]);
 
   // Update order markers
   useEffect(() => {
@@ -133,15 +240,24 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
       ? geocodedOrders.filter((o) => o.driverId === selectedDriver)
       : geocodedOrders;
 
-    filteredOrders.forEach((order) => {
+    filteredOrders.forEach((order, index) => {
       const el = document.createElement("div");
       el.className = "order-marker";
+      
+      // Show sequence number if route is displayed
+      const showSequence = showRoute && selectedDriver && selectedRoute;
+      
       el.innerHTML = `
-        <div style="width: 32px; height: 32px; background: hsl(var(--destructive)); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 2px solid white; cursor: pointer;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-            <circle cx="12" cy="10" r="3"/>
-          </svg>
+        <div style="position: relative; width: 32px; height: 32px;">
+          <div style="width: 32px; height: 32px; background: hsl(var(--destructive)); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 2px solid white; cursor: pointer;">
+            ${showSequence 
+              ? `<span style="font-size: 12px; font-weight: bold;">${index + 1}</span>`
+              : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>`
+            }
+          </div>
         </div>
       `;
 
@@ -150,12 +266,12 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
         .setPopup(
           new mapboxgl.Popup({ offset: 25 }).setHTML(`
             <div style="padding: 8px; min-width: 150px;">
-              <strong>${order.orderCode}</strong>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                ${showSequence ? `<span style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">Stop ${index + 1}</span>` : ''}
+                <strong>${order.orderCode}</strong>
+              </div>
               <p style="font-size: 12px; margin: 4px 0;">${order.customerName}</p>
               <p style="font-size: 11px; color: #666;">${order.area || "No area"}</p>
-              <p style="font-size: 10px; color: #888; margin-top: 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                ${order.address}
-              </p>
             </div>
           `)
         )
@@ -165,7 +281,7 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
     });
 
     fitMapToBounds();
-  }, [geocodedOrders, showOrders, selectedDriver]);
+  }, [geocodedOrders, showOrders, selectedDriver, showRoute, selectedRoute]);
 
   const fitMapToBounds = () => {
     if (!map.current) return;
@@ -201,7 +317,7 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
           <MapPin className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
           <h3 className="font-semibold mb-2">Map Not Available</h3>
           <p className="text-sm text-muted-foreground">
-            Mapbox token not configured. Please add MAPBOX_PUBLIC_TOKEN to enable maps.
+            Mapbox token not configured.
           </p>
         </CardContent>
       </Card>
@@ -211,27 +327,40 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Badge variant="outline" className="gap-1">
             <Navigation className="h-3 w-3" />
             {locations?.length || 0} drivers
           </Badge>
           <Badge variant="secondary" className="gap-1">
             <Package className="h-3 w-3" />
-            {geocodedOrders?.length || 0} orders mapped
+            {geocodedOrders?.length || 0} orders
             {isGeocoding && " (loading...)"}
           </Badge>
+          {selectedRoute && (
+            <Badge variant="default" className="gap-1">
+              <Route className="h-3 w-3" />
+              {formatDistance(selectedRoute.distance)} • {formatDuration(selectedRoute.duration)}
+            </Badge>
+          )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <Switch
               id="show-orders"
               checked={showOrders}
               onCheckedChange={setShowOrders}
             />
-            <Label htmlFor="show-orders" className="text-sm">
-              Show Orders
-            </Label>
+            <Label htmlFor="show-orders" className="text-sm">Orders</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="show-route"
+              checked={showRoute}
+              onCheckedChange={setShowRoute}
+              disabled={!selectedDriver}
+            />
+            <Label htmlFor="show-route" className="text-sm">Route</Label>
           </div>
           <Button
             variant="outline"
@@ -250,14 +379,22 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
           <Card className="overflow-hidden">
             <div ref={mapContainer} className="h-[500px] w-full" />
           </Card>
-          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
             <div className="flex items-center gap-1">
               <div className="w-3 h-3 rounded-full bg-primary" />
               <span>Driver</span>
             </div>
             <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full bg-green-500" />
+              <span>Selected Driver</span>
+            </div>
+            <div className="flex items-center gap-1">
               <div className="w-3 h-3 rounded-full bg-destructive" />
-              <span>Delivery Destination</span>
+              <span>Delivery Stop</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-6 h-1 bg-blue-500 rounded" />
+              <span>Route</span>
             </div>
           </div>
         </div>
@@ -266,7 +403,7 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center justify-between">
-                Driver Locations
+                Drivers
                 {selectedDriver && (
                   <Button
                     variant="ghost"
@@ -274,12 +411,12 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
                     className="h-6 px-2 text-xs"
                     onClick={() => setSelectedDriver(null)}
                   >
-                    Clear filter
+                    Clear
                   </Button>
                 )}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 max-h-[200px] overflow-y-auto">
+            <CardContent className="space-y-2 max-h-[180px] overflow-y-auto">
               {locations?.map((loc) => (
                 <div
                   key={loc.id}
@@ -295,7 +432,7 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
                     if (map.current && loc.latitude && loc.longitude) {
                       map.current.flyTo({
                         center: [loc.longitude, loc.latitude],
-                        zoom: 14,
+                        zoom: 13,
                       });
                     }
                   }}
@@ -308,11 +445,6 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
                       {format(new Date(loc.recorded_at), "HH:mm")}
                     </Badge>
                   </div>
-                  {loc.speed && (
-                    <span className="text-xs text-muted-foreground">
-                      {Math.round(loc.speed * 3.6)} km/h
-                    </span>
-                  )}
                 </div>
               ))}
               {(!locations || locations.length === 0) && (
@@ -323,14 +455,55 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
             </CardContent>
           </Card>
 
+          {selectedDriver && selectedRoute && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Route className="h-4 w-4" />
+                  Route Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="bg-muted/50 p-2 rounded">
+                    <p className="text-muted-foreground text-xs">Distance</p>
+                    <p className="font-semibold">{formatDistance(selectedRoute.distance)}</p>
+                  </div>
+                  <div className="bg-muted/50 p-2 rounded">
+                    <p className="text-muted-foreground text-xs">Est. Time</p>
+                    <p className="font-semibold">{formatDuration(selectedRoute.duration)}</p>
+                  </div>
+                  <div className="bg-muted/50 p-2 rounded col-span-2">
+                    <p className="text-muted-foreground text-xs">Stops</p>
+                    <p className="font-semibold">{driverOrders.length} deliveries</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-3"
+                  onClick={recalculateRoute}
+                  disabled={isCalculating}
+                >
+                  {isCalculating ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Route className="h-4 w-4 mr-2" />
+                  )}
+                  Recalculate Route
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">
-                {selectedDriver ? "Driver's Orders" : "All Orders"}
+                {selectedDriver ? "Delivery Stops" : "All Orders"}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 max-h-[250px] overflow-y-auto">
-              {(selectedDriver ? driverOrders : orders)?.map((order) => {
+            <CardContent className="space-y-2 max-h-[200px] overflow-y-auto">
+              {(selectedDriver ? driverOrders : orders)?.map((order, index) => {
                 const geocoded = geocodedOrders?.find(
                   (g) => g.orderId === order.id
                 );
@@ -348,19 +521,21 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
                     }}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-sm">
-                        {order.order_code}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        {geocoded ? (
-                          <MapPin className="h-3 w-3 text-green-500" />
-                        ) : (
-                          <MapPin className="h-3 w-3 text-muted-foreground" />
+                      <div className="flex items-center gap-2">
+                        {selectedDriver && showRoute && (
+                          <Badge variant="destructive" className="h-5 w-5 p-0 flex items-center justify-center text-xs">
+                            {index + 1}
+                          </Badge>
                         )}
-                        <Badge variant="outline" className="text-xs">
-                          {order.driver_status || order.runner_status}
-                        </Badge>
+                        <span className="font-medium text-sm">
+                          {order.order_code}
+                        </span>
                       </div>
+                      {geocoded ? (
+                        <MapPin className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <MapPin className="h-3 w-3 text-muted-foreground" />
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
                       {order.customer_name} - {order.area || "No area"}
