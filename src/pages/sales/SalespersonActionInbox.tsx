@@ -5,6 +5,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -13,9 +14,10 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { ActionResolutionDialog } from '@/components/sales/ActionResolutionDialog';
+import { BulkActionResolutionDialog } from '@/components/sales/BulkActionResolutionDialog';
 import { 
-  AlertCircle, ExternalLink, MessageSquare, Clock, User, 
-  CalendarClock, Loader2, RefreshCw, Play 
+  AlertCircle, ExternalLink, MessageSquare, User, 
+  CalendarClock, Loader2, RefreshCw, Play, ListChecks 
 } from 'lucide-react';
 import type { Order } from '@/types/database';
 
@@ -48,6 +50,8 @@ export default function SalespersonActionInbox() {
   const [actionTypeFilter, setActionTypeFilter] = useState<string>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   // Filter orders requiring salesperson action (for current salesperson)
   const actionRequiredOrders = useMemo(() => {
@@ -120,6 +124,40 @@ export default function SalespersonActionInbox() {
     setActionDialogOpen(true);
   };
 
+  // Selection handlers
+  const toggleRow = (orderId: string) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedRows.size === actionRequiredOrders.length) {
+      setSelectedRows(new Set());
+    } else {
+      setSelectedRows(new Set(actionRequiredOrders.map(o => o.id)));
+    }
+  };
+
+  const isAllSelected = actionRequiredOrders.length > 0 && selectedRows.size === actionRequiredOrders.length;
+  const isSomeSelected = selectedRows.size > 0 && selectedRows.size < actionRequiredOrders.length;
+
+  const selectedOrders = useMemo(() => 
+    actionRequiredOrders.filter(o => selectedRows.has(o.id)),
+    [actionRequiredOrders, selectedRows]
+  );
+
+  const handleBulkSuccess = () => {
+    setSelectedRows(new Set());
+    refetch();
+  };
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -182,10 +220,10 @@ export default function SalespersonActionInbox() {
           </Card>
         </div>
 
-        {/* Filter */}
+        {/* Filter + Bulk Actions */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <Label className="text-xs">Action Type</Label>
                 <Select value={actionTypeFilter} onValueChange={setActionTypeFilter}>
@@ -201,6 +239,25 @@ export default function SalespersonActionInbox() {
                   </SelectContent>
                 </Select>
               </div>
+              
+              {selectedRows.size > 0 && (
+                <div className="flex items-center gap-3">
+                  <Badge variant="secondary" className="text-sm">
+                    Selected: {selectedRows.size}
+                  </Badge>
+                  <Button size="sm" onClick={() => setBulkDialogOpen(true)}>
+                    <ListChecks className="h-4 w-4 mr-2" />
+                    Bulk Action
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setSelectedRows(new Set())}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -211,6 +268,14 @@ export default function SalespersonActionInbox() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox 
+                      checked={isAllSelected}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Select all"
+                      className={isSomeSelected ? "data-[state=checked]:bg-primary/50" : ""}
+                    />
+                  </TableHead>
                   <TableHead>Order Ref</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Action Type</TableHead>
@@ -225,13 +290,20 @@ export default function SalespersonActionInbox() {
               <TableBody>
                 {actionRequiredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       No orders requiring action
                     </TableCell>
                   </TableRow>
                 ) : (
                   actionRequiredOrders.map(order => (
-                    <TableRow key={order.id}>
+                    <TableRow key={order.id} className={selectedRows.has(order.id) ? "bg-muted/50" : ""}>
+                      <TableCell>
+                        <Checkbox 
+                          checked={selectedRows.has(order.id)}
+                          onCheckedChange={() => toggleRow(order.id)}
+                          aria-label={`Select ${order.order_code}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-mono text-sm">{order.order_code}</TableCell>
                       <TableCell>
                         <div>
@@ -312,12 +384,20 @@ export default function SalespersonActionInbox() {
         </Card>
       </div>
 
-      {/* Action Resolution Dialog */}
+      {/* Single Action Resolution Dialog */}
       <ActionResolutionDialog
         order={selectedOrder}
         open={actionDialogOpen}
         onOpenChange={setActionDialogOpen}
         onSuccess={() => refetch()}
+      />
+
+      {/* Bulk Action Resolution Dialog */}
+      <BulkActionResolutionDialog
+        orders={selectedOrders}
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        onSuccess={handleBulkSuccess}
       />
     </AppLayout>
   );
