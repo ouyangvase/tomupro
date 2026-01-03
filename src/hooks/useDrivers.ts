@@ -13,15 +13,19 @@ export function useRunnerDrivers(runnerId?: string) {
       const { data, error } = await supabase
         .from('runner_drivers')
         .select(`
-          *,
-          driver:driver_id(id, display_name, email, role, driver_code)
+          id,
+          runner_id,
+          driver_id,
+          is_active,
+          created_at,
+          driver:profiles!driver_id(id, display_name, email, role, driver_code)
         `)
         .eq('runner_id', runnerId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data as unknown as RunnerDriver[];
+      return data;
     },
     enabled: !!runnerId,
   });
