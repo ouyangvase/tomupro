@@ -34,6 +34,8 @@ export default function DriverManagement() {
   const { data: drivers = [], isLoading: driversLoading } = useRunnerDrivers(profile?.id);
   const { data: users = [] } = useUserDirectory();
   const { data: orders = [], isLoading: ordersLoading } = useOrders({ runnerId: profile?.id });
+
+  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   
   const addDriver = useAddDriverToRunner();
   const removeDriver = useRemoveDriverFromRunner();
@@ -197,13 +199,17 @@ export default function DriverManagement() {
               {drivers.map(rd => {
                 const driverData = rd.driver as any;
                 const driverCode = driverData?.driver_code;
+                const driverName =
+                  driverData?.display_name ??
+                  userById.get(rd.driver_id)?.display_name ??
+                  'Unknown Driver';
                 
                 return (
                   <Card key={rd.id}>
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
                         <CardTitle className="text-base">
-                          {driverData?.display_name || 'Unknown Driver'}
+                          {driverName}
                         </CardTitle>
                         <Button 
                           variant="ghost" 
@@ -437,7 +443,7 @@ export default function DriverManagement() {
                   <SelectContent>
                     {drivers.map(rd => (
                       <SelectItem key={rd.driver_id} value={rd.driver_id}>
-                        {(rd.driver as any)?.display_name || 'Unknown'} 
+                        {(rd.driver as any)?.display_name || userById.get(rd.driver_id)?.display_name || 'Unknown'} 
                         ({driverWorkloads[rd.driver_id] || 0} active)
                       </SelectItem>
                     ))}
