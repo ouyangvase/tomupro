@@ -2,14 +2,15 @@ import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
-import { useOrders } from '@/hooks/useOrders';
+import { Button } from '@/components/ui/button';
+import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useUserDirectory, useRunners } from '@/hooks/useUserDirectory';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { exportSelectedOrderLines } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
-import { Inbox, MessageCircle } from 'lucide-react';
+import { Inbox, MessageCircle, UserPlus } from 'lucide-react';
 import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -59,10 +60,12 @@ export default function AdminRunnerInbox() {
   const { data: allOrders, isLoading } = useOrders(); // Admin gets all orders
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: runners = [] } = useRunners();
+  const bulkUpdateOrders = useBulkUpdateOrders();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   const [selectedRunnerId, setSelectedRunnerId] = useState<string>('__all__');
+  const [bulkAssignRunnerId, setBulkAssignRunnerId] = useState<string>('');
 
   // Filter to only orders that have runner assignment or are relevant for runner inbox
   const runnerOrders = useMemo(() => {
@@ -115,6 +118,46 @@ export default function AdminRunnerInbox() {
     if (success) {
       toast({ title: 'Export complete', description: `Exported ${selectedRows.length} order(s)` });
     }
+  };
+
+  const handleBulkAssign = () => {
+    if (selectedRows.length === 0) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'No orders selected', 
+        description: 'Please select at least 1 order to assign.' 
+      });
+      return;
+    }
+    if (!bulkAssignRunnerId) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'No runner selected', 
+        description: 'Please select a runner to assign orders to.' 
+      });
+      return;
+    }
+
+    bulkUpdateOrders.mutate(
+      {
+        ids: selectedRows,
+        updates: {
+          runner_id: bulkAssignRunnerId,
+          runner_status: 'ASSIGNED',
+        },
+      },
+      {
+        onSuccess: () => {
+          const runnerName = runners.find(r => r.id === bulkAssignRunnerId)?.display_name || 'runner';
+          toast({ 
+            title: 'Orders assigned', 
+            description: `Assigned ${selectedRows.length} order(s) to ${runnerName}` 
+          });
+          setSelectedRows([]);
+          setBulkAssignRunnerId('');
+        },
+      }
+    );
   };
 
   const columns: Column<Order>[] = [
@@ -238,7 +281,7 @@ export default function AdminRunnerInbox() {
 
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">Runner:</span>
+            <span className="text-sm font-medium">Filter Runner:</span>
             <Select value={selectedRunnerId} onValueChange={setSelectedRunnerId}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="All Runners" />
@@ -254,6 +297,32 @@ export default function AdminRunnerInbox() {
               </SelectContent>
             </Select>
           </div>
+
+          {selectedRows.length > 0 && (
+            <div className="flex items-center gap-2 ml-auto bg-muted/50 px-3 py-2 rounded-lg">
+              <span className="text-sm font-medium">{selectedRows.length} selected</span>
+              <Select value={bulkAssignRunnerId} onValueChange={setBulkAssignRunnerId}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select runner..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {runners.map((runner) => (
+                    <SelectItem key={runner.id} value={runner.id}>
+                      {runner.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button 
+                onClick={handleBulkAssign} 
+                disabled={!bulkAssignRunnerId || bulkUpdateOrders.isPending}
+                size="sm"
+              >
+                <UserPlus className="h-4 w-4 mr-1" />
+                Assign
+              </Button>
+            </div>
+          )}
         </div>
 
         <OrderFiltersPanel
