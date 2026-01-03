@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, TrendingDown, Clock, MapPin, Package, Target, DollarSign } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -15,25 +16,27 @@ export default function DriverAnalyticsPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-6">
+      <AppLayout>
         <div className="text-center py-12 text-muted-foreground">Loading analytics...</div>
-      </div>
+      </AppLayout>
     );
   }
 
   if (!analytics) {
     return (
-      <div className="container mx-auto py-6 max-w-2xl">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">No Data Yet</h2>
-            <p className="text-muted-foreground">
-              Start delivering orders to see your performance analytics.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <AppLayout>
+        <div className="max-w-2xl mx-auto">
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h2 className="text-xl font-semibold mb-2">No Data Yet</h2>
+              <p className="text-muted-foreground">
+                Start delivering orders to see your performance analytics.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
     );
   }
 
@@ -46,14 +49,15 @@ export default function DriverAnalyticsPage() {
     : analytics.thisMonth.delivered > 0 ? 100 : 0;
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Target className="h-6 w-6" />
-          My Performance
-        </h1>
-        <p className="text-muted-foreground">Track your delivery performance and trends</p>
-      </div>
+    <AppLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Target className="h-6 w-6" />
+            My Performance
+          </h1>
+          <p className="text-muted-foreground">Track your delivery performance and trends</p>
+        </div>
 
       {/* Overview Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -273,6 +277,7 @@ export default function DriverAnalyticsPage() {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

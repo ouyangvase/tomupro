@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useMyDriverRanking, useIsRankingVisible, useTeamRankingForDriver } from '@/hooks/useDriverRanking';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { Trophy, Medal, Award, Lock } from 'lucide-react';
 
 export default function DriverRankingPage() {
@@ -26,25 +27,27 @@ export default function DriverRankingPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-6">
+      <AppLayout>
         <div className="text-center py-12 text-muted-foreground">Loading ranking...</div>
-      </div>
+      </AppLayout>
     );
   }
 
   if (!isVisible) {
     return (
-      <div className="container mx-auto py-6 max-w-2xl">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Lock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Ranking Not Available</h2>
-            <p className="text-muted-foreground">
-              Your runner has not enabled ranking visibility for drivers.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <AppLayout>
+        <div className="max-w-2xl mx-auto">
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Lock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h2 className="text-xl font-semibold mb-2">Ranking Not Available</h2>
+              <p className="text-muted-foreground">
+                Your runner has not enabled ranking visibility for drivers.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
     );
   }
 
@@ -55,14 +58,15 @@ export default function DriverRankingPage() {
   }) || [];
 
   return (
-    <div className="container mx-auto py-6 space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Trophy className="h-6 w-6" />
-          My Ranking
-        </h1>
-        <p className="text-muted-foreground">Your delivery performance this month</p>
-      </div>
+    <AppLayout>
+      <div className="space-y-6 max-w-2xl mx-auto">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Trophy className="h-6 w-6" />
+            My Ranking
+          </h1>
+          <p className="text-muted-foreground">Your delivery performance this month</p>
+        </div>
 
       {/* My Stats */}
       {myRanking ? (
@@ -164,6 +168,7 @@ export default function DriverRankingPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

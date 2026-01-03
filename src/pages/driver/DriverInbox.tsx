@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useOrders, useUpdateOrder } from '@/hooks/useOrders';
 import { useDriverMarkDelivered, useDriverMarkFailed, useDriverParentRunner } from '@/hooks/useDrivers';
 import { useReasons } from '@/hooks/useReasons';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -105,14 +106,17 @@ export default function DriverInbox() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <AppLayout>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 pb-20">
+    <AppLayout>
+      <div className="space-y-6">
       {/* Header */}
       <div className="mb-4">
         <h1 className="text-2xl font-bold">My Deliveries</h1>
@@ -395,6 +399,7 @@ export default function DriverInbox() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

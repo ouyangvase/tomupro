@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useDriverReturns } from '@/hooks/useDriverReturns';
 import { CreateReturnDialog } from '@/components/driver/CreateReturnDialog';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { RotateCcw, Plus, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -29,14 +30,15 @@ export default function DriverReturnsPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-6">
+      <AppLayout>
         <div className="text-center py-12 text-muted-foreground">Loading returns...</div>
-      </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6 max-w-2xl">
+    <AppLayout>
+      <div className="space-y-6 max-w-2xl mx-auto">
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -142,6 +144,7 @@ export default function DriverReturnsPage() {
       )}
 
       <CreateReturnDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
-    </div>
+      </div>
+    </AppLayout>
   );
 }

@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useDriverPickups, useAcknowledgePickup } from '@/hooks/useDriverPickups';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { Package, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -14,14 +15,15 @@ export default function DriverPickupsPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-6">
+      <AppLayout>
         <div className="text-center py-12 text-muted-foreground">Loading pickups...</div>
-      </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6 max-w-2xl">
+    <AppLayout>
+      <div className="space-y-6 max-w-2xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Package className="h-6 w-6" />
@@ -149,6 +151,7 @@ export default function DriverPickupsPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+      </div>
+    </AppLayout>
   );
 }
