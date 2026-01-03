@@ -1,17 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCreatePickup, useDriverBlockingOrders } from '@/hooks/useDriverPickups';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
-import { Plus, Trash2, AlertCircle } from 'lucide-react';
+import { useSuggestedPickupQty, SuggestedQuantity } from '@/hooks/useSuggestedPickupQty';
+import { Plus, Trash2, AlertCircle, Sparkles, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 
 interface CreatePickupDialogProps {
   open: boolean;
@@ -21,6 +24,7 @@ interface CreatePickupDialogProps {
 interface PickupItem {
   product_id: string;
   qty: number;
+  suggested_qty: number;
 }
 
 export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogProps) {
@@ -28,14 +32,30 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const [pickupDate, setPickupDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<PickupItem[]>([]);
+  const [confirmLowerQty, setConfirmLowerQty] = useState(false);
 
   const { data: drivers } = useMyDrivers();
   const { data: products } = useProducts();
   const { data: blockingOrders, isLoading: loadingBlocking } = useDriverBlockingOrders(selectedDriverId || undefined);
+  const { data: suggestedQty, isLoading: loadingSuggestion } = useSuggestedPickupQty(selectedDriverId || undefined, pickupDate);
   const createPickup = useCreatePickup();
 
+  // Auto-populate items when driver or date changes
+  useEffect(() => {
+    if (suggestedQty && suggestedQty.length > 0) {
+      setItems(suggestedQty.map(s => ({
+        product_id: s.product_id,
+        qty: s.suggested_qty,
+        suggested_qty: s.suggested_qty,
+      })));
+      setConfirmLowerQty(false);
+    } else if (selectedDriverId) {
+      setItems([]);
+    }
+  }, [suggestedQty, selectedDriverId]);
+
   const addItem = () => {
-    setItems([...items, { product_id: '', qty: 1 }]);
+    setItems([...items, { product_id: '', qty: 1, suggested_qty: 0 }]);
   };
 
   const removeItem = (index: number) => {
@@ -48,30 +68,48 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
     setItems(newItems);
   };
 
+  // Check if any item has lower qty than suggested
+  const hasLowerThanSuggested = items.some(item => item.suggested_qty > 0 && item.qty < item.suggested_qty);
+
   const handleSubmit = async () => {
     if (!selectedDriverId || items.length === 0) return;
 
     const validItems = items.filter(i => i.product_id && i.qty > 0);
     if (validItems.length === 0) return;
 
+    // Require confirmation if qty is lower than suggested
+    if (hasLowerThanSuggested && !confirmLowerQty) return;
+
     await createPickup.mutateAsync({
       driver_id: selectedDriverId,
       pickup_date: pickupDate,
       notes: notes || undefined,
-      items: validItems,
+      items: validItems.map(i => ({
+        product_id: i.product_id,
+        qty: i.qty,
+        suggested_qty: i.suggested_qty,
+      })),
     });
 
     onOpenChange(false);
     setSelectedDriverId('');
     setNotes('');
     setItems([]);
+    setConfirmLowerQty(false);
   };
 
   const hasBlockingOrders = blockingOrders && blockingOrders.length > 0;
+  const hasSuggestions = suggestedQty && suggestedQty.length > 0;
+
+  // Get product name by id
+  const getProductName = (productId: string) => {
+    const product = products?.find(p => p.id === productId);
+    return product ? `${product.sku_name}${product.sku_code ? ` (${product.sku_code})` : ''}` : '';
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Pickup for Driver</DialogTitle>
         </DialogHeader>
@@ -121,6 +159,23 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
             </Alert>
           )}
 
+          {selectedDriverId && loadingSuggestion && (
+            <div className="text-sm text-muted-foreground flex items-center gap-2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              Calculating suggested quantities...
+            </div>
+          )}
+
+          {selectedDriverId && hasSuggestions && (
+            <Alert className="border-primary/50 bg-primary/5">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-primary">Smart Suggestion</AlertTitle>
+              <AlertDescription>
+                Based on {suggestedQty.length} product(s) from today's assigned orders. You can adjust quantities as needed.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="space-y-2">
             <Label>Notes</Label>
             <Textarea
@@ -143,51 +198,87 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="w-24">Qty</TableHead>
+                    <TableHead className="w-28 text-center">Suggested</TableHead>
+                    <TableHead className="w-28 text-center">Actual Qty</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        <Select
-                          value={item.product_id}
-                          onValueChange={v => updateItem(index, 'product_id', v)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select product" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products?.map(product => (
-                              <SelectItem key={product.id} value={product.id}>
-                                {product.sku_name} {product.sku_code && `(${product.sku_code})`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={item.qty}
-                          onChange={e => updateItem(index, 'qty', parseInt(e.target.value) || 1)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => removeItem(index)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {items.map((item, index) => {
+                    const isLower = item.suggested_qty > 0 && item.qty < item.suggested_qty;
+                    return (
+                      <TableRow key={index} className={isLower ? 'bg-destructive/5' : ''}>
+                        <TableCell>
+                          {item.suggested_qty > 0 ? (
+                            <span className="text-sm">{getProductName(item.product_id)}</span>
+                          ) : (
+                            <Select
+                              value={item.product_id}
+                              onValueChange={v => updateItem(index, 'product_id', v)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select product" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {products?.map(product => (
+                                  <SelectItem key={product.id} value={product.id}>
+                                    {product.sku_name} {product.sku_code && `(${product.sku_code})`}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {item.suggested_qty > 0 ? (
+                            <Badge variant="secondary">{item.suggested_qty}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.qty}
+                            onChange={e => updateItem(index, 'qty', parseInt(e.target.value) || 1)}
+                            className={isLower ? 'border-destructive' : ''}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => removeItem(index)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
+            )}
+
+            {hasLowerThanSuggested && (
+              <Alert variant="destructive" className="mt-3">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Quantity Warning</AlertTitle>
+                <AlertDescription className="space-y-2">
+                  <p>One or more items have quantity lower than today's required delivery orders.</p>
+                  <div className="flex items-center space-x-2 mt-2">
+                    <Checkbox
+                      id="confirm-lower"
+                      checked={confirmLowerQty}
+                      onCheckedChange={(checked) => setConfirmLowerQty(!!checked)}
+                    />
+                    <label htmlFor="confirm-lower" className="text-sm cursor-pointer">
+                      I confirm the lower quantity is intentional
+                    </label>
+                  </div>
+                </AlertDescription>
+              </Alert>
             )}
           </div>
 
@@ -201,6 +292,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                 !selectedDriverId ||
                 items.length === 0 ||
                 hasBlockingOrders ||
+                (hasLowerThanSuggested && !confirmLowerQty) ||
                 createPickup.isPending
               }
             >
