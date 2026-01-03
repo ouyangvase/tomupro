@@ -13,15 +13,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRunnerDriverOrders, useMyDrivers, useBulkAssignOrdersToDriver, useUnassignDriverFromOrder, useRunnerAcceptDelivery, useRunnerRejectDelivery, useDriverOrderCount } from '@/hooks/useDrivers';
+import { useManualReopenOrder } from '@/hooks/useRescheduleHistory';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { 
   Truck, Users, CheckCircle, XCircle, Clock, Package, 
   MessageCircle, MapPin, Calendar,
-  Loader2, RefreshCw, User, ExternalLink, ArrowRight, ClipboardCheck
+  Loader2, RefreshCw, User, ExternalLink, ArrowRight, ClipboardCheck, RotateCcw, History
 } from 'lucide-react';
 import { RunnerReviewModal } from '@/components/runner/RunnerReviewModal';
+import { toast } from 'sonner';
 import type { Order } from '@/types/database';
 
 const driverStatusColors: Record<string, string> = {
@@ -55,6 +57,7 @@ export default function RunnerDriverInbox() {
   const unassignDriver = useUnassignDriverFromOrder();
   const acceptDelivery = useRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
+  const manualReopen = useManualReopenOrder();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<string>('');
@@ -209,6 +212,18 @@ export default function RunnerDriverInbox() {
   const handleOpenReviewModal = (order: any) => {
     setReviewOrder(order);
     setReviewModalOpen(true);
+  };
+
+  // Handle manual reopen
+  const handleManualReopen = (orderId: string) => {
+    manualReopen.mutate(orderId, {
+      onSuccess: () => {
+        toast.success('Order reopened and ready for assignment');
+      },
+      onError: (error) => {
+        toast.error(`Failed to reopen order: ${error.message}`);
+      }
+    });
   };
 
   if (isLoading) {
@@ -498,6 +513,7 @@ export default function RunnerDriverInbox() {
                       <TableHead>Driver Status</TableHead>
                       <TableHead>Runner Accept</TableHead>
                       <TableHead>Review Status</TableHead>
+                      <TableHead>Reschedules</TableHead>
                       <TableHead>Failed Reason</TableHead>
                       <TableHead>Remark</TableHead>
                       <TableHead>Next Delivery</TableHead>
@@ -508,7 +524,7 @@ export default function RunnerDriverInbox() {
                   <TableBody>
                     {driverUpdatesOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                           No driver orders found
                         </TableCell>
                       </TableRow>
@@ -546,6 +562,26 @@ export default function RunnerDriverInbox() {
                               <Badge variant="outline" className="text-muted-foreground">
                                 Pending
                               </Badge>
+                            )}
+                          </TableCell>
+                          {/* Reschedule count */}
+                          <TableCell>
+                            {order.reschedule_cycle_no && order.reschedule_cycle_no > 0 ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant="outline" className="cursor-pointer">
+                                      <History className="h-3 w-3 mr-1" />
+                                      {order.reschedule_cycle_no}x
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Rescheduled {order.reschedule_cycle_no} time{order.reschedule_cycle_no > 1 ? 's' : ''}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
                           <TableCell className="text-sm text-red-600">
@@ -603,6 +639,28 @@ export default function RunnerDriverInbox() {
                                   <TooltipContent>View Order</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
+                              {/* Manual Reopen button for rescheduled orders */}
+                              {(order.operational_status === 'RESCHEDULED' || 
+                                (order.runner_review_status === 'REVIEWED' && 
+                                 order.runner_final_outcome === 'RESCHEDULE' &&
+                                 order.next_delivery_date)) && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2"
+                                        onClick={() => handleManualReopen(order.id)}
+                                        disabled={manualReopen.isPending}
+                                      >
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Reopen Now (Skip Cron)</TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
                               {/* NEXT button only shows if NOT_REVIEWED */}
                               {(!order.runner_review_status || order.runner_review_status === 'NOT_REVIEWED') && (
                                 <Button
