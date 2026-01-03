@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
 
 // Pages
 import Auth from "./pages/Auth";
@@ -23,6 +24,7 @@ import DriverReturnsPage from "./pages/driver/DriverReturnsPage";
 import DriverRankingPage from "./pages/driver/DriverRankingPage";
 import DriverRoutePage from "./pages/driver/DriverRoutePage";
 import DriverAnalyticsPage from "./pages/driver/DriverAnalyticsPage";
+import DriverOnboarding from "./pages/driver/DriverOnboarding";
 import DriverReturns from "./pages/runner/DriverReturns";
 import DriverRanking from "./pages/runner/DriverRanking";
 import DriverLocationsPage from "./pages/runner/DriverLocationsPage";
@@ -51,9 +53,10 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
+  const { needsOnboarding, checkingLink } = useDriverOnboarding();
   
-  if (loading) {
+  if (loading || checkingLink) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex items-center gap-2">
@@ -66,6 +69,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  // Show onboarding for drivers not linked to a runner
+  if (profile?.role === "driver" && needsOnboarding) {
+    return <DriverOnboarding />;
   }
   
   return <>{children}</>;

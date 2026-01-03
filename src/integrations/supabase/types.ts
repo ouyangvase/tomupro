@@ -1232,6 +1232,7 @@ export type Database = {
           id: string
           is_active: boolean
           role: Database["public"]["Enums"]["app_role"]
+          runner_code: string | null
           updated_at: string | null
         }
         Insert: {
@@ -1242,6 +1243,7 @@ export type Database = {
           id: string
           is_active?: boolean
           role?: Database["public"]["Enums"]["app_role"]
+          runner_code?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -1252,6 +1254,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           role?: Database["public"]["Enums"]["app_role"]
+          runner_code?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -1806,6 +1809,7 @@ export type Database = {
         Args: { p_driver_id: string }
         Returns: boolean
       }
+      link_driver_to_runner_by_code: { Args: { p_code: string }; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "manager" | "salesperson" | "runner" | "driver"
