@@ -26,6 +26,13 @@ export interface DriverReturnItem {
   product?: { sku_name: string; sku_code: string | null };
 }
 
+export interface DriverReturnableItem {
+  product_id: string;
+  sku_code: string | null;
+  sku_name: string;
+  available_qty: number;
+}
+
 // Fetch returns for a runner
 export function useRunnerReturns() {
   return useQuery({
@@ -68,6 +75,17 @@ export function useDriverReturns() {
   });
 }
 
+export function useDriverReturnableItems() {
+  return useQuery({
+    queryKey: ['driver-returnable-items'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_driver_returnable_items');
+      if (error) throw error;
+      return (data || []) as unknown as DriverReturnableItem[];
+    },
+  });
+}
+
 // Driver creates return request
 export function useCreateReturn() {
   const queryClient = useQueryClient();
@@ -83,18 +101,17 @@ export function useCreateReturn() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Validate quantities against allocated stock
-      const { data: allocatedStock } = await supabase
-        .from('driver_allocated_stock')
-        .select('*')
-        .eq('driver_id', user.id);
+      // Validate quantities against returnable qty (excludes failed deliveries)
+      const { data: returnable, error: returnableError } = await supabase.rpc('get_driver_returnable_items');
+      if (returnableError) throw returnableError;
 
       for (const item of params.items) {
-        const allocated = allocatedStock?.find(a => a.product_id === item.product_id);
-        const pendingQty = allocated?.pending_qty || 0;
-        if (item.qty > pendingQty) {
-          const productName = allocated?.sku_name || 'Unknown product';
-          throw new Error(`Cannot return ${item.qty} of ${productName}. Only ${pendingQty} pending.`);
+        const row = (returnable as any[])?.find(r => r.product_id === item.product_id);
+        const availableQty = Number(row?.available_qty || 0);
+        const skuName = row?.sku_name || 'Unknown product';
+
+        if (item.qty > availableQty) {
+          throw new Error(`Cannot return ${item.qty} of ${skuName}. Only ${availableQty} available.`);
         }
       }
 
