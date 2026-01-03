@@ -81,11 +81,23 @@ export default function ReadySales() {
   // For admin/manager, use the first selected order's salesperson
   // For salesperson, use their own id
   const selectedOrdersData = orders.filter((o) => selectedRows.includes(o.id));
-  const bindingSalespersonId = role === 'salesperson' 
-    ? profile?.id 
-    : selectedOrdersData[0]?.salesperson_id;
   
-  const { data: bindings = [] } = useBindings(
+  // Get the salesperson ID for binding lookup
+  const getBindingSalespersonId = () => {
+    if (role === 'salesperson') {
+      return profile?.id;
+    }
+    // For admin/manager, use the selected order's salesperson
+    if (selectedOrdersData.length > 0) {
+      return selectedOrdersData[0]?.salesperson_id;
+    }
+    return undefined;
+  };
+  
+  const bindingSalespersonId = getBindingSalespersonId();
+  
+  // Fetch bindings - always fetch for salesperson, or when admin has selected orders
+  const { data: bindings = [], isLoading: bindingsLoading } = useBindings(
     bindingSalespersonId ? { salespersonId: bindingSalespersonId, active: true } : undefined
   );
   const updateOrder = useUpdateOrder();
@@ -395,19 +407,25 @@ export default function ReadySales() {
                 <SelectValue placeholder="Select a runner..." />
               </SelectTrigger>
               <SelectContent>
-                {bindings.length === 0 ? (
-                  <div className="p-2 text-sm text-muted-foreground">
-                    {role === 'salesperson' 
-                      ? 'No runners bound to your account. Contact admin to set up bindings.'
+              {bindingsLoading ? (
+                <div className="p-2 text-sm text-muted-foreground">
+                  Loading runners...
+                </div>
+              ) : bindings.length === 0 ? (
+                <div className="p-2 text-sm text-muted-foreground">
+                  {role === 'salesperson' 
+                    ? 'No runners bound to your account. Contact admin to set up bindings.'
+                    : !bindingSalespersonId
+                      ? 'Select orders first to see available runners.'
                       : 'No runners bound to this salesperson. Set up bindings in Settings > Bindings.'}
-                  </div>
-                ) : (
-                  bindings.map((binding) => (
-                    <SelectItem key={binding.runner_id} value={binding.runner_id}>
-                      {binding.runner?.display_name || 'Unknown Runner'}
-                    </SelectItem>
-                  ))
-                )}
+                </div>
+              ) : (
+                bindings.map((binding) => (
+                  <SelectItem key={binding.runner_id} value={binding.runner_id}>
+                    {binding.runner?.display_name || 'Unknown Runner'}
+                  </SelectItem>
+                ))
+              )}
               </SelectContent>
             </Select>
           </div>
