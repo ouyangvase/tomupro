@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -89,6 +89,11 @@ const reconciliationItems: NavItem[] = [{
   title: "Delivery Charges",
   url: "/admin/delivery-charges",
   icon: DollarSign,
+  roles: ['admin']
+}, {
+  title: "Delivery Fees Report",
+  url: "/admin/delivery-fees-report",
+  icon: FileText,
   roles: ['admin']
 }, {
   title: "Dispute Center",
