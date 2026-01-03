@@ -17,12 +17,12 @@ const loginSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
-// Only allow basic roles for self-registration - admin/manager must be assigned by existing admins
+// Only allow runner role for self-registration - other roles must be assigned by existing admins
 const signupSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   displayName: z.string().min(2, 'Display name must be at least 2 characters').max(100, 'Display name must be less than 100 characters'),
-  role: z.enum(['salesperson', 'runner']),
+  role: z.literal('runner'),
 });
 
 export default function Auth() {
@@ -39,7 +39,7 @@ export default function Auth() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<AppRole>('salesperson');
+  const [role, setRole] = useState<AppRole>('runner');
 
   useEffect(() => {
     if (user) {
@@ -208,7 +208,6 @@ export default function Auth() {
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="salesperson">Salesperson</SelectItem>
                       <SelectItem value="runner">Runner</SelectItem>
                     </SelectContent>
                   </Select>
