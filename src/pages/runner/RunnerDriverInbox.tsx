@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -18,9 +18,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { 
   Truck, Users, CheckCircle, XCircle, Clock, Package, 
-  MessageCircle, Phone, MapPin, AlertTriangle, Calendar,
-  Loader2, RefreshCw, User
+  MessageCircle, MapPin, Calendar,
+  Loader2, RefreshCw, User, ExternalLink, ArrowRight
 } from 'lucide-react';
+import { RunnerReviewModal } from '@/components/runner/RunnerReviewModal';
 import type { Order } from '@/types/database';
 
 const driverStatusColors: Record<string, string> = {
@@ -46,6 +47,7 @@ const generateWhatsAppUrl = (order: any) => {
 };
 
 export default function RunnerDriverInbox() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading, refetch } = useRunnerDriverOrders();
   const { data: myDrivers = [] } = useMyDrivers();
@@ -59,6 +61,10 @@ export default function RunnerDriverInbox() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectOrderId, setRejectOrderId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  
+  // Runner Review Modal state
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewOrder, setReviewOrder] = useState<any>(null);
   
   // Filters for Driver Updates tab
   const [driverFilter, setDriverFilter] = useState<string>('all');
@@ -180,6 +186,12 @@ export default function RunnerDriverInbox() {
       { orderId: rejectOrderId, reason: rejectReason },
       { onSuccess: () => setRejectDialogOpen(false) }
     );
+  };
+
+  // Handle NEXT button click
+  const handleOpenReviewModal = (order: any) => {
+    setReviewOrder(order);
+    setReviewModalOpen(true);
   };
 
   if (isLoading) {
@@ -459,12 +471,13 @@ export default function RunnerDriverInbox() {
                       <TableHead>Remark</TableHead>
                       <TableHead>Next Delivery</TableHead>
                       <TableHead>Updated</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {driverUpdatesOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No driver orders found
                         </TableCell>
                       </TableRow>
@@ -510,6 +523,33 @@ export default function RunnerDriverInbox() {
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {order.updated_at ? format(parseISO(order.updated_at), 'dd MMM HH:mm') : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2"
+                                      onClick={() => navigate(`/order/${order.id}`)}
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View Order</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <Button
+                                size="sm"
+                                className="h-7 px-3"
+                                onClick={() => handleOpenReviewModal(order)}
+                              >
+                                NEXT
+                                <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -624,6 +664,13 @@ export default function RunnerDriverInbox() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Runner Review Modal */}
+        <RunnerReviewModal
+          open={reviewModalOpen}
+          onOpenChange={setReviewModalOpen}
+          order={reviewOrder}
+        />
       </div>
     </AppLayout>
   );
