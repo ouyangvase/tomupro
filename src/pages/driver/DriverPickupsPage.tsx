@@ -1,9 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useDriverPickups, useAcknowledgePickup } from '@/hooks/useDriverPickups';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Package, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Package, CheckCircle, Clock, AlertCircle, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function DriverPickupsPage() {
@@ -60,16 +61,56 @@ export default function DriverPickupsPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Items to receive:</p>
-                  <div className="bg-background rounded-lg p-3 space-y-1">
-                    {pickup.items?.map(item => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span>{item.product?.sku_name}</span>
-                        <span className="font-medium">x {item.qty}</span>
-                      </div>
-                    ))}
-                    {(!pickup.items || pickup.items.length === 0) && (
-                      <p className="text-muted-foreground text-sm">No items specified</p>
-                    )}
+                  <div className="bg-background rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Product</TableHead>
+                          <TableHead className="text-center w-24">Expected</TableHead>
+                          <TableHead className="text-center w-8"></TableHead>
+                          <TableHead className="text-center w-24">Picking</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pickup.items?.map(item => {
+                          const hasDifference = item.suggested_qty !== null && item.suggested_qty !== item.qty;
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell className="text-sm">{item.product?.sku_name}</TableCell>
+                              <TableCell className="text-center">
+                                {item.suggested_qty !== null ? (
+                                  <Badge variant="secondary">{item.suggested_qty}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <ArrowRight className="h-4 w-4 text-muted-foreground mx-auto" />
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge 
+                                  variant={hasDifference ? "outline" : "default"}
+                                  className={hasDifference && item.qty > (item.suggested_qty || 0) 
+                                    ? "bg-green-50 text-green-700 border-green-200" 
+                                    : hasDifference 
+                                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                                    : ""}
+                                >
+                                  {item.qty}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        {(!pickup.items || pickup.items.length === 0) && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-muted-foreground">
+                              No items specified
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
                 </div>
                 {pickup.notes && (
@@ -126,14 +167,26 @@ export default function DriverPickupsPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-1">
-                  {pickup.items?.map(item => (
-                    <div key={item.id} className="flex justify-between text-sm">
-                      <span>{item.product?.sku_name}</span>
-                      <span className="font-medium">x {item.qty}</span>
-                    </div>
-                  ))}
-                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-center w-24">Expected</TableHead>
+                      <TableHead className="text-center w-24">Received</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pickup.items?.map(item => (
+                      <TableRow key={item.id}>
+                        <TableCell className="text-sm">{item.product?.sku_name}</TableCell>
+                        <TableCell className="text-center text-muted-foreground">
+                          {item.suggested_qty ?? '-'}
+                        </TableCell>
+                        <TableCell className="text-center font-medium">{item.qty}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           ))

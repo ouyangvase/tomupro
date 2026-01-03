@@ -466,6 +466,7 @@ export type Database = {
           pickup_id: string
           product_id: string
           qty: number
+          suggested_qty: number | null
         }
         Insert: {
           created_at?: string
@@ -473,6 +474,7 @@ export type Database = {
           pickup_id: string
           product_id: string
           qty: number
+          suggested_qty?: number | null
         }
         Update: {
           created_at?: string
@@ -480,6 +482,7 @@ export type Database = {
           pickup_id?: string
           product_id?: string
           qty?: number
+          suggested_qty?: number | null
         }
         Relationships: [
           {
