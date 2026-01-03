@@ -203,6 +203,8 @@ export default function UsersSettings() {
                 <SelectItem value="manager">Manager</SelectItem>
                 <SelectItem value="salesperson">Salesperson</SelectItem>
                 <SelectItem value="runner">Runner</SelectItem>
+                <SelectItem value="driver">Driver</SelectItem>
+                <SelectItem value="user">User</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -246,6 +248,8 @@ export default function UsersSettings() {
                   <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="salesperson">Salesperson</SelectItem>
                   <SelectItem value="runner">Runner</SelectItem>
+                  <SelectItem value="driver">Driver</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
                 </SelectContent>
               </Select>
               {editingUser && editRole !== editingUser.role && (
