@@ -156,22 +156,36 @@ export default function ClaimBatchesAdmin() {
                     <TableHead>Date</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Area</TableHead>
-                    <TableHead>Amount</TableHead>
+                    <TableHead className="text-right">Gross Amount</TableHead>
+                    <TableHead className="text-right">Delivery Fee</TableHead>
+                    <TableHead className="text-right">Net Amount</TableHead>
                     <TableHead>Payment</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {selectedBatch?.items?.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        {item.order && format(new Date(item.order.order_date), 'MMM dd')}
-                      </TableCell>
-                      <TableCell>{item.order?.customer_name}</TableCell>
-                      <TableCell>{item.order?.area || '-'}</TableCell>
-                      <TableCell>{item.order?.total_amount.toLocaleString()}</TableCell>
-                      <TableCell>{item.order?.payment_method}</TableCell>
-                    </TableRow>
-                  ))}
+                  {selectedBatch?.items?.map((item) => {
+                    const grossAmount = Number(item.order?.total_amount || 0);
+                    // For now, show total as net until claims are fetched
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          {item.order && format(new Date(item.order.order_date), 'MMM dd')}
+                        </TableCell>
+                        <TableCell>{item.order?.customer_name}</TableCell>
+                        <TableCell>{item.order?.area || '-'}</TableCell>
+                        <TableCell className="text-right font-mono">
+                          RM {grossAmount.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-muted-foreground">
+                          -
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-medium">
+                          RM {grossAmount.toFixed(2)}
+                        </TableCell>
+                        <TableCell>{item.order?.payment_method}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
