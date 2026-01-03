@@ -764,6 +764,12 @@ export type Database = {
           delivered_at: string | null
           dispute_notes: string | null
           dispute_reason: string | null
+          driver_delivered_at: string | null
+          driver_failed_reason: string | null
+          driver_failed_remark: string | null
+          driver_id: string | null
+          driver_next_delivery_date: string | null
+          driver_status: string | null
           expected_pickup_date: string | null
           failed_next_step:
             | Database["public"]["Enums"]["failed_next_step"]
@@ -779,6 +785,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           phone: string
           reconciliation_status: Database["public"]["Enums"]["reconciliation_status"]
+          runner_accept_status: string | null
           runner_id: string | null
           runner_status: Database["public"]["Enums"]["runner_status"]
           salesperson_id: string
@@ -799,6 +806,12 @@ export type Database = {
           delivered_at?: string | null
           dispute_notes?: string | null
           dispute_reason?: string | null
+          driver_delivered_at?: string | null
+          driver_failed_reason?: string | null
+          driver_failed_remark?: string | null
+          driver_id?: string | null
+          driver_next_delivery_date?: string | null
+          driver_status?: string | null
           expected_pickup_date?: string | null
           failed_next_step?:
             | Database["public"]["Enums"]["failed_next_step"]
@@ -814,6 +827,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone: string
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
+          runner_accept_status?: string | null
           runner_id?: string | null
           runner_status?: Database["public"]["Enums"]["runner_status"]
           salesperson_id: string
@@ -834,6 +848,12 @@ export type Database = {
           delivered_at?: string | null
           dispute_notes?: string | null
           dispute_reason?: string | null
+          driver_delivered_at?: string | null
+          driver_failed_reason?: string | null
+          driver_failed_remark?: string | null
+          driver_id?: string | null
+          driver_next_delivery_date?: string | null
+          driver_status?: string | null
           expected_pickup_date?: string | null
           failed_next_step?:
             | Database["public"]["Enums"]["failed_next_step"]
@@ -849,6 +869,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone?: string
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
+          runner_accept_status?: string | null
           runner_id?: string | null
           runner_status?: Database["public"]["Enums"]["runner_status"]
           salesperson_id?: string
@@ -859,6 +880,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_fulfillment_warehouse_id_fkey"
             columns: ["fulfillment_warehouse_id"]
@@ -995,6 +1023,45 @@ export type Database = {
           {
             foreignKeyName: "reasons_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      runner_drivers: {
+        Row: {
+          created_at: string
+          driver_id: string
+          id: string
+          is_active: boolean
+          runner_id: string
+        }
+        Insert: {
+          created_at?: string
+          driver_id: string
+          id?: string
+          is_active?: boolean
+          runner_id: string
+        }
+        Update: {
+          created_at?: string
+          driver_id?: string
+          id?: string
+          is_active?: boolean
+          runner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "runner_drivers_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "runner_drivers_runner_id_fkey"
+            columns: ["runner_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1349,6 +1416,10 @@ export type Database = {
         Args: { p_area: string; p_runner_id: string }
         Returns: number
       }
+      get_driver_parent_runner: {
+        Args: { p_driver_id: string }
+        Returns: string
+      }
       get_stock_balance: {
         Args: never
         Returns: {
@@ -1374,9 +1445,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_driver_of_runner: {
+        Args: { p_driver_id: string; p_runner_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      app_role: "admin" | "manager" | "salesperson" | "runner"
+      app_role: "admin" | "manager" | "salesperson" | "runner" | "driver"
       attachment_type:
         | "transfer_proof"
         | "receipt_photo"
@@ -1540,7 +1615,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "manager", "salesperson", "runner"],
+      app_role: ["admin", "manager", "salesperson", "runner", "driver"],
       attachment_type: [
         "transfer_proof",
         "receipt_photo",

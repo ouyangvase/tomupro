@@ -35,6 +35,7 @@ const roleColors: Record<AppRole, string> = {
   manager: 'bg-primary text-primary-foreground',
   salesperson: 'bg-secondary text-secondary-foreground',
   runner: 'bg-accent text-accent-foreground',
+  driver: 'bg-muted text-muted-foreground',
 };
 
 export default function UsersSettings() {

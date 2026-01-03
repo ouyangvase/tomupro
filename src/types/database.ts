@@ -1,9 +1,11 @@
 // Custom types for the application
-export type AppRole = 'admin' | 'manager' | 'salesperson' | 'runner';
+export type AppRole = 'admin' | 'manager' | 'salesperson' | 'runner' | 'driver';
 export type WarehouseType = 'SALESPERSON' | 'RUNNER';
 export type PaymentMethod = 'COD' | 'TRANSFER';
 export type OrderStatus = 'BOOKING' | 'READY' | 'CANCELLED';
 export type RunnerStatus = 'UNASSIGNED' | 'ASSIGNED' | 'TAKEN' | 'DELIVERED' | 'FAILED_DELIVERY';
+export type DriverStatus = 'UNASSIGNED' | 'ASSIGNED' | 'OUT_FOR_DELIVERY' | 'DRIVER_DELIVERED' | 'DRIVER_FAILED' | 'RETURN_REQUIRED';
+export type RunnerAcceptStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
 export type FailedNextStep = 'RESCHEDULE' | 'SALESPERSON_CONTACT';
 
 export interface OrderItem {
@@ -24,6 +26,17 @@ export type MovementType = 'INBOUND' | 'SALE_DEDUCT' | 'ADJUSTMENT' | 'RETURN';
 export type ReferenceType = 'INBOUND_ITEM' | 'ORDER_ITEM' | 'MANUAL';
 export type AttachmentType = 'transfer_proof' | 'receipt_photo' | 'chat_screenshot' | 'delivery_photo' | 'inbound_photo' | 'other';
 export type ClaimBatchStatus = 'ADMIN_ACK_PENDING' | 'CLAIMED';
+
+// Runner Driver relationship
+export interface RunnerDriver {
+  id: string;
+  runner_id: string;
+  driver_id: string;
+  is_active: boolean;
+  created_at: string;
+  driver?: Profile;
+  runner?: Profile;
+}
 
 export interface Profile {
   id: string;
@@ -69,11 +82,18 @@ export interface Order {
   payment_method: PaymentMethod;
   salesperson_id: string;
   runner_id: string | null;
+  driver_id: string | null;
   status: OrderStatus;
   expected_pickup_date: string | null;
   total_qty: number;
   total_amount: number;
   runner_status: RunnerStatus;
+  driver_status: DriverStatus | null;
+  runner_accept_status: RunnerAcceptStatus | null;
+  driver_delivered_at: string | null;
+  driver_failed_reason: string | null;
+  driver_failed_remark: string | null;
+  driver_next_delivery_date: string | null;
   failed_reason: string | null;
   failed_remark: string | null;
   failed_next_step: FailedNextStep | null;
@@ -91,6 +111,7 @@ export interface Order {
   // Joined fields
   salesperson?: Profile;
   runner?: Profile;
+  driver?: Profile;
   order_items?: OrderItem[];
 }
 
