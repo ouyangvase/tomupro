@@ -363,22 +363,33 @@ export default function InboundPending() {
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       {/* Photo */}
-                      <div>
-                        <a
-                          href={item.photo_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block"
-                        >
-                          <img
-                            src={item.photo_url}
-                            alt={item.temp_sku_label || 'Item photo'}
-                            className="h-24 w-full object-cover rounded border hover:opacity-80"
-                          />
-                          <span className="text-xs text-primary flex items-center gap-1 mt-1">
-                            <ExternalLink className="h-3 w-3" /> View full
-                          </span>
-                        </a>
+                      <div className="space-y-1">
+                        {item.photo_url ? (
+                          <a
+                            href={item.photo_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block"
+                          >
+                            <img
+                              src={item.photo_url}
+                              alt={item.temp_sku_label || 'Item photo'}
+                              className="h-32 w-full object-cover rounded border hover:opacity-80 cursor-pointer"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.onerror = null;
+                                target.src = '/placeholder.svg';
+                              }}
+                            />
+                            <span className="text-xs text-primary flex items-center gap-1 mt-1">
+                              <ExternalLink className="h-3 w-3" /> View full
+                            </span>
+                          </a>
+                        ) : (
+                          <div className="h-32 w-full bg-muted rounded border flex items-center justify-center">
+                            <span className="text-muted-foreground text-sm">No photo</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Reported qty */}
