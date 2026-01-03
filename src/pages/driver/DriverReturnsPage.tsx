@@ -34,14 +34,14 @@ export default function DriverReturnsPage() {
     }
   };
 
-  // One-click accept to submit all suggested return items
+  // One-click accept to submit all must-return items
   const handleQuickAccept = async () => {
-    if (!parentRunner || !returnRequired?.items.length) return;
+    if (!parentRunner || !returnRequired?.mustReturnItems.length) return;
 
     await createReturn.mutateAsync({
       runner_id: parentRunner.id,
       notes: 'Auto-suggested return for failed/undelivered items',
-      items: returnRequired.items.map(item => ({
+      items: returnRequired.mustReturnItems.map(item => ({
         product_id: item.product_id,
         qty: item.suggested_return_qty,
       })),
@@ -74,7 +74,7 @@ export default function DriverReturnsPage() {
         </div>
 
         {/* Action Required - One-Click Accept */}
-        {returnRequired?.isReturnRequired && returnRequired.items.length > 0 && (
+        {returnRequired?.isReturnRequired && returnRequired.mustReturnItems.length > 0 && (
           <Card className="border-2 border-destructive bg-destructive/5">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
@@ -86,26 +86,45 @@ export default function DriverReturnsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Items to return */}
-              <div className="bg-background rounded-lg p-3 border">
-                <p className="text-sm font-medium mb-2">Items to Return:</p>
+              {/* Must Return Items */}
+              <div className="bg-background rounded-lg p-3 border border-destructive/30">
+                <p className="text-sm font-medium mb-2 text-destructive">Must Return (Not Needed Tomorrow):</p>
                 <div className="space-y-2">
-                  {returnRequired.items.map(item => (
+                  {returnRequired.mustReturnItems.map(item => (
                     <div key={item.product_id} className="flex justify-between items-center text-sm">
                       <span className="text-muted-foreground">
                         {item.sku_code || 'N/A'} / {item.sku_name}
                       </span>
-                      <Badge variant="secondary" className="font-mono">
+                      <Badge variant="destructive" className="font-mono">
                         × {item.suggested_return_qty}
                       </Badge>
                     </div>
                   ))}
                 </div>
                 <div className="border-t mt-3 pt-3 flex justify-between items-center">
-                  <span className="font-medium">Total Items</span>
-                  <Badge className="font-mono">{returnRequired.totalSuggestedReturn}</Badge>
+                  <span className="font-medium">Total to Return</span>
+                  <Badge variant="destructive" className="font-mono">{returnRequired.totalMustReturn}</Badge>
                 </div>
               </div>
+
+              {/* Keep for Tomorrow Items */}
+              {returnRequired.keepForTomorrowItems.length > 0 && (
+                <div className="bg-amber-50/50 dark:bg-amber-900/10 rounded-lg p-3 border border-amber-300">
+                  <p className="text-sm font-medium mb-2 text-amber-700 dark:text-amber-400">Keep for Tomorrow (Excluded):</p>
+                  <div className="space-y-2">
+                    {returnRequired.keepForTomorrowItems.map(item => (
+                      <div key={item.product_id} className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">
+                          {item.sku_code || 'N/A'} / {item.sku_name}
+                        </span>
+                        <Badge variant="outline" className="font-mono border-amber-500 text-amber-700">
+                          × {item.needed_tomorrow_qty} needed
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* One-click accept button */}
               <Button 
@@ -130,6 +149,17 @@ export default function DriverReturnsPage() {
               </p>
             </CardContent>
           </Card>
+        )}
+
+        {/* All Available Stock Info */}
+        {returnRequired && returnRequired.totalAvailable > 0 && !returnRequired.isReturnRequired && (
+          <Alert className="border-primary/50 bg-primary/5">
+            <PackageCheck className="h-4 w-4" />
+            <AlertTitle>Your Allocated Stock</AlertTitle>
+            <AlertDescription>
+              You have {returnRequired.totalAvailable} item(s) in allocated stock, all needed for upcoming deliveries.
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Pending Returns - Waiting for Runner */}

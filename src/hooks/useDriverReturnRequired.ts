@@ -2,24 +2,29 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, addDays } from 'date-fns';
 
-export interface ReturnRequiredItem {
+export interface ReturnableItem {
   product_id: string;
   sku_code: string | null;
   sku_name: string;
-  allocated_qty: number;
+  available_qty: number;
   needed_tomorrow_qty: number;
   suggested_return_qty: number;
+  must_return: boolean; // true if not needed tomorrow
 }
 
 export interface ReturnRequiredResult {
   isReturnRequired: boolean;
-  items: ReturnRequiredItem[];
-  totalSuggestedReturn: number;
+  items: ReturnableItem[];
+  mustReturnItems: ReturnableItem[];
+  keepForTomorrowItems: ReturnableItem[];
+  totalMustReturn: number;
+  totalAvailable: number;
 }
 
 /**
- * Hook to check if a driver has outstanding return required
- * Returns items that should be returned (allocated but not needed for tomorrow)
+ * Hook to get returnable items for a driver
+ * Uses the database function get_driver_returnable_items() for accurate calculation
+ * Then overlays tomorrow's needs to categorize items
  */
 export function useDriverReturnRequired(driverId?: string) {
   return useQuery({
@@ -32,15 +37,13 @@ export function useDriverReturnRequired(driverId?: string) {
       const tomorrow = startOfDay(addDays(new Date(), 1));
       const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-      // Get allocated stock for this driver (pending qty = undelivered)
-      const { data: allocatedStock, error: stockError } = await supabase
-        .from('driver_allocated_stock')
-        .select('*')
-        .eq('driver_id', targetDriverId);
+      // Get returnable items from database function
+      const { data: returnableData, error: returnableError } = await supabase
+        .rpc('get_driver_returnable_items');
 
-      if (stockError) throw stockError;
+      if (returnableError) throw returnableError;
 
-      // Get orders needed for tomorrow (not delivered, not cancelled)
+      // Get orders needed for tomorrow to categorize items
       const { data: tomorrowOrders, error: ordersError } = await supabase
         .from('orders')
         .select(`
@@ -50,6 +53,7 @@ export function useDriverReturnRequired(driverId?: string) {
           order_date,
           driver_status,
           runner_status,
+          runner_accept_status,
           order_items(product_id, qty)
         `)
         .eq('driver_id', targetDriverId)
@@ -70,8 +74,8 @@ export function useDriverReturnRequired(driverId?: string) {
         const orderDeliveryDate = deliveryDate.split('T')[0];
         if (orderDeliveryDate !== tomorrowStr) continue;
 
-        // Don't count DRIVER_DELIVERED that's already accepted
-        if (order.driver_status === 'DRIVER_DELIVERED' && order.runner_status === 'DELIVERED') {
+        // Skip already delivered orders
+        if (order.runner_status === 'DELIVERED' || order.runner_accept_status === 'ACCEPTED') {
           continue;
         }
 
@@ -83,39 +87,43 @@ export function useDriverReturnRequired(driverId?: string) {
         }
       }
 
-      // Build return required items
-      const items: ReturnRequiredItem[] = [];
+      // Build categorized items
+      const items: ReturnableItem[] = [];
       
-      for (const stock of allocatedStock || []) {
-        if (!stock.product_id) continue;
+      for (const item of returnableData || []) {
+        if (!item.product_id || item.available_qty <= 0) continue;
+
+        const neededQty = neededTomorrow.get(item.product_id) || 0;
+        const mustReturnQty = Math.max(item.available_qty - neededQty, 0);
         
-        const allocatedQty = stock.pending_qty || 0;
-        if (allocatedQty <= 0) continue;
-
-        const neededQty = neededTomorrow.get(stock.product_id) || 0;
-        const suggestedReturn = Math.max(allocatedQty - neededQty, 0);
-
-        if (suggestedReturn > 0) {
-          items.push({
-            product_id: stock.product_id,
-            sku_code: stock.sku_code,
-            sku_name: stock.sku_name || 'Unknown',
-            allocated_qty: allocatedQty,
-            needed_tomorrow_qty: neededQty,
-            suggested_return_qty: suggestedReturn,
-          });
-        }
+        items.push({
+          product_id: item.product_id,
+          sku_code: item.sku_code,
+          sku_name: item.sku_name || 'Unknown',
+          available_qty: Number(item.available_qty),
+          needed_tomorrow_qty: neededQty,
+          suggested_return_qty: mustReturnQty,
+          must_return: mustReturnQty > 0,
+        });
       }
 
-      const totalSuggestedReturn = items.reduce((sum, i) => sum + i.suggested_return_qty, 0);
+      // Categorize items
+      const mustReturnItems = items.filter(i => i.must_return);
+      const keepForTomorrowItems = items.filter(i => !i.must_return && i.needed_tomorrow_qty > 0);
+
+      const totalMustReturn = mustReturnItems.reduce((sum, i) => sum + i.suggested_return_qty, 0);
+      const totalAvailable = items.reduce((sum, i) => sum + i.available_qty, 0);
 
       return {
-        isReturnRequired: totalSuggestedReturn > 0,
+        isReturnRequired: totalMustReturn > 0,
         items,
-        totalSuggestedReturn,
+        mustReturnItems,
+        keepForTomorrowItems,
+        totalMustReturn,
+        totalAvailable,
       };
     },
-    enabled: !!driverId || true, // Always run for current user if no driverId
+    enabled: true,
   });
 }
 
@@ -129,8 +137,10 @@ export function useCanDriverReceivePickup(driverId: string | undefined) {
   return {
     canReceivePickup: !returnRequired?.isReturnRequired,
     returnRequired: returnRequired?.isReturnRequired || false,
-    returnItems: returnRequired?.items || [],
-    totalToReturn: returnRequired?.totalSuggestedReturn || 0,
+    mustReturnItems: returnRequired?.mustReturnItems || [],
+    keepForTomorrowItems: returnRequired?.keepForTomorrowItems || [],
+    totalMustReturn: returnRequired?.totalMustReturn || 0,
+    totalAvailable: returnRequired?.totalAvailable || 0,
     isLoading,
   };
 }

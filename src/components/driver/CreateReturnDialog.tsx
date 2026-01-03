@@ -12,7 +12,7 @@ import { useCreateReturn } from '@/hooks/useDriverReturns';
 import { useDriverParentRunner } from '@/hooks/useDrivers';
 import { useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
-import { Plus, Trash2, Package, Sparkles, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Package, Sparkles, AlertCircle, AlertTriangle, PackageCheck, Clock } from 'lucide-react';
 
 interface CreateReturnDialogProps {
   open: boolean;
@@ -26,6 +26,7 @@ interface ReturnItem {
   qty: number;
   max_qty: number;
   needed_tomorrow: number;
+  must_return: boolean;
 }
 
 export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogProps) {
@@ -57,17 +58,29 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     }));
   }, [selectedPickup]);
 
-  // Returnable items from the return required calculation
-  const returnableItems = useMemo(() => {
+  // All returnable items from the hook
+  const allReturnableItems = useMemo(() => {
     if (!returnRequired?.items) return [];
     return returnRequired.items.map(item => ({
       product_id: item.product_id,
       product_name: item.sku_name,
       sku_code: item.sku_code,
-      max_qty: item.suggested_return_qty,
+      max_qty: item.available_qty,
+      suggested_qty: item.suggested_return_qty,
       needed_tomorrow: item.needed_tomorrow_qty,
+      must_return: item.must_return,
     }));
   }, [returnRequired]);
+
+  // Items that must be returned (not needed tomorrow)
+  const mustReturnItems = useMemo(() => 
+    allReturnableItems.filter(i => i.must_return),
+  [allReturnableItems]);
+
+  // Items kept for tomorrow
+  const keepForTomorrowItems = useMemo(() => 
+    allReturnableItems.filter(i => !i.must_return && i.needed_tomorrow > 0),
+  [allReturnableItems]);
 
   // Track if auto-suggestion has been done for this dialog session
   const [hasAutoSuggested, setHasAutoSuggested] = useState(false);
@@ -89,26 +102,26 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     // Wait for data to load
     if (!returnRequired) return;
     
-    // Auto-suggest items based on return required calculation
-    if (returnRequired.items.length > 0) {
-      setItems(returnRequired.items.map(item => ({
+    // Auto-suggest items that must be returned
+    if (mustReturnItems.length > 0) {
+      setItems(mustReturnItems.map(item => ({
         product_id: item.product_id,
-        product_name: item.sku_name,
+        product_name: item.product_name,
         sku_code: item.sku_code,
-        qty: item.suggested_return_qty,
-        max_qty: item.suggested_return_qty,
-        needed_tomorrow: item.needed_tomorrow_qty,
+        qty: item.suggested_qty,
+        max_qty: item.max_qty,
+        needed_tomorrow: item.needed_tomorrow,
+        must_return: true,
       })));
       setHasAutoSuggested(true);
     } else {
-      // No items available, mark as suggested to stop trying
       setHasAutoSuggested(true);
     }
-  }, [open, hasAutoSuggested, returnRequired, isLoadingReturn]);
+  }, [open, hasAutoSuggested, returnRequired, isLoadingReturn, mustReturnItems]);
 
   const addItem = () => {
     // Add from returnable items that aren't already in the list
-    const availableItems = returnableItems.filter(
+    const availableItems = allReturnableItems.filter(
       r => !items.some(i => i.product_id === r.product_id)
     );
     
@@ -118,9 +131,10 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
         product_id: first.product_id,
         product_name: first.product_name,
         sku_code: first.sku_code,
-        qty: first.max_qty,
+        qty: first.suggested_qty > 0 ? first.suggested_qty : first.max_qty,
         max_qty: first.max_qty,
         needed_tomorrow: first.needed_tomorrow,
+        must_return: first.must_return,
       }]);
     }
   };
@@ -139,16 +153,17 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   };
 
   const updateItemProduct = (index: number, productId: string) => {
-    const returnable = returnableItems.find(r => r.product_id === productId);
+    const returnable = allReturnableItems.find(r => r.product_id === productId);
     if (returnable) {
       const newItems = [...items];
       newItems[index] = {
         product_id: productId,
         product_name: returnable.product_name,
         sku_code: returnable.sku_code,
-        qty: returnable.max_qty,
+        qty: returnable.suggested_qty > 0 ? returnable.suggested_qty : returnable.max_qty,
         max_qty: returnable.max_qty,
         needed_tomorrow: returnable.needed_tomorrow,
+        must_return: returnable.must_return,
       };
       setItems(newItems);
     }
@@ -170,11 +185,11 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     onOpenChange(false);
   };
 
-  const availableToAdd = returnableItems.filter(
+  const availableToAdd = allReturnableItems.filter(
     r => !items.some(i => i.product_id === r.product_id)
   );
 
-  const hasItemsToReturn = returnableItems.length > 0;
+  const hasItemsToReturn = allReturnableItems.length > 0;
   const canSubmit = items.length > 0 && items.every(i => i.qty > 0) && !createReturn.isPending;
 
   return (
@@ -183,7 +198,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
         <DialogHeader>
           <DialogTitle>Submit Daily Return</DialogTitle>
           <DialogDescription>
-            Return items that you haven't delivered. Items needed for tomorrow's deliveries are excluded.
+            Return items that you haven't delivered. Select which items to return.
           </DialogDescription>
         </DialogHeader>
 
@@ -222,14 +237,47 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
             </Alert>
           )}
 
+          {/* Section 1: Must Return Items */}
+          {mustReturnItems.length > 0 && (
+            <Alert className="border-destructive/50 bg-destructive/5">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              <AlertTitle className="text-destructive">Must Return (Not Needed Tomorrow)</AlertTitle>
+              <AlertDescription className="text-destructive/80">
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {mustReturnItems.map(item => (
+                    <Badge key={item.product_id} variant="destructive">
+                      {item.sku_code || 'N/A'} / {item.product_name} × {item.suggested_qty}
+                    </Badge>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Section 2: Keep for Tomorrow Items */}
+          {keepForTomorrowItems.length > 0 && (
+            <Alert className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-900/10">
+              <Clock className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-700 dark:text-amber-400">Keep for Tomorrow (Excluded)</AlertTitle>
+              <AlertDescription className="text-amber-600 dark:text-amber-300">
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {keepForTomorrowItems.map(item => (
+                    <Badge key={item.product_id} variant="outline" className="border-amber-500 text-amber-700">
+                      {item.sku_code || 'N/A'} / {item.product_name} × {item.needed_tomorrow} needed
+                    </Badge>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Show auto-suggestion info */}
           {hasItemsToReturn && items.length > 0 && (
-            <Alert className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-900/10">
-              <Sparkles className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-700 dark:text-amber-400">Auto-Suggested Return Items</AlertTitle>
-              <AlertDescription className="text-amber-600 dark:text-amber-300">
-                Showing undelivered/failed items for return. Items needed for tomorrow deliveries are excluded.
-                Adjust quantities as needed.
+            <Alert className="border-green-500/50 bg-green-50/50 dark:bg-green-900/10">
+              <Sparkles className="h-4 w-4 text-green-600" />
+              <AlertTitle className="text-green-700 dark:text-green-400">Auto-Suggested Return Items</AlertTitle>
+              <AlertDescription className="text-green-600 dark:text-green-300">
+                Items that must be returned are pre-selected. Adjust quantities as needed.
               </AlertDescription>
             </Alert>
           )}
@@ -240,7 +288,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>No Items to Return</AlertTitle>
               <AlertDescription>
-                You have no undelivered items to return. Items needed for tomorrow's deliveries are excluded.
+                You have no undelivered items to return. All items have been delivered or already returned.
               </AlertDescription>
             </Alert>
           )}
@@ -272,8 +320,8 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="w-24 text-center">Needed Tomorrow</TableHead>
-                    <TableHead className="w-24 text-center">Suggested</TableHead>
+                    <TableHead className="w-24 text-center">Available</TableHead>
+                    <TableHead className="w-24 text-center">Tomorrow</TableHead>
                     <TableHead className="w-24">Return Qty</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
@@ -283,9 +331,14 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                     <TableRow key={index}>
                       <TableCell>
                         {item.product_id ? (
-                          <span className="font-medium">
-                            {item.sku_code || 'N/A'} / {item.product_name}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              {item.sku_code || 'N/A'} / {item.product_name}
+                            </span>
+                            {item.must_return && (
+                              <Badge variant="destructive" className="text-xs">Must Return</Badge>
+                            )}
+                          </div>
                         ) : (
                           <Select
                             value={item.product_id}
@@ -295,7 +348,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                               <SelectValue placeholder="Select product" />
                             </SelectTrigger>
                             <SelectContent>
-                              {returnableItems
+                              {allReturnableItems
                                 .filter(r => !items.some((i, idx) => idx !== index && i.product_id === r.product_id))
                                 .map(product => (
                                   <SelectItem key={product.product_id} value={product.product_id}>
@@ -307,10 +360,10 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant="outline">{item.needed_tomorrow}</Badge>
+                        <Badge variant="secondary">{item.max_qty}</Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant="secondary">{item.max_qty}</Badge>
+                        <Badge variant="outline">{item.needed_tomorrow}</Badge>
                       </TableCell>
                       <TableCell>
                         <Input
