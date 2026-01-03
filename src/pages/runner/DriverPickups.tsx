@@ -83,10 +83,7 @@ export default function DriverPickups() {
                 {pickup.items?.map(item => (
                   <div key={item.id} className="text-sm flex items-center gap-2">
                     <span className="font-medium">
-                      {item.product?.sku_name || 'Unknown'}
-                      {item.product?.sku_code && (
-                        <span className="text-muted-foreground ml-1">({item.product.sku_code})</span>
-                      )}
+                      {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
                     </span>
                     <Badge variant="secondary" className="text-xs">
                       {item.required_qty || 0}+{item.buffer_qty}={item.qty}
