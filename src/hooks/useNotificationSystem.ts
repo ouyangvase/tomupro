@@ -14,6 +14,9 @@ export interface Notification {
   reference_type?: string;
   reference_id?: string;
   entity_type?: string;
+  recipient_role?: string;
+  status_from?: string;
+  status_to?: string;
   is_read: boolean;
   created_at: string;
 }

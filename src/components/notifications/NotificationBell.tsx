@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, CheckCircle, XCircle, Truck, DollarSign, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useUnreadCount, useNotifications, useMarkAsRead } from '@/hooks/useNotificationSystem';
+import { useUnreadCount, useNotifications, useMarkAsRead, type Notification } from '@/hooks/useNotificationSystem';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,7 @@ export function NotificationBell() {
 
   const recentNotifications = notifications.slice(0, 5);
 
-  const handleNotificationClick = (notification: typeof notifications[0]) => {
+  const handleNotificationClick = (notification: Notification) => {
     if (!notification.is_read) {
       markAsRead.mutate(notification.id);
     }
@@ -47,6 +47,25 @@ export function NotificationBell() {
     }
   };
 
+  const getTypeIcon = (type: string, statusTo?: string) => {
+    if (statusTo === 'DELIVERED' || type === 'DELIVERED') {
+      return <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />;
+    }
+    if (statusTo === 'FAILED_DELIVERY' || type === 'FAILED_DELIVERY') {
+      return <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />;
+    }
+    if (statusTo === 'ASSIGNED' || type === 'RUNNER_ASSIGNED') {
+      return <Truck className="h-4 w-4 text-primary flex-shrink-0" />;
+    }
+    if (type === 'DISPUTE') {
+      return <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />;
+    }
+    if (type === 'CLAIM_SUBMITTED' || type === 'CLAIM_ACKED') {
+      return <DollarSign className="h-4 w-4 text-primary flex-shrink-0" />;
+    }
+    return <Bell className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -62,7 +81,7 @@ export function NotificationBell() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
+      <PopoverContent className="w-96 p-0" align="end">
         <div className="flex items-center justify-between p-4 border-b">
           <h4 className="font-semibold">Notifications</h4>
           <Button 
@@ -76,7 +95,7 @@ export function NotificationBell() {
             View all
           </Button>
         </div>
-        <ScrollArea className="h-[300px]">
+        <ScrollArea className="h-[350px]">
           {recentNotifications.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground">
               No notifications
@@ -92,24 +111,27 @@ export function NotificationBell() {
                   )}
                   onClick={() => handleNotificationClick(notification)}
                 >
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start gap-3">
+                    {getTypeIcon(notification.type, notification.status_to)}
                     <div className="flex-1 min-w-0">
-                      <p className={cn(
-                        "text-sm truncate",
-                        !notification.is_read && "font-semibold"
-                      )}>
-                        {notification.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                      <div className="flex items-center gap-2">
+                        <p className={cn(
+                          "text-sm truncate",
+                          !notification.is_read && "font-semibold"
+                        )}>
+                          {notification.title}
+                        </p>
+                        {!notification.is_read && (
+                          <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1 whitespace-pre-line">
                         {notification.message}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
                         {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
                       </p>
                     </div>
-                    {!notification.is_read && (
-                      <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-2" />
-                    )}
                   </div>
                 </button>
               ))}
