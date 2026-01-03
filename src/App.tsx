@@ -75,6 +75,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (profile?.role === "driver" && needsOnboarding) {
     return <DriverOnboarding />;
   }
+
+  // Users with 'user' role can only access profile page
+  if (profile?.role === "user") {
+    return <Navigate to="/settings/profile" replace />;
+  }
   
   return <>{children}</>;
 }
