@@ -180,6 +180,25 @@ const ProfilePage = () => {
           <p className="text-muted-foreground">Manage your account settings</p>
         </div>
 
+        {/* Welcome message for new users */}
+        {profile.role === 'user' && (
+          <Card className="border-primary/50 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="text-primary">Welcome to TOMU PRO!</CardTitle>
+              <CardDescription>
+                Complete your profile setup below. Once an administrator assigns you a role, you'll gain access to more features.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                <li>Upload a profile photo to personalize your account</li>
+                <li>Update your display name</li>
+                <li>Set a secure password</li>
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Profile Card */}
         <Card>
           <CardHeader>
