@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { RunnerDriver, Profile } from '@/types/database';
 
-// Get drivers for a runner
+// Get drivers for a runner (with driver_code)
 export function useRunnerDrivers(runnerId?: string) {
   return useQuery({
     queryKey: ['runner-drivers', runnerId],
@@ -14,7 +14,7 @@ export function useRunnerDrivers(runnerId?: string) {
         .from('runner_drivers')
         .select(`
           *,
-          driver:driver_id(id, display_name, email, role)
+          driver:driver_id(id, display_name, email, role, driver_code)
         `)
         .eq('runner_id', runnerId)
         .eq('is_active', true)
@@ -358,5 +358,30 @@ export function useDriverOrderCount(driverId?: string) {
       return count || 0;
     },
     enabled: !!driverId,
+  });
+}
+
+// Generate driver code
+export function useGenerateDriverCode() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (driverId: string) => {
+      const { data, error } = await supabase.rpc('generate_driver_code', {
+        p_driver_id: driverId,
+      });
+      
+      if (error) throw error;
+      const result = data as { success: boolean; code?: string; error?: string };
+      if (!result.success) throw new Error(result.error || 'Unknown error');
+      return result;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['runner-drivers'] });
+      toast.success(`Driver code generated: ${data.code}`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to generate code: ${error.message}`);
+    },
   });
 }

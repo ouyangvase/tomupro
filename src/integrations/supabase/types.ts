@@ -1228,6 +1228,7 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           display_name: string
+          driver_code: string | null
           email: string
           id: string
           is_active: boolean
@@ -1239,6 +1240,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           display_name: string
+          driver_code?: string | null
           email: string
           id: string
           is_active?: boolean
@@ -1250,6 +1252,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           display_name?: string
+          driver_code?: string | null
           email?: string
           id?: string
           is_active?: boolean
@@ -1758,6 +1761,7 @@ export type Database = {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
       }
+      generate_driver_code: { Args: { p_driver_id: string }; Returns: Json }
       get_delivery_charge: {
         Args: { p_area: string; p_runner_id: string }
         Returns: number
