@@ -56,7 +56,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
     await createReturn.mutateAsync({
       runner_id: parentRunner.id,
-      related_pickup_id: relatedPickupId || undefined,
+      related_pickup_id: relatedPickupId && relatedPickupId !== 'none' ? relatedPickupId : undefined,
       notes: notes || undefined,
       items: validItems,
     });
@@ -82,7 +82,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                 <SelectValue placeholder="Select pickup" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
+                <SelectItem value="none">None</SelectItem>
                 {acknowledgedPickups.map(pickup => (
                   <SelectItem key={pickup.id} value={pickup.id}>
                     {pickup.pickup_date} - {pickup.items?.length || 0} items
