@@ -7,7 +7,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -350,6 +350,9 @@ export default function DriverInbox() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Mark Delivery Failed</DialogTitle>
+              <DialogDescription>
+                Please select a reason and provide details about why this delivery failed.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div>
