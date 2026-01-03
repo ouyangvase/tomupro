@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -124,6 +124,9 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Pickup for Driver</DialogTitle>
+          <DialogDescription>
+            Schedule a stock pickup for a driver to collect items for deliveries.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
