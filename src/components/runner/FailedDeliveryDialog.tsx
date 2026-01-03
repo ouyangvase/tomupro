@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -93,6 +94,9 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Mark Delivery as Failed</DialogTitle>
+          <DialogDescription>
+            Provide details about why this delivery failed and what the next steps should be.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
