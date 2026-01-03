@@ -179,10 +179,27 @@ export default function ReadySales() {
         { label: 'Failed', value: 'FAILED_DELIVERY' },
       ],
       render: (o) => (
-        <div className="flex items-center gap-2">
-          <StatusBadge status={o.runner_status} type="runner" />
-          {o.runner_status === 'FAILED_DELIVERY' && (
-            <FailedDeliveryInfo order={o} compact />
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <StatusBadge status={o.runner_status} type="runner" />
+            {o.runner_status === 'FAILED_DELIVERY' && (
+              <FailedDeliveryInfo order={o} compact />
+            )}
+          </div>
+          {/* Show runner remark and next delivery date */}
+          {(o.runner_comment || o.next_delivery_date) && (
+            <div className="text-xs space-y-0.5">
+              {o.runner_comment && (
+                <div className="text-primary font-medium truncate max-w-[200px]" title={o.runner_comment}>
+                  Note: {o.runner_comment}
+                </div>
+              )}
+              {o.next_delivery_date && (
+                <div className="text-muted-foreground">
+                  Next: {format(new Date(o.next_delivery_date), 'dd MMM')}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )

@@ -1052,12 +1052,16 @@ export type Database = {
           last_status_note: string | null
           next_delivery_date: string | null
           notes: string | null
+          operational_status: string
           order_code: string
           order_date: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           phone: string
           reconciliation_status: Database["public"]["Enums"]["reconciliation_status"]
+          reopened_at: string | null
+          reschedule_cycle_no: number
           reschedule_flag: boolean | null
+          rescheduled_from_status: string | null
           runner_accept_status: string | null
           runner_comment: string | null
           runner_failed_reason_id: string | null
@@ -1105,12 +1109,16 @@ export type Database = {
           last_status_note?: string | null
           next_delivery_date?: string | null
           notes?: string | null
+          operational_status?: string
           order_code: string
           order_date?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone: string
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
+          reopened_at?: string | null
+          reschedule_cycle_no?: number
           reschedule_flag?: boolean | null
+          rescheduled_from_status?: string | null
           runner_accept_status?: string | null
           runner_comment?: string | null
           runner_failed_reason_id?: string | null
@@ -1158,12 +1166,16 @@ export type Database = {
           last_status_note?: string | null
           next_delivery_date?: string | null
           notes?: string | null
+          operational_status?: string
           order_code?: string
           order_date?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone?: string
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
+          reopened_at?: string | null
+          reschedule_cycle_no?: number
           reschedule_flag?: boolean | null
+          rescheduled_from_status?: string | null
           runner_accept_status?: string | null
           runner_comment?: string | null
           runner_failed_reason_id?: string | null
@@ -1876,6 +1888,7 @@ export type Database = {
         Returns: boolean
       }
       link_driver_to_runner_by_code: { Args: { p_code: string }; Returns: Json }
+      reopen_rescheduled_orders: { Args: never; Returns: Json }
     }
     Enums: {
       app_role:

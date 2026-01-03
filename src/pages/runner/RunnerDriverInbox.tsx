@@ -97,14 +97,23 @@ export default function RunnerDriverInbox() {
     };
   }, [queryClient]);
 
-  // TAB A: Orders eligible for assignment
+  // TAB A: Orders eligible for assignment (includes failed/rescheduled orders that can be re-assigned)
   const assignableOrders = useMemo(() => {
     return orders.filter(order => {
       // Orders that can be assigned to drivers
+      // Include: NEW, TAKEN, FAILED, RESCHEDULED orders without active driver
       const isAssignable = 
         order.runner_status !== 'DELIVERED' &&
         order.status !== 'CANCELLED' &&
-        (order.driver_id === null || order.driver_status === 'UNASSIGNED');
+        (
+          order.driver_id === null || 
+          order.driver_status === 'UNASSIGNED' ||
+          // Allow re-assignment of failed orders
+          order.driver_status === 'DRIVER_FAILED' ||
+          order.operational_status === 'DRIVER_FAILED' ||
+          order.operational_status === 'RESCHEDULED' ||
+          order.operational_status === 'NEW'
+        );
       return isAssignable;
     });
   }, [orders]);
@@ -542,14 +551,33 @@ export default function RunnerDriverInbox() {
                           <TableCell className="text-sm text-red-600">
                             {order.driver_failed_reason || '-'}
                           </TableCell>
-                          <TableCell className="text-sm max-w-[150px] truncate">
-                            {order.driver_failed_remark || '-'}
+                          <TableCell className="text-sm max-w-[180px]">
+                            {/* Show runner comment if reviewed, else driver remark */}
+                            {order.runner_comment ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="truncate block text-primary font-medium">
+                                      {order.runner_comment}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-[300px]">
+                                    <p className="font-medium">Runner Remark:</p>
+                                    <p>{order.runner_comment}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : order.driver_failed_remark ? (
+                              <span className="truncate block text-muted-foreground">{order.driver_failed_remark}</span>
+                            ) : (
+                              '-'
+                            )}
                           </TableCell>
                           <TableCell>
-                            {order.driver_next_delivery_date ? (
+                            {(order.next_delivery_date || order.driver_next_delivery_date) ? (
                               <div className="flex items-center gap-1 text-sm">
                                 <Calendar className="h-3 w-3" />
-                                {format(parseISO(order.driver_next_delivery_date), 'dd MMM')}
+                                {format(parseISO(order.next_delivery_date || order.driver_next_delivery_date!), 'dd MMM')}
                               </div>
                             ) : (
                               '-'
@@ -575,14 +603,23 @@ export default function RunnerDriverInbox() {
                                   <TooltipContent>View Order</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
-                              <Button
-                                size="sm"
-                                className="h-7 px-3"
-                                onClick={() => handleOpenReviewModal(order)}
-                              >
-                                NEXT
-                                <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                              </Button>
+                              {/* NEXT button only shows if NOT_REVIEWED */}
+                              {(!order.runner_review_status || order.runner_review_status === 'NOT_REVIEWED') && (
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-3"
+                                  onClick={() => handleOpenReviewModal(order)}
+                                >
+                                  NEXT
+                                  <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                                </Button>
+                              )}
+                              {order.runner_review_status === 'REVIEWED' && (
+                                <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                                  <ClipboardCheck className="h-3 w-3 mr-1" />
+                                  Done
+                                </Badge>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

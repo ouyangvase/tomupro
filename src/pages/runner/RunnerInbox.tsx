@@ -309,12 +309,29 @@ export default function RunnerInbox() {
       filterable: true,
       filterOptions: runnerStatusOptions,
       render: (order) => (
-        <div className="flex items-center gap-2">
-          <Badge className={runnerStatusColors[order.runner_status]}>
-            {order.runner_status.replace('_', ' ')}
-          </Badge>
-          {order.runner_status === 'FAILED_DELIVERY' && (
-            <FailedDeliveryInfo order={order} compact />
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Badge className={runnerStatusColors[order.runner_status]}>
+              {order.runner_status.replace('_', ' ')}
+            </Badge>
+            {order.runner_status === 'FAILED_DELIVERY' && (
+              <FailedDeliveryInfo order={order} compact />
+            )}
+          </div>
+          {/* Show runner remark and next delivery date */}
+          {(order.runner_comment || order.next_delivery_date) && (
+            <div className="text-xs space-y-0.5">
+              {order.runner_comment && (
+                <div className="text-primary font-medium truncate max-w-[200px]" title={order.runner_comment}>
+                  Note: {order.runner_comment}
+                </div>
+              )}
+              {order.next_delivery_date && (
+                <div className="text-muted-foreground">
+                  Next: {new Date(order.next_delivery_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                </div>
+              )}
+            </div>
           )}
         </div>
       ),

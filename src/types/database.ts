@@ -119,6 +119,11 @@ export interface Order {
   salesperson_action_due_date: string | null;
   last_status_note: string | null;
   reschedule_flag: boolean | null;
+  // Operational tracking fields
+  operational_status: string;
+  reschedule_cycle_no: number;
+  reopened_at: string | null;
+  rescheduled_from_status: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields
