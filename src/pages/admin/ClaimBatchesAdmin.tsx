@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useClaimBatches, useAcknowledgeClaimBatch } from '@/hooks/useClaimBatches';
 import { format } from 'date-fns';
 import { CheckCircle, Receipt, Loader2 } from 'lucide-react';
+import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
 import type { ClaimBatch } from '@/types/database';
 import {
   Dialog,
@@ -59,10 +60,21 @@ export default function ClaimBatchesAdmin() {
       render: (batch) => batch.items?.length || 0,
     },
     {
-      key: 'total_amount',
-      header: 'Total Amount',
+      key: 'exchange_rate_to_rm',
+      header: 'FX Rate',
+      render: (batch) => batch.exchange_rate_to_rm ? formatExchangeRate(batch.exchange_rate_to_rm) : '-',
+    },
+    {
+      key: 'total_bnd',
+      header: 'Total (BND)',
       sortable: true,
-      render: (batch) => batch.total_amount.toLocaleString(),
+      render: (batch) => formatBND(batch.total_bnd || batch.total_amount),
+    },
+    {
+      key: 'total_rm',
+      header: 'Total (RM)',
+      sortable: true,
+      render: (batch) => batch.total_rm ? formatRM(batch.total_rm) : '-',
     },
     {
       key: 'note',
@@ -126,19 +138,32 @@ export default function ClaimBatchesAdmin() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">Total Orders</p>
                 <p className="text-2xl font-bold">{selectedBatch?.items?.length || 0}</p>
               </div>
               <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground">Total Amount</p>
-                <p className="text-2xl font-bold">{selectedBatch?.total_amount.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">Total (BND)</p>
+                <p className="text-2xl font-bold">{formatBND(selectedBatch?.total_bnd || selectedBatch?.total_amount)}</p>
               </div>
               <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground">Status</p>
-                <Badge className="mt-1 bg-yellow-100 text-yellow-800">Pending</Badge>
+                <p className="text-sm text-muted-foreground">FX Rate</p>
+                <p className="text-2xl font-bold font-mono">
+                  {selectedBatch?.exchange_rate_to_rm ? formatExchangeRate(selectedBatch.exchange_rate_to_rm) : '-'}
+                </p>
               </div>
+              <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                <p className="text-sm text-muted-foreground">Total (RM)</p>
+                <p className="text-2xl font-bold text-primary">
+                  {selectedBatch?.total_rm ? formatRM(selectedBatch.total_rm) : '-'}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground">Status</p>
+              <Badge className="mt-1 bg-yellow-100 text-yellow-800">Pending Admin Acknowledgment</Badge>
             </div>
 
             {selectedBatch?.note && (
@@ -154,38 +179,30 @@ export default function ClaimBatchesAdmin() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
+                    <TableHead>Order Ref</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Area</TableHead>
-                    <TableHead className="text-right">Gross Amount</TableHead>
-                    <TableHead className="text-right">Delivery Fee</TableHead>
-                    <TableHead className="text-right">Net Amount</TableHead>
+                    <TableHead className="text-right">Amount (BND)</TableHead>
                     <TableHead>Payment</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {selectedBatch?.items?.map((item) => {
-                    const grossAmount = Number(item.order?.total_amount || 0);
-                    // For now, show total as net until claims are fetched
-                    return (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          {item.order && format(new Date(item.order.order_date), 'MMM dd')}
-                        </TableCell>
-                        <TableCell>{item.order?.customer_name}</TableCell>
-                        <TableCell>{item.order?.area || '-'}</TableCell>
-                        <TableCell className="text-right font-mono">
-                          RM {grossAmount.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-muted-foreground">
-                          -
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-medium">
-                          RM {grossAmount.toFixed(2)}
-                        </TableCell>
-                        <TableCell>{item.order?.payment_method}</TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {selectedBatch?.items?.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        {item.order && format(new Date(item.order.order_date), 'MMM dd')}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {item.order?.order_code}
+                      </TableCell>
+                      <TableCell>{item.order?.customer_name}</TableCell>
+                      <TableCell>{item.order?.area || '-'}</TableCell>
+                      <TableCell className="text-right font-mono font-medium">
+                        {formatBND(item.order?.total_amount)}
+                      </TableCell>
+                      <TableCell>{item.order?.payment_method}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>

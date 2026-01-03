@@ -23,6 +23,7 @@ import { useRunners } from '@/hooks/useUserDirectory';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { formatBND } from '@/lib/currency';
 import type { ReconciliationStatus, OrderStatus, ClaimMethod } from '@/types/database';
 
 interface ClaimWithDetails {
@@ -175,9 +176,9 @@ export default function ClaimsHistory() {
     },
     {
       key: 'amount',
-      header: 'Amount',
+      header: 'Amount (BND)',
       sortable: true,
-      render: (claim) => `$${claim.amount.toFixed(2)}`,
+      render: (claim) => formatBND(claim.amount),
     },
     {
       key: 'method',
@@ -337,7 +338,7 @@ export default function ClaimsHistory() {
           </div>
           <div className="text-sm text-muted-foreground">
             Total Amount: <span className="font-medium text-foreground">
-              ${claims.reduce((sum, c) => sum + c.amount, 0).toFixed(2)}
+              {formatBND(claims.reduce((sum, c) => sum + c.amount, 0))}
             </span>
           </div>
         </div>

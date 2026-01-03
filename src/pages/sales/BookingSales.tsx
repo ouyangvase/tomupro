@@ -17,6 +17,7 @@ import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
+import { formatBND } from '@/lib/currency';
 import { calculateReminderState, getReminderBadgeProps } from '@/lib/reminders';
 import type { Order } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
@@ -77,9 +78,9 @@ export default function BookingSales() {
     },
     { 
       key: 'total_amount', 
-      header: 'Amount', 
+      header: 'Amount (BND)', 
       sortable: true, 
-      render: (o) => <span className="font-medium">${Number(o.total_amount).toFixed(2)}</span>
+      render: (o) => <span className="font-medium">{formatBND(o.total_amount)}</span>
     },
     { 
       key: 'payment_method', 

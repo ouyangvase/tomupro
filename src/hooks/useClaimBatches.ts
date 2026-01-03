@@ -61,9 +61,9 @@ export function useSubmitBulkClaim() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ orderIds, note }: { orderIds: string[]; note?: string }) => {
+    mutationFn: async ({ orderIds, note, exchangeRate }: { orderIds: string[]; note?: string; exchangeRate: number }) => {
       const { data, error } = await supabase.functions.invoke('submit-bulk-claim', {
-        body: { orderIds, note },
+        body: { orderIds, note, exchangeRate },
       });
 
       if (error) throw error;
@@ -75,7 +75,7 @@ export function useSubmitBulkClaim() {
       queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
       toast({ 
         title: 'Claim Submitted', 
-        description: `Claim batch submitted for ${data.orderCount} orders, awaiting admin acknowledgment.` 
+        description: `Claim batch submitted for ${data.orderCount} orders (BND ${data.netAmountBND?.toFixed(2)} → RM ${data.netAmountRM?.toFixed(2)})` 
       });
     },
     onError: (error: Error) => {

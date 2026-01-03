@@ -5,6 +5,7 @@ import { useClaimBatches } from '@/hooks/useClaimBatches';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { Receipt } from 'lucide-react';
+import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
 import type { ClaimBatch, ClaimBatchStatus } from '@/types/database';
 
 const statusColors: Record<ClaimBatchStatus, string> = {
@@ -29,10 +30,20 @@ export default function RunnerClaimBatches() {
       render: (batch) => batch.items?.length || 0,
     },
     {
-      key: 'total_amount',
-      header: 'Total Amount',
+      key: 'exchange_rate_to_rm',
+      header: 'FX Rate',
+      render: (batch) => batch.exchange_rate_to_rm ? formatExchangeRate(batch.exchange_rate_to_rm) : '-',
+    },
+    {
+      key: 'total_bnd',
+      header: 'Total (BND)',
       sortable: true,
-      render: (batch) => batch.total_amount.toLocaleString(),
+      render: (batch) => formatBND(batch.total_bnd || batch.total_amount),
+    },
+    {
+      key: 'total_rm',
+      header: 'Total (RM)',
+      render: (batch) => batch.total_rm ? formatRM(batch.total_rm) : '-',
     },
     {
       key: 'status',
