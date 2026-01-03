@@ -230,6 +230,15 @@ export default function RunnerInbox() {
       render: (order) => order.customer_name || '-',
     },
     {
+      key: 'driver_id',
+      header: 'Driver',
+      render: (order) => (
+        <span className={order.driver?.display_name ? '' : 'text-muted-foreground italic'}>
+          {order.driver?.display_name || 'Unassigned'}
+        </span>
+      ),
+    },
+    {
       key: 'phone',
       header: 'Phone',
       render: (order) => (

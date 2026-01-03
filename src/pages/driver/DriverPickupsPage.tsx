@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useDriverPickups, useAcknowledgePickup } from '@/hooks/useDriverPickups';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Package, CheckCircle, Clock, AlertCircle, ArrowRight } from 'lucide-react';
+import { Package, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function DriverPickupsPage() {
@@ -66,38 +66,34 @@ export default function DriverPickupsPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Product</TableHead>
-                          <TableHead className="text-center w-24">Expected</TableHead>
-                          <TableHead className="text-center w-8"></TableHead>
-                          <TableHead className="text-center w-24">Picking</TableHead>
+                          <TableHead className="text-center w-24">Required</TableHead>
+                          <TableHead className="text-center w-24">Buffer</TableHead>
+                          <TableHead className="text-center w-24">Total</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {pickup.items?.map(item => {
-                          const hasDifference = item.suggested_qty !== null && item.suggested_qty !== item.qty;
                           return (
                             <TableRow key={item.id}>
                               <TableCell className="text-sm">{item.product?.sku_name}</TableCell>
                               <TableCell className="text-center">
-                                {item.suggested_qty !== null ? (
-                                  <Badge variant="secondary">{item.suggested_qty}</Badge>
+                                {item.required_qty !== null ? (
+                                  <Badge variant="secondary">{item.required_qty}</Badge>
                                 ) : (
                                   <span className="text-muted-foreground">-</span>
                                 )}
                               </TableCell>
                               <TableCell className="text-center">
-                                <ArrowRight className="h-4 w-4 text-muted-foreground mx-auto" />
+                                {item.buffer_qty > 0 ? (
+                                  <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                                    +{item.buffer_qty}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">0</span>
+                                )}
                               </TableCell>
                               <TableCell className="text-center">
-                                <Badge 
-                                  variant={hasDifference ? "outline" : "default"}
-                                  className={hasDifference && item.qty > (item.suggested_qty || 0) 
-                                    ? "bg-green-50 text-green-700 border-green-200" 
-                                    : hasDifference 
-                                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                                    : ""}
-                                >
-                                  {item.qty}
-                                </Badge>
+                                <Badge variant="default">{item.qty}</Badge>
                               </TableCell>
                             </TableRow>
                           );
@@ -171,7 +167,8 @@ export default function DriverPickupsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
-                      <TableHead className="text-center w-24">Expected</TableHead>
+                      <TableHead className="text-center w-24">Required</TableHead>
+                      <TableHead className="text-center w-24">Buffer</TableHead>
                       <TableHead className="text-center w-24">Received</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -180,7 +177,10 @@ export default function DriverPickupsPage() {
                       <TableRow key={item.id}>
                         <TableCell className="text-sm">{item.product?.sku_name}</TableCell>
                         <TableCell className="text-center text-muted-foreground">
-                          {item.suggested_qty ?? '-'}
+                          {item.required_qty ?? '-'}
+                        </TableCell>
+                        <TableCell className="text-center text-muted-foreground">
+                          {item.buffer_qty > 0 ? `+${item.buffer_qty}` : '0'}
                         </TableCell>
                         <TableCell className="text-center font-medium">{item.qty}</TableCell>
                       </TableRow>

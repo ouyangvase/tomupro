@@ -24,7 +24,8 @@ interface CreatePickupDialogProps {
 interface PickupItem {
   product_id: string;
   qty: number;
-  suggested_qty: number;
+  required_qty: number;
+  buffer_qty: number;
 }
 
 export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogProps) {
@@ -45,8 +46,9 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
     if (suggestedQty && suggestedQty.length > 0) {
       setItems(suggestedQty.map(s => ({
         product_id: s.product_id,
-        qty: s.suggested_qty,
-        suggested_qty: s.suggested_qty,
+        qty: s.required_qty, // Total = required + buffer, initially buffer is 0
+        required_qty: s.required_qty,
+        buffer_qty: 0,
       })));
       setConfirmLowerQty(false);
     } else if (selectedDriverId) {
@@ -55,7 +57,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   }, [suggestedQty, selectedDriverId]);
 
   const addItem = () => {
-    setItems([...items, { product_id: '', qty: 1, suggested_qty: 0 }]);
+    setItems([...items, { product_id: '', qty: 1, required_qty: 0, buffer_qty: 1 }]);
   };
 
   const removeItem = (index: number) => {
@@ -65,11 +67,16 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const updateItem = (index: number, field: keyof PickupItem, value: string | number) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
+    // If buffer_qty changed, update total qty
+    if (field === 'buffer_qty') {
+      newItems[index].qty = newItems[index].required_qty + (typeof value === 'number' ? value : 0);
+    }
     setItems(newItems);
   };
 
   // Check if any item has lower qty than suggested
-  const hasLowerThanSuggested = items.some(item => item.suggested_qty > 0 && item.qty < item.suggested_qty);
+  // Check if any item has lower qty than required
+  const hasLowerThanRequired = items.some(item => item.required_qty > 0 && item.qty < item.required_qty);
 
   const handleSubmit = async () => {
     if (!selectedDriverId || items.length === 0) return;
@@ -77,8 +84,8 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
     const validItems = items.filter(i => i.product_id && i.qty > 0);
     if (validItems.length === 0) return;
 
-    // Require confirmation if qty is lower than suggested
-    if (hasLowerThanSuggested && !confirmLowerQty) return;
+    // Require confirmation if qty is lower than required
+    if (hasLowerThanRequired && !confirmLowerQty) return;
 
     await createPickup.mutateAsync({
       driver_id: selectedDriverId,
@@ -87,7 +94,8 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
       items: validItems.map(i => ({
         product_id: i.product_id,
         qty: i.qty,
-        suggested_qty: i.suggested_qty,
+        required_qty: i.required_qty,
+        buffer_qty: i.buffer_qty,
       })),
     });
 
@@ -198,18 +206,19 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="w-28 text-center">Suggested</TableHead>
-                    <TableHead className="w-28 text-center">Actual Qty</TableHead>
+                    <TableHead className="w-24 text-center">Required</TableHead>
+                    <TableHead className="w-24 text-center">Buffer</TableHead>
+                    <TableHead className="w-24 text-center">Total</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((item, index) => {
-                    const isLower = item.suggested_qty > 0 && item.qty < item.suggested_qty;
+                    const isLower = item.required_qty > 0 && item.qty < item.required_qty;
                     return (
                       <TableRow key={index} className={isLower ? 'bg-destructive/5' : ''}>
                         <TableCell>
-                          {item.suggested_qty > 0 ? (
+                          {item.required_qty > 0 ? (
                             <span className="text-sm">{getProductName(item.product_id)}</span>
                           ) : (
                             <Select
@@ -230,20 +239,25 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          {item.suggested_qty > 0 ? (
-                            <Badge variant="secondary">{item.suggested_qty}</Badge>
+                          {item.required_qty > 0 ? (
+                            <Badge variant="secondary">{item.required_qty}</Badge>
                           ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
+                            <span className="text-muted-foreground text-sm">0</span>
                           )}
                         </TableCell>
                         <TableCell>
                           <Input
                             type="number"
-                            min="1"
-                            value={item.qty}
-                            onChange={e => updateItem(index, 'qty', parseInt(e.target.value) || 1)}
-                            className={isLower ? 'border-destructive' : ''}
+                            min="0"
+                            value={item.buffer_qty}
+                            onChange={e => updateItem(index, 'buffer_qty', parseInt(e.target.value) || 0)}
+                            className="text-center"
                           />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={isLower ? "destructive" : "default"}>
+                            {item.qty}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <Button
@@ -261,12 +275,12 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
               </Table>
             )}
 
-            {hasLowerThanSuggested && (
+            {hasLowerThanRequired && (
               <Alert variant="destructive" className="mt-3">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Quantity Warning</AlertTitle>
                 <AlertDescription className="space-y-2">
-                  <p>One or more items have quantity lower than today's required delivery orders.</p>
+                  <p>One or more items have total quantity lower than today's required delivery orders.</p>
                   <div className="flex items-center space-x-2 mt-2">
                     <Checkbox
                       id="confirm-lower"
@@ -292,7 +306,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                 !selectedDriverId ||
                 items.length === 0 ||
                 hasBlockingOrders ||
-                (hasLowerThanSuggested && !confirmLowerQty) ||
+                (hasLowerThanRequired && !confirmLowerQty) ||
                 createPickup.isPending
               }
             >

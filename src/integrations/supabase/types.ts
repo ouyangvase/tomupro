@@ -461,28 +461,31 @@ export type Database = {
       }
       driver_pickup_items: {
         Row: {
+          buffer_qty: number
           created_at: string
           id: string
           pickup_id: string
           product_id: string
           qty: number
-          suggested_qty: number | null
+          required_qty: number | null
         }
         Insert: {
+          buffer_qty?: number
           created_at?: string
           id?: string
           pickup_id: string
           product_id: string
           qty: number
-          suggested_qty?: number | null
+          required_qty?: number | null
         }
         Update: {
+          buffer_qty?: number
           created_at?: string
           id?: string
           pickup_id?: string
           product_id?: string
           qty?: number
-          suggested_qty?: number | null
+          required_qty?: number | null
         }
         Relationships: [
           {

@@ -6,7 +6,7 @@ export interface SuggestedQuantity {
   product_id: string;
   sku_name: string;
   sku_code: string | null;
-  suggested_qty: number;
+  required_qty: number;
 }
 
 /**
@@ -61,13 +61,13 @@ export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: 
           
           const existing = productQtyMap.get(item.product_id);
           if (existing) {
-            existing.suggested_qty += item.qty;
+            existing.required_qty += item.qty;
           } else {
             productQtyMap.set(item.product_id, {
               product_id: item.product_id,
               sku_name: item.product?.sku_name || 'Unknown',
               sku_code: item.product?.sku_code || null,
-              suggested_qty: item.qty,
+              required_qty: item.qty,
             });
           }
         }
