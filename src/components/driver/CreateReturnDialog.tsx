@@ -337,7 +337,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!parentRunner || items.length === 0 || pendingItems.length === 0 || createReturn.isPending}
+              disabled={!parentRunner || items.length === 0 || createReturn.isPending}
             >
               {createReturn.isPending ? 'Submitting...' : 'Submit Return'}
             </Button>
