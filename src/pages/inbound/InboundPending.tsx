@@ -36,13 +36,63 @@ import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { InboundShipment, InboundItem, InboundStatus } from '@/types/database';
-import { Package, CheckCircle, AlertTriangle, ExternalLink, Check, ChevronsUpDown, Plus } from 'lucide-react';
+import { Package, CheckCircle, AlertTriangle, ZoomIn, Check, ChevronsUpDown, Plus, X, Calendar, Image as ImageIcon } from 'lucide-react';
+import { format } from 'date-fns';
 
 const statusColors: Record<InboundStatus, string> = {
   PENDING_SP_ACK: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
   ACKNOWLEDGED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   DISPUTE: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
+
+// Lightbox component for full-screen image viewing
+interface LightboxProps {
+  imageUrl: string;
+  alt: string;
+  uploadDate?: string;
+  onClose: () => void;
+}
+
+function ImageLightbox({ imageUrl, alt, uploadDate, onClose }: LightboxProps) {
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[95vh] p-0 overflow-hidden">
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 right-2 z-10 bg-background/80 hover:bg-background"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <img
+            src={imageUrl}
+            alt={alt}
+            className="w-full h-auto max-h-[80vh] object-contain"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.onerror = null;
+              target.src = '/placeholder.svg';
+            }}
+          />
+          {uploadDate && (
+            <div className="p-4 bg-muted/50 border-t flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <Calendar className="h-4 w-4" />
+                <span>Uploaded: {format(new Date(uploadDate), 'MMM d, yyyy h:mm a')}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <ImageIcon className="h-4 w-4" />
+                <span>{alt}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface InboundProductComboboxProps {
   products: { id: string; sku_code: string | null; sku_name: string }[];
@@ -143,6 +193,7 @@ export default function InboundPending() {
   const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
   const [disputeNotes, setDisputeNotes] = useState('');
   const [itemAcks, setItemAcks] = useState<Record<string, { qty: number; productId: string; newProductName?: string }>>({});
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; alt: string; date?: string } | null>(null);
 
   // Get salesperson's warehouse
   const myWarehouse = warehouses?.find(w => w.owner_user_id === user?.id && w.warehouse_type === 'SALESPERSON');
@@ -365,26 +416,36 @@ export default function InboundPending() {
                       {/* Photo */}
                       <div className="space-y-1">
                         {item.photo_url ? (
-                          <a
-                            href={item.photo_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block"
-                          >
-                            <img
-                              src={item.photo_url}
-                              alt={item.temp_sku_label || 'Item photo'}
-                              className="h-32 w-full object-cover rounded border hover:opacity-80 cursor-pointer"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.onerror = null;
-                                target.src = '/placeholder.svg';
-                              }}
-                            />
-                            <span className="text-xs text-primary flex items-center gap-1 mt-1">
-                              <ExternalLink className="h-3 w-3" /> View full
-                            </span>
-                          </a>
+                          <div>
+                            <div
+                              className="relative group cursor-pointer"
+                              onClick={() => setLightboxImage({
+                                url: item.photo_url,
+                                alt: item.temp_sku_label || 'Item photo',
+                                date: item.created_at,
+                              })}
+                            >
+                              <img
+                                src={item.photo_url}
+                                alt={item.temp_sku_label || 'Item photo'}
+                                className="h-32 w-full object-cover rounded border group-hover:opacity-80 transition-opacity"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.onerror = null;
+                                  target.src = '/placeholder.svg';
+                                }}
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="bg-background/80 rounded-full p-2">
+                                  <ZoomIn className="h-5 w-5" />
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                              <Calendar className="h-3 w-3" />
+                              <span>{format(new Date(item.created_at), 'MMM d, yyyy')}</span>
+                            </div>
+                          </div>
                         ) : (
                           <div className="h-32 w-full bg-muted rounded border flex items-center justify-center">
                             <span className="text-muted-foreground text-sm">No photo</span>
@@ -484,6 +545,16 @@ export default function InboundPending() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lightbox for full-screen image viewing */}
+      {lightboxImage && (
+        <ImageLightbox
+          imageUrl={lightboxImage.url}
+          alt={lightboxImage.alt}
+          uploadDate={lightboxImage.date}
+          onClose={() => setLightboxImage(null)}
+        />
+      )}
     </AppLayout>
   );
 }
