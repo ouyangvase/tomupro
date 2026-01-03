@@ -1049,6 +1049,7 @@ export type Database = {
           failed_remark: string | null
           fulfillment_warehouse_id: string | null
           id: string
+          last_status_note: string | null
           next_delivery_date: string | null
           notes: string | null
           order_code: string
@@ -1056,9 +1057,19 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           phone: string
           reconciliation_status: Database["public"]["Enums"]["reconciliation_status"]
+          reschedule_flag: boolean | null
           runner_accept_status: string | null
+          runner_comment: string | null
+          runner_failed_reason_id: string | null
+          runner_final_outcome: string | null
           runner_id: string | null
+          runner_review_status: string | null
+          runner_reviewed_at: string | null
+          runner_reviewed_by: string | null
           runner_status: Database["public"]["Enums"]["runner_status"]
+          salesperson_action_due_date: string | null
+          salesperson_action_required: boolean | null
+          salesperson_action_type: string | null
           salesperson_id: string
           status: Database["public"]["Enums"]["order_status"]
           stock_deducted: boolean
@@ -1091,6 +1102,7 @@ export type Database = {
           failed_remark?: string | null
           fulfillment_warehouse_id?: string | null
           id?: string
+          last_status_note?: string | null
           next_delivery_date?: string | null
           notes?: string | null
           order_code: string
@@ -1098,9 +1110,19 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone: string
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
+          reschedule_flag?: boolean | null
           runner_accept_status?: string | null
+          runner_comment?: string | null
+          runner_failed_reason_id?: string | null
+          runner_final_outcome?: string | null
           runner_id?: string | null
+          runner_review_status?: string | null
+          runner_reviewed_at?: string | null
+          runner_reviewed_by?: string | null
           runner_status?: Database["public"]["Enums"]["runner_status"]
+          salesperson_action_due_date?: string | null
+          salesperson_action_required?: boolean | null
+          salesperson_action_type?: string | null
           salesperson_id: string
           status?: Database["public"]["Enums"]["order_status"]
           stock_deducted?: boolean
@@ -1133,6 +1155,7 @@ export type Database = {
           failed_remark?: string | null
           fulfillment_warehouse_id?: string | null
           id?: string
+          last_status_note?: string | null
           next_delivery_date?: string | null
           notes?: string | null
           order_code?: string
@@ -1140,9 +1163,19 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone?: string
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
+          reschedule_flag?: boolean | null
           runner_accept_status?: string | null
+          runner_comment?: string | null
+          runner_failed_reason_id?: string | null
+          runner_final_outcome?: string | null
           runner_id?: string | null
+          runner_review_status?: string | null
+          runner_reviewed_at?: string | null
+          runner_reviewed_by?: string | null
           runner_status?: Database["public"]["Enums"]["runner_status"]
+          salesperson_action_due_date?: string | null
+          salesperson_action_required?: boolean | null
+          salesperson_action_type?: string | null
           salesperson_id?: string
           status?: Database["public"]["Enums"]["order_status"]
           stock_deducted?: boolean
@@ -1166,8 +1199,22 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_runner_failed_reason_id_fkey"
+            columns: ["runner_failed_reason_id"]
+            isOneToOne: false
+            referencedRelation: "reasons"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_runner_id_fkey"
             columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_runner_reviewed_by_fkey"
+            columns: ["runner_reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
