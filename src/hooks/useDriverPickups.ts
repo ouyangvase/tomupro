@@ -140,6 +140,18 @@ export function useCreatePickup() {
         if (itemsError) throw itemsError;
       }
 
+      // Notify driver about the new pickup
+      const totalItems = params.items.reduce((sum, i) => sum + i.qty, 0);
+      await supabase.from('notifications').insert({
+        user_id: params.driver_id,
+        title: 'New Pickup Ready',
+        message: `You have a new pickup with ${totalItems} item(s) ready for collection on ${params.pickup_date}.`,
+        type: 'pickup_created',
+        reference_type: 'driver_pickup',
+        reference_id: pickup.id,
+        priority: 'HIGH',
+      });
+
       return pickup;
     },
     onSuccess: () => {
