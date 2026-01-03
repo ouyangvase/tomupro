@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import BookingSales from "./pages/sales/BookingSales";
 import ReadySales from "./pages/sales/ReadySales";
 import CancelledSales from "./pages/sales/CancelledSales";
+import SalespersonActionInbox from "./pages/sales/SalespersonActionInbox";
 import InventoryBalance from "./pages/InventoryBalance";
 import RunnerInbox from "./pages/runner/RunnerInbox";
 import RunnerInbound from "./pages/runner/RunnerInbound";
@@ -94,6 +95,7 @@ function AppRoutes() {
       <Route path="/sales/booking" element={<ProtectedRoute><BookingSales /></ProtectedRoute>} />
       <Route path="/sales/ready" element={<ProtectedRoute><ReadySales /></ProtectedRoute>} />
       <Route path="/sales/cancelled" element={<ProtectedRoute><CancelledSales /></ProtectedRoute>} />
+      <Route path="/sales/action-required" element={<ProtectedRoute><SalespersonActionInbox /></ProtectedRoute>} />
       <Route path="/runner/inbox" element={<ProtectedRoute><RunnerInbox /></ProtectedRoute>} />
       <Route path="/runner/inbound" element={<ProtectedRoute><RunnerInbound /></ProtectedRoute>} />
       <Route path="/runner/claims" element={<ProtectedRoute><RunnerClaimBatches /></ProtectedRoute>} />
