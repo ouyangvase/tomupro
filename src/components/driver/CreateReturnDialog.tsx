@@ -12,7 +12,9 @@ import { useCreateReturn } from '@/hooks/useDriverReturns';
 import { useDriverParentRunner } from '@/hooks/useDrivers';
 import { useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverAllocatedStock } from '@/hooks/useDriverPickups';
-import { Plus, Trash2, Package, Sparkles, AlertCircle } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Plus, Trash2, Package, Sparkles, AlertCircle, AlertTriangle } from 'lucide-react';
 
 interface CreateReturnDialogProps {
   open: boolean;
@@ -27,6 +29,14 @@ interface ReturnItem {
   max_qty: number;
 }
 
+interface FailedOrderItem {
+  product_id: string;
+  product_name: string;
+  sku_code: string | null;
+  qty: number;
+  order_code: string;
+}
+
 export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogProps) {
   const [notes, setNotes] = useState('');
   const [relatedPickupId, setRelatedPickupId] = useState('');
@@ -36,6 +46,49 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   const { data: pickups } = useDriverPickups();
   const { data: allocatedStock } = useDriverAllocatedStock();
   const createReturn = useCreateReturn();
+
+  // Fetch failed delivery orders for this driver
+  const { data: failedOrderItems } = useQuery({
+    queryKey: ['driver-failed-order-items'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          id, order_code,
+          order_items(product_id, qty, product:products(sku_name, sku_code))
+        `)
+        .eq('driver_id', user.id)
+        .eq('driver_status', 'DRIVER_FAILED');
+      
+      if (error) throw error;
+      
+      // Flatten into returnable items grouped by product
+      const itemMap = new Map<string, FailedOrderItem>();
+      for (const order of data || []) {
+        for (const item of order.order_items || []) {
+          if (!item.product_id) continue;
+          const key = item.product_id;
+          if (itemMap.has(key)) {
+            const existing = itemMap.get(key)!;
+            existing.qty += item.qty;
+          } else {
+            itemMap.set(key, {
+              product_id: item.product_id,
+              product_name: item.product?.sku_name || 'Unknown',
+              sku_code: item.product?.sku_code || null,
+              qty: item.qty,
+              order_code: order.order_code,
+            });
+          }
+        }
+      }
+      return Array.from(itemMap.values());
+    },
+    enabled: open,
+  });
 
   const acknowledgedPickups = pickups?.filter(p => p.status === 'DRIVER_ACKED') || [];
 
@@ -58,6 +111,38 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
       }));
   }, [allocatedStock]);
 
+  // Combine pending stock items and failed order items for returnable items
+  const returnableItems = useMemo(() => {
+    const combined = new Map<string, { product_id: string; product_name: string; sku_code: string | null; max_qty: number }>();
+    
+    // Add pending stock items
+    for (const item of pendingItems) {
+      combined.set(item.product_id, {
+        product_id: item.product_id,
+        product_name: item.product_name,
+        sku_code: item.sku_code,
+        max_qty: item.pending_qty,
+      });
+    }
+    
+    // Add or merge failed order items
+    for (const item of failedOrderItems || []) {
+      if (combined.has(item.product_id)) {
+        const existing = combined.get(item.product_id)!;
+        existing.max_qty = Math.max(existing.max_qty, item.qty);
+      } else {
+        combined.set(item.product_id, {
+          product_id: item.product_id,
+          product_name: item.product_name,
+          sku_code: item.sku_code,
+          max_qty: item.qty,
+        });
+      }
+    }
+    
+    return Array.from(combined.values());
+  }, [pendingItems, failedOrderItems]);
+
   // Get items from selected pickup
   const pickupItems = useMemo(() => {
     if (!selectedPickup?.items) return [];
@@ -69,29 +154,45 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     }));
   }, [selectedPickup]);
 
-  // Auto-populate items when pickup is selected
+  // Auto-populate items when dialog opens or failed items/returnable items change
   useEffect(() => {
-    if (selectedPickup && pendingItems.length > 0) {
-      // Find items that are in both the pickup and pending
+    if (!open) return;
+    
+    // If a pickup is selected, filter to its items
+    if (selectedPickup && returnableItems.length > 0) {
       const suggestedItems: ReturnItem[] = [];
       
       for (const pickupItem of pickupItems) {
-        const pending = pendingItems.find(p => p.product_id === pickupItem.product_id);
-        if (pending && pending.pending_qty > 0) {
+        const returnable = returnableItems.find(r => r.product_id === pickupItem.product_id);
+        if (returnable && returnable.max_qty > 0) {
           suggestedItems.push({
             product_id: pickupItem.product_id,
             product_name: pickupItem.product_name,
             sku_code: pickupItem.sku_code,
-            qty: Math.min(pickupItem.qty, pending.pending_qty),
-            max_qty: pending.pending_qty,
+            qty: Math.min(pickupItem.qty, returnable.max_qty),
+            max_qty: returnable.max_qty,
           });
         }
       }
       
-      setItems(suggestedItems);
-    } else if (!selectedPickup || relatedPickupId === 'none') {
-      // If no pickup selected, show all pending items
-      if (pendingItems.length > 0) {
+      if (suggestedItems.length > 0) {
+        setItems(suggestedItems);
+        return;
+      }
+    }
+    
+    // Auto-suggest failed delivery items first, then pending stock
+    if (returnableItems.length > 0 && items.length === 0) {
+      // Prioritize failed order items
+      if (failedOrderItems && failedOrderItems.length > 0) {
+        setItems(failedOrderItems.map(f => ({
+          product_id: f.product_id,
+          product_name: f.product_name,
+          sku_code: f.sku_code,
+          qty: f.qty,
+          max_qty: returnableItems.find(r => r.product_id === f.product_id)?.max_qty || f.qty,
+        })));
+      } else if (pendingItems.length > 0) {
         setItems(pendingItems.map(p => ({
           product_id: p.product_id,
           product_name: p.product_name,
@@ -101,12 +202,12 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
         })));
       }
     }
-  }, [selectedPickup, pendingItems, pickupItems, relatedPickupId]);
+  }, [open, selectedPickup, returnableItems, pickupItems, failedOrderItems, pendingItems]);
 
   const addItem = () => {
-    // Add from pending items that aren't already in the list
-    const availableItems = pendingItems.filter(
-      p => !items.some(i => i.product_id === p.product_id)
+    // Add from returnable items that aren't already in the list
+    const availableItems = returnableItems.filter(
+      r => !items.some(i => i.product_id === r.product_id)
     );
     
     if (availableItems.length > 0) {
@@ -115,8 +216,8 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
         product_id: first.product_id,
         product_name: first.product_name,
         sku_code: first.sku_code,
-        qty: first.pending_qty,
-        max_qty: first.pending_qty,
+        qty: first.max_qty,
+        max_qty: first.max_qty,
       }]);
     }
   };
@@ -135,15 +236,15 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   };
 
   const updateItemProduct = (index: number, productId: string) => {
-    const pending = pendingItems.find(p => p.product_id === productId);
-    if (pending) {
+    const returnable = returnableItems.find(r => r.product_id === productId);
+    if (returnable) {
       const newItems = [...items];
       newItems[index] = {
         product_id: productId,
-        product_name: pending.product_name,
-        sku_code: pending.sku_code,
-        qty: pending.pending_qty,
-        max_qty: pending.pending_qty,
+        product_name: returnable.product_name,
+        sku_code: returnable.sku_code,
+        qty: returnable.max_qty,
+        max_qty: returnable.max_qty,
       };
       setItems(newItems);
     }
@@ -168,8 +269,8 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     setItems([]);
   };
 
-  const availableToAdd = pendingItems.filter(
-    p => !items.some(i => i.product_id === p.product_id)
+  const availableToAdd = returnableItems.filter(
+    r => !items.some(i => i.product_id === r.product_id)
   );
 
   return (
@@ -214,24 +315,43 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
             </Alert>
           )}
 
-          {/* Show smart suggestion alert */}
-          {items.length > 0 && pendingItems.length > 0 && (
-            <Alert className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-900/10">
-              <Sparkles className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-700 dark:text-amber-400">Smart Suggestion</AlertTitle>
-              <AlertDescription className="text-amber-600 dark:text-amber-300">
-                Showing undelivered items based on your allocated stock. Adjust quantities as needed.
+          {/* Show failed delivery items alert */}
+          {failedOrderItems && failedOrderItems.length > 0 && (
+            <Alert className="border-orange-500/50 bg-orange-50/50 dark:bg-orange-900/10">
+              <AlertTriangle className="h-4 w-4 text-orange-600" />
+              <AlertTitle className="text-orange-700 dark:text-orange-400">Failed Delivery Items</AlertTitle>
+              <AlertDescription className="text-orange-600 dark:text-orange-300">
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {failedOrderItems.map(item => (
+                    <Badge key={item.product_id} variant="outline" className="border-orange-500/50">
+                      {item.sku_code || 'N/A'} / {item.product_name} × {item.qty}
+                    </Badge>
+                  ))}
+                </div>
               </AlertDescription>
             </Alert>
           )}
 
-          {/* No pending items warning */}
-          {pendingItems.length === 0 && (
+          {/* Show smart suggestion alert */}
+          {items.length > 0 && returnableItems.length > 0 && (
+            <Alert className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-900/10">
+              <Sparkles className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-700 dark:text-amber-400">Auto-Suggested Items</AlertTitle>
+              <AlertDescription className="text-amber-600 dark:text-amber-300">
+                {failedOrderItems && failedOrderItems.length > 0 
+                  ? 'Showing failed delivery items for return. Adjust quantities as needed.'
+                  : 'Showing undelivered items based on your allocated stock. Adjust quantities as needed.'}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* No returnable items warning */}
+          {returnableItems.length === 0 && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>No Pending Items</AlertTitle>
+              <AlertTitle>No Items to Return</AlertTitle>
               <AlertDescription>
-                You have no undelivered items to return. All allocated stock has been delivered.
+                You have no undelivered items or failed delivery orders to return.
               </AlertDescription>
             </Alert>
           )}
@@ -263,7 +383,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="w-24 text-center">Pending</TableHead>
+                    <TableHead className="w-24 text-center">Max</TableHead>
                     <TableHead className="w-24">Return Qty</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
@@ -285,8 +405,8 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                               <SelectValue placeholder="Select product" />
                             </SelectTrigger>
                             <SelectContent>
-                              {pendingItems
-                                .filter(p => !items.some((i, idx) => idx !== index && i.product_id === p.product_id))
+                              {returnableItems
+                                .filter(r => !items.some((i, idx) => idx !== index && i.product_id === r.product_id))
                                 .map(product => (
                                   <SelectItem key={product.product_id} value={product.product_id}>
                                     {product.sku_code || 'N/A'} / {product.product_name}
@@ -324,7 +444,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
               </Table>
             )}
 
-            {items.length === 0 && pendingItems.length > 0 && (
+            {items.length === 0 && returnableItems.length > 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
                 Click "Add Item" to add items to return
               </p>
