@@ -75,6 +75,60 @@ export function useCreateClaim() {
   });
 }
 
+// New hook with delivery fee support
+export function useCreateClaimWithDeliveryFee() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (claim: {
+      order_id: string;
+      gross_amount: number;
+      delivery_fee: number;
+      net_claim_amount: number;
+      method: ClaimMethod;
+      note?: string;
+      proof_url?: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('claims')
+        .insert({
+          order_id: claim.order_id,
+          amount: claim.net_claim_amount, // For backward compatibility
+          gross_amount: claim.gross_amount,
+          delivery_fee: claim.delivery_fee,
+          net_claim_amount: claim.net_claim_amount,
+          method: claim.method,
+          note: claim.note,
+          proof_url: claim.proof_url,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+
+      // Update order reconciliation status
+      await supabase
+        .from('orders')
+        .update({ reconciliation_status: 'SP_ACK_PENDING' })
+        .eq('id', claim.order_id);
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast({ title: 'Claim submitted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
 export function useClaimsByOrders(orderIds: string[]) {
   return useQuery({
     queryKey: ['claims', 'byOrders', orderIds],

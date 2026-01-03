@@ -6,6 +6,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface OrderWithCharge {
+  id: string;
+  total_amount: number;
+  area: string | null;
+  runner_id: string;
+  runner_status: string;
+  reconciliation_status: string;
+  delivery_fee?: number;
+  net_claim_amount?: number;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -49,7 +60,7 @@ serve(async (req) => {
     // Validate orders belong to this runner and are DELIVERED and not already CLAIMED
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
-      .select('id, total_amount, runner_status, reconciliation_status, runner_id')
+      .select('id, total_amount, area, runner_status, reconciliation_status, runner_id')
       .in('id', orderIds);
 
     if (ordersError) {
@@ -67,15 +78,67 @@ serve(async (req) => {
     );
 
     if (invalidOrders && invalidOrders.length > 0) {
-      // Return generic error without exposing order IDs
       return new Response(
         JSON.stringify({ success: false, error: 'Some orders are invalid or not authorized' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Calculate total amount
-    const totalAmount = orders?.reduce((sum, o) => sum + Number(o.total_amount), 0) || 0;
+    // Get runner's approved delivery charges
+    const { data: deliveryCharges } = await supabase
+      .from('delivery_charges')
+      .select('area, charge_amount')
+      .eq('runner_id', user.id)
+      .eq('status', 'APPROVED')
+      .is('superseded_at', null);
+
+    const chargesByArea = new Map(
+      deliveryCharges?.map(c => [c.area.toLowerCase(), Number(c.charge_amount)]) || []
+    );
+
+    // Check if all orders have approved delivery charges for their areas
+    const ordersWithoutCharges: string[] = [];
+    const ordersWithCharges: OrderWithCharge[] = [];
+
+    for (const order of orders || []) {
+      if (order.area) {
+        const deliveryFee = chargesByArea.get(order.area.toLowerCase());
+        if (deliveryFee === undefined) {
+          ordersWithoutCharges.push(order.area);
+        } else {
+          ordersWithCharges.push({
+            ...order,
+            delivery_fee: deliveryFee,
+            net_claim_amount: Number(order.total_amount) - deliveryFee,
+          });
+        }
+      } else {
+        // Orders without area get 0 delivery fee
+        ordersWithCharges.push({
+          ...order,
+          delivery_fee: 0,
+          net_claim_amount: Number(order.total_amount),
+        });
+      }
+    }
+
+    // Block if any orders are missing delivery charges
+    if (ordersWithoutCharges.length > 0) {
+      const uniqueAreas = [...new Set(ordersWithoutCharges)];
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `No approved delivery charge for area(s): ${uniqueAreas.join(', ')}. Please submit delivery charge proposals first.`,
+          missingAreas: uniqueAreas,
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Calculate total amounts
+    const totalGrossAmount = ordersWithCharges.reduce((sum, o) => sum + Number(o.total_amount), 0);
+    const totalDeliveryFees = ordersWithCharges.reduce((sum, o) => sum + (o.delivery_fee || 0), 0);
+    const totalNetAmount = ordersWithCharges.reduce((sum, o) => sum + (o.net_claim_amount || 0), 0);
 
     // Get runner's display name for notification
     const { data: runnerProfile } = await supabase
@@ -84,14 +147,14 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    // Create claim batch
+    // Create claim batch with net amount (after delivery fees)
     const { data: batch, error: batchError } = await supabase
       .from('claim_batches')
       .insert({
         runner_id: user.id,
-        total_amount: totalAmount,
+        total_amount: totalNetAmount, // Net amount after delivery fees
         status: 'ADMIN_ACK_PENDING',
-        note: note ? String(note).slice(0, 500) : null, // Limit note length
+        note: note ? String(note).slice(0, 500) : null,
       })
       .select()
       .single();
@@ -114,7 +177,6 @@ serve(async (req) => {
       .insert(batchItems);
 
     if (itemsError) {
-      // Rollback: delete the batch
       await supabase.from('claim_batches').delete().eq('id', batch.id);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to add orders to batch' }),
@@ -122,40 +184,37 @@ serve(async (req) => {
       );
     }
 
+    // Create individual claims for each order with delivery fee breakdown
+    const claimsToInsert = ordersWithCharges.map(order => ({
+      order_id: order.id,
+      amount: order.net_claim_amount || 0,
+      gross_amount: Number(order.total_amount),
+      delivery_fee: order.delivery_fee || 0,
+      net_claim_amount: order.net_claim_amount || 0,
+      created_by: user.id,
+      method: 'TRANSFER', // Default method for bulk claims
+    }));
+
+    await supabase.from('claims').insert(claimsToInsert);
+
     // Update orders reconciliation_status to ADMIN_ACK_PENDING
     await supabase
       .from('orders')
       .update({ reconciliation_status: 'ADMIN_ACK_PENDING' })
       .in('id', orderIds);
 
-    // Get all admin users to notify
-    const { data: adminUsers } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('role', 'admin')
-      .eq('is_active', true);
-
-    // Create notifications for admins
-    if (adminUsers && adminUsers.length > 0) {
-      const notifications = adminUsers.map(admin => ({
-        user_id: admin.id,
-        title: 'New Claim Batch Submitted',
-        message: `Runner ${runnerProfile?.display_name || 'A runner'} submitted claim batch for ${orderIds.length} orders, total ${totalAmount.toLocaleString()}`,
-        type: 'claim_batch',
-        reference_type: 'claim_batch',
-        reference_id: batch.id,
-      }));
-
-      await supabase.from('notifications').insert(notifications);
-    }
-
-    // Log audit (minimal data)
+    // Log audit
     await supabase.from('audit_logs').insert({
       actor_id: user.id,
       action: 'BULK_CLAIM_SUBMITTED',
       entity_type: 'claim_batch',
       entity_id: batch.id,
-      after_json: { order_count: orderIds.length, total_amount: totalAmount },
+      after_json: { 
+        order_count: orderIds.length, 
+        gross_amount: totalGrossAmount,
+        delivery_fees: totalDeliveryFees,
+        net_amount: totalNetAmount,
+      },
     });
 
     return new Response(
@@ -163,12 +222,15 @@ serve(async (req) => {
         success: true, 
         batchId: batch.id, 
         orderCount: orderIds.length,
-        totalAmount 
+        grossAmount: totalGrossAmount,
+        deliveryFees: totalDeliveryFees,
+        netAmount: totalNetAmount,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
+    console.error('Bulk claim error:', error);
     return new Response(
       JSON.stringify({ success: false, error: 'An unexpected error occurred' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -269,8 +269,11 @@ export type Database = {
           amount: number
           created_at: string
           created_by: string
+          delivery_fee: number | null
+          gross_amount: number | null
           id: string
           method: Database["public"]["Enums"]["claim_method"] | null
+          net_claim_amount: number | null
           note: string | null
           order_id: string
           proof_url: string | null
@@ -279,8 +282,11 @@ export type Database = {
           amount: number
           created_at?: string
           created_by: string
+          delivery_fee?: number | null
+          gross_amount?: number | null
           id?: string
           method?: Database["public"]["Enums"]["claim_method"] | null
+          net_claim_amount?: number | null
           note?: string | null
           order_id: string
           proof_url?: string | null
@@ -289,8 +295,11 @@ export type Database = {
           amount?: number
           created_at?: string
           created_by?: string
+          delivery_fee?: number | null
+          gross_amount?: number | null
           id?: string
           method?: Database["public"]["Enums"]["claim_method"] | null
+          net_claim_amount?: number | null
           note?: string | null
           order_id?: string
           proof_url?: string | null
@@ -338,6 +347,73 @@ export type Database = {
           snapshot_date?: string
         }
         Relationships: []
+      }
+      delivery_charges: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          area: string
+          charge_amount: number
+          created_at: string
+          id: string
+          proposed_by: string
+          rejection_remark: string | null
+          runner_id: string
+          status: Database["public"]["Enums"]["delivery_charge_status"]
+          superseded_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          area: string
+          charge_amount: number
+          created_at?: string
+          id?: string
+          proposed_by: string
+          rejection_remark?: string | null
+          runner_id: string
+          status?: Database["public"]["Enums"]["delivery_charge_status"]
+          superseded_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          area?: string
+          charge_amount?: number
+          created_at?: string
+          id?: string
+          proposed_by?: string
+          rejection_remark?: string | null
+          runner_id?: string
+          status?: Database["public"]["Enums"]["delivery_charge_status"]
+          superseded_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_charges_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_charges_proposed_by_fkey"
+            columns: ["proposed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_charges_runner_id_fkey"
+            columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       expected_date_history: {
         Row: {
@@ -1269,6 +1345,10 @@ export type Database = {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
       }
+      get_delivery_charge: {
+        Args: { p_area: string; p_runner_id: string }
+        Returns: number
+      }
       get_stock_balance: {
         Args: never
         Returns: {
@@ -1306,6 +1386,7 @@ export type Database = {
         | "other"
       claim_batch_status: "ADMIN_ACK_PENDING" | "CLAIMED"
       claim_method: "TRANSFER" | "CASH" | "OTHER"
+      delivery_charge_status: "PENDING" | "APPROVED" | "REJECTED"
       failed_next_step: "RESCHEDULE" | "SALESPERSON_CONTACT"
       inbound_status: "PENDING_SP_ACK" | "ACKNOWLEDGED" | "DISPUTE"
       movement_type:
@@ -1470,6 +1551,7 @@ export const Constants = {
       ],
       claim_batch_status: ["ADMIN_ACK_PENDING", "CLAIMED"],
       claim_method: ["TRANSFER", "CASH", "OTHER"],
+      delivery_charge_status: ["PENDING", "APPROVED", "REJECTED"],
       failed_next_step: ["RESCHEDULE", "SALESPERSON_CONTACT"],
       inbound_status: ["PENDING_SP_ACK", "ACKNOWLEDGED", "DISPUTE"],
       movement_type: [

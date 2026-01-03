@@ -32,6 +32,8 @@ import ProductsPage from "./pages/products/ProductsPage";
 import NotificationCenter from "./pages/notifications/NotificationCenter";
 import ManagerOversight from "./pages/manager/ManagerOversight";
 import AdminOverview from "./pages/admin/AdminOverview";
+import RunnerDeliveryCharges from "./pages/runner/RunnerDeliveryCharges";
+import DeliveryChargesAdmin from "./pages/admin/DeliveryChargesAdmin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -86,6 +88,8 @@ function AppRoutes() {
       <Route path="/notifications" element={<ProtectedRoute><NotificationCenter /></ProtectedRoute>} />
       <Route path="/manager/oversight" element={<ProtectedRoute><ManagerOversight /></ProtectedRoute>} />
       <Route path="/admin/overview" element={<ProtectedRoute><AdminOverview /></ProtectedRoute>} />
+      <Route path="/runner/delivery-charges" element={<ProtectedRoute><RunnerDeliveryCharges /></ProtectedRoute>} />
+      <Route path="/admin/delivery-charges" element={<ProtectedRoute><DeliveryChargesAdmin /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>

@@ -122,6 +122,9 @@ export interface Claim {
   id: string;
   order_id: string;
   amount: number;
+  gross_amount?: number;
+  delivery_fee?: number;
+  net_claim_amount?: number;
   method: ClaimMethod | null;
   note: string | null;
   proof_url: string | null;
