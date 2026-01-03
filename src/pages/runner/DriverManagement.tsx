@@ -8,6 +8,7 @@ import {
   useBulkAssignOrdersToDriver,
   useRunnerAcceptDelivery,
   useRunnerRejectDelivery,
+  useGenerateDriverCode,
 } from '@/hooks/useDrivers';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -24,7 +25,7 @@ import { Input } from '@/components/ui/input';
 import { DataGrid } from '@/components/data-grid/DataGrid';
 import { 
   Users, UserPlus, Truck, Check, X, Package, 
-  AlertCircle, Clock, CheckCircle, UserMinus 
+  AlertCircle, Clock, CheckCircle, UserMinus, Key, Copy 
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,6 +40,7 @@ export default function DriverManagement() {
   const bulkAssign = useBulkAssignOrdersToDriver();
   const acceptDelivery = useRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
+  const generateCode = useGenerateDriverCode();
 
   const [addDriverOpen, setAddDriverOpen] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState('');
@@ -192,32 +194,72 @@ export default function DriverManagement() {
           {/* Drivers Tab */}
           <TabsContent value="drivers">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {drivers.map(rd => (
-                <Card key={rd.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="text-base">
-                        {(rd.driver as any)?.display_name || 'Unknown Driver'}
-                      </CardTitle>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleRemoveDriver(rd.id)}
-                      >
-                        <UserMinus className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2">
-                      <Package className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">
-                        {driverWorkloads[rd.driver_id] || 0} active orders
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {drivers.map(rd => {
+                const driverData = rd.driver as any;
+                const driverCode = driverData?.driver_code;
+                
+                return (
+                  <Card key={rd.id}>
+                    <CardHeader className="pb-2">
+                      <div className="flex justify-between items-start">
+                        <CardTitle className="text-base">
+                          {driverData?.display_name || 'Unknown Driver'}
+                        </CardTitle>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleRemoveDriver(rd.id)}
+                        >
+                          <UserMinus className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">
+                          {driverWorkloads[rd.driver_id] || 0} active orders
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between p-2 bg-muted rounded-md">
+                        <div className="flex items-center gap-2">
+                          <Key className="h-4 w-4 text-muted-foreground" />
+                          {driverCode ? (
+                            <span className="font-mono font-semibold">{driverCode}</span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No code</span>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          {driverCode && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => {
+                                navigator.clipboard.writeText(driverCode);
+                                toast.success('Code copied');
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => generateCode.mutate(rd.driver_id)}
+                            disabled={generateCode.isPending}
+                          >
+                            {generateCode.isPending ? '...' : driverCode ? 'Regenerate' : 'Generate'}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
               
               {drivers.length === 0 && (
                 <div className="col-span-full text-center py-12">
