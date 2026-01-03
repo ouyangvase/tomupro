@@ -15,6 +15,7 @@ import { formatDistanceToNow } from "date-fns";
 declare global {
   interface Window {
     initGoogleMaps?: () => void;
+    google?: typeof google;
   }
 }
 
