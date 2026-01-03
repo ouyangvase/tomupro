@@ -154,9 +154,23 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     }));
   }, [selectedPickup]);
 
-  // Auto-populate items when dialog opens or failed items/returnable items change
+  // Track if auto-suggestion has been done for this dialog session
+  const [hasAutoSuggested, setHasAutoSuggested] = useState(false);
+
+  // Reset when dialog closes
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setHasAutoSuggested(false);
+      setItems([]);
+    }
+  }, [open]);
+
+  // Auto-populate items when dialog opens and failed items are available
+  useEffect(() => {
+    if (!open || hasAutoSuggested) return;
+    
+    // Wait for data to load
+    if (failedOrderItems === undefined) return;
     
     // If a pickup is selected, filter to its items
     if (selectedPickup && returnableItems.length > 0) {
@@ -177,32 +191,36 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
       
       if (suggestedItems.length > 0) {
         setItems(suggestedItems);
+        setHasAutoSuggested(true);
         return;
       }
     }
     
-    // Auto-suggest failed delivery items first, then pending stock
-    if (returnableItems.length > 0 && items.length === 0) {
-      // Prioritize failed order items
-      if (failedOrderItems && failedOrderItems.length > 0) {
-        setItems(failedOrderItems.map(f => ({
-          product_id: f.product_id,
-          product_name: f.product_name,
-          sku_code: f.sku_code,
-          qty: f.qty,
-          max_qty: returnableItems.find(r => r.product_id === f.product_id)?.max_qty || f.qty,
-        })));
-      } else if (pendingItems.length > 0) {
-        setItems(pendingItems.map(p => ({
-          product_id: p.product_id,
-          product_name: p.product_name,
-          sku_code: p.sku_code,
-          qty: p.pending_qty,
-          max_qty: p.pending_qty,
-        })));
-      }
+    // Auto-suggest failed delivery items first
+    if (failedOrderItems && failedOrderItems.length > 0) {
+      setItems(failedOrderItems.map(f => ({
+        product_id: f.product_id,
+        product_name: f.product_name,
+        sku_code: f.sku_code,
+        qty: f.qty,
+        max_qty: returnableItems.find(r => r.product_id === f.product_id)?.max_qty || f.qty,
+      })));
+      setHasAutoSuggested(true);
+    } else if (pendingItems.length > 0) {
+      // Fallback to pending stock items
+      setItems(pendingItems.map(p => ({
+        product_id: p.product_id,
+        product_name: p.product_name,
+        sku_code: p.sku_code,
+        qty: p.pending_qty,
+        max_qty: p.pending_qty,
+      })));
+      setHasAutoSuggested(true);
+    } else if (returnableItems.length === 0 && failedOrderItems !== undefined) {
+      // No items available, mark as suggested to stop trying
+      setHasAutoSuggested(true);
     }
-  }, [open, selectedPickup, returnableItems, pickupItems, failedOrderItems, pendingItems]);
+  }, [open, hasAutoSuggested, selectedPickup, returnableItems, pickupItems, failedOrderItems, pendingItems]);
 
   const addItem = () => {
     // Add from returnable items that aren't already in the list
@@ -267,6 +285,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     setNotes('');
     setRelatedPickupId('');
     setItems([]);
+    setHasAutoSuggested(false);
   };
 
   const availableToAdd = returnableItems.filter(
