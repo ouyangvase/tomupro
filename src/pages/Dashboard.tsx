@@ -16,7 +16,9 @@ import {
   Users,
   Receipt,
   PackageCheck,
-  Inbox
+  Inbox,
+  Navigation,
+  Target
 } from 'lucide-react';
 import { 
   useSalespersonStats, 
@@ -24,6 +26,7 @@ import {
   useAdminStats, 
   useRecentActivity 
 } from '@/hooks/useDashboardStats';
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { formatDistanceToNow } from 'date-fns';
 
 interface StatCardProps {
@@ -264,11 +267,90 @@ function RecentActivityCard({ activity, isLoading }: { activity: ActivityItem[] 
   );
 }
 
+// Driver Dashboard
+function DriverDashboard() {
+  const navigate = useNavigate();
+
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/driver/inbox')}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              My Deliveries
+            </CardTitle>
+            <Inbox className="h-5 w-5 text-chart-1" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">View assigned orders</p>
+          </CardContent>
+        </Card>
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/driver/route')}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Optimized Route
+            </CardTitle>
+            <Navigation className="h-5 w-5 text-chart-2" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Plan your deliveries by area</p>
+          </CardContent>
+        </Card>
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/driver/analytics')}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              My Analytics
+            </CardTitle>
+            <Target className="h-5 w-5 text-chart-3" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Track your performance</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <button onClick={() => navigate('/driver/inbox')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+            📥 View My Deliveries
+          </button>
+          <button onClick={() => navigate('/driver/route')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+            🗺️ Plan Optimized Route
+          </button>
+          <button onClick={() => navigate('/driver/pickups')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+            📦 View Pickups
+          </button>
+          <button onClick={() => navigate('/driver/returns')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+            🔄 Submit Returns
+          </button>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
 export default function Dashboard() {
   const { profile, role } = useAuth();
+  
+  // Enable real-time updates for all authenticated users
+  useRealtimeUpdates();
 
   const renderDashboard = () => {
     switch (role) {
+      case 'driver':
+        return <DriverDashboard />;
       case 'runner':
         return <RunnerDashboard />;
       case 'admin':
