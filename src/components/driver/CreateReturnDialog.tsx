@@ -47,21 +47,23 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   const { data: allocatedStock } = useDriverAllocatedStock();
   const createReturn = useCreateReturn();
 
-  // Fetch failed delivery orders for this driver
-  const { data: failedOrderItems } = useQuery({
-    queryKey: ['driver-failed-order-items'],
+  // Fetch undelivered orders for this driver (all orders not yet delivered)
+  const { data: undeliveredOrderItems } = useQuery({
+    queryKey: ['driver-undelivered-order-items'],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
       
+      // Get all orders assigned to driver that are not delivered
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          id, order_code,
+          id, order_code, driver_status,
           order_items(product_id, qty, product:products(sku_name, sku_code))
         `)
         .eq('driver_id', user.id)
-        .eq('driver_status', 'DRIVER_FAILED');
+        .eq('status', 'READY')
+        .neq('driver_status', 'DRIVER_DELIVERED');
       
       if (error) throw error;
       
@@ -111,7 +113,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
       }));
   }, [allocatedStock]);
 
-  // Combine pending stock items and failed order items for returnable items
+  // Combine pending stock items and undelivered order items for returnable items
   const returnableItems = useMemo(() => {
     const combined = new Map<string, { product_id: string; product_name: string; sku_code: string | null; max_qty: number }>();
     
@@ -125,8 +127,8 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
       });
     }
     
-    // Add or merge failed order items
-    for (const item of failedOrderItems || []) {
+    // Add or merge undelivered order items
+    for (const item of undeliveredOrderItems || []) {
       if (combined.has(item.product_id)) {
         const existing = combined.get(item.product_id)!;
         existing.max_qty = Math.max(existing.max_qty, item.qty);
@@ -141,7 +143,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     }
     
     return Array.from(combined.values());
-  }, [pendingItems, failedOrderItems]);
+  }, [pendingItems, undeliveredOrderItems]);
 
   // Get items from selected pickup
   const pickupItems = useMemo(() => {
@@ -165,12 +167,12 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     }
   }, [open]);
 
-  // Auto-populate items when dialog opens and failed items are available
+  // Auto-populate items when dialog opens and undelivered items are available
   useEffect(() => {
     if (!open || hasAutoSuggested) return;
     
     // Wait for data to load
-    if (failedOrderItems === undefined) return;
+    if (undeliveredOrderItems === undefined) return;
     
     // If a pickup is selected, filter to its items
     if (selectedPickup && returnableItems.length > 0) {
@@ -196,9 +198,9 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
       }
     }
     
-    // Auto-suggest failed delivery items first
-    if (failedOrderItems && failedOrderItems.length > 0) {
-      setItems(failedOrderItems.map(f => ({
+    // Auto-suggest undelivered order items first
+    if (undeliveredOrderItems && undeliveredOrderItems.length > 0) {
+      setItems(undeliveredOrderItems.map(f => ({
         product_id: f.product_id,
         product_name: f.product_name,
         sku_code: f.sku_code,
@@ -216,11 +218,11 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
         max_qty: p.pending_qty,
       })));
       setHasAutoSuggested(true);
-    } else if (returnableItems.length === 0 && failedOrderItems !== undefined) {
+    } else if (returnableItems.length === 0 && undeliveredOrderItems !== undefined) {
       // No items available, mark as suggested to stop trying
       setHasAutoSuggested(true);
     }
-  }, [open, hasAutoSuggested, selectedPickup, returnableItems, pickupItems, failedOrderItems, pendingItems]);
+  }, [open, hasAutoSuggested, selectedPickup, returnableItems, pickupItems, undeliveredOrderItems, pendingItems]);
 
   const addItem = () => {
     // Add from returnable items that aren't already in the list
@@ -334,14 +336,14 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
             </Alert>
           )}
 
-          {/* Show failed delivery items alert */}
-          {failedOrderItems && failedOrderItems.length > 0 && (
+          {/* Show undelivered items alert */}
+          {undeliveredOrderItems && undeliveredOrderItems.length > 0 && (
             <Alert className="border-orange-500/50 bg-orange-50/50 dark:bg-orange-900/10">
               <AlertTriangle className="h-4 w-4 text-orange-600" />
-              <AlertTitle className="text-orange-700 dark:text-orange-400">Failed Delivery Items</AlertTitle>
+              <AlertTitle className="text-orange-700 dark:text-orange-400">Undelivered Items</AlertTitle>
               <AlertDescription className="text-orange-600 dark:text-orange-300">
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {failedOrderItems.map(item => (
+                  {undeliveredOrderItems.map(item => (
                     <Badge key={item.product_id} variant="outline" className="border-orange-500/50">
                       {item.sku_code || 'N/A'} / {item.product_name} × {item.qty}
                     </Badge>
@@ -357,9 +359,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
               <Sparkles className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-700 dark:text-amber-400">Auto-Suggested Items</AlertTitle>
               <AlertDescription className="text-amber-600 dark:text-amber-300">
-                {failedOrderItems && failedOrderItems.length > 0 
-                  ? 'Showing failed delivery items for return. Adjust quantities as needed.'
-                  : 'Showing undelivered items based on your allocated stock. Adjust quantities as needed.'}
+                Showing undelivered items for return. Adjust quantities as needed.
               </AlertDescription>
             </Alert>
           )}

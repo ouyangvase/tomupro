@@ -89,14 +89,15 @@ export function useCreateReturn() {
         .select('*')
         .eq('driver_id', user.id);
 
-      // Get failed delivery order items as additional returnable items
-      const { data: failedOrders } = await supabase
+      // Get undelivered order items as returnable items (all orders not delivered)
+      const { data: undeliveredOrders } = await supabase
         .from('orders')
         .select(`
           order_items(product_id, qty, product:products(sku_name))
         `)
         .eq('driver_id', user.id)
-        .eq('driver_status', 'DRIVER_FAILED');
+        .eq('status', 'READY')
+        .neq('driver_status', 'DRIVER_DELIVERED');
 
       // Build map of max returnable quantities
       const maxReturnableQty = new Map<string, { qty: number; name: string }>();
@@ -111,8 +112,8 @@ export function useCreateReturn() {
         }
       }
       
-      // Add failed order items (take max if product exists in both)
-      for (const order of failedOrders || []) {
+      // Add undelivered order items (take max if product exists in both)
+      for (const order of undeliveredOrders || []) {
         for (const item of order.order_items || []) {
           if (!item.product_id) continue;
           const existing = maxReturnableQty.get(item.product_id);
