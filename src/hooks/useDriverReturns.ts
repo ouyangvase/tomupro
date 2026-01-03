@@ -83,18 +83,58 @@ export function useCreateReturn() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Validate quantities against allocated stock
+      // Get allocated stock and failed delivery items for validation
       const { data: allocatedStock } = await supabase
         .from('driver_allocated_stock')
         .select('*')
         .eq('driver_id', user.id);
 
+      // Get failed delivery order items as additional returnable items
+      const { data: failedOrders } = await supabase
+        .from('orders')
+        .select(`
+          order_items(product_id, qty, product:products(sku_name))
+        `)
+        .eq('driver_id', user.id)
+        .eq('driver_status', 'DRIVER_FAILED');
+
+      // Build map of max returnable quantities
+      const maxReturnableQty = new Map<string, { qty: number; name: string }>();
+      
+      // Add pending stock
+      for (const stock of allocatedStock || []) {
+        if (stock.product_id && (stock.pending_qty || 0) > 0) {
+          maxReturnableQty.set(stock.product_id, { 
+            qty: stock.pending_qty || 0, 
+            name: stock.sku_name || 'Unknown' 
+          });
+        }
+      }
+      
+      // Add failed order items (take max if product exists in both)
+      for (const order of failedOrders || []) {
+        for (const item of order.order_items || []) {
+          if (!item.product_id) continue;
+          const existing = maxReturnableQty.get(item.product_id);
+          const newQty = item.qty || 0;
+          if (existing) {
+            existing.qty = Math.max(existing.qty, newQty);
+          } else {
+            maxReturnableQty.set(item.product_id, { 
+              qty: newQty, 
+              name: item.product?.sku_name || 'Unknown' 
+            });
+          }
+        }
+      }
+
+      // Validate return quantities
       for (const item of params.items) {
-        const allocated = allocatedStock?.find(a => a.product_id === item.product_id);
-        const pendingQty = allocated?.pending_qty || 0;
-        if (item.qty > pendingQty) {
-          const productName = allocated?.sku_name || 'Unknown product';
-          throw new Error(`Cannot return ${item.qty} of ${productName}. Only ${pendingQty} pending.`);
+        const returnable = maxReturnableQty.get(item.product_id);
+        const maxQty = returnable?.qty || 0;
+        if (item.qty > maxQty) {
+          const productName = returnable?.name || 'Unknown product';
+          throw new Error(`Cannot return ${item.qty} of ${productName}. Maximum returnable: ${maxQty}.`);
         }
       }
 
