@@ -23,7 +23,7 @@ export default function DriverPickups() {
   const deletePickup = useDeletePickup();
   const queryClient = useQueryClient();
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
+  const canDelete = profile?.role === 'admin' || profile?.role === 'runner';
 
   const pendingPickups = pickups?.filter(p => p.status === 'PENDING_DRIVER_ACK') || [];
   const acknowledgedPickups = pickups?.filter(p => p.status === 'DRIVER_ACKED') || [];
@@ -73,7 +73,7 @@ export default function DriverPickups() {
           <TableHead>Items (Req + Buffer = Total)</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Acknowledged At</TableHead>
-          {(showActions || isAdmin) && <TableHead className="text-right">Actions</TableHead>}
+          {(showActions || canDelete) && <TableHead className="text-right">Actions</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -106,7 +106,7 @@ export default function DriverPickups() {
                 ? format(new Date(pickup.acknowledged_at), 'dd MMM HH:mm')
                 : '-'}
             </TableCell>
-            {(showActions || isAdmin) && (
+            {(showActions || canDelete) && (
               <TableCell className="text-right">
                 <div className="flex gap-1 justify-end">
                   {showActions && pickup.status === 'PENDING_DRIVER_ACK' && (
@@ -130,7 +130,7 @@ export default function DriverPickups() {
                       </Button>
                     </>
                   )}
-                  {isAdmin && (
+                  {canDelete && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="sm" variant="destructive">
