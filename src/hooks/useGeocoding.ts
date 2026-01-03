@@ -1,6 +1,5 @@
-import { useState, useCallback } from "react";
-
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN || "";
+import { useState, useCallback, useRef } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface GeocodedLocation {
   orderId: string;
@@ -13,55 +12,66 @@ interface GeocodedLocation {
   latitude: number;
 }
 
-interface GeocodeResult {
-  features: Array<{
-    center: [number, number];
-    place_name: string;
-  }>;
-}
-
-// Cache for geocoded addresses
-const geocodeCache = new Map<string, [number, number] | null>();
+// Cache for geocoded addresses (persists across hook instances)
+const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
 
 export const useGeocoding = () => {
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [geocodedOrders, setGeocodedOrders] = useState<GeocodedLocation[]>([]);
+  const apiKeyRef = useRef<string | null>(null);
 
-  const geocodeAddress = async (address: string): Promise<[number, number] | null> => {
+  const getApiKey = async (): Promise<string | null> => {
+    if (apiKeyRef.current) return apiKeyRef.current;
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('get-google-maps-key');
+      if (error || !data?.apiKey) return null;
+      apiKeyRef.current = data.apiKey;
+      return data.apiKey;
+    } catch {
+      return null;
+    }
+  };
+
+  const geocodeAddress = useCallback(async (address: string): Promise<{ lat: number; lng: number } | null> => {
     // Check cache first
     if (geocodeCache.has(address)) {
       return geocodeCache.get(address) || null;
     }
 
-    if (!MAPBOX_TOKEN || !address) {
+    const apiKey = await getApiKey();
+    if (!apiKey || !address) {
       return null;
     }
 
     try {
       const encodedAddress = encodeURIComponent(address);
       const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${MAPBOX_TOKEN}&country=my&limit=1`
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${apiKey}`
       );
 
       if (!response.ok) {
+        geocodeCache.set(address, null);
         return null;
       }
 
-      const data: GeocodeResult = await response.json();
+      const data = await response.json();
       
-      if (data.features && data.features.length > 0) {
-        const [lng, lat] = data.features[0].center;
-        geocodeCache.set(address, [lng, lat]);
-        return [lng, lat];
+      if (data.status === 'OK' && data.results && data.results.length > 0) {
+        const location = data.results[0].geometry.location;
+        const coords = { lat: location.lat, lng: location.lng };
+        geocodeCache.set(address, coords);
+        return coords;
       }
       
       geocodeCache.set(address, null);
       return null;
     } catch (error) {
       console.error("Geocoding error:", error);
+      geocodeCache.set(address, null);
       return null;
     }
-  };
+  }, []);
 
   const geocodeOrders = useCallback(async (orders: Array<{
     id: string;
@@ -73,7 +83,7 @@ export const useGeocoding = () => {
   }>) => {
     if (!orders || orders.length === 0) {
       setGeocodedOrders([]);
-      return;
+      return [];
     }
 
     setIsGeocoding(true);
@@ -89,9 +99,9 @@ export const useGeocoding = () => {
           // Try geocoding with full address first
           let coords = await geocodeAddress(order.address);
           
-          // If failed, try with area + "Malaysia"
+          // If failed, try with area + "Brunei"
           if (!coords && order.area) {
-            coords = await geocodeAddress(`${order.area}, Malaysia`);
+            coords = await geocodeAddress(`${order.area}, Brunei`);
           }
 
           if (coords) {
@@ -102,8 +112,8 @@ export const useGeocoding = () => {
               address: order.address,
               area: order.area,
               driverId: order.driver_id,
-              longitude: coords[0],
-              latitude: coords[1],
+              longitude: coords.lng,
+              latitude: coords.lat,
             };
           }
           return null;
@@ -112,14 +122,19 @@ export const useGeocoding = () => {
 
       results.push(...batchResults.filter((r): r is GeocodedLocation => r !== null));
       
-      // Small delay between batches
+      // Small delay between batches to respect rate limits
       if (i + batchSize < orders.length) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
 
     setGeocodedOrders(results);
     setIsGeocoding(false);
+    return results;
+  }, [geocodeAddress]);
+
+  const clearCache = useCallback(() => {
+    geocodeCache.clear();
   }, []);
 
   return {
@@ -127,5 +142,8 @@ export const useGeocoding = () => {
     geocodedOrders,
     isGeocoding,
     geocodeAddress,
+    clearCache,
   };
 };
+
+export type { GeocodedLocation };
