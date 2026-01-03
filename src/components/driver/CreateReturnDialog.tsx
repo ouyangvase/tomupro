@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -182,6 +182,9 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Submit Daily Return</DialogTitle>
+          <DialogDescription>
+            Return items that you haven't delivered. Items needed for tomorrow's deliveries are excluded.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
