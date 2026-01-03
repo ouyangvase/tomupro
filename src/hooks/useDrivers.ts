@@ -108,6 +108,33 @@ export function useAddDriverToRunner() {
   
   return useMutation({
     mutationFn: async ({ runnerId, driverId }: { runnerId: string; driverId: string }) => {
+      // First check if there's an existing record (active or inactive)
+      const { data: existing } = await supabase
+        .from('runner_drivers')
+        .select('id, is_active, runner_id')
+        .eq('driver_id', driverId)
+        .maybeSingle();
+      
+      if (existing) {
+        if (existing.is_active) {
+          throw new Error('This driver is already assigned to a runner');
+        }
+        // Reactivate and update the runner
+        const { data, error } = await supabase
+          .from('runner_drivers')
+          .update({
+            runner_id: runnerId,
+            is_active: true,
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        return data;
+      }
+      
+      // Insert new record
       const { data, error } = await supabase
         .from('runner_drivers')
         .insert({
