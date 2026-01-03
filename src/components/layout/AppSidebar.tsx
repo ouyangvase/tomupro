@@ -34,12 +34,24 @@ const salesItems: NavItem[] = [{
   icon: X,
   roles: ['admin', 'manager', 'salesperson']
 }];
-const runnerItems: NavItem[] = [{
+const runnerQuickActions: NavItem[] = [{
   title: "Runner Inbox",
   url: "/runner/inbox",
   icon: Inbox,
   roles: ['runner']
 }, {
+  title: "Driver Management",
+  url: "/runner/drivers",
+  icon: Truck,
+  roles: ['runner']
+}, {
+  title: "Live Map",
+  url: "/runner/driver-locations",
+  icon: MapPin,
+  roles: ['runner']
+}];
+
+const runnerItems: NavItem[] = [{
   title: "Runner Inbox (All)",
   url: "/admin/runner-inbox",
   icon: Inbox,
@@ -60,11 +72,6 @@ const runnerItems: NavItem[] = [{
   icon: DollarSign,
   roles: ['runner']
 }, {
-  title: "Driver Management",
-  url: "/runner/drivers",
-  icon: Truck,
-  roles: ['runner']
-}, {
   title: "Driver Pickups",
   url: "/runner/driver-pickups",
   icon: PackageCheck,
@@ -83,7 +90,7 @@ const runnerItems: NavItem[] = [{
   title: "Live Map",
   url: "/runner/driver-locations",
   icon: MapPin,
-  roles: ['runner', 'admin']
+  roles: ['admin']
 }];
 
 const driverItems: NavItem[] = [{
@@ -249,6 +256,13 @@ export function AppSidebar() {
             {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sales</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>{renderMenuItems(salesItems)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>}
+
+        {filterItems(runnerQuickActions).length > 0 && <SidebarGroup>
+            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Actions</SidebarGroupLabel>}
+            <SidebarGroupContent>
+              <SidebarMenu>{renderMenuItems(runnerQuickActions)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>}
 

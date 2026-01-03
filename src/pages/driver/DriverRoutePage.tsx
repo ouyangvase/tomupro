@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverRouteOptimization } from '@/hooks/useRouteOptimization';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { MapPin, Package, Navigation, ArrowRight } from 'lucide-react';
 
 export default function DriverRoutePage() {
@@ -10,30 +11,33 @@ export default function DriverRoutePage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-6">
+      <AppLayout>
         <div className="text-center py-12 text-muted-foreground">Loading route...</div>
-      </div>
+      </AppLayout>
     );
   }
 
   if (!routeData || routeData.totalOrders === 0) {
     return (
-      <div className="container mx-auto py-6 max-w-2xl">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Navigation className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">No Pending Deliveries</h2>
-            <p className="text-muted-foreground">
-              You have no orders to deliver. Wait for your runner to assign orders.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <AppLayout>
+        <div className="max-w-2xl mx-auto">
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Navigation className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h2 className="text-xl font-semibold mb-2">No Pending Deliveries</h2>
+              <p className="text-muted-foreground">
+                You have no orders to deliver. Wait for your runner to assign orders.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6 max-w-2xl">
+    <AppLayout>
+      <div className="space-y-6 max-w-2xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Navigation className="h-6 w-6" />
@@ -119,6 +123,7 @@ export default function DriverRoutePage() {
           </Card>
         ))}
       </div>
-    </div>
+      </div>
+    </AppLayout>
   );
 }
