@@ -1922,7 +1922,10 @@ export type Database = {
         Args: never
         Returns: {
           available_qty: number
+          delivered_qty: number
+          pickup_qty: number
           product_id: string
+          returned_qty: number
           sku_code: string
           sku_name: string
         }[]

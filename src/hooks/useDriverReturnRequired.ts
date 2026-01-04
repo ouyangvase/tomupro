@@ -6,6 +6,9 @@ export interface ReturnableItem {
   product_id: string;
   sku_code: string | null;
   sku_name: string;
+  pickup_qty: number;
+  delivered_qty: number;
+  returned_qty: number;
   available_qty: number;
   needed_tomorrow_qty: number;
   suggested_return_qty: number;
@@ -24,7 +27,8 @@ export interface ReturnRequiredResult {
 /**
  * Hook to get returnable items for a driver
  * Uses the database function get_driver_returnable_items() for accurate calculation
- * Then overlays tomorrow's needs to categorize items
+ * Formula: Available = Pickup - Delivered (runner accepted) - Already Returned
+ * Failed deliveries do NOT reduce available qty - driver still has those items!
  */
 export function useDriverReturnRequired(driverId?: string) {
   return useQuery({
@@ -37,7 +41,7 @@ export function useDriverReturnRequired(driverId?: string) {
       const tomorrow = startOfDay(addDays(new Date(), 1));
       const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-      // Get returnable items from database function
+      // Get returnable items from database function (now includes breakdown)
       const { data: returnableData, error: returnableError } = await supabase
         .rpc('get_driver_returnable_items');
 
@@ -87,19 +91,22 @@ export function useDriverReturnRequired(driverId?: string) {
         }
       }
 
-      // Build categorized items
+      // Build categorized items with full breakdown
       const items: ReturnableItem[] = [];
       
       for (const item of returnableData || []) {
         if (!item.product_id || item.available_qty <= 0) continue;
 
         const neededQty = neededTomorrow.get(item.product_id) || 0;
-        const mustReturnQty = Math.max(item.available_qty - neededQty, 0);
+        const mustReturnQty = Math.max(Number(item.available_qty) - neededQty, 0);
         
         items.push({
           product_id: item.product_id,
           sku_code: item.sku_code,
           sku_name: item.sku_name || 'Unknown',
+          pickup_qty: Number(item.pickup_qty),
+          delivered_qty: Number(item.delivered_qty),
+          returned_qty: Number(item.returned_qty),
           available_qty: Number(item.available_qty),
           needed_tomorrow_qty: neededQty,
           suggested_return_qty: mustReturnQty,
