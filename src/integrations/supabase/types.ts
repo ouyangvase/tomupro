@@ -1308,6 +1308,7 @@ export type Database = {
           is_active: boolean
           role: Database["public"]["Enums"]["app_role"]
           runner_code: string | null
+          theme_preference: string | null
           updated_at: string | null
         }
         Insert: {
@@ -1320,6 +1321,7 @@ export type Database = {
           is_active?: boolean
           role?: Database["public"]["Enums"]["app_role"]
           runner_code?: string | null
+          theme_preference?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -1332,6 +1334,7 @@ export type Database = {
           is_active?: boolean
           role?: Database["public"]["Enums"]["app_role"]
           runner_code?: string | null
+          theme_preference?: string | null
           updated_at?: string | null
         }
         Relationships: []
