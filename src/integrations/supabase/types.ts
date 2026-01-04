@@ -1038,6 +1038,8 @@ export type Database = {
           area: string | null
           cancel_notes: string | null
           cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           channel: string | null
           created_at: string
           customer_name: string
@@ -1095,6 +1097,8 @@ export type Database = {
           area?: string | null
           cancel_notes?: string | null
           cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           channel?: string | null
           created_at?: string
           customer_name: string
@@ -1152,6 +1156,8 @@ export type Database = {
           area?: string | null
           cancel_notes?: string | null
           cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           channel?: string | null
           created_at?: string
           customer_name?: string
@@ -1205,6 +1211,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_driver_id_fkey"
             columns: ["driver_id"]

@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useUserDirectory } from '@/hooks/useUserDirectory';
+import { useReasons } from '@/hooks/useReasons';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,10 +23,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { format } from 'date-fns';
-import { RotateCcw } from 'lucide-react';
-import { exportOrderLines } from '@/lib/csv';
+import { Label } from '@/components/ui/label';
+import { format, startOfMonth, endOfMonth, subMonths, startOfYear } from 'date-fns';
+import { RotateCcw, Calendar, Filter } from 'lucide-react';
+import { exportToCSV } from '@/lib/csv';
+import { formatBND } from '@/lib/currency';
 import type { Order, OrderStatus } from '@/types/database';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export default function CancelledSales() {
   const { profile, role } = useAuth();
@@ -32,22 +41,103 @@ export default function CancelledSales() {
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<OrderStatus>('BOOKING');
   
-  const { data: orders = [], isLoading } = useOrders({ 
+  // Filter states
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterReason, setFilterReason] = useState<string>('all');
+  const [filterSalesperson, setFilterSalesperson] = useState<string>('all');
+  const [filterArea, setFilterArea] = useState<string>('all');
+  
+  const { data: allOrders = [], isLoading } = useOrders({ 
     status: 'CANCELLED',
     salespersonId: role === 'salesperson' ? profile?.id : undefined 
   });
+  
+  const { data: userDirectory = [] } = useUserDirectory();
+  const { data: cancelReasons = [] } = useReasons('CANCEL', false);
   
   const bulkUpdateOrders = useBulkUpdateOrders();
 
   const isEditable = role === 'admin' || role === 'salesperson';
 
+  // Build users map for display
+  const usersMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    userDirectory.forEach(u => {
+      map[u.id] = u.display_name;
+    });
+    return map;
+  }, [userDirectory]);
+
+  // Generate month options for filter
+  const monthOptions = useMemo(() => {
+    const options = [{ label: 'All Time', value: 'all' }];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const date = subMonths(now, i);
+      options.push({
+        label: format(date, 'MMMM yyyy'),
+        value: format(date, 'yyyy-MM'),
+      });
+    }
+    return options;
+  }, []);
+
+  // Get unique values for filter dropdowns
+  const uniqueReasons = useMemo(() => 
+    [...new Set(allOrders.map(o => o.cancel_reason).filter(Boolean))],
+    [allOrders]
+  );
+  
+  const uniqueAreas = useMemo(() => 
+    [...new Set(allOrders.map(o => o.area).filter(Boolean))].sort(),
+    [allOrders]
+  );
+  
+  const salespersonOptions = useMemo(() => 
+    userDirectory.filter(u => u.role === 'salesperson'),
+    [userDirectory]
+  );
+
+  // Apply filters
+  const filteredOrders = useMemo(() => {
+    return allOrders.filter(order => {
+      // Month filter
+      if (filterMonth !== 'all') {
+        const orderDate = new Date(order.cancelled_at || order.created_at);
+        const [year, month] = filterMonth.split('-');
+        const filterStart = new Date(parseInt(year), parseInt(month) - 1, 1);
+        const filterEnd = endOfMonth(filterStart);
+        if (orderDate < filterStart || orderDate > filterEnd) return false;
+      }
+      
+      // Reason filter
+      if (filterReason !== 'all' && order.cancel_reason !== filterReason) return false;
+      
+      // Salesperson filter
+      if (filterSalesperson !== 'all' && order.salesperson_id !== filterSalesperson) return false;
+      
+      // Area filter
+      if (filterArea !== 'all' && order.area !== filterArea) return false;
+      
+      return true;
+    });
+  }, [allOrders, filterMonth, filterReason, filterSalesperson, filterArea]);
+
   const columns: Column<Order>[] = [
     { 
-      key: 'order_date', 
-      header: 'Date', 
+      key: 'cancelled_at', 
+      header: 'Cancelled', 
       sortable: true, 
-      width: '100px',
-      render: (o) => format(new Date(o.order_date), 'MMM dd') 
+      width: '120px',
+      render: (o) => {
+        const date = o.cancelled_at || o.updated_at;
+        return (
+          <div className="text-sm">
+            <div>{format(new Date(date), 'MMM dd, yyyy')}</div>
+            <div className="text-muted-foreground text-xs">{format(new Date(date), 'HH:mm')}</div>
+          </div>
+        );
+      }
     },
     { 
       key: 'order_code', 
@@ -56,30 +146,26 @@ export default function CancelledSales() {
       render: (o) => <span className="font-mono text-sm">{o.order_code}</span>
     },
     { 
+      key: 'customer_name', 
+      header: 'Customer', 
+      sortable: true,
+      render: (o) => (
+        <div className="text-sm">
+          <div className="font-medium">{o.customer_name}</div>
+          <div className="text-muted-foreground text-xs">{o.phone}</div>
+        </div>
+      )
+    },
+    { 
       key: 'area', 
       header: 'Area', 
       sortable: true,
-      filterable: true, 
-      filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a!, value: a! })) 
-    },
-    { 
-      key: 'items_summary', 
-      header: 'Items', 
-      render: (o) => {
-        const itemCount = o.order_items?.length || 0;
-        return (
-          <div className="text-sm">
-            <span className="font-medium">{itemCount} SKU</span>
-            <span className="text-muted-foreground"> · {o.total_qty} units</span>
-          </div>
-        );
-      }
     },
     { 
       key: 'total_amount', 
-      header: 'Amount', 
+      header: 'Amount (BND)', 
       sortable: true, 
-      render: (o) => <span className="font-medium">${Number(o.total_amount).toFixed(2)}</span>
+      render: (o) => <span className="font-medium">{formatBND(o.total_amount)}</span>
     },
     { 
       key: 'payment_method', 
@@ -96,27 +182,44 @@ export default function CancelledSales() {
       }
     },
     { 
-      key: 'runner_status', 
-      header: 'Delivery', 
-      width: '120px',
-      render: (o) => <StatusBadge status={o.runner_status} type="runner" /> 
-    },
-    { 
-      key: 'reconciliation_status', 
-      header: 'Reconciliation', 
-      width: '140px',
-      render: (o) => <StatusBadge status={o.reconciliation_status} type="reconciliation" /> 
-    },
-    { 
       key: 'cancel_reason', 
       header: 'Cancel Reason',
-      filterable: true,
-      filterOptions: [...new Set(orders.map(o => o.cancel_reason).filter(Boolean))].map(r => ({ label: r!, value: r! })),
+      width: '180px',
       render: (o) => (
         <Badge variant="destructive" className="font-normal">
           {o.cancel_reason || 'No reason'}
         </Badge>
       )
+    },
+    { 
+      key: 'cancel_notes', 
+      header: 'Comment',
+      width: '200px',
+      render: (o) => {
+        if (!o.cancel_notes) return <span className="text-muted-foreground">—</span>;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-sm truncate max-w-[180px] block cursor-help">
+                {o.cancel_notes}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[300px]">
+              <p>{o.cancel_notes}</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      }
+    },
+    { 
+      key: 'cancelled_by', 
+      header: 'Cancelled By',
+      width: '140px',
+      render: (o) => {
+        const cancellerName = o.cancelled_by ? usersMap[o.cancelled_by] : null;
+        if (!cancellerName) return <span className="text-muted-foreground">—</span>;
+        return <span className="text-sm">{cancellerName}</span>;
+      }
     },
   ];
 
@@ -126,16 +229,62 @@ export default function CancelledSales() {
       updates: { 
         status: restoreTarget, 
         cancel_reason: null, 
-        cancel_notes: null 
-      },
+        cancel_notes: null,
+        cancelled_by: null,
+        cancelled_at: null,
+      } as any,
     });
     setRestoreDialogOpen(false);
     setSelectedRows([]);
   };
 
   const handleExport = () => {
-    exportOrderLines(orders, 'cancelled_orders');
+    const exportData = filteredOrders.map(order => ({
+      order_ref: order.order_code,
+      order_date: order.order_date,
+      customer_name: order.customer_name,
+      phone: order.phone,
+      address: order.address,
+      area: order.area || '',
+      total_amount: order.total_amount,
+      payment_method: order.payment_method,
+      salesperson: order.salesperson?.display_name || '',
+      runner: order.runner?.display_name || '',
+      cancel_reason: order.cancel_reason || '',
+      cancel_comment: order.cancel_notes || '',
+      cancelled_by: order.cancelled_by ? usersMap[order.cancelled_by] || '' : '',
+      cancelled_at: order.cancelled_at ? format(new Date(order.cancelled_at), 'yyyy-MM-dd HH:mm:ss') : '',
+    }));
+
+    const columns = [
+      { key: 'order_ref', header: 'Order Ref' },
+      { key: 'order_date', header: 'Order Date' },
+      { key: 'customer_name', header: 'Customer' },
+      { key: 'phone', header: 'Phone' },
+      { key: 'address', header: 'Address' },
+      { key: 'area', header: 'Area' },
+      { key: 'total_amount', header: 'Amount (BND)' },
+      { key: 'payment_method', header: 'Payment' },
+      { key: 'salesperson', header: 'Salesperson' },
+      { key: 'runner', header: 'Runner' },
+      { key: 'cancel_reason', header: 'Cancel Reason' },
+      { key: 'cancel_comment', header: 'Cancel Comment' },
+      { key: 'cancelled_by', header: 'Cancelled By' },
+      { key: 'cancelled_at', header: 'Cancelled At' },
+    ];
+
+    exportToCSV(exportData as any, columns, 'cancelled_orders');
   };
+
+  const clearFilters = () => {
+    setFilterMonth('all');
+    setFilterReason('all');
+    setFilterSalesperson('all');
+    setFilterArea('all');
+  };
+
+  const hasActiveFilters = filterMonth !== 'all' || filterReason !== 'all' || 
+    filterSalesperson !== 'all' || filterArea !== 'all';
 
   return (
     <AppLayout>
@@ -143,12 +292,92 @@ export default function CancelledSales() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Cancelled Sales</h1>
-            <p className="text-muted-foreground">Orders that have been cancelled</p>
+            <p className="text-muted-foreground">
+              {filteredOrders.length} cancelled order{filteredOrders.length !== 1 ? 's' : ''}
+              {hasActiveFilters && ` (filtered from ${allOrders.length} total)`}
+            </p>
+          </div>
+        </div>
+
+        {/* Filter Panel */}
+        <div className="flex flex-wrap gap-4 p-4 border rounded-lg bg-muted/30">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Filters:</span>
+          </div>
+          
+          <div className="flex flex-wrap gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Month</Label>
+              <Select value={filterMonth} onValueChange={setFilterMonth}>
+                <SelectTrigger className="w-[160px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Reason</Label>
+              <Select value={filterReason} onValueChange={setFilterReason}>
+                <SelectTrigger className="w-[180px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Reasons</SelectItem>
+                  {uniqueReasons.map(r => (
+                    <SelectItem key={r} value={r!}>{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {(role === 'admin' || role === 'manager') && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Salesperson</Label>
+                <Select value={filterSalesperson} onValueChange={setFilterSalesperson}>
+                  <SelectTrigger className="w-[160px] h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Salespersons</SelectItem>
+                    {salespersonOptions.map(sp => (
+                      <SelectItem key={sp.id} value={sp.id}>{sp.display_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Area</Label>
+              <Select value={filterArea} onValueChange={setFilterArea}>
+                <SelectTrigger className="w-[140px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Areas</SelectItem>
+                  {uniqueAreas.map(a => (
+                    <SelectItem key={a} value={a!}>{a}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="mt-5">
+                Clear
+              </Button>
+            )}
           </div>
         </div>
 
         <DataGrid
-          data={orders}
+          data={filteredOrders}
           columns={columns}
           keyField="id"
           selectable={isEditable}
