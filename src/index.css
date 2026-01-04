@@ -1,151 +1,149 @@
-@import url("https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+/* 
+  Dark Frosted Ops Theme
+  Premium fintech / banking style with glassmorphism
+  Single accent: Warm Gold (#E1A94E)
 */
 
 @layer base {
   :root {
-    --background: 60 4% 95%;
-    --foreground: 24 9% 10%;
+    /* Force dark mode only - no light mode */
+    --background: 228 12% 7%;
+    --foreground: 0 0% 95%;
 
-    --card: 60 9% 97%;
-    --card-foreground: 24 9% 10%;
+    --card: 225 10% 10%;
+    --card-foreground: 0 0% 95%;
 
-    --popover: 20 5% 90%;
-    --popover-foreground: 24 9% 10%;
+    --popover: 225 10% 12%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 37 92% 50%;
-    --primary-foreground: 47 100% 96%;
+    /* Warm Gold Accent */
+    --primary: 38 70% 59%;
+    --primary-foreground: 228 12% 7%;
 
-    --secondary: 24 5% 44%;
-    --secondary-foreground: 60 9% 97%;
+    --secondary: 225 10% 16%;
+    --secondary-foreground: 0 0% 85%;
 
-    --muted: 23 5% 82%;
-    --muted-foreground: 24 9% 10%;
+    --muted: 225 10% 20%;
+    --muted-foreground: 0 0% 60%;
 
-    --accent: 47 100% 96%;
-    --accent-foreground: 37 92% 50%;
+    --accent: 38 70% 59%;
+    --accent-foreground: 228 12% 7%;
 
-    --destructive: 0 72% 50%;
-    --destructive-foreground: 0 85% 97%;
+    --destructive: 0 72% 63%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 23 5% 82%;
-    --input: 23 5% 82%;
-    --ring: 37 92% 50%;
+    --border: 0 0% 100% / 0.08;
+    --input: 0 0% 100% / 0.08;
+    --ring: 38 70% 59%;
 
     --radius: 1rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Status Colors - HSL equivalents */
+    --status-success: 142 69% 58%;
+    --status-error: 0 91% 71%;
+    --status-pending: 45 93% 67%;
+    --status-neutral: 218 11% 65%;
+    --status-warning: 24 94% 64%;
 
-    --sidebar-foreground: 24 9% 10%;
+    /* Sidebar */
+    --sidebar-background: 228 12% 7%;
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 38 70% 59%;
+    --sidebar-primary-foreground: 228 12% 7%;
+    --sidebar-accent: 38 70% 59%;
+    --sidebar-accent-foreground: 228 12% 7%;
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-ring: 38 70% 59%;
+    --sidebar: 228 12% 7%;
 
-    --sidebar-primary: 37 92% 50%;
+    /* Chart colors */
+    --chart-1: 38 70% 59%;
+    --chart-2: 38 70% 50%;
+    --chart-3: 38 70% 40%;
+    --chart-4: 142 69% 58%;
+    --chart-5: 0 0% 45%;
 
-    --sidebar-primary-foreground: 47 100% 96%;
+    /* Typography */
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
-    --sidebar-accent: 24 5% 44%;
+    /* Shadows - subtle for dark theme */
+    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
+    --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.3);
+    --shadow-sm: 0 2px 4px 0 hsl(0 0% 0% / 0.3);
+    --shadow: 0 4px 6px -1px hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 6px 10px -1px hsl(0 0% 0% / 0.3);
+    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.3);
+    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.4);
+    --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.5);
 
-    --sidebar-accent-foreground: 60 9% 97%;
-
-    --sidebar-border: 23 5% 82%;
-
-    --sidebar-ring: 37 92% 50%;
-
-    --chart-1: 45 96% 64%;
-
-    --chart-2: 47 95% 53%;
-
-    --chart-3: 43 96% 56%;
-
-    --chart-4: 37 92% 50%;
-
-    --chart-5: 24 5% 44%;
-
-    --sidebar: 60 9% 97%;
-
-    --font-sans: 'Source Sans Pro', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-
-    --font-serif: 'Source Serif Pro', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
-
-    --font-mono: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    /* Glow effect for primary accent */
+    --shadow-glow: 0 0 20px hsl(38 70% 59% / 0.15);
 
     --tracking-normal: 0em;
-
     --spacing: 0.25rem;
   }
 
+  /* Dark mode is always on - no .dark class needed */
   .dark {
-    --background: 24 9% 10%;
-    --foreground: 60 9% 97%;
+    --background: 228 12% 7%;
+    --foreground: 0 0% 95%;
 
-    --card: 12 6% 15%;
-    --card-foreground: 60 9% 97%;
+    --card: 225 10% 10%;
+    --card-foreground: 0 0% 95%;
 
-    --popover: 30 6% 25%;
-    --popover-foreground: 60 9% 97%;
+    --popover: 225 10% 12%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 43 96% 56%;
-    --primary-foreground: 20 91% 14%;
+    --primary: 38 70% 59%;
+    --primary-foreground: 228 12% 7%;
 
-    --secondary: 24 5% 44%;
-    --secondary-foreground: 60 9% 97%;
+    --secondary: 225 10% 16%;
+    --secondary-foreground: 0 0% 85%;
 
-    --muted: 24 5% 44%;
-    --muted-foreground: 60 9% 97%;
+    --muted: 225 10% 20%;
+    --muted-foreground: 0 0% 60%;
 
-    --accent: 25 83% 14%;
-    --accent-foreground: 47 95% 53%;
+    --accent: 38 70% 59%;
+    --accent-foreground: 228 12% 7%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 85% 97%;
+    --destructive: 0 72% 63%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 33 5% 32%;
-    --input: 33 5% 32%;
-    --ring: 43 96% 56%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 60 9% 97%;
-    --sidebar-primary: 43 96% 56%;
-    --sidebar-primary-foreground: 20 91% 14%;
-    --sidebar-accent: 47 95% 53%;
-    --sidebar-accent-foreground: 25 83% 14%;
-    --sidebar-border: 33 5% 32%;
-    --sidebar-ring: 43 96% 56%;
-    --chart-1: 45 96% 64%;
-    --chart-2: 48 96% 76%;
-    --chart-3: 43 96% 56%;
-    --chart-4: 37 92% 50%;
-    --chart-5: 33 5% 32%;
-    --sidebar: 12 6% 15%;
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    --border: 0 0% 100% / 0.08;
+    --input: 0 0% 100% / 0.08;
+    --ring: 38 70% 59%;
+
+    --sidebar-background: 228 12% 7%;
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 38 70% 59%;
+    --sidebar-primary-foreground: 228 12% 7%;
+    --sidebar-accent: 38 70% 59%;
+    --sidebar-accent-foreground: 228 12% 7%;
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-ring: 38 70% 59%;
+    --sidebar: 228 12% 7%;
+
+    --chart-1: 38 70% 59%;
+    --chart-2: 38 70% 50%;
+    --chart-3: 38 70% 40%;
+    --chart-4: 142 69% 58%;
+    --chart-5: 0 0% 45%;
+
+    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
+    --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.3);
+    --shadow-sm: 0 2px 4px 0 hsl(0 0% 0% / 0.3);
+    --shadow: 0 4px 6px -1px hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 6px 10px -1px hsl(0 0% 0% / 0.3);
+    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.3);
+    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.4);
+    --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 0 20px hsl(38 70% 59% / 0.15);
   }
 }
 
@@ -154,7 +152,109 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    @apply dark;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Improve number readability */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Glassmorphism Card */
+  .glass-card {
+    @apply rounded-2xl border;
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-card-strong {
+    @apply rounded-2xl border;
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Status Badge Styles */
+  .status-success {
+    @apply bg-[hsl(142,69%,58%,0.15)] text-[hsl(142,69%,58%)] border-[hsl(142,69%,58%,0.3)];
+  }
+
+  .status-error {
+    @apply bg-[hsl(0,91%,71%,0.15)] text-[hsl(0,91%,71%)] border-[hsl(0,91%,71%,0.3)];
+  }
+
+  .status-pending {
+    @apply bg-[hsl(45,93%,67%,0.15)] text-[hsl(45,93%,67%)] border-[hsl(45,93%,67%,0.3)];
+  }
+
+  .status-neutral {
+    @apply bg-[hsl(218,11%,65%,0.15)] text-[hsl(218,11%,65%)] border-[hsl(218,11%,65%,0.3)];
+  }
+
+  .status-warning {
+    @apply bg-[hsl(24,94%,64%,0.15)] text-[hsl(24,94%,64%)] border-[hsl(24,94%,64%,0.3)];
+  }
+
+  /* KPI Widget Styling */
+  .kpi-value {
+    @apply text-4xl font-bold tracking-tight tabular-nums;
+  }
+
+  .kpi-label {
+    @apply text-sm text-muted-foreground font-medium;
+  }
+
+  /* Table row styling */
+  .table-row-hover {
+    @apply transition-colors hover:bg-muted/30;
+  }
+
+  /* Button minimum sizing for touch */
+  .btn-touch {
+    @apply min-h-[48px];
+  }
+}
+
+@layer utilities {
+  /* Subtle glow effect */
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(38 70% 59% / 0.15);
+  }
+
+  /* Large typography for numbers */
+  .text-display {
+    @apply text-5xl font-bold tracking-tight;
+  }
+
+  .text-display-sm {
+    @apply text-3xl font-bold tracking-tight;
+  }
+
+  /* Calm spacing utilities */
+  .space-calm {
+    @apply space-y-6;
+  }
+
+  .p-calm {
+    @apply p-6;
+  }
+
+  .px-calm {
+    @apply px-6;
+  }
+
+  .py-calm {
+    @apply py-6;
   }
 }

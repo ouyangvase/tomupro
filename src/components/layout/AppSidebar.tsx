@@ -1,10 +1,11 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
 interface NavItem {
   title: string;
   url: string;
@@ -13,6 +14,7 @@ interface NavItem {
   }>;
   roles: string[];
 }
+
 const salesItems: NavItem[] = [{
   title: "Dashboard",
   url: "/",
@@ -39,6 +41,7 @@ const salesItems: NavItem[] = [{
   icon: AlertCircle,
   roles: ['admin', 'manager', 'salesperson']
 }];
+
 const runnerQuickActions: NavItem[] = [{
   title: "Runner Inbox",
   url: "/runner/inbox",
@@ -141,6 +144,7 @@ const driverItems: NavItem[] = [{
   icon: Trophy,
   roles: ['driver']
 }];
+
 const reconciliationItems: NavItem[] = [{
   title: "Claims History",
   url: "/claims",
@@ -192,6 +196,7 @@ const reconciliationItems: NavItem[] = [{
   icon: BarChart3,
   roles: ['admin']
 }];
+
 const inventoryItems: NavItem[] = [{
   title: "Inbound Pending",
   url: "/inbound/pending",
@@ -213,6 +218,7 @@ const inventoryItems: NavItem[] = [{
   icon: Package,
   roles: ['admin', 'manager', 'salesperson']
 }];
+
 const settingsItems: NavItem[] = [{
   title: "Profile",
   url: "/settings/profile",
@@ -234,6 +240,7 @@ const settingsItems: NavItem[] = [{
   icon: Settings,
   roles: ['admin']
 }];
+
 export function AppSidebar() {
   const {
     profile,
@@ -245,91 +252,152 @@ export function AppSidebar() {
   const collapsed = state === 'collapsed';
   const userRole = profile?.role || 'salesperson';
   const filterItems = (items: NavItem[]) => items.filter(item => item.roles.includes(userRole));
+  
   const renderMenuItems = (items: NavItem[]) => {
     const filteredItems = filterItems(items);
     if (filteredItems.length === 0) return null;
-    return filteredItems.map(item => <SidebarMenuItem key={item.title}>
+    return filteredItems.map(item => (
+      <SidebarMenuItem key={item.title}>
         <SidebarMenuButton asChild>
-          <NavLink to={item.url} end className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent transition-colors" activeClassName="bg-primary text-primary-foreground">
-            <item.icon className="h-4 w-4 shrink-0" />
-            {!collapsed && <span className="truncate">{item.title}</span>}
+          <NavLink 
+            to={item.url} 
+            end 
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all duration-200" 
+            activeClassName="bg-primary/15 text-primary border border-primary/20"
+          >
+            <item.icon className="h-5 w-5 shrink-0" />
+            {!collapsed && <span className="font-medium">{item.title}</span>}
           </NavLink>
         </SidebarMenuButton>
-      </SidebarMenuItem>);
+      </SidebarMenuItem>
+    ));
   };
-  return <Sidebar className={cn("border-r bg-card", collapsed ? "w-16" : "w-64")}>
-      <SidebarHeader className="p-4 border-b">
-        <div className="flex items-center gap-2">
-          <img src={tomuLogo} alt="TOMU Logo" className="h-8 w-8 object-contain" />
-          {!collapsed && <div>
-              <h2 className="font-bold text-lg">TOMU</h2>
-              <p className="text-xs text-muted-foreground capitalize">{userRole}</p>
-            </div>}
+
+  return (
+    <Sidebar className={cn("border-r border-border/50 bg-sidebar", collapsed ? "w-20" : "w-72")}>
+      <SidebarHeader className="p-6 border-b border-border/50">
+        <div className="flex items-center gap-3">
+          <img src={tomuLogo} alt="TOMU Logo" className="h-10 w-10 object-contain" />
+          {!collapsed && (
+            <div>
+              <h2 className="font-bold text-xl tracking-tight">TOMU</h2>
+              <p className="text-xs text-muted-foreground capitalize font-medium">{userRole}</p>
+            </div>
+          )}
         </div>
       </SidebarHeader>
       
-      <SidebarContent className="px-2 py-4">
-        {filterItems(salesItems).length > 0 && <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sales</SidebarGroupLabel>}
+      <SidebarContent className="px-3 py-6 space-y-6">
+        {filterItems(salesItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Sales
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>{renderMenuItems(salesItems)}</SidebarMenu>
+              <SidebarMenu className="space-y-1">{renderMenuItems(salesItems)}</SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
+        )}
 
-        {filterItems(runnerQuickActions).length > 0 && <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Actions</SidebarGroupLabel>}
+        {filterItems(runnerQuickActions).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Quick Actions
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>{renderMenuItems(runnerQuickActions)}</SidebarMenu>
+              <SidebarMenu className="space-y-1">{renderMenuItems(runnerQuickActions)}</SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
+        )}
 
-        {filterItems(runnerItems).length > 0 && <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Runner</SidebarGroupLabel>}
+        {filterItems(runnerItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Runner
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>{renderMenuItems(runnerItems)}</SidebarMenu>
+              <SidebarMenu className="space-y-1">{renderMenuItems(runnerItems)}</SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
+        )}
 
-        {filterItems(driverQuickActions).length > 0 && <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Actions</SidebarGroupLabel>}
+        {filterItems(driverQuickActions).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Quick Actions
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>{renderMenuItems(driverQuickActions)}</SidebarMenu>
+              <SidebarMenu className="space-y-1">{renderMenuItems(driverQuickActions)}</SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
+        )}
 
-        {filterItems(driverItems).length > 0 && <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Driver</SidebarGroupLabel>}
+        {filterItems(driverItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Driver
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>{renderMenuItems(driverItems)}</SidebarMenu>
+              <SidebarMenu className="space-y-1">{renderMenuItems(driverItems)}</SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
+        )}
 
-        {filterItems(reconciliationItems).length > 0 && <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Reconciliation</SidebarGroupLabel>}
+        {filterItems(reconciliationItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Reconciliation
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>{renderMenuItems(reconciliationItems)}</SidebarMenu>
+              <SidebarMenu className="space-y-1">{renderMenuItems(reconciliationItems)}</SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
+        )}
 
-        {filterItems(inventoryItems).length > 0 && <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Inventory</SidebarGroupLabel>}
+        {filterItems(inventoryItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Inventory
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>{renderMenuItems(inventoryItems)}</SidebarMenu>
+              <SidebarMenu className="space-y-1">{renderMenuItems(inventoryItems)}</SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
+        )}
 
-        {filterItems(settingsItems).length > 0 && <SidebarGroup>
-            {!collapsed && <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Settings</SidebarGroupLabel>}
+        {filterItems(settingsItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Settings
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
-              <SidebarMenu>{renderMenuItems(settingsItems)}</SidebarMenu>
+              <SidebarMenu className="space-y-1">{renderMenuItems(settingsItems)}</SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t">
-        {!collapsed && <div className="flex items-center gap-3 mb-3">
-            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-              <span className="text-sm font-medium">
+      <SidebarFooter className="p-4 border-t border-border/50">
+        {!collapsed && (
+          <div className="flex items-center gap-3 mb-4 px-2">
+            <div className="h-10 w-10 rounded-xl bg-secondary flex items-center justify-center">
+              <span className="text-sm font-semibold text-foreground">
                 {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
               </span>
             </div>
@@ -337,10 +405,18 @@ export function AppSidebar() {
               <p className="text-sm font-medium truncate">{profile?.display_name}</p>
               <p className="text-xs text-muted-foreground truncate">{profile?.email}</p>
             </div>
-          </div>}
-        <Button variant="outline" size={collapsed ? "icon" : "default"} onClick={signOut} className="w-full">
-          {collapsed ? "←" : "Sign Out"}
+          </div>
+        )}
+        <Button 
+          variant="outline" 
+          size={collapsed ? "icon" : "default"} 
+          onClick={signOut} 
+          className="w-full gap-2"
+        >
+          <LogOut className="h-4 w-4" />
+          {!collapsed && "Sign Out"}
         </Button>
       </SidebarFooter>
-    </Sidebar>;
+    </Sidebar>
+  );
 }
