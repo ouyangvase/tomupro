@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { RoleChangeBanner } from "@/components/RoleChangeBanner";
 import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
 
 // Pages
@@ -52,6 +53,7 @@ import AdminOverview from "./pages/admin/AdminOverview";
 import RunnerDeliveryCharges from "./pages/runner/RunnerDeliveryCharges";
 import DeliveryChargesAdmin from "./pages/admin/DeliveryChargesAdmin";
 import DeliveryFeesReport from "./pages/admin/DeliveryFeesReport";
+import WarehouseManagement from "./pages/admin/WarehouseManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -134,6 +136,7 @@ function AppRoutes() {
       <Route path="/runner/delivery-charges" element={<ProtectedRoute><RunnerDeliveryCharges /></ProtectedRoute>} />
       <Route path="/admin/delivery-charges" element={<ProtectedRoute><DeliveryChargesAdmin /></ProtectedRoute>} />
       <Route path="/admin/delivery-fees-report" element={<ProtectedRoute><DeliveryFeesReport /></ProtectedRoute>} />
+      <Route path="/admin/warehouses" element={<ProtectedRoute><WarehouseManagement /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
@@ -147,6 +150,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <RoleChangeBanner />
           <BrowserRouter>
             <AppRoutes />
           </BrowserRouter>

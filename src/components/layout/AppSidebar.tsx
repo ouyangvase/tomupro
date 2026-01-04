@@ -213,6 +213,11 @@ const inventoryItems: NavItem[] = [{
   icon: Wrench,
   roles: ['admin']
 }, {
+  title: "Warehouses",
+  url: "/admin/warehouses",
+  icon: WarehouseIcon,
+  roles: ['admin']
+}, {
   title: "Products",
   url: "/products",
   icon: Package,
