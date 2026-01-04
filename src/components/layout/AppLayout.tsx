@@ -17,16 +17,16 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 border-b bg-card flex items-center justify-between px-4 shrink-0">
+          <header className="h-16 border-b border-border/50 bg-card/50 backdrop-blur-sm flex items-center justify-between px-6 shrink-0">
             <div className="flex items-center gap-4">
-              <SidebarTrigger />
+              <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
               <h1 className="text-lg font-semibold">Tomu</h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <NotificationBell />
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-6">
+          <main className="flex-1 overflow-auto p-8">
             {children}
           </main>
         </div>

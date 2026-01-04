@@ -7,33 +7,34 @@ interface StatusBadgeProps {
   type?: 'order' | 'runner' | 'reconciliation' | 'inbound';
 }
 
+// Status color mappings using the new semantic status colors
 const orderStatusColors: Record<OrderStatus, string> = {
-  BOOKING: 'bg-chart-2/20 text-chart-2 border-chart-2/30',
-  READY: 'bg-chart-1/20 text-chart-1 border-chart-1/30',
-  CANCELLED: 'bg-destructive/20 text-destructive border-destructive/30',
+  BOOKING: 'status-neutral',
+  READY: 'status-pending',
+  CANCELLED: 'status-error',
 };
 
 const runnerStatusColors: Record<RunnerStatus, string> = {
-  UNASSIGNED: 'bg-muted text-muted-foreground border-muted',
-  ASSIGNED: 'bg-chart-2/20 text-chart-2 border-chart-2/30',
-  TAKEN: 'bg-chart-3/20 text-chart-3 border-chart-3/30',
-  DELIVERED: 'bg-chart-1/20 text-chart-1 border-chart-1/30',
-  FAILED_DELIVERY: 'bg-destructive/20 text-destructive border-destructive/30',
+  UNASSIGNED: 'status-neutral',
+  ASSIGNED: 'status-pending',
+  TAKEN: 'status-pending',
+  DELIVERED: 'status-success',
+  FAILED_DELIVERY: 'status-error',
 };
 
 const reconciliationStatusColors: Record<ReconciliationStatus, string> = {
-  NOT_CLAIMED: 'bg-muted text-muted-foreground border-muted',
-  CLAIMED: 'bg-chart-2/20 text-chart-2 border-chart-2/30',
-  SP_ACK_PENDING: 'bg-chart-3/20 text-chart-3 border-chart-3/30',
-  ADMIN_ACK_PENDING: 'bg-chart-4/20 text-chart-4 border-chart-4/30',
-  SETTLED: 'bg-chart-1/20 text-chart-1 border-chart-1/30',
-  DISPUTE: 'bg-destructive/20 text-destructive border-destructive/30',
+  NOT_CLAIMED: 'status-neutral',
+  CLAIMED: 'status-pending',
+  SP_ACK_PENDING: 'status-warning',
+  ADMIN_ACK_PENDING: 'status-warning',
+  SETTLED: 'status-success',
+  DISPUTE: 'status-error',
 };
 
 const inboundStatusColors: Record<InboundStatus, string> = {
-  PENDING_SP_ACK: 'bg-chart-2/20 text-chart-2 border-chart-2/30',
-  ACKNOWLEDGED: 'bg-chart-1/20 text-chart-1 border-chart-1/30',
-  DISPUTE: 'bg-destructive/20 text-destructive border-destructive/30',
+  PENDING_SP_ACK: 'status-pending',
+  ACKNOWLEDGED: 'status-success',
+  DISPUTE: 'status-error',
 };
 
 const formatStatus = (status: string): string => {
@@ -46,7 +47,7 @@ const formatStatus = (status: string): string => {
 };
 
 export function StatusBadge({ status, type = 'order' }: StatusBadgeProps) {
-  let colorClass = 'bg-muted text-muted-foreground border-muted';
+  let colorClass = 'status-neutral';
 
   switch (type) {
     case 'order':
@@ -64,7 +65,7 @@ export function StatusBadge({ status, type = 'order' }: StatusBadgeProps) {
   }
 
   return (
-    <Badge variant="outline" className={cn('font-medium', colorClass)}>
+    <Badge variant="outline" className={cn('font-medium border', colorClass)}>
       {formatStatus(status)}
     </Badge>
   );

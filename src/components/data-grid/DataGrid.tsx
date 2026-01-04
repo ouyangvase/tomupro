@@ -196,24 +196,24 @@ export function DataGrid<T extends object>({
     filteredData.every((item) => selectedRows.includes(String(item[keyField])));
 
   const getSortIcon = (field: string) => {
-    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 opacity-50" />;
-    if (sortDirection === 'asc') return <ArrowUp className="h-4 w-4" />;
-    return <ArrowDown className="h-4 w-4" />;
+    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 opacity-40" />;
+    if (sortDirection === 'asc') return <ArrowUp className="h-4 w-4 text-primary" />;
+    return <ArrowDown className="h-4 w-4 text-primary" />;
   };
 
   const hasActiveFilters = Object.values(columnFilters).some((v) => v && v !== 'all');
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-10"
           />
         </div>
 
@@ -234,7 +234,7 @@ export function DataGrid<T extends object>({
             <PopoverContent className="w-80" align="start">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium">Filters</h4>
+                  <h4 className="font-semibold">Filters</h4>
                   {hasActiveFilters && (
                     <Button
                       variant="ghost"
@@ -250,7 +250,7 @@ export function DataGrid<T extends object>({
                   .filter((c) => c.filterable && c.filterOptions)
                   .map((col) => (
                     <div key={col.key} className="space-y-2">
-                      <label className="text-sm font-medium">{col.header}</label>
+                      <label className="text-sm font-medium text-muted-foreground">{col.header}</label>
                       <Select
                         value={columnFilters[col.key] || 'all'}
                         onValueChange={(value) =>
@@ -276,7 +276,7 @@ export function DataGrid<T extends object>({
           </Popover>
         )}
 
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-3 ml-auto">
           {selectedRows.length > 0 && bulkActions}
           
           {onImport && (
@@ -297,14 +297,15 @@ export function DataGrid<T extends object>({
 
       {/* Selection info */}
       {selectedRows.length > 0 && (
-        <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
-          <span className="text-sm font-medium">
+        <div className="flex items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/20 rounded-xl">
+          <span className="text-sm font-medium text-primary">
             {selectedRows.length} row{selectedRows.length !== 1 ? 's' : ''} selected
           </span>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onSelectionChange?.([])}
+            className="text-primary hover:text-primary"
           >
             Clear selection
           </Button>
@@ -312,13 +313,13 @@ export function DataGrid<T extends object>({
       )}
 
       {/* Table */}
-      <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/50">
+              <TableRow className="bg-secondary/30 hover:bg-secondary/30">
                 {selectable && (
-                  <TableHead className="w-12">
+                  <TableHead className="w-14">
                     <Checkbox
                       checked={isAllSelected}
                       onCheckedChange={handleSelectAll}
@@ -329,7 +330,7 @@ export function DataGrid<T extends object>({
                   <TableHead
                     key={col.key}
                     style={{ width: col.width }}
-                    className={cn(col.sortable && 'cursor-pointer select-none')}
+                    className={cn(col.sortable && 'cursor-pointer select-none hover:text-foreground transition-colors')}
                     onClick={() => col.sortable && handleSort(col.key)}
                   >
                     <div className="flex items-center gap-2">
@@ -345,11 +346,11 @@ export function DataGrid<T extends object>({
                 <TableRow>
                   <TableCell
                     colSpan={columns.length + (selectable ? 1 : 0)}
-                    className="text-center py-8"
+                    className="text-center py-12"
                   >
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      Loading...
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      <span className="text-muted-foreground">Loading...</span>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -357,7 +358,7 @@ export function DataGrid<T extends object>({
                 <TableRow>
                   <TableCell
                     colSpan={columns.length + (selectable ? 1 : 0)}
-                    className="text-center py-8 text-muted-foreground"
+                    className="text-center py-12 text-muted-foreground"
                   >
                     {emptyMessage}
                   </TableCell>
@@ -371,7 +372,7 @@ export function DataGrid<T extends object>({
                     <TableRow
                       key={id}
                       className={cn(
-                        'cursor-pointer hover:bg-muted/50 transition-colors',
+                        'cursor-pointer transition-colors',
                         isSelected && 'bg-primary/5'
                       )}
                       onClick={() => onRowClick?.(item)}
@@ -407,7 +408,7 @@ export function DataGrid<T extends object>({
                                 onBlur={handleCellBlur}
                                 onKeyDown={handleCellKeyDown}
                                 autoFocus
-                                className="h-8"
+                                className="h-10"
                               />
                             ) : col.render ? (
                               col.render(item)
@@ -427,7 +428,7 @@ export function DataGrid<T extends object>({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
         <span>
           Showing {filteredData.length} of {data.length} rows
         </span>
