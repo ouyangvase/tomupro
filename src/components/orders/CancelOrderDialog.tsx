@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -39,11 +39,23 @@ export function CancelOrderDialog({
 
   const { data: cancelReasons = [] } = useReasons('CANCEL', true);
 
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open) {
+      setReason('');
+      setNotes('');
+    }
+  }, [open]);
+
   const handleConfirm = () => {
     if (!reason) return;
     onConfirm(reason, notes);
+  };
+
+  const handleClose = () => {
     setReason('');
     setNotes('');
+    onOpenChange(false);
   };
 
   return (
@@ -74,19 +86,23 @@ export function CancelOrderDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Additional Notes</Label>
+            <Label>Additional Notes (max 500 chars)</Label>
             <Textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => setNotes(e.target.value.slice(0, 500))}
               placeholder="Optional notes..."
               rows={3}
+              maxLength={500}
             />
+            <p className="text-xs text-muted-foreground text-right">
+              {notes.length}/500
+            </p>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+          <Button variant="outline" onClick={handleClose}>
+            Close
           </Button>
           <Button
             variant="destructive"

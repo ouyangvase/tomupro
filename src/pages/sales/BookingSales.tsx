@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useOrders, useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +39,7 @@ export default function BookingSales() {
   
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
+  const cancelOrders = useCancelOrders();
 
   const isEditable = role === 'admin' || role === 'salesperson';
 
@@ -146,16 +148,16 @@ export default function BookingSales() {
   };
 
   const handleCancelConfirm = (reason: string, notes: string) => {
-    bulkUpdateOrders.mutate({
-      ids: selectedRows,
-      updates: { 
-        status: 'CANCELLED', 
-        cancel_reason: reason, 
-        cancel_notes: notes 
-      },
+    cancelOrders.mutate({
+      orderIds: selectedRows,
+      cancelReason: reason,
+      cancelNotes: notes,
+    }, {
+      onSuccess: () => {
+        setCancelDialogOpen(false);
+        setSelectedRows([]);
+      }
     });
-    setCancelDialogOpen(false);
-    setSelectedRows([]);
   };
 
   const handleDispute = () => {
@@ -282,7 +284,7 @@ export default function BookingSales() {
         onOpenChange={setCancelDialogOpen}
         orderCount={selectedRows.length}
         onConfirm={handleCancelConfirm}
-        loading={bulkUpdateOrders.isPending}
+        loading={cancelOrders.isPending}
       />
 
       <ImportOrdersDialog
