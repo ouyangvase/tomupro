@@ -86,18 +86,29 @@ export default function DriverReturnsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Must Return Items */}
+              {/* Must Return Items with Breakdown */}
               <div className="bg-background rounded-lg p-3 border border-destructive/30">
                 <p className="text-sm font-medium mb-2 text-destructive">Must Return (Not Needed Tomorrow):</p>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {returnRequired.mustReturnItems.map(item => (
-                    <div key={item.product_id} className="flex justify-between items-center text-sm">
-                      <span className="text-muted-foreground">
-                        {item.sku_code || 'N/A'} / {item.sku_name}
-                      </span>
-                      <Badge variant="destructive" className="font-mono">
-                        × {item.suggested_return_qty}
-                      </Badge>
+                    <div key={item.product_id} className="rounded border p-2 bg-muted/30">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-sm">
+                          {item.sku_code || 'N/A'} / {item.sku_name}
+                        </span>
+                        <Badge variant="destructive" className="font-mono">
+                          Return: {item.suggested_return_qty}
+                        </Badge>
+                      </div>
+                      <div className="flex gap-3 mt-1.5 text-xs text-muted-foreground">
+                        <span>Picked: <strong className="text-foreground">{item.pickup_qty}</strong></span>
+                        <span>−</span>
+                        <span>Delivered: <strong className="text-foreground">{item.delivered_qty}</strong></span>
+                        <span>−</span>
+                        <span>Returned: <strong className="text-foreground">{item.returned_qty}</strong></span>
+                        <span>=</span>
+                        <span className="text-destructive font-medium">Available: {item.available_qty}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
