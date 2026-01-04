@@ -15,7 +15,72 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     
+    // Validate the request is from an authorized source
+    const authHeader = req.headers.get('Authorization');
+    
+    // Check if this is a service role request (for cron jobs)
+    const isServiceRole = authHeader === `Bearer ${supabaseServiceRoleKey}`;
+    
+    // Check if this is an internal Supabase cron request
+    const isInternalCron = req.headers.get('x-supabase-request-id') !== null && !authHeader;
+    
+    // If not service role or internal cron, verify user is admin
+    if (!isServiceRole && !isInternalCron) {
+      if (!authHeader) {
+        console.error('Unauthorized access attempt - no auth header');
+        return new Response(
+          JSON.stringify({ success: false, error: 'Unauthorized' }),
+          { 
+            status: 401, 
+            headers: { ...corsHeaders, "Content-Type": "application/json" } 
+          }
+        );
+      }
+      
+      // Verify the user is authenticated and is an admin
+      const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
+      
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+      
+      if (authError || !user) {
+        console.error('Auth error or no user:', authError?.message);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Unauthorized' }),
+          { 
+            status: 401, 
+            headers: { ...corsHeaders, "Content-Type": "application/json" } 
+          }
+        );
+      }
+      
+      // Check if user is admin
+      const { data: profile, error: profileError } = await supabaseClient
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      
+      if (profileError || profile?.role !== 'admin') {
+        console.error('Access denied - user is not admin:', user.id, profile?.role);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Forbidden - Admin access required' }),
+          { 
+            status: 403, 
+            headers: { ...corsHeaders, "Content-Type": "application/json" } 
+          }
+        );
+      }
+      
+      console.log('Admin user authorized:', user.id);
+    } else {
+      console.log('Authorized via:', isServiceRole ? 'service role' : 'internal cron');
+    }
+    
+    // Use service role for the actual operation
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     // Call the database function to reopen scheduled orders
@@ -45,7 +110,7 @@ serve(async (req) => {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error("Unexpected error:", errorMessage);
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ success: false, error: 'Internal server error' }),
       { 
         status: 500, 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 
