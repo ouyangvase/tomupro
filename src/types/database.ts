@@ -46,6 +46,7 @@ export interface Profile {
   email: string;
   is_active: boolean;
   avatar_url: string | null;
+  theme_preference: 'dark' | 'light' | null;
   created_at: string;
   updated_at: string | null;
 }
