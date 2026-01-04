@@ -103,17 +103,31 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get fulfillment warehouse (default to salesperson's warehouse)
+    // Get fulfillment warehouse - try order's warehouse, then salesperson's, then runner's
     let warehouseId = order.fulfillment_warehouse_id;
+    
+    // Try salesperson's warehouse first
     if (!warehouseId) {
-      const { data: warehouse } = await supabase
+      const { data: spWarehouse } = await supabase
         .from('warehouses')
         .select('id')
         .eq('owner_user_id', order.salesperson_id)
         .eq('warehouse_type', 'SALESPERSON')
         .single();
       
-      warehouseId = warehouse?.id;
+      warehouseId = spWarehouse?.id;
+    }
+    
+    // Fall back to runner's warehouse if salesperson doesn't have one
+    if (!warehouseId && order.runner_id) {
+      const { data: runnerWarehouse } = await supabase
+        .from('warehouses')
+        .select('id')
+        .eq('owner_user_id', order.runner_id)
+        .eq('warehouse_type', 'RUNNER')
+        .single();
+      
+      warehouseId = runnerWarehouse?.id;
     }
 
     if (!warehouseId) {
