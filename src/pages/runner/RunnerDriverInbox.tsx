@@ -14,13 +14,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRunnerDriverOrders, useMyDrivers, useBulkAssignOrdersToDriver, useUnassignDriverFromOrder, useRunnerAcceptDelivery, useRunnerRejectDelivery, useDriverOrderCount } from '@/hooks/useDrivers';
 import { useManualReopenOrder } from '@/hooks/useRescheduleHistory';
+import { useRevertDelivery } from '@/hooks/useRevertDelivery';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { 
   Truck, Users, CheckCircle, XCircle, Clock, Package, 
   MessageCircle, MapPin, Calendar,
-  Loader2, RefreshCw, User, ExternalLink, ArrowRight, ClipboardCheck, RotateCcw, History
+  Loader2, RefreshCw, User, ExternalLink, ArrowRight, ClipboardCheck, RotateCcw, History, Undo2
 } from 'lucide-react';
 import { RunnerReviewModal } from '@/components/runner/RunnerReviewModal';
 import { toast } from 'sonner';
@@ -51,6 +53,8 @@ const generateWhatsAppUrl = (order: any) => {
 export default function RunnerDriverInbox() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const { data: orders = [], isLoading, refetch } = useRunnerDriverOrders();
   const { data: myDrivers = [] } = useMyDrivers();
   const bulkAssign = useBulkAssignOrdersToDriver();
@@ -58,6 +62,7 @@ export default function RunnerDriverInbox() {
   const acceptDelivery = useRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
   const manualReopen = useManualReopenOrder();
+  const revertDelivery = useRevertDelivery();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<string>('');
@@ -658,6 +663,25 @@ export default function RunnerDriverInbox() {
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>Reopen Now (Skip Cron)</TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                              {/* Admin-only Revert Delivery button */}
+                              {isAdmin && (order.driver_status === 'DRIVER_DELIVERED' || order.runner_status === 'DELIVERED') && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2 border-orange-300 text-orange-600 hover:bg-orange-50"
+                                        onClick={() => revertDelivery.mutate(order.id)}
+                                        disabled={revertDelivery.isPending}
+                                      >
+                                        <Undo2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Revert Delivery (Admin)</TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
                               )}
