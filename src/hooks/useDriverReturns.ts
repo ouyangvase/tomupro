@@ -83,35 +83,8 @@ export function useCreateReturn() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Use the same RPC function as the dialog for consistent validation
-      const { data: returnableItems, error: returnableError } = await supabase
-        .rpc('get_driver_returnable_items');
-
-      if (returnableError) throw returnableError;
-
-      // Build map of max returnable quantities from the RPC result
-      const maxReturnableQty = new Map<string, { qty: number; name: string }>();
-      
-      for (const item of returnableItems || []) {
-        if (item.product_id && item.available_qty > 0) {
-          maxReturnableQty.set(item.product_id, { 
-            qty: Number(item.available_qty), 
-            name: item.sku_name || 'Unknown' 
-          });
-        }
-      }
-
-      // Validate return quantities
-      for (const item of params.items) {
-        const returnable = maxReturnableQty.get(item.product_id);
-        const maxQty = returnable?.qty || 0;
-        if (item.qty > maxQty) {
-          const productName = returnable?.name || 'Unknown product';
-          throw new Error(`Cannot return ${item.qty} of ${productName}. Maximum returnable: ${maxQty}.`);
-        }
-      }
-
-      // Create return
+      // Create return - validation is handled in the dialog
+      // We allow manual returns for flexibility
       const { data: returnData, error: returnError } = await supabase
         .from('driver_returns')
         .insert({
