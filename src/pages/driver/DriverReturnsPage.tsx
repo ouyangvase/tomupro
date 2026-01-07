@@ -15,7 +15,7 @@ export default function DriverReturnsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const { data: returns, isLoading } = useDriverReturns();
   const { data: returnRequired, isLoading: isLoadingReturn } = useDriverReturnRequired();
-  const { data: parentRunnerId } = useDriverParentRunnerId();
+  const { data: parentRunnerId, isLoading: isLoadingRunnerId } = useDriverParentRunnerId();
   const createReturn = useCreateReturn();
 
   const pendingReturns = returns?.filter(r => r.status === 'PENDING_RUNNER_ACK') || [];
@@ -142,7 +142,7 @@ export default function DriverReturnsPage() {
                 className="w-full" 
                 size="lg"
                 onClick={handleQuickAccept}
-                disabled={createReturn.isPending || !parentRunnerId}
+                disabled={createReturn.isPending || isLoadingRunnerId || !parentRunnerId}
               >
                 {createReturn.isPending ? (
                   'Submitting...'

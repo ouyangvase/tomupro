@@ -59,7 +59,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   const [items, setItems] = useState<ReturnItem[]>([]);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
-  const { data: parentRunnerId } = useDriverParentRunnerId();
+  const { data: parentRunnerId, isLoading: isLoadingRunnerId } = useDriverParentRunnerId();
   const { data: pickups } = useDriverPickups();
   const { data: returnRequired, isLoading: isLoadingReturn } = useDriverReturnRequired();
   const createReturn = useCreateReturn();
@@ -267,6 +267,16 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   };
 
   const handleSubmitClick = () => {
+    // Still loading runner link – wait
+    if (isLoadingRunnerId) {
+      toast({
+        title: 'Please wait',
+        description: 'Checking runner link status...',
+      });
+      return;
+    }
+
+    // Finished loading but no runner linked
     if (!parentRunnerId) {
       toast({
         variant: 'destructive',
