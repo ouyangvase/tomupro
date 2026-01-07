@@ -385,13 +385,13 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
           {/* Section 2: Keep for Tomorrow Items */}
           {keepForTomorrowItems.length > 0 && (
-            <Alert className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-900/10">
-              <Clock className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-700 dark:text-amber-400">Keep for Tomorrow (Excluded)</AlertTitle>
-              <AlertDescription className="text-amber-600 dark:text-amber-300">
+            <Alert className="bg-muted/30">
+              <Clock className="h-4 w-4" />
+              <AlertTitle>Keep for Tomorrow (Excluded)</AlertTitle>
+              <AlertDescription>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {keepForTomorrowItems.map(item => (
-                    <Badge key={item.product_id} variant="outline" className="border-amber-500 text-amber-700">
+                    <Badge key={item.product_id} variant="outline">
                       {item.sku_code || 'N/A'} / {item.product_name} × {item.needed_tomorrow} needed
                     </Badge>
                   ))}
@@ -402,10 +402,10 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
           {/* Show auto-suggestion info */}
           {hasItemsToReturn && items.length > 0 && (
-            <Alert className="border-green-500/50 bg-green-50/50 dark:bg-green-900/10">
-              <Sparkles className="h-4 w-4 text-green-600" />
-              <AlertTitle className="text-green-700 dark:text-green-400">Auto-Suggested Return Items</AlertTitle>
-              <AlertDescription className="text-green-600 dark:text-green-300">
+            <Alert className="bg-muted/30">
+              <Sparkles className="h-4 w-4" />
+              <AlertTitle>Auto-Suggested Return Items</AlertTitle>
+              <AlertDescription>
                 Items that must be returned are pre-selected. Adjust quantities as needed.
               </AlertDescription>
             </Alert>
@@ -451,19 +451,19 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                     <TableHead>Product</TableHead>
                     <TableHead className="w-16 text-center">
                       <div className="flex flex-col items-center">
-                        <TrendingUp className="h-3 w-3 text-green-600" />
+                        <TrendingUp className="h-3 w-3 text-muted-foreground" />
                         <span className="text-xs">Pickup</span>
                       </div>
                     </TableHead>
                     <TableHead className="w-16 text-center">
                       <div className="flex flex-col items-center">
-                        <TrendingDown className="h-3 w-3 text-blue-600" />
+                        <TrendingDown className="h-3 w-3 text-muted-foreground" />
                         <span className="text-xs">Delivered</span>
                       </div>
                     </TableHead>
                     <TableHead className="w-16 text-center">
                       <div className="flex flex-col items-center">
-                        <RotateCcw className="h-3 w-3 text-orange-600" />
+                        <RotateCcw className="h-3 w-3 text-muted-foreground" />
                         <span className="text-xs">Returned</span>
                       </div>
                     </TableHead>
@@ -525,19 +525,13 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                            {pickupQty}
-                          </Badge>
+                          <Badge variant="outline">{pickupQty}</Badge>
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                            {deliveredQty}
-                          </Badge>
+                          <Badge variant="outline">{deliveredQty}</Badge>
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                            {returnedQty}
-                          </Badge>
+                          <Badge variant="outline">{returnedQty}</Badge>
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant="secondary" className="font-bold">{item.max_qty}</Badge>

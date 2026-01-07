@@ -83,24 +83,33 @@ export function useDriverParentRunner() {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
-      
-      const { data, error } = await supabase
-        .from('runner_drivers')
-        .select('runner_id')
-        .eq('driver_id', user.id)
-        .eq('is_active', true)
-        .maybeSingle();
-      
-      if (error) throw error;
-      if (!data) return null;
-      
-      // Fetch the runner profile separately
+
+      // Prefer the security-definer DB function (works even if driver cannot read runner_drivers directly)
+      const { data: runnerId, error: runnerIdError } = await supabase.rpc('get_driver_parent_runner', {
+        p_driver_id: user.id,
+      });
+
+      let resolvedRunnerId = runnerId || null;
+
+      // Fallback to direct table read (if policies allow)
+      if (!resolvedRunnerId && !runnerIdError) {
+        const { data } = await supabase
+          .from('runner_drivers')
+          .select('runner_id')
+          .eq('driver_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+        resolvedRunnerId = data?.runner_id ?? null;
+      }
+
+      if (!resolvedRunnerId) return null;
+
       const { data: runnerProfile, error: profileError } = await supabase
         .from('profiles')
         .select('id, display_name, email, role')
-        .eq('id', data.runner_id)
+        .eq('id', resolvedRunnerId)
         .maybeSingle();
-      
+
       if (profileError) throw profileError;
       return runnerProfile as Profile | null;
     },
