@@ -1,6 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,11 +18,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { useCreateReturn } from '@/hooks/useDriverReturns';
 import { useDriverParentRunner } from '@/hooks/useDrivers';
 import { useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
-import { Plus, Trash2, Package, Sparkles, AlertCircle, AlertTriangle, Clock, TrendingDown, TrendingUp, RotateCcw } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Package,
+  Sparkles,
+  AlertCircle,
+  AlertTriangle,
+  Clock,
+  TrendingDown,
+  TrendingUp,
+  RotateCcw,
+} from 'lucide-react';
 interface CreateReturnDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -30,6 +52,8 @@ interface ReturnItem {
 }
 
 export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogProps) {
+  const { toast } = useToast();
+
   const [notes, setNotes] = useState('');
   const [relatedPickupId, setRelatedPickupId] = useState('');
   const [items, setItems] = useState<ReturnItem[]>([]);
@@ -41,19 +65,38 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   const createReturn = useCreateReturn();
 
   // Fetch all products for manual selection when no returnable items
-  const [allProducts, setAllProducts] = useState<{ id: string; sku_name: string; sku_code: string | null }[]>([]);
-  
+  const [allProducts, setAllProducts] = useState<
+    { id: string; sku_name: string; sku_code: string | null }[]
+  >([]);
+
   useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
     const fetchProducts = async () => {
-      const { supabase } = await import('@/integrations/supabase/client');
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('products')
         .select('id, sku_name, sku_code')
         .eq('is_active', true)
         .order('sku_name');
-      if (data) setAllProducts(data);
+
+      if (cancelled) return;
+
+      if (error) {
+        // Not fatal for submitting returns; just limits manual selection
+        console.warn('Failed to load products for manual returns', error);
+        return;
+      }
+
+      setAllProducts(data || []);
     };
-    if (open) fetchProducts();
+
+    fetchProducts();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const acknowledgedPickups = pickups?.filter(p => p.status === 'DRIVER_ACKED') || [];
@@ -224,14 +267,30 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   };
 
   const handleSubmitClick = () => {
-    if (!parentRunner || items.length === 0) return;
+    if (!parentRunner) {
+      toast({
+        variant: 'destructive',
+        title: 'Cannot submit return',
+        description: 'Your account is not linked to a runner yet. Please ask admin/runner to link you first.',
+      });
+      return;
+    }
+
     const validItems = items.filter(i => i.product_id && i.qty > 0);
-    if (validItems.length === 0) return;
+    if (validItems.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Add at least one item',
+        description: 'Please add items (with qty > 0) before submitting the return.',
+      });
+      return;
+    }
+
     setShowConfirmDialog(true);
   };
 
   const handleConfirmSubmit = async () => {
-    if (!parentRunner || items.length === 0) return;
+    if (!parentRunner) return;
 
     const validItems = items.filter(i => i.product_id && i.qty > 0);
     if (validItems.length === 0) return;
@@ -520,11 +579,8 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button 
-              onClick={handleSubmitClick} 
-              disabled={!canSubmit}
-            >
-              Submit Return
+            <Button onClick={handleSubmitClick} disabled={createReturn.isPending}>
+              {createReturn.isPending ? 'Submitting...' : 'Submit Return'}
             </Button>
           </div>
         </div>
