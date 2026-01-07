@@ -40,6 +40,22 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   const { data: returnRequired, isLoading: isLoadingReturn } = useDriverReturnRequired();
   const createReturn = useCreateReturn();
 
+  // Fetch all products for manual selection when no returnable items
+  const [allProducts, setAllProducts] = useState<{ id: string; sku_name: string; sku_code: string | null }[]>([]);
+  
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data } = await supabase
+        .from('products')
+        .select('id, sku_name, sku_code')
+        .eq('is_active', true)
+        .order('sku_name');
+      if (data) setAllProducts(data);
+    };
+    if (open) fetchProducts();
+  }, [open]);
+
   const acknowledgedPickups = pickups?.filter(p => p.status === 'DRIVER_ACKED') || [];
 
   // Get selected pickup details
@@ -124,7 +140,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   }, [open, hasAutoSuggested, returnRequired, isLoadingReturn, mustReturnItems]);
 
   const addItem = () => {
-    // Add from returnable items that aren't already in the list
+    // If there are returnable items not yet added, use those
     const availableItems = allReturnableItems.filter(
       r => !items.some(i => i.product_id === r.product_id)
     );
@@ -140,6 +156,23 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
         needed_tomorrow: first.needed_tomorrow,
         must_return: first.must_return,
       }]);
+    } else {
+      // Allow adding from all products (manual entry)
+      const availableProducts = allProducts.filter(
+        p => !items.some(i => i.product_id === p.id)
+      );
+      if (availableProducts.length > 0) {
+        const first = availableProducts[0];
+        setItems([...items, {
+          product_id: first.id,
+          product_name: first.sku_name,
+          sku_code: first.sku_code,
+          qty: 1,
+          max_qty: 999, // No limit for manual entry
+          needed_tomorrow: 0,
+          must_return: false,
+        }]);
+      }
     }
   };
 
@@ -157,6 +190,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   };
 
   const updateItemProduct = (index: number, productId: string) => {
+    // First check returnable items
     const returnable = allReturnableItems.find(r => r.product_id === productId);
     if (returnable) {
       const newItems = [...items];
@@ -170,6 +204,22 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
         must_return: returnable.must_return,
       };
       setItems(newItems);
+    } else {
+      // Fall back to all products (manual entry)
+      const product = allProducts.find(p => p.id === productId);
+      if (product) {
+        const newItems = [...items];
+        newItems[index] = {
+          product_id: productId,
+          product_name: product.sku_name,
+          sku_code: product.sku_code,
+          qty: 1,
+          max_qty: 999, // No limit for manual entry
+          needed_tomorrow: 0,
+          must_return: false,
+        };
+        setItems(newItems);
+      }
     }
   };
 
@@ -199,11 +249,17 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
   const totalReturnQty = items.reduce((sum, i) => sum + i.qty, 0);
 
-  const availableToAdd = allReturnableItems.filter(
-    r => !items.some(i => i.product_id === r.product_id)
-  );
+  // Combine returnable items and all products for availability check
+  const availableToAdd = [
+    ...allReturnableItems.filter(r => !items.some(i => i.product_id === r.product_id)),
+    ...allProducts.filter(p => 
+      !items.some(i => i.product_id === p.id) && 
+      !allReturnableItems.some(r => r.product_id === p.id)
+    ),
+  ];
 
   const hasItemsToReturn = allReturnableItems.length > 0;
+  const canAddItems = availableToAdd.length > 0;
   const canSubmit = items.length > 0 && items.every(i => i.qty > 0) && !createReturn.isPending;
 
   return (
@@ -323,7 +379,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                 size="sm" 
                 variant="outline" 
                 onClick={addItem}
-                disabled={availableToAdd.length === 0}
+                disabled={!canAddItems}
               >
                 <Plus className="h-4 w-4 mr-1" /> Add Item
               </Button>
@@ -386,11 +442,23 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                                 <SelectValue placeholder="Select product" />
                               </SelectTrigger>
                               <SelectContent>
+                                {/* Show returnable items first */}
                                 {allReturnableItems
                                   .filter(r => !items.some((i, idx) => idx !== index && i.product_id === r.product_id))
                                   .map(product => (
                                     <SelectItem key={product.product_id} value={product.product_id}>
                                       {product.sku_code || 'N/A'} / {product.product_name}
+                                    </SelectItem>
+                                  ))}
+                                {/* Then show all other products */}
+                                {allProducts
+                                  .filter(p => 
+                                    !items.some((i, idx) => idx !== index && i.product_id === p.id) &&
+                                    !allReturnableItems.some(r => r.product_id === p.id)
+                                  )
+                                  .map(product => (
+                                    <SelectItem key={product.id} value={product.id}>
+                                      {product.sku_code || 'N/A'} / {product.sku_name}
                                     </SelectItem>
                                   ))}
                               </SelectContent>
