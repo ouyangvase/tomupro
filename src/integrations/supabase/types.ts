@@ -1229,6 +1229,20 @@ export type Database = {
             foreignKeyName: "orders_fulfillment_warehouse_id_fkey"
             columns: ["fulfillment_warehouse_id"]
             isOneToOne: false
+            referencedRelation: "stock_balance_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "orders_fulfillment_warehouse_id_fkey"
+            columns: ["fulfillment_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "stock_states_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "orders_fulfillment_warehouse_id_fkey"
+            columns: ["fulfillment_warehouse_id"]
+            isOneToOne: false
             referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
@@ -1546,6 +1560,20 @@ export type Database = {
             foreignKeyName: "stock_movements_warehouse_id_fkey"
             columns: ["warehouse_id"]
             isOneToOne: false
+            referencedRelation: "stock_balance_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "stock_movements_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "stock_states_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "stock_movements_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
             referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
@@ -1640,6 +1668,20 @@ export type Database = {
             foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
             columns: ["from_warehouse_id"]
             isOneToOne: false
+            referencedRelation: "stock_balance_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
+            columns: ["from_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "stock_states_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
+            columns: ["from_warehouse_id"]
+            isOneToOne: false
             referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
@@ -1649,6 +1691,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
+            columns: ["to_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "stock_balance_view"
+            referencedColumns: ["warehouse_id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
+            columns: ["to_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "stock_states_view"
+            referencedColumns: ["warehouse_id"]
           },
           {
             foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
@@ -1907,13 +1963,76 @@ export type Database = {
           warehouse_id: string | null
           warehouse_name: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouses_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_states_view: {
+        Row: {
+          in_transit_stock: number | null
+          last_movement_time: string | null
+          owner_name: string | null
+          owner_user_id: string | null
+          product_id: string | null
+          real_stock: number | null
+          reserved_stock: number | null
+          returned_pending_stock: number | null
+          sku_code: string | null
+          sku_name: string | null
+          total_stock: number | null
+          warehouse_id: string | null
+          warehouse_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouses_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
       can_view_stock: {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
+      }
+      check_stock_integrity: {
+        Args: never
+        Returns: {
+          calculated_total: number
+          has_discrepancy: boolean
+          in_transit_stock: number
+          product_id: string
+          real_stock: number
+          reserved_stock: number
+          returned_pending_stock: number
+          sku_name: string
+          warehouse_id: string
+          warehouse_name: string
+        }[]
       }
       generate_driver_code: { Args: { p_driver_id: string }; Returns: Json }
       get_delivery_charge: {
@@ -2011,6 +2130,14 @@ export type Database = {
         | "TRANSFER_IN"
         | "DRIVER_ALLOCATE_PREDEDUCT"
         | "DRIVER_RETURN"
+        | "ORDER_RESERVE"
+        | "ORDER_UNRESERVE"
+        | "DRIVER_PICKUP"
+        | "DELIVERY_ACCEPTED"
+        | "DRIVER_RETURN_SUBMIT"
+        | "RUNNER_RETURN_ACK"
+        | "INBOUND_RECEIVE"
+        | "STOCK_CORRECTION"
       order_status: "BOOKING" | "READY" | "CANCELLED"
       payment_method: "COD" | "TRANSFER"
       reconciliation_status:
@@ -2178,6 +2305,14 @@ export const Constants = {
         "TRANSFER_IN",
         "DRIVER_ALLOCATE_PREDEDUCT",
         "DRIVER_RETURN",
+        "ORDER_RESERVE",
+        "ORDER_UNRESERVE",
+        "DRIVER_PICKUP",
+        "DELIVERY_ACCEPTED",
+        "DRIVER_RETURN_SUBMIT",
+        "RUNNER_RETURN_ACK",
+        "INBOUND_RECEIVE",
+        "STOCK_CORRECTION",
       ],
       order_status: ["BOOKING", "READY", "CANCELLED"],
       payment_method: ["COD", "TRANSFER"],
