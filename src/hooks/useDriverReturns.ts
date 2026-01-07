@@ -83,49 +83,21 @@ export function useCreateReturn() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get allocated stock and failed delivery items for validation
-      const { data: allocatedStock } = await supabase
-        .from('driver_allocated_stock')
-        .select('*')
-        .eq('driver_id', user.id);
+      // Use the same RPC function as the dialog for consistent validation
+      const { data: returnableItems, error: returnableError } = await supabase
+        .rpc('get_driver_returnable_items');
 
-      // Get undelivered order items as returnable items (all orders not delivered)
-      const { data: undeliveredOrders } = await supabase
-        .from('orders')
-        .select(`
-          order_items(product_id, qty, product:products(sku_name))
-        `)
-        .eq('driver_id', user.id)
-        .eq('status', 'READY')
-        .neq('driver_status', 'DRIVER_DELIVERED');
+      if (returnableError) throw returnableError;
 
-      // Build map of max returnable quantities
+      // Build map of max returnable quantities from the RPC result
       const maxReturnableQty = new Map<string, { qty: number; name: string }>();
       
-      // Add pending stock
-      for (const stock of allocatedStock || []) {
-        if (stock.product_id && (stock.pending_qty || 0) > 0) {
-          maxReturnableQty.set(stock.product_id, { 
-            qty: stock.pending_qty || 0, 
-            name: stock.sku_name || 'Unknown' 
+      for (const item of returnableItems || []) {
+        if (item.product_id && item.available_qty > 0) {
+          maxReturnableQty.set(item.product_id, { 
+            qty: Number(item.available_qty), 
+            name: item.sku_name || 'Unknown' 
           });
-        }
-      }
-      
-      // Add undelivered order items (take max if product exists in both)
-      for (const order of undeliveredOrders || []) {
-        for (const item of order.order_items || []) {
-          if (!item.product_id) continue;
-          const existing = maxReturnableQty.get(item.product_id);
-          const newQty = item.qty || 0;
-          if (existing) {
-            existing.qty = Math.max(existing.qty, newQty);
-          } else {
-            maxReturnableQty.set(item.product_id, { 
-              qty: newQty, 
-              name: item.product?.sku_name || 'Unknown' 
-            });
-          }
         }
       }
 
