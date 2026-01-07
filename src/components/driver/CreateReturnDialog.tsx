@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,8 +13,7 @@ import { useCreateReturn } from '@/hooks/useDriverReturns';
 import { useDriverParentRunner } from '@/hooks/useDrivers';
 import { useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
-import { Plus, Trash2, Package, Sparkles, AlertCircle, AlertTriangle, PackageCheck, Clock } from 'lucide-react';
-
+import { Plus, Trash2, Package, Sparkles, AlertCircle, AlertTriangle, Clock, TrendingDown, TrendingUp, RotateCcw } from 'lucide-react';
 interface CreateReturnDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -33,6 +33,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   const [notes, setNotes] = useState('');
   const [relatedPickupId, setRelatedPickupId] = useState('');
   const [items, setItems] = useState<ReturnItem[]>([]);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const { data: parentRunner } = useDriverParentRunner();
   const { data: pickups } = useDriverPickups();
@@ -69,6 +70,9 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
       suggested_qty: item.suggested_return_qty,
       needed_tomorrow: item.needed_tomorrow_qty,
       must_return: item.must_return,
+      pickup_qty: item.pickup_qty,
+      delivered_qty: item.delivered_qty,
+      returned_qty: item.returned_qty,
     }));
   }, [returnRequired]);
 
@@ -169,7 +173,14 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitClick = () => {
+    if (!parentRunner || items.length === 0) return;
+    const validItems = items.filter(i => i.product_id && i.qty > 0);
+    if (validItems.length === 0) return;
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmSubmit = async () => {
     if (!parentRunner || items.length === 0) return;
 
     const validItems = items.filter(i => i.product_id && i.qty > 0);
@@ -182,8 +193,11 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
       items: validItems.map(i => ({ product_id: i.product_id, qty: i.qty })),
     });
 
+    setShowConfirmDialog(false);
     onOpenChange(false);
   };
+
+  const totalReturnQty = items.reduce((sum, i) => sum + i.qty, 0);
 
   const availableToAdd = allReturnableItems.filter(
     r => !items.some(i => i.product_id === r.product_id)
@@ -320,72 +334,109 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="w-24 text-center">Available</TableHead>
-                    <TableHead className="w-24 text-center">Tomorrow</TableHead>
-                    <TableHead className="w-24">Return Qty</TableHead>
-                    <TableHead className="w-12"></TableHead>
+                    <TableHead className="w-16 text-center">
+                      <div className="flex flex-col items-center">
+                        <TrendingUp className="h-3 w-3 text-green-600" />
+                        <span className="text-xs">Pickup</span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-16 text-center">
+                      <div className="flex flex-col items-center">
+                        <TrendingDown className="h-3 w-3 text-blue-600" />
+                        <span className="text-xs">Delivered</span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-16 text-center">
+                      <div className="flex flex-col items-center">
+                        <RotateCcw className="h-3 w-3 text-orange-600" />
+                        <span className="text-xs">Returned</span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-20 text-center">Available</TableHead>
+                    <TableHead className="w-20">Return Qty</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        {item.product_id ? (
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">
-                              {item.sku_code || 'N/A'} / {item.product_name}
-                            </span>
-                            {item.must_return && (
-                              <Badge variant="destructive" className="text-xs">Must Return</Badge>
-                            )}
-                          </div>
-                        ) : (
-                          <Select
-                            value={item.product_id}
-                            onValueChange={v => updateItemProduct(index, v)}
+                  {items.map((item, index) => {
+                    // Find full breakdown from allReturnableItems
+                    const fullItem = allReturnableItems.find(r => r.product_id === item.product_id);
+                    const pickupQty = fullItem?.pickup_qty || 0;
+                    const deliveredQty = fullItem?.delivered_qty || 0;
+                    const returnedQty = fullItem?.returned_qty || 0;
+                    
+                    return (
+                      <TableRow key={index}>
+                        <TableCell>
+                          {item.product_id ? (
+                            <div className="flex flex-col gap-1">
+                              <span className="font-medium text-sm">
+                                {item.sku_code || 'N/A'} / {item.product_name}
+                              </span>
+                              {item.must_return && (
+                                <Badge variant="destructive" className="text-xs w-fit">Must Return</Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <Select
+                              value={item.product_id}
+                              onValueChange={v => updateItemProduct(index, v)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select product" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allReturnableItems
+                                  .filter(r => !items.some((i, idx) => idx !== index && i.product_id === r.product_id))
+                                  .map(product => (
+                                    <SelectItem key={product.product_id} value={product.product_id}>
+                                      {product.sku_code || 'N/A'} / {product.product_name}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            {pickupQty}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            {deliveredQty}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                            {returnedQty}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="secondary" className="font-bold">{item.max_qty}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min="1"
+                            max={item.max_qty}
+                            value={item.qty}
+                            onChange={e => updateItemQty(index, parseInt(e.target.value) || 1)}
+                            className="text-center w-16"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => removeItem(index)}
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select product" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {allReturnableItems
-                                .filter(r => !items.some((i, idx) => idx !== index && i.product_id === r.product_id))
-                                .map(product => (
-                                  <SelectItem key={product.product_id} value={product.product_id}>
-                                    {product.sku_code || 'N/A'} / {product.product_name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="secondary">{item.max_qty}</Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="outline">{item.needed_tomorrow}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min="1"
-                          max={item.max_qty}
-                          value={item.qty}
-                          onChange={e => updateItemQty(index, parseInt(e.target.value) || 1)}
-                          className="text-center"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => removeItem(index)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -402,14 +453,52 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
               Cancel
             </Button>
             <Button 
-              onClick={handleSubmit} 
+              onClick={handleSubmitClick} 
               disabled={!canSubmit}
             >
-              {createReturn.isPending ? 'Submitting...' : 'Submit Return'}
+              Submit Return
             </Button>
           </div>
         </div>
       </DialogContent>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Return Submission</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>You are about to submit a return with the following items:</p>
+                <div className="bg-muted rounded-md p-3 space-y-1">
+                  {items.filter(i => i.qty > 0).map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-sm">
+                      <span>{item.sku_code || 'N/A'} / {item.product_name}</span>
+                      <Badge variant="secondary">{item.qty} pcs</Badge>
+                    </div>
+                  ))}
+                  <div className="border-t pt-2 mt-2 flex justify-between font-medium">
+                    <span>Total Items</span>
+                    <span>{totalReturnQty} pcs</span>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  This action cannot be undone. Please verify the quantities before confirming.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmSubmit}
+              disabled={createReturn.isPending}
+            >
+              {createReturn.isPending ? 'Submitting...' : 'Confirm Return'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
