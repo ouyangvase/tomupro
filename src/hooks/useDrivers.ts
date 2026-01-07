@@ -76,41 +76,70 @@ export function useAllDrivers() {
   });
 }
 
-// Get driver's parent runner
+// Get driver's parent runner id
+async function fetchDriverParentRunnerId(driverId: string): Promise<string | null> {
+  // Prefer the security-definer DB function (works even if driver cannot read runner_drivers directly)
+  const { data: runnerId, error: runnerIdError } = await supabase.rpc('get_driver_parent_runner', {
+    p_driver_id: driverId,
+  });
+
+  if (runnerId && typeof runnerId === 'string') return runnerId;
+
+  // Fallback to direct table read (if policies allow)
+  const { data, error } = await supabase
+    .from('runner_drivers')
+    .select('runner_id')
+    .eq('driver_id', driverId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) {
+    // If both the function and table read fail (e.g. policies), treat as not linked.
+    // eslint-disable-next-line no-console
+    console.warn('Failed to resolve driver parent runner id', runnerIdError ?? error);
+    return null;
+  }
+
+  return data?.runner_id ?? null;
+}
+
+// Get driver's parent runner id
+export function useDriverParentRunnerId() {
+  return useQuery({
+    queryKey: ['driver-parent-runner-id'],
+    queryFn: async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      return fetchDriverParentRunnerId(user.id);
+    },
+  });
+}
+
+// Get driver's parent runner (profile)
 export function useDriverParentRunner() {
   return useQuery({
     queryKey: ['driver-parent-runner'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return null;
 
-      // Prefer the security-definer DB function (works even if driver cannot read runner_drivers directly)
-      const { data: runnerId, error: runnerIdError } = await supabase.rpc('get_driver_parent_runner', {
-        p_driver_id: user.id,
-      });
-
-      let resolvedRunnerId = runnerId || null;
-
-      // Fallback to direct table read (if policies allow)
-      if (!resolvedRunnerId && !runnerIdError) {
-        const { data } = await supabase
-          .from('runner_drivers')
-          .select('runner_id')
-          .eq('driver_id', user.id)
-          .eq('is_active', true)
-          .maybeSingle();
-        resolvedRunnerId = data?.runner_id ?? null;
-      }
-
-      if (!resolvedRunnerId) return null;
+      const runnerId = await fetchDriverParentRunnerId(user.id);
+      if (!runnerId) return null;
 
       const { data: runnerProfile, error: profileError } = await supabase
         .from('profiles')
         .select('id, display_name, email, role')
-        .eq('id', resolvedRunnerId)
+        .eq('id', runnerId)
         .maybeSingle();
 
-      if (profileError) throw profileError;
+      // Some roles may not be allowed to read other users' profiles; degrade gracefully.
+      if (profileError) return null;
+
       return runnerProfile as Profile | null;
     },
   });

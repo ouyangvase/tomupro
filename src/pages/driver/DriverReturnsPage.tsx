@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useDriverReturns, useCreateReturn } from '@/hooks/useDriverReturns';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
-import { useDriverParentRunner } from '@/hooks/useDrivers';
+import { useDriverParentRunnerId } from '@/hooks/useDrivers';
 import { CreateReturnDialog } from '@/components/driver/CreateReturnDialog';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { RotateCcw, Plus, CheckCircle, Clock, XCircle, AlertTriangle, PackageCheck, ArrowRight } from 'lucide-react';
@@ -15,7 +15,7 @@ export default function DriverReturnsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const { data: returns, isLoading } = useDriverReturns();
   const { data: returnRequired, isLoading: isLoadingReturn } = useDriverReturnRequired();
-  const { data: parentRunner } = useDriverParentRunner();
+  const { data: parentRunnerId } = useDriverParentRunnerId();
   const createReturn = useCreateReturn();
 
   const pendingReturns = returns?.filter(r => r.status === 'PENDING_RUNNER_ACK') || [];
@@ -36,10 +36,10 @@ export default function DriverReturnsPage() {
 
   // One-click accept to submit all must-return items
   const handleQuickAccept = async () => {
-    if (!parentRunner || !returnRequired?.mustReturnItems.length) return;
+    if (!parentRunnerId || !returnRequired?.mustReturnItems.length) return;
 
     await createReturn.mutateAsync({
-      runner_id: parentRunner.id,
+      runner_id: parentRunnerId,
       notes: 'Auto-suggested return for failed/undelivered items',
       items: returnRequired.mustReturnItems.map(item => ({
         product_id: item.product_id,
@@ -142,7 +142,7 @@ export default function DriverReturnsPage() {
                 className="w-full" 
                 size="lg"
                 onClick={handleQuickAccept}
-                disabled={createReturn.isPending || !parentRunner}
+                disabled={createReturn.isPending || !parentRunnerId}
               >
                 {createReturn.isPending ? (
                   'Submitting...'

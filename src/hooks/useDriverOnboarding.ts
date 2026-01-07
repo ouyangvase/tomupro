@@ -48,6 +48,7 @@ export const useDriverOnboarding = () => {
         toast.success(`Successfully linked to ${result.runner_name}`);
         queryClient.invalidateQueries({ queryKey: ["driver-runner-link"] });
         queryClient.invalidateQueries({ queryKey: ["driver-parent-runner"] });
+        queryClient.invalidateQueries({ queryKey: ["driver-parent-runner-id"] });
       } else {
         toast.error(result.error || "Failed to link to runner");
       }
