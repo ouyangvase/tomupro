@@ -107,16 +107,19 @@ export function useCreatePickup() {
       pickup_date: string;
       notes?: string;
       items: { product_id: string; qty: number; required_qty?: number; buffer_qty?: number }[];
+      force?: boolean; // Allow bypassing blocking order checks
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Check for blocking orders first
-      const { data: blockingOrders } = await supabase
-        .rpc('get_driver_blocking_orders', { p_driver_id: params.driver_id });
-      
-      if (blockingOrders && blockingOrders.length > 0) {
-        throw new Error(`Driver has ${blockingOrders.length} outstanding order(s) that need status updates before new pickup`);
+      // Check for blocking orders first (unless force is true)
+      if (!params.force) {
+        const { data: blockingOrders } = await supabase
+          .rpc('get_driver_blocking_orders', { p_driver_id: params.driver_id });
+        
+        if (blockingOrders && blockingOrders.length > 0) {
+          throw new Error(`Driver has ${blockingOrders.length} outstanding order(s) that need status updates before new pickup`);
+        }
       }
 
       // Create pickup

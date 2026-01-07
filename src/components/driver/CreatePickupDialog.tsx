@@ -12,7 +12,8 @@ import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
 import { useSuggestedPickupQty, SuggestedQuantity } from '@/hooks/useSuggestedPickupQty';
 import { useCanDriverReceivePickup } from '@/hooks/useDriverReturnRequired';
-import { Plus, Trash2, AlertCircle, Sparkles, AlertTriangle, RotateCcw } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Plus, Trash2, AlertCircle, Sparkles, AlertTriangle, RotateCcw, ShieldAlert } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -30,11 +31,17 @@ interface PickupItem {
 }
 
 export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogProps) {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [pickupDate, setPickupDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<PickupItem[]>([]);
   const [confirmLowerQty, setConfirmLowerQty] = useState(false);
+  const [acknowledgeBlocking, setAcknowledgeBlocking] = useState(false);
+  const [acknowledgeReturn, setAcknowledgeReturn] = useState(false);
+  const [forceCreate, setForceCreate] = useState(false);
 
   const { data: drivers } = useMyDrivers();
   const { data: products } = useProducts();
@@ -43,12 +50,19 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const { canReceivePickup, returnRequired, mustReturnItems, totalMustReturn, isLoading: loadingReturnCheck } = useCanDriverReceivePickup(selectedDriverId || undefined);
   const createPickup = useCreatePickup();
 
+  // Reset acknowledgments when driver changes
+  useEffect(() => {
+    setAcknowledgeBlocking(false);
+    setAcknowledgeReturn(false);
+    setForceCreate(false);
+  }, [selectedDriverId]);
+
   // Auto-populate items when driver or date changes
   useEffect(() => {
     if (suggestedQty && suggestedQty.length > 0) {
       setItems(suggestedQty.map(s => ({
         product_id: s.product_id,
-        qty: s.required_qty, // Total = required + buffer, initially buffer is 0
+        qty: s.required_qty,
         required_qty: s.required_qty,
         buffer_qty: 0,
       })));
@@ -69,15 +83,12 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const updateItem = (index: number, field: keyof PickupItem, value: string | number) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
-    // If buffer_qty changed, update total qty
     if (field === 'buffer_qty') {
       newItems[index].qty = newItems[index].required_qty + (typeof value === 'number' ? value : 0);
     }
     setItems(newItems);
   };
 
-  // Check if any item has lower qty than suggested
-  // Check if any item has lower qty than required
   const hasLowerThanRequired = items.some(item => item.required_qty > 0 && item.qty < item.required_qty);
 
   const handleSubmit = async () => {
@@ -86,8 +97,13 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
     const validItems = items.filter(i => i.product_id && i.qty > 0);
     if (validItems.length === 0) return;
 
-    // Require confirmation if qty is lower than required
     if (hasLowerThanRequired && !confirmLowerQty) return;
+
+    // Check acknowledgments unless force creating as admin
+    if (!forceCreate) {
+      if (hasBlockingOrders && !acknowledgeBlocking) return;
+      if (hasReturnRequired && !acknowledgeReturn) return;
+    }
 
     await createPickup.mutateAsync({
       driver_id: selectedDriverId,
@@ -99,6 +115,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
         required_qty: i.required_qty,
         buffer_qty: i.buffer_qty,
       })),
+      force: forceCreate || acknowledgeBlocking || acknowledgeReturn,
     });
 
     onOpenChange(false);
@@ -106,13 +123,15 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
     setNotes('');
     setItems([]);
     setConfirmLowerQty(false);
+    setAcknowledgeBlocking(false);
+    setAcknowledgeReturn(false);
+    setForceCreate(false);
   };
 
   const hasBlockingOrders = blockingOrders && blockingOrders.length > 0;
   const hasReturnRequired = selectedDriverId && returnRequired;
   const hasSuggestions = suggestedQty && suggestedQty.length > 0;
 
-  // Get product name by id - format: SKU Code / SKU Name
   const getProductName = (productId: string) => {
     const product = products?.find(p => p.id === productId);
     if (!product) return 'Unknown';
@@ -130,7 +149,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
         </DialogHeader>
 
         <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Driver</Label>
               <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
@@ -160,10 +179,10 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
           </div>
 
           {selectedDriverId && hasBlockingOrders && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Cannot Create Pickup</AlertTitle>
-              <AlertDescription>
+            <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-700">Outstanding Orders Warning</AlertTitle>
+              <AlertDescription className="text-amber-700">
                 Driver has {blockingOrders.length} outstanding order(s) from previous days that need status updates:
                 <ul className="mt-2 list-disc list-inside">
                   {blockingOrders.slice(0, 5).map(order => (
@@ -173,16 +192,26 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                   ))}
                   {blockingOrders.length > 5 && <li>...and {blockingOrders.length - 5} more</li>}
                 </ul>
+                <div className="flex items-center space-x-2 mt-3">
+                  <Checkbox
+                    id="acknowledge-blocking"
+                    checked={acknowledgeBlocking}
+                    onCheckedChange={(checked) => setAcknowledgeBlocking(!!checked)}
+                  />
+                  <label htmlFor="acknowledge-blocking" className="text-sm cursor-pointer">
+                    I acknowledge and want to proceed anyway
+                  </label>
+                </div>
               </AlertDescription>
             </Alert>
           )}
 
           {selectedDriverId && hasReturnRequired && (
-            <Alert variant="destructive">
-              <RotateCcw className="h-4 w-4" />
-              <AlertTitle>Return Required Before Pickup</AlertTitle>
-              <AlertDescription>
-                Driver must submit a return for {totalMustReturn} item(s) before receiving new pickups:
+            <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
+              <RotateCcw className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-700">Return Required Warning</AlertTitle>
+              <AlertDescription className="text-amber-700">
+                Driver should submit a return for {totalMustReturn} item(s) before receiving new pickups:
                 <ul className="mt-2 list-disc list-inside">
                   {mustReturnItems.slice(0, 5).map(item => (
                     <li key={item.product_id}>
@@ -191,6 +220,36 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                   ))}
                   {mustReturnItems.length > 5 && <li>...and {mustReturnItems.length - 5} more items</li>}
                 </ul>
+                <div className="flex items-center space-x-2 mt-3">
+                  <Checkbox
+                    id="acknowledge-return"
+                    checked={acknowledgeReturn}
+                    onCheckedChange={(checked) => setAcknowledgeReturn(!!checked)}
+                  />
+                  <label htmlFor="acknowledge-return" className="text-sm cursor-pointer">
+                    I acknowledge and want to proceed anyway
+                  </label>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Admin Force Create Option */}
+          {isAdmin && (hasBlockingOrders || hasReturnRequired) && (
+            <Alert variant="default" className="border-primary/50 bg-primary/5">
+              <ShieldAlert className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-primary">Admin Override</AlertTitle>
+              <AlertDescription>
+                <div className="flex items-center space-x-2 mt-1">
+                  <Checkbox
+                    id="force-create"
+                    checked={forceCreate}
+                    onCheckedChange={(checked) => setForceCreate(!!checked)}
+                  />
+                  <label htmlFor="force-create" className="text-sm cursor-pointer">
+                    Force create pickup (bypass all warnings)
+                  </label>
+                </div>
               </AlertDescription>
             </Alert>
           )}
@@ -333,13 +392,13 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
               disabled={
                 !selectedDriverId ||
                 items.length === 0 ||
-                hasBlockingOrders ||
-                hasReturnRequired ||
                 (hasLowerThanRequired && !confirmLowerQty) ||
+                (!forceCreate && hasBlockingOrders && !acknowledgeBlocking) ||
+                (!forceCreate && hasReturnRequired && !acknowledgeReturn) ||
                 createPickup.isPending
               }
             >
-              {createPickup.isPending ? 'Creating...' : 'Create Pickup'}
+              {createPickup.isPending ? 'Creating...' : forceCreate ? 'Force Create' : 'Create Pickup'}
             </Button>
           </div>
         </div>
