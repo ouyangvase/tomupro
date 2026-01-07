@@ -21,7 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useCreateReturn } from '@/hooks/useDriverReturns';
-import { useDriverParentRunner } from '@/hooks/useDrivers';
+import { useDriverParentRunnerId } from '@/hooks/useDrivers';
 import { useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
 import {
@@ -59,7 +59,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   const [items, setItems] = useState<ReturnItem[]>([]);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
-  const { data: parentRunner } = useDriverParentRunner();
+  const { data: parentRunnerId } = useDriverParentRunnerId();
   const { data: pickups } = useDriverPickups();
   const { data: returnRequired, isLoading: isLoadingReturn } = useDriverReturnRequired();
   const createReturn = useCreateReturn();
@@ -267,11 +267,12 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   };
 
   const handleSubmitClick = () => {
-    if (!parentRunner) {
+    if (!parentRunnerId) {
       toast({
         variant: 'destructive',
         title: 'Cannot submit return',
-        description: 'Your account is not linked to a runner yet. Please ask admin/runner to link you first.',
+        description:
+          'Your account is not linked to a runner yet. Please ask admin/runner to link you first.',
       });
       return;
     }
@@ -290,13 +291,13 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
   };
 
   const handleConfirmSubmit = async () => {
-    if (!parentRunner) return;
+    if (!parentRunnerId) return;
 
     const validItems = items.filter(i => i.product_id && i.qty > 0);
     if (validItems.length === 0) return;
 
     await createReturn.mutateAsync({
-      runner_id: parentRunner.id,
+      runner_id: parentRunnerId,
       related_pickup_id: relatedPickupId && relatedPickupId !== 'none' ? relatedPickupId : undefined,
       notes: notes || undefined,
       items: validItems.map(i => ({ product_id: i.product_id, qty: i.qty })),

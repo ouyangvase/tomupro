@@ -34,12 +34,16 @@ const DriverLinkCard: React.FC = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isLinked && parentRunner ? (
+        {isLinked ? (
           <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <CheckCircle2 className="h-5 w-5 text-primary" />
             <div>
               <p className="text-sm font-medium">Linked to Runner</p>
-              <Badge variant="outline">{parentRunner.display_name}</Badge>
+              {parentRunner ? (
+                <Badge variant="outline">{parentRunner.display_name}</Badge>
+              ) : (
+                <Badge variant="secondary">Linked</Badge>
+              )}
             </div>
           </div>
         ) : (
