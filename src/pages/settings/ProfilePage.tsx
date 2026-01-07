@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Camera, Save, KeyRound, UserX, Loader2 } from 'lucide-react';
 import RunnerCodeCard from '@/components/runner/RunnerCodeCard';
+import DriverLinkCard from '@/components/driver/DriverLinkCard';
 
 const ProfilePage = () => {
   const { user, profile, signOut } = useAuth();
@@ -279,6 +280,9 @@ const ProfilePage = () => {
 
         {/* Runner Code Card - only for runners */}
         {profile.role === 'runner' && <RunnerCodeCard />}
+
+        {/* Driver Link Card - only for drivers */}
+        {profile.role === 'driver' && <DriverLinkCard />}
 
         {/* Security Card */}
         <Card>
