@@ -1229,20 +1229,6 @@ export type Database = {
             foreignKeyName: "orders_fulfillment_warehouse_id_fkey"
             columns: ["fulfillment_warehouse_id"]
             isOneToOne: false
-            referencedRelation: "stock_balance_view"
-            referencedColumns: ["warehouse_id"]
-          },
-          {
-            foreignKeyName: "orders_fulfillment_warehouse_id_fkey"
-            columns: ["fulfillment_warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "stock_states_view"
-            referencedColumns: ["warehouse_id"]
-          },
-          {
-            foreignKeyName: "orders_fulfillment_warehouse_id_fkey"
-            columns: ["fulfillment_warehouse_id"]
-            isOneToOne: false
             referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
@@ -1560,20 +1546,6 @@ export type Database = {
             foreignKeyName: "stock_movements_warehouse_id_fkey"
             columns: ["warehouse_id"]
             isOneToOne: false
-            referencedRelation: "stock_balance_view"
-            referencedColumns: ["warehouse_id"]
-          },
-          {
-            foreignKeyName: "stock_movements_warehouse_id_fkey"
-            columns: ["warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "stock_states_view"
-            referencedColumns: ["warehouse_id"]
-          },
-          {
-            foreignKeyName: "stock_movements_warehouse_id_fkey"
-            columns: ["warehouse_id"]
-            isOneToOne: false
             referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
@@ -1668,20 +1640,6 @@ export type Database = {
             foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
             columns: ["from_warehouse_id"]
             isOneToOne: false
-            referencedRelation: "stock_balance_view"
-            referencedColumns: ["warehouse_id"]
-          },
-          {
-            foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
-            columns: ["from_warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "stock_states_view"
-            referencedColumns: ["warehouse_id"]
-          },
-          {
-            foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
-            columns: ["from_warehouse_id"]
-            isOneToOne: false
             referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
@@ -1691,20 +1649,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
-            columns: ["to_warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "stock_balance_view"
-            referencedColumns: ["warehouse_id"]
-          },
-          {
-            foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
-            columns: ["to_warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "stock_states_view"
-            referencedColumns: ["warehouse_id"]
           },
           {
             foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
@@ -1972,6 +1916,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "stock_movements_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "warehouses_owner_user_id_fkey"
             columns: ["owner_user_id"]
             isOneToOne: false
@@ -2002,6 +1953,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
           {
