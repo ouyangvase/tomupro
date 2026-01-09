@@ -29,6 +29,11 @@ export function useOrders(filters?: OrderFilters) {
 
       if (filters?.status) {
         query = query.eq('status', filters.status);
+        // For READY and BOOKING status, exclude DELIVERED orders
+        // Delivered orders should only appear in Delivered Orders page
+        if (filters.status === 'READY' || filters.status === 'BOOKING') {
+          query = query.neq('runner_status', 'DELIVERED');
+        }
       }
       if (filters?.salespersonId) {
         query = query.eq('salesperson_id', filters.salespersonId);
