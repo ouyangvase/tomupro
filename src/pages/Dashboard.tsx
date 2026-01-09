@@ -26,7 +26,10 @@ import {
   Ban,
   Zap,
   ArrowRight,
-  RefreshCw
+  RefreshCw,
+  Trophy,
+  AlertCircle,
+  Warehouse
 } from 'lucide-react';
 import { 
   useSalespersonStats, 
@@ -34,6 +37,7 @@ import {
   useRecentActivity 
 } from '@/hooks/useDashboardStats';
 import { useRunnerDashboardStats } from '@/hooks/useRunnerDashboardStats';
+import { useSalespersonDashboard } from '@/hooks/useSalespersonDashboard';
 import { formatBND } from '@/lib/currency';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -45,6 +49,8 @@ import {
 import { ActionRequiredCard } from '@/components/dashboard/ActionRequiredCard';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { formatDistanceToNow } from 'date-fns';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 interface StatCardProps {
   label: string;
@@ -82,69 +88,360 @@ function StatCard({ label, value, icon: Icon, color, href, isLoading }: StatCard
 
 function SalespersonDashboard() {
   const navigate = useNavigate();
-  const { data: stats, isLoading } = useSalespersonStats();
-  const { data: actionStats, isLoading: actionLoading } = useSalespersonActionRequiredStats();
-  const { data: activity, isLoading: activityLoading } = useRecentActivity();
-
-  const statCards = [
-    { label: 'Booking Orders', value: stats?.bookingOrders, icon: Package, color: 'text-chart-2', href: '/sales/booking' },
-    { label: 'Ready Orders', value: stats?.readyOrders, icon: ShoppingCart, color: 'text-chart-1', href: '/sales/ready' },
-    { label: 'Pending Delivery', value: stats?.pendingDelivery, icon: Truck, color: 'text-chart-3', href: '/sales/ready' },
-    { label: 'Pending Reconciliation', value: stats?.pendingReconciliation, icon: FileCheck, color: 'text-chart-4', href: '/reconciliation/sp' },
-    { label: 'Disputes', value: stats?.disputes, icon: AlertTriangle, color: 'text-destructive', href: '/disputes' },
-    { label: 'Products', value: stats?.productsCount, icon: BarChart3, color: 'text-secondary', href: '/products' },
-  ];
+  const { data: dashData, isLoading, dataUpdatedAt } = useSalespersonDashboard();
+  
+  const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
 
   return (
-    <>
-      {/* Action Required - Priority Display */}
-      <ActionRequiredCard
-        total={actionStats?.total ?? 0}
-        failedDelivery={actionStats?.failedDelivery}
-        rescheduled={actionStats?.rescheduled}
-        runnerFlagged={actionStats?.runnerFlagged}
-        isLoading={actionLoading}
-        href="/sales/action-required"
-        title="Action Required"
-        subtitle="Orders requiring your decision before workflow can continue"
-      />
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {statCards.map((stat) => (
-          <StatCard key={stat.label} {...stat} isLoading={isLoading} />
-        ))}
+    <div className="space-y-6">
+      {/* Real-time indicator */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          <span>
+            {lastUpdated ? `Updated ${formatDistanceToNow(lastUpdated, { addSuffix: true })}` : 'Loading...'}
+          </span>
+        </div>
+        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800">
+          <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse" />
+          Live
+        </Badge>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <button onClick={() => navigate('/sales/action-required')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-2">
-              ⚠️ Resolve Action Required
-              {(actionStats?.total ?? 0) > 0 && (
-                <Badge variant="destructive" className="ml-auto">{actionStats?.total}</Badge>
+      {/* Section 1: Top Performance Summary */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 text-primary" />
+          Performance Summary
+        </h2>
+        
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {/* Today's Sales Amount */}
+          <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Today Sales</p>
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-32 mt-1" />
+                  ) : (
+                    <p className="text-2xl font-bold text-primary">
+                      {formatBND(dashData?.todaySalesAmount ?? 0)}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {dashData?.todayDeliveredCount ?? 0} orders delivered
+                  </p>
+                </div>
+                <DollarSign className="h-10 w-10 text-primary/50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* MTD Sales Amount */}
+          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-green-200 dark:border-green-800">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-green-700 dark:text-green-300">Month-to-Date Sales</p>
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-32 mt-1" />
+                  ) : (
+                    <p className="text-2xl font-bold text-green-700 dark:text-green-300">
+                      {formatBND(dashData?.mtdSalesAmount ?? 0)}
+                    </p>
+                  )}
+                </div>
+                <BarChart3 className="h-10 w-10 text-green-500/50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Delivered Orders MTD */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Delivered (MTD)</p>
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-16 mt-1" />
+                  ) : (
+                    <p className="text-2xl font-bold">{dashData?.mtdDeliveredCount ?? 0}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">orders this month</p>
+                </div>
+                <CheckCircle className="h-10 w-10 text-green-500/50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Estimated Commission */}
+          <Card className="bg-gradient-to-br from-yellow-50 to-amber-50 dark:from-yellow-950/30 dark:to-amber-950/30 border-yellow-200 dark:border-yellow-800">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300">Est. Commission (MTD)</p>
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-32 mt-1" />
+                  ) : (
+                    <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">
+                      {formatBND(dashData?.estimatedCommission ?? 0)}
+                    </p>
+                  )}
+                  <p className="text-xs text-yellow-600/70 dark:text-yellow-400/70 mt-1">
+                    {((dashData?.commissionRate ?? 0) * 100).toFixed(0)}% of delivered sales
+                  </p>
+                </div>
+                <Trophy className="h-10 w-10 text-yellow-500/50" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Section 2: Monthly Target Progress */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            Monthly Target Progress
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Target: {formatBND(dashData?.monthlyTarget ?? 0)}</p>
+              <p className="text-2xl font-bold">{formatBND(dashData?.mtdSalesAmount ?? 0)}</p>
+            </div>
+            <div className="text-right">
+              {isLoading ? (
+                <Skeleton className="h-12 w-16" />
+              ) : (
+                <p className={cn(
+                  "text-3xl font-bold",
+                  (dashData?.targetProgress ?? 0) >= 100 
+                    ? "text-green-600" 
+                    : (dashData?.targetProgress ?? 0) >= 75 
+                      ? "text-yellow-600" 
+                      : "text-muted-foreground"
+                )}>
+                  {(dashData?.targetProgress ?? 0).toFixed(0)}%
+                </p>
               )}
-            </button>
-            <button onClick={() => navigate('/sales/booking')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              📋 Manage Booking Orders
-            </button>
-            <button onClick={() => navigate('/inbound/pending')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              📦 Acknowledge Inbound
-            </button>
-            <button onClick={() => navigate('/reconciliation/sp')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              ✅ Review Claims
-            </button>
-            <button onClick={() => navigate('/inventory')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              🏭 View Stock Balance
-            </button>
+            </div>
+          </div>
+          <Progress value={dashData?.targetProgress ?? 0} className="h-3" />
+          {(dashData?.remainingToTarget ?? 0) > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-primary">{formatBND(dashData?.remainingToTarget ?? 0)}</span> more to reach your monthly target
+            </p>
+          ) : (
+            <p className="text-sm text-green-600 font-medium">
+              🎉 Congratulations! You've reached your monthly target!
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section 3: Action Required */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-orange-500" />
+          Action Required
+        </h2>
+        
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Failed Orders */}
+          <Card 
+            className={cn(
+              "cursor-pointer hover:shadow-md transition-all",
+              (dashData?.failedOrdersCount ?? 0) > 0 && "border-destructive/50 bg-destructive/5"
+            )}
+            onClick={() => navigate('/sales/action-required')}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Failed Orders</p>
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-16 mt-1" />
+                  ) : (
+                    <p className={cn(
+                      "text-3xl font-bold",
+                      (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"
+                    )}>
+                      {dashData?.failedOrdersCount ?? 0}
+                    </p>
+                  )}
+                </div>
+                <XCircle className={cn(
+                  "h-8 w-8",
+                  (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground/50"
+                )} />
+              </div>
+              {(dashData?.failedOrdersCount ?? 0) > 0 && (
+                <Button size="sm" variant="destructive" className="w-full mt-4">
+                  Resolve Now <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Pending Delivery */}
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-all"
+            onClick={() => navigate('/sales/ready')}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pending Delivery</p>
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-16 mt-1" />
+                  ) : (
+                    <p className="text-3xl font-bold text-blue-600">{dashData?.pendingDeliveryCount ?? 0}</p>
+                  )}
+                </div>
+                <Truck className="h-8 w-8 text-blue-500/50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Pending Claim */}
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-all"
+            onClick={() => navigate('/runner/delivered-orders')}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pending Claim</p>
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-16 mt-1" />
+                  ) : (
+                    <p className="text-3xl font-bold text-yellow-600">{dashData?.pendingClaimCount ?? 0}</p>
+                  )}
+                </div>
+                <Receipt className="h-8 w-8 text-yellow-500/50" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Section 4: My Stock Snapshot */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Warehouse className="h-5 w-5 text-primary" />
+              My Stock Snapshot
+            </CardTitle>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/inventory')}>
+              View All <ArrowRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : (dashData?.stockItems?.length ?? 0) > 0 ? (
+            <ScrollArea className="h-[200px]">
+              <div className="space-y-2">
+                {dashData?.stockItems?.slice(0, 10).map((item) => (
+                  <div 
+                    key={item.productId} 
+                    className={cn(
+                      "flex items-center justify-between p-3 rounded-lg border",
+                      item.isLowStock && "border-destructive/50 bg-destructive/5"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm text-muted-foreground">
+                        {item.skuCode || 'N/A'}
+                      </span>
+                      <span className="text-sm font-medium">{item.productName}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "text-lg font-bold",
+                        item.isLowStock ? "text-destructive" : ""
+                      )}>
+                        {item.balance}
+                      </span>
+                      {item.isLowStock && (
+                        <Badge variant="destructive" className="text-xs">Low</Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Warehouse className="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <p>No stock items found</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section 5: Sales Ranking (if applicable) */}
+      {dashData?.ranking && dashData.ranking.totalSalespersons > 1 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-yellow-500" />
+              Your Ranking This Month
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+                <div className={cn(
+                  "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg",
+                  dashData.ranking.mtdSalesRank === 1 
+                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400" 
+                    : dashData.ranking.mtdSalesRank <= 3 
+                      ? "bg-primary/10 text-primary" 
+                      : "bg-muted text-muted-foreground"
+                )}>
+                  #{dashData.ranking.mtdSalesRank}
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Sales Amount Rank</p>
+                  <p className="font-semibold">
+                    {dashData.ranking.mtdSalesRank} of {dashData.ranking.totalSalespersons}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+                <div className={cn(
+                  "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg",
+                  dashData.ranking.mtdDeliveredRank === 1 
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400" 
+                    : dashData.ranking.mtdDeliveredRank <= 3 
+                      ? "bg-primary/10 text-primary" 
+                      : "bg-muted text-muted-foreground"
+                )}>
+                  #{dashData.ranking.mtdDeliveredRank}
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Delivered Orders Rank</p>
+                  <p className="font-semibold">
+                    {dashData.ranking.mtdDeliveredRank} of {dashData.ranking.totalSalespersons}
+                  </p>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
-
-        <RecentActivityCard activity={activity} isLoading={activityLoading} />
-      </div>
-    </>
+      )}
+    </div>
   );
 }
 
