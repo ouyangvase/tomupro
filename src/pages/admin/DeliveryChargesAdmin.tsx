@@ -164,11 +164,11 @@ export default function DeliveryChargesAdmin() {
                         </TableCell>
                         <TableCell>{charge.area}</TableCell>
                         <TableCell className="font-mono">
-                          RM {proposedAmount.toFixed(2)}
+                          BND {proposedAmount.toFixed(2)}
                         </TableCell>
                         <TableCell className="font-mono">
                           {currentAmount !== null ? (
-                            `RM ${currentAmount.toFixed(2)}`
+                            `BND ${currentAmount.toFixed(2)}`
                           ) : (
                             <Badge variant="outline">New Area</Badge>
                           )}
@@ -241,7 +241,7 @@ export default function DeliveryChargesAdmin() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Proposed Amount</Label>
-                  <p className="font-mono font-medium">RM {Number(selectedCharge.charge_amount).toFixed(2)}</p>
+                  <p className="font-mono font-medium">BND {Number(selectedCharge.charge_amount).toFixed(2)}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Proposed On</Label>
@@ -302,7 +302,7 @@ export default function DeliveryChargesAdmin() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Proposed Amount</Label>
-                  <p className="font-mono font-medium">RM {Number(selectedCharge.charge_amount).toFixed(2)}</p>
+                  <p className="font-mono font-medium">BND {Number(selectedCharge.charge_amount).toFixed(2)}</p>
                 </div>
               </div>
 
