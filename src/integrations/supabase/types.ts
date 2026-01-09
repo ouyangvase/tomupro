@@ -220,8 +220,14 @@ export type Database = {
         Row: {
           admin_ack_at: string | null
           admin_ack_by: string | null
+          delivery_charges_bnd: number | null
+          delivery_charges_rm: number | null
           exchange_rate_to_rm: number | null
+          gross_bnd: number | null
+          gross_rm: number | null
           id: string
+          net_bnd: number | null
+          net_rm: number | null
           note: string | null
           runner_id: string
           status: Database["public"]["Enums"]["claim_batch_status"]
@@ -233,8 +239,14 @@ export type Database = {
         Insert: {
           admin_ack_at?: string | null
           admin_ack_by?: string | null
+          delivery_charges_bnd?: number | null
+          delivery_charges_rm?: number | null
           exchange_rate_to_rm?: number | null
+          gross_bnd?: number | null
+          gross_rm?: number | null
           id?: string
+          net_bnd?: number | null
+          net_rm?: number | null
           note?: string | null
           runner_id: string
           status?: Database["public"]["Enums"]["claim_batch_status"]
@@ -246,8 +258,14 @@ export type Database = {
         Update: {
           admin_ack_at?: string | null
           admin_ack_by?: string | null
+          delivery_charges_bnd?: number | null
+          delivery_charges_rm?: number | null
           exchange_rate_to_rm?: number | null
+          gross_bnd?: number | null
+          gross_rm?: number | null
           id?: string
+          net_bnd?: number | null
+          net_rm?: number | null
           note?: string | null
           runner_id?: string
           status?: Database["public"]["Enums"]["claim_batch_status"]

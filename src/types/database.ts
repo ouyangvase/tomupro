@@ -181,6 +181,13 @@ export interface ClaimBatch {
   total_bnd: number | null;
   exchange_rate_to_rm: number | null;
   total_rm: number | null;
+  // New breakdown fields
+  gross_bnd: number | null;
+  delivery_charges_bnd: number | null;
+  net_bnd: number | null;
+  gross_rm: number | null;
+  delivery_charges_rm: number | null;
+  net_rm: number | null;
   status: ClaimBatchStatus;
   submitted_at: string;
   admin_ack_at: string | null;
