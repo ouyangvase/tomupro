@@ -47,39 +47,51 @@ const outcomeLabels: Record<string, string> = {
 
 // Determine why an order requires action
 function getActionSource(order: Order): ActionRequiredSource | null {
-  // Check if explicitly marked as action required by runner/system
+  const orderStatus = order.status as string;
+  const runnerStatus = order.runner_status as string;
+  
+  // Rule 1: Check for failed delivery status
+  if (runnerStatus === 'FAILED_DELIVERY') {
+    return 'FAILED_DELIVERY';
+  }
+  
+  // Rule 2: Check for reschedule date pending (next_delivery_date exists)
+  if (order.next_delivery_date && orderStatus !== 'CANCELLED') {
+    return 'RESCHEDULED';
+  }
+  
+  // Rule 3: Check for runner failed reason or remark note (runner flagged)
+  if (order.runner_failed_reason_id || order.runner_comment) {
+    return 'RUNNER_FLAGGED';
+  }
+  
+  // Rule 4: Check if explicitly marked as action required by runner/system
   if (order.salesperson_action_required === true) {
     return 'MANUAL';
   }
-  // Check for failed delivery (use string comparison for flexibility)
-  const driverStatus = order.driver_status as string;
-  const runnerStatus = order.runner_status as string;
-  if (driverStatus === 'FAILED_DELIVERY' || runnerStatus === 'FAILED_DELIVERY') {
-    return 'FAILED_DELIVERY';
-  }
-  // Check for reschedule date pending
-  const orderStatus = order.status as string;
-  if (order.next_delivery_date && orderStatus !== 'CANCELLED' && orderStatus !== 'DELIVERED') {
-    return 'RESCHEDULED';
-  }
-  // Check for runner failed reason or remark
-  if ((order.runner_failed_reason_id || order.runner_comment) && 
-      order.runner_review_status === 'REVIEWED' &&
-      order.runner_final_outcome && 
-      order.runner_final_outcome !== 'CONFIRM_DELIVERED') {
-    return 'RUNNER_FLAGGED';
-  }
+  
   return null;
 }
 
 // Check if order needs salesperson action
 function needsSalespersonAction(order: Order): boolean {
-  // Skip delivered or cancelled orders
   const orderStatus = order.status as string;
   const runnerStatus = order.runner_status as string;
-  if (orderStatus === 'CANCELLED' || runnerStatus === 'DELIVERED') {
+  
+  // Skip cancelled orders - they're done
+  if (orderStatus === 'CANCELLED') {
     return false;
   }
+  
+  // Skip delivered orders UNLESS they have unresolved action flags
+  if (runnerStatus === 'DELIVERED') {
+    // Only keep delivered orders in action required if they have unresolved flags
+    if (order.salesperson_action_required === true) {
+      return true;
+    }
+    return false;
+  }
+  
   return getActionSource(order) !== null;
 }
 

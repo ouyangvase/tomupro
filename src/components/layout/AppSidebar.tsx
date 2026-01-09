@@ -48,6 +48,11 @@ const runnerQuickActions: NavItem[] = [{
   icon: Inbox,
   roles: ['runner']
 }, {
+  title: "Failed Orders",
+  url: "/runner/failed-orders",
+  icon: X,
+  roles: ['runner']
+}, {
   title: "Driver Inbox",
   url: "/runner/driver-inbox",
   icon: Truck,
