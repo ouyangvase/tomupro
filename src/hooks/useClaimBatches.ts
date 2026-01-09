@@ -84,7 +84,7 @@ export function useSubmitBulkClaim() {
   });
 }
 
-export function useAcknowledgeClaimBatch() {
+export function useApproveClaimBatch() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -117,7 +117,7 @@ export function useAcknowledgeClaimBatch() {
 
       if (batchError) throw batchError;
 
-      // Update all orders in the batch
+      // Update all orders in the batch to CLAIMED (approved)
       const orderIds = batch.items?.map((item: any) => item.order_id) || [];
       if (orderIds.length > 0) {
         const { error: ordersError } = await supabase
@@ -131,8 +131,8 @@ export function useAcknowledgeClaimBatch() {
       // Notify runner
       await supabase.from('notifications').insert({
         user_id: batch.runner_id,
-        title: 'Claim Batch Acknowledged',
-        message: `Your claim batch of ${orderIds.length} orders has been acknowledged and marked as claimed.`,
+        title: 'Claim Batch Approved',
+        message: `Your claim batch of ${orderIds.length} orders has been approved.`,
         type: 'claim_batch',
         reference_type: 'claim_batch',
         reference_id: batchId,
@@ -141,7 +141,7 @@ export function useAcknowledgeClaimBatch() {
       // Log audit
       await supabase.from('audit_logs').insert({
         actor_id: user.id,
-        action: 'CLAIM_BATCH_ACKNOWLEDGED',
+        action: 'CLAIM_BATCH_APPROVED',
         entity_type: 'claim_batch',
         entity_id: batchId,
         before_json: { status: 'ADMIN_ACK_PENDING' },
@@ -154,12 +154,99 @@ export function useAcknowledgeClaimBatch() {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
       toast({ 
-        title: 'Batch Acknowledged', 
-        description: `Claim batch with ${data.orderCount} orders has been marked as claimed.` 
+        title: 'Batch Approved', 
+        description: `Claim batch with ${data.orderCount} orders has been approved.` 
       });
     },
     onError: (error: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
     },
   });
+}
+
+export function useRejectClaimBatch() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ batchId, rejectionReason }: { batchId: string; rejectionReason?: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Get batch items first
+      const { data: batch, error: fetchError } = await supabase
+        .from('claim_batches')
+        .select(`
+          *,
+          items:claim_batch_items(order_id)
+        `)
+        .eq('id', batchId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Delete the claim batch (this will cascade to claim_batch_items)
+      const { error: deleteError } = await supabase
+        .from('claim_batches')
+        .delete()
+        .eq('id', batchId);
+
+      if (deleteError) throw deleteError;
+
+      // Revert all orders in the batch back to NOT_CLAIMED
+      const orderIds = batch.items?.map((item: any) => item.order_id) || [];
+      if (orderIds.length > 0) {
+        const { error: ordersError } = await supabase
+          .from('orders')
+          .update({ reconciliation_status: 'NOT_CLAIMED' })
+          .in('id', orderIds);
+
+        if (ordersError) throw ordersError;
+
+        // Delete the claims created for these orders
+        await supabase
+          .from('claims')
+          .delete()
+          .in('order_id', orderIds);
+      }
+
+      // Notify runner
+      await supabase.from('notifications').insert({
+        user_id: batch.runner_id,
+        title: 'Claim Batch Rejected',
+        message: `Your claim batch of ${orderIds.length} orders has been rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
+        type: 'claim_batch',
+        reference_type: 'claim_batch',
+        reference_id: batchId,
+      });
+
+      // Log audit
+      await supabase.from('audit_logs').insert({
+        actor_id: user.id,
+        action: 'CLAIM_BATCH_REJECTED',
+        entity_type: 'claim_batch',
+        entity_id: batchId,
+        before_json: { status: 'ADMIN_ACK_PENDING' },
+        after_json: { status: 'REJECTED', reason: rejectionReason },
+      });
+
+      return { batchId, orderCount: orderIds.length };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
+      toast({ 
+        title: 'Batch Rejected', 
+        description: `Claim batch with ${data.orderCount} orders has been rejected. Orders reverted to NOT CLAIMED.` 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
+// Keep backward compatibility
+export function useAcknowledgeClaimBatch() {
+  return useApproveClaimBatch();
 }

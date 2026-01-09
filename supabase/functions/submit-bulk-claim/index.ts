@@ -66,7 +66,7 @@ serve(async (req) => {
       );
     }
 
-    // Validate orders belong to this runner and are DELIVERED and not already CLAIMED
+    // Validate orders belong to this runner and are DELIVERED and not already in a claim batch
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
       .select('id, total_amount, area, runner_status, reconciliation_status, runner_id')
@@ -79,16 +79,34 @@ serve(async (req) => {
       );
     }
 
+    // Check if any orders are already in an existing claim batch
+    const { data: existingBatchItems } = await supabase
+      .from('claim_batch_items')
+      .select('order_id, batch_id')
+      .in('order_id', orderIds);
+
+    if (existingBatchItems && existingBatchItems.length > 0) {
+      const alreadyClaimedOrderIds = existingBatchItems.map(item => item.order_id);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `${alreadyClaimedOrderIds.length} order(s) are already included in existing claim batches. Please deselect them and try again.`,
+          alreadyClaimedOrderIds,
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Validate all orders
     const invalidOrders = orders?.filter(o => 
       o.runner_id !== user.id || 
       o.runner_status !== 'DELIVERED' || 
-      o.reconciliation_status === 'CLAIMED'
+      o.reconciliation_status !== 'NOT_CLAIMED'
     );
 
     if (invalidOrders && invalidOrders.length > 0) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Some orders are invalid or not authorized' }),
+        JSON.stringify({ success: false, error: 'Some orders are invalid, not authorized, or already claimed' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
