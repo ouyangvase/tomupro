@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -45,6 +45,11 @@ const salesItems: NavItem[] = [{
   url: "/sales/action-required",
   icon: AlertCircle,
   roles: ['admin', 'manager', 'salesperson']
+}, {
+  title: "Leaderboard",
+  url: "/leaderboard",
+  icon: Award,
+  roles: ['salesperson', 'manager', 'admin']
 }];
 
 const runnerQuickActions: NavItem[] = [{
@@ -254,6 +259,16 @@ const settingsItems: NavItem[] = [{
   url: "/settings/users",
   icon: Users,
   roles: ['admin', 'manager']
+}, {
+  title: "Commission System",
+  url: "/settings/commission",
+  icon: DollarSign,
+  roles: ['admin']
+}, {
+  title: "Leaderboard",
+  url: "/admin/leaderboard-settings",
+  icon: Trophy,
+  roles: ['admin']
 }, {
   title: "Reasons",
   url: "/settings/reasons",
