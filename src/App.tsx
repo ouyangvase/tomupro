@@ -19,6 +19,7 @@ import InventoryBalance from "./pages/InventoryBalance";
 import RunnerInbox from "./pages/runner/RunnerInbox";
 import RunnerInbound from "./pages/runner/RunnerInbound";
 import RunnerClaimBatches from "./pages/runner/RunnerClaimBatches";
+import RunnerFailedOrders from "./pages/runner/RunnerFailedOrders";
 import DriverManagement from "./pages/runner/DriverManagement";
 import DriverPickups from "./pages/runner/DriverPickups";
 import RunnerDriverInbox from "./pages/runner/RunnerDriverInbox";
@@ -100,6 +101,7 @@ function AppRoutes() {
       <Route path="/sales/cancelled" element={<ProtectedRoute><CancelledSales /></ProtectedRoute>} />
       <Route path="/sales/action-required" element={<ProtectedRoute><SalespersonActionInbox /></ProtectedRoute>} />
       <Route path="/runner/inbox" element={<ProtectedRoute><RunnerInbox /></ProtectedRoute>} />
+      <Route path="/runner/failed-orders" element={<ProtectedRoute><RunnerFailedOrders /></ProtectedRoute>} />
       <Route path="/runner/inbound" element={<ProtectedRoute><RunnerInbound /></ProtectedRoute>} />
       <Route path="/runner/claims" element={<ProtectedRoute><RunnerClaimBatches /></ProtectedRoute>} />
       <Route path="/runner/drivers" element={<ProtectedRoute><DriverManagement /></ProtectedRoute>} />

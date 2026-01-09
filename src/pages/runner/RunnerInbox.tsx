@@ -78,9 +78,30 @@ export default function RunnerInbox() {
   const submitBulkClaim = useSubmitBulkClaim();
 
   // Apply panel filters to orders
+  // Runner Inbox should ONLY show orders that:
+  // - Are READY status
+  // - Are assigned to this runner
+  // - Are pending delivery (NOT failed, NOT cancelled)
   const filteredOrders = useMemo(() => {
     if (!orders) return [];
-    return applyOrderFilters(orders, panelFilters);
+    
+    // First filter to only show deliverable orders
+    const deliverableOrders = orders.filter(order => {
+      const status = order.status as string;
+      const runnerStatus = order.runner_status as string;
+      
+      // Exclude cancelled orders
+      if (status === 'CANCELLED') return false;
+      
+      // Exclude failed delivery orders - they go to Failed Orders page
+      if (runnerStatus === 'FAILED_DELIVERY') return false;
+      
+      // Include READY orders that are assigned/taken/delivered
+      // and BOOKING orders that are assigned (for visibility)
+      return true;
+    });
+    
+    return applyOrderFilters(deliverableOrders, panelFilters);
   }, [orders, panelFilters]);
 
   // Extract unique areas for filter dropdown
