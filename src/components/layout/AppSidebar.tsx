@@ -259,7 +259,8 @@ const settingsItems: NavItem[] = [{
 export function AppSidebar() {
   const {
     profile,
-    signOut
+    signOut,
+    signingOut
   } = useAuth();
   const {
     state
@@ -426,10 +427,15 @@ export function AppSidebar() {
           variant="outline" 
           size={collapsed ? "icon" : "default"} 
           onClick={signOut} 
+          disabled={signingOut}
           className="w-full gap-2"
         >
-          <LogOut className="h-4 w-4" />
-          {!collapsed && "Sign Out"}
+          {signingOut ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <LogOut className="h-4 w-4" />
+          )}
+          {!collapsed && (signingOut ? "Signing out..." : "Sign Out")}
         </Button>
       </SidebarFooter>
     </Sidebar>

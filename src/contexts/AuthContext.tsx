@@ -9,6 +9,7 @@ interface AuthContextType {
   profile: Profile | null;
   role: AppRole | null;
   loading: boolean;
+  signingOut: boolean;
   roleChanged: boolean;
   dismissRoleChange: () => void;
   refreshProfile: () => Promise<void>;
@@ -32,6 +33,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
   const [roleChanged, setRoleChanged] = useState(false);
   const [previousRole, setPreviousRole] = useState<AppRole | null>(null);
 
@@ -157,18 +159,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
+    if (signingOut) return; // Prevent double-click
+    
+    setSigningOut(true);
+    
     try {
+      // Clear session from Supabase
       await supabase.auth.signOut();
     } catch (error) {
       // Session may already be expired/invalid - that's okay
       console.warn('Sign out error (session may be expired):', error);
     }
-    // Always clear local state regardless of server response
+    
+    // Clear all Supabase auth tokens from storage to prevent auto-rehydration
+    const projectId = 'fitonksgqfxnpljiylkn';
+    localStorage.removeItem(`sb-${projectId}-auth-token`);
+    localStorage.removeItem('supabase.auth.token');
+    sessionStorage.clear();
+    
+    // Clear local state
     setUser(null);
     setSession(null);
     setProfile(null);
     setPreviousRole(null);
     setRoleChanged(false);
+    setSigningOut(false);
   };
 
   return (
@@ -179,6 +194,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile,
         role: profile?.role ?? null,
         loading,
+        signingOut,
         roleChanged,
         dismissRoleChange,
         refreshProfile,

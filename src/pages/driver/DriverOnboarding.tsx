@@ -9,7 +9,7 @@ import { Truck, ArrowRight, Loader2 } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 
 const DriverOnboarding: React.FC = () => {
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, signingOut } = useAuth();
   const { linkToRunner } = useDriverOnboarding();
   const [code, setCode] = useState("");
 
@@ -90,8 +90,9 @@ const DriverOnboarding: React.FC = () => {
               variant="outline" 
               className="w-full"
               onClick={signOut}
+              disabled={signingOut}
             >
-              Sign Out
+              {signingOut ? "Signing out..." : "Sign Out"}
             </Button>
           </form>
 
