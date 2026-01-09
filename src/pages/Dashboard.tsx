@@ -51,6 +51,7 @@ import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { formatDistanceToNow } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { LeaderboardDashboardCard } from '@/components/leaderboard/LeaderboardDashboardCard';
 
 interface StatCardProps {
   label: string;
@@ -512,6 +513,9 @@ function SalespersonDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Section 6: Leaderboard Preview */}
+      <LeaderboardDashboardCard />
     </div>
   );
 }
