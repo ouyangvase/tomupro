@@ -103,28 +103,31 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get fulfillment warehouse - try order's warehouse, then salesperson's, then runner's
+    // Get the ORIGINAL OWNER's warehouse (salesperson's warehouse - critical for correct stock tracking)
     let warehouseId = order.fulfillment_warehouse_id;
     
-    // Try salesperson's warehouse first
+    // Always try salesperson's warehouse first - this is the SOURCE OF TRUTH for stock
     if (!warehouseId) {
       const { data: spWarehouse } = await supabase
         .from('warehouses')
         .select('id')
         .eq('owner_user_id', order.salesperson_id)
         .eq('warehouse_type', 'SALESPERSON')
+        .eq('is_active', true)
         .single();
       
       warehouseId = spWarehouse?.id;
     }
     
-    // Fall back to runner's warehouse if salesperson doesn't have one
+    // Only fall back to runner's warehouse if salesperson doesn't have one
+    // This maintains correct stock tracking - stock belongs to salesperson
     if (!warehouseId && order.runner_id) {
       const { data: runnerWarehouse } = await supabase
         .from('warehouses')
         .select('id')
         .eq('owner_user_id', order.runner_id)
         .eq('warehouse_type', 'RUNNER')
+        .eq('is_active', true)
         .single();
       
       warehouseId = runnerWarehouse?.id;
@@ -205,26 +208,55 @@ Deno.serve(async (req) => {
       );
     }
 
-    // All validations passed - create stock movements
-    const stockMovements = (orderItems || []).map(item => ({
-      warehouse_id: warehouseId,
-      product_id: item.product_id,
-      movement_type: 'SALE_DEDUCT',
-      qty_change: -item.qty,
-      reference_type: 'ORDER_ITEM',
-      reference_id: item.id,
-      created_by: authenticatedUserId,
-    }));
-
-    const { error: movementsError } = await supabase
-      .from('stock_movements')
-      .insert(stockMovements);
-
-    if (movementsError) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Error creating stock movements' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // All validations passed - create stock movements with IDEMPOTENT approach
+    // Use DELIVER_DEDUCT movement type with order_id for idempotency
+    let deductionsCreated = 0;
+    let deductionsSkipped = 0;
+    
+    for (const item of (orderItems || [])) {
+      if (!item.product_id) continue;
+      
+      // Check if deduction already exists (idempotency check)
+      const { data: existing } = await supabase
+        .from('stock_movements')
+        .select('id')
+        .eq('order_id', orderId)
+        .eq('product_id', item.product_id)
+        .eq('movement_type', 'DELIVER_DEDUCT')
+        .maybeSingle();
+      
+      if (existing) {
+        deductionsSkipped++;
+        console.log(`Skipped duplicate deduction for order ${orderId}, product ${item.product_id}`);
+        continue;
+      }
+      
+      // Create the deduction
+      const { error: movementError } = await supabase
+        .from('stock_movements')
+        .insert({
+          warehouse_id: warehouseId,
+          product_id: item.product_id,
+          movement_type: 'DELIVER_DEDUCT',
+          qty_change: -item.qty,
+          reference_type: 'ORDER',
+          reference_id: item.id,
+          order_id: orderId,
+          created_by: authenticatedUserId,
+        });
+      
+      if (movementError) {
+        // Handle unique constraint violation gracefully (concurrent request)
+        if (movementError.code === '23505') {
+          deductionsSkipped++;
+          console.log(`Concurrent deduction detected for order ${orderId}, product ${item.product_id}`);
+          continue;
+        }
+        console.error('Movement error:', movementError);
+        throw movementError;
+      }
+      
+      deductionsCreated++;
     }
 
     // Update order: set delivered status and mark stock as deducted with timestamp
@@ -236,6 +268,7 @@ Deno.serve(async (req) => {
         delivered_at: now,
         stock_deducted: true,
         inventory_deducted_at: now,
+        fulfillment_warehouse_id: warehouseId, // Record which warehouse was used
       })
       .eq('id', orderId);
 
@@ -253,7 +286,12 @@ Deno.serve(async (req) => {
       action: 'ORDER_DELIVERED',
       actor_id: authenticatedUserId,
       before_json: { runner_status: order.runner_status, stock_deducted: false },
-      after_json: { runner_status: 'DELIVERED', stock_deducted: true },
+      after_json: { 
+        runner_status: 'DELIVERED', 
+        stock_deducted: true,
+        deductions_created: deductionsCreated,
+        deductions_skipped: deductionsSkipped,
+      },
     });
 
     // Create notification for salesperson
@@ -272,12 +310,14 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: 'Delivered. Stock deducted.',
-        movementsCreated: stockMovements.length,
+        deductionsCreated,
+        deductionsSkipped,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
+    console.error('Process delivery error:', error);
     return new Response(
       JSON.stringify({ success: false, error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
