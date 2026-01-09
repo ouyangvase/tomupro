@@ -43,27 +43,34 @@ export function useRevertDelivery() {
         throw new Error('Order is not in delivered status');
       }
 
-      // If stock was deducted, reverse it
+      // If stock was deducted, use idempotent RETURN_TO_OWNER movements
       if (order.stock_deducted && order.fulfillment_warehouse_id) {
-        // Create reverse stock movements (add stock back)
-        const reverseMovements = order.order_items
-          .filter((item: { product_id: string | null }) => item.product_id)
-          .map((item: { product_id: string; qty: number; id: string }) => ({
-            warehouse_id: order.fulfillment_warehouse_id,
-            product_id: item.product_id,
-            movement_type: 'ADJUSTMENT' as MovementType,
-            qty_change: item.qty, // Positive to add back
-            reference_type: 'ORDER_ITEM' as ReferenceType,
-            reference_id: item.id,
-            created_by: user.id,
-          }));
-
-        if (reverseMovements.length > 0) {
-          const { error: movementError } = await supabase
+        // Create RETURN_TO_OWNER movements for each item (idempotent)
+        for (const item of order.order_items) {
+          if (!item.product_id) continue;
+          
+          // Check if return already exists
+          const { data: existing } = await supabase
             .from('stock_movements')
-            .insert(reverseMovements);
-
-          if (movementError) throw movementError;
+            .select('id')
+            .eq('order_id', orderId)
+            .eq('product_id', item.product_id)
+            .eq('movement_type', 'RETURN_TO_OWNER')
+            .maybeSingle();
+          
+          if (existing) continue; // Already returned
+          
+          await supabase
+            .from('stock_movements')
+            .insert({
+              warehouse_id: order.fulfillment_warehouse_id,
+              product_id: item.product_id,
+              movement_type: 'RETURN_TO_OWNER' as MovementType,
+              qty_change: item.qty, // Positive to add back
+              reference_type: 'ORDER' as ReferenceType,
+              order_id: orderId,
+              created_by: user.id,
+            });
         }
       }
 

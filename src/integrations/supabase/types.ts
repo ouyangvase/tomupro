@@ -1502,6 +1502,7 @@ export type Database = {
           created_by: string
           id: string
           movement_type: Database["public"]["Enums"]["movement_type"]
+          order_id: string | null
           product_id: string
           qty_change: number
           reference_id: string | null
@@ -1513,6 +1514,7 @@ export type Database = {
           created_by: string
           id?: string
           movement_type: Database["public"]["Enums"]["movement_type"]
+          order_id?: string | null
           product_id: string
           qty_change: number
           reference_id?: string | null
@@ -1524,6 +1526,7 @@ export type Database = {
           created_by?: string
           id?: string
           movement_type?: Database["public"]["Enums"]["movement_type"]
+          order_id?: string | null
           product_id?: string
           qty_change?: number
           reference_id?: string | null
@@ -1536,6 +1539,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
           {
@@ -1934,46 +1944,6 @@ export type Database = {
           },
         ]
       }
-      stock_states_view: {
-        Row: {
-          in_transit_stock: number | null
-          last_movement_time: string | null
-          owner_name: string | null
-          owner_user_id: string | null
-          product_id: string | null
-          real_stock: number | null
-          reserved_stock: number | null
-          returned_pending_stock: number | null
-          sku_code: string | null
-          sku_name: string | null
-          total_stock: number | null
-          warehouse_id: string | null
-          warehouse_name: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "stock_movements_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "stock_movements_warehouse_id_fkey"
-            columns: ["warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "warehouses"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "warehouses_owner_user_id_fkey"
-            columns: ["owner_user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Functions: {
       can_view_stock: {
@@ -1994,6 +1964,26 @@ export type Database = {
           warehouse_id: string
           warehouse_name: string
         }[]
+      }
+      create_delivery_deduction: {
+        Args: {
+          p_actor_id: string
+          p_order_id: string
+          p_product_id: string
+          p_qty: number
+          p_warehouse_id: string
+        }
+        Returns: boolean
+      }
+      create_return_to_owner: {
+        Args: {
+          p_actor_id: string
+          p_order_id: string
+          p_product_id: string
+          p_qty: number
+          p_warehouse_id: string
+        }
+        Returns: boolean
       }
       generate_driver_code: { Args: { p_driver_id: string }; Returns: Json }
       get_delivery_charge: {
@@ -2099,6 +2089,9 @@ export type Database = {
         | "RUNNER_RETURN_ACK"
         | "INBOUND_RECEIVE"
         | "STOCK_CORRECTION"
+        | "DELIVER_DEDUCT"
+        | "RETURN_TO_OWNER"
+        | "REVERSAL"
       order_status: "BOOKING" | "READY" | "CANCELLED"
       payment_method: "COD" | "TRANSFER"
       reconciliation_status:
@@ -2274,6 +2267,9 @@ export const Constants = {
         "RUNNER_RETURN_ACK",
         "INBOUND_RECEIVE",
         "STOCK_CORRECTION",
+        "DELIVER_DEDUCT",
+        "RETURN_TO_OWNER",
+        "REVERSAL",
       ],
       order_status: ["BOOKING", "READY", "CANCELLED"],
       payment_method: ["COD", "TRANSFER"],
