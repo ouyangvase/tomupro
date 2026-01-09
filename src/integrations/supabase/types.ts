@@ -890,6 +890,70 @@ export type Database = {
           },
         ]
       }
+      inventory_data_issues: {
+        Row: {
+          balance_qty: number
+          created_at: string
+          details: Json | null
+          id: string
+          issue_type: string
+          original_movement_id: string | null
+          product_id: string | null
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          warehouse_id: string | null
+        }
+        Insert: {
+          balance_qty?: number
+          created_at?: string
+          details?: Json | null
+          id?: string
+          issue_type: string
+          original_movement_id?: string | null
+          product_id?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          warehouse_id?: string | null
+        }
+        Update: {
+          balance_qty?: number
+          created_at?: string
+          details?: Json | null
+          id?: string
+          issue_type?: string
+          original_movement_id?: string | null
+          product_id?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          warehouse_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_data_issues_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_data_issues_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_data_issues_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manager_groups: {
         Row: {
           created_at: string
