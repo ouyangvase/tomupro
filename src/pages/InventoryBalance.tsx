@@ -14,6 +14,9 @@ import { VisibilityManagementDialog } from '@/components/inventory/VisibilityMan
 import { ManagerGroupsDialog } from '@/components/inventory/ManagerGroupsDialog';
 import type { StockBalance } from '@/types/database';
 
+interface StockBalanceRow extends StockBalance {
+  _key: string;
+}
 export default function InventoryBalance() {
   const { profile } = useAuth();
   const { data: stockBalance = [], isLoading } = useFilteredStockBalance();
@@ -34,18 +37,22 @@ export default function InventoryBalance() {
   const visibleOwners = [...new Set(stockBalance.map(s => s.owner_user_id))];
   const ownerOptions = salespersons.filter(sp => visibleOwners.includes(sp.id));
   
-  // Apply owner filter
-  const filteredStock = ownerFilter === 'all' 
+  // Apply owner filter and add unique key
+  const filteredStock: StockBalanceRow[] = (ownerFilter === 'all' 
     ? stockBalance 
-    : stockBalance.filter(s => s.owner_user_id === ownerFilter);
+    : stockBalance.filter(s => s.owner_user_id === ownerFilter)
+  ).map((s, idx) => ({
+    ...s,
+    _key: `${s.warehouse_id}-${s.product_id || idx}`,
+  }));
 
-  const columns: Column<StockBalance>[] = [
+  const columns: Column<StockBalanceRow>[] = [
     { key: 'owner_name', header: 'Owner', sortable: true, render: (s) => (
       <Badge variant="outline">{s.owner_name}</Badge>
     )},
     { key: 'warehouse_name', header: 'Warehouse', sortable: true },
     { key: 'sku_code', header: 'SKU Code', render: (s) => s.sku_code || '-' },
-    { key: 'sku_name', header: 'Product', sortable: true },
+    { key: 'sku_name', header: 'Product', sortable: true, render: (s) => s.sku_name || '-' },
     { key: 'balance_qty', header: 'Balance', sortable: true, render: (s) => (
       <Badge variant={Number(s.balance_qty) > 0 ? 'default' : 'destructive'}>
         {s.balance_qty}
@@ -99,10 +106,10 @@ export default function InventoryBalance() {
           </div>
         )}
 
-        <DataGrid
+        <DataGrid<StockBalanceRow>
           data={filteredStock}
           columns={columns}
-          keyField="product_id"
+          keyField="_key"
           loading={isLoading}
           emptyMessage="No stock data available"
           onExport={() => {}}
