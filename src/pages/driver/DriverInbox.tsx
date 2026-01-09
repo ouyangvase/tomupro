@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Check, X, Phone, MapPin, Package, User, Calendar, Loader2, Truck } from 'lucide-react';
 import { format, isToday, isTomorrow, parseISO, addDays, startOfDay } from 'date-fns';
+import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 
 const driverStatusColors: Record<string, string> = {
   ASSIGNED: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -241,11 +242,9 @@ export default function DriverInbox() {
                       <div className="flex items-start gap-2 text-sm border-t pt-2 mt-2">
                         <Package className="h-4 w-4 text-muted-foreground mt-0.5" />
                         <div className="flex-1">
-                          {order.order_items.map(item => (
-                            <div key={item.id} className="text-xs">
-                              {item.sku_label || 'Item'} x{item.qty}
-                            </div>
-                          ))}
+                          <span className={`text-xs ${formatOrderItemsDisplay(order.order_items).hasError ? 'text-destructive' : ''}`}>
+                            {formatOrderItemsDisplay(order.order_items).displayText}
+                          </span>
                         </div>
                       </div>
                     )}

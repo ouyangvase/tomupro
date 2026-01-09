@@ -17,6 +17,7 @@ import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers, useAssignOrderToDriver } from '@/hooks/useDrivers';
 import { exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
+import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -298,11 +299,21 @@ export default function RunnerInbox() {
       key: 'items_summary',
       header: 'Items',
       render: (order) => {
-        const itemCount = order.order_items?.length || 0;
+        const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
         return (
           <div className="text-sm">
-            <span className="font-medium">{itemCount} SKU</span>
-            <span className="text-muted-foreground"> · {order.total_qty} units</span>
+            {hasError ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-destructive cursor-help">{displayText}</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{errorMessage}</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="font-medium">{displayText}</span>
+            )}
           </div>
         );
       },

@@ -8,6 +8,7 @@ import { useUserDirectory, useRunners } from '@/hooks/useUserDirectory';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { exportSelectedOrderLines } from '@/lib/csv';
+import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useToast } from '@/hooks/use-toast';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
 import { Inbox, MessageCircle, UserPlus } from 'lucide-react';
@@ -211,6 +212,29 @@ export default function AdminRunnerInbox() {
       filterable: true,
       filterOptions: areaOptions,
       render: (order) => order.area || '-',
+    },
+    {
+      key: 'items_summary',
+      header: 'Items',
+      render: (order) => {
+        const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+        return (
+          <div className="text-sm">
+            {hasError ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-destructive cursor-help">{displayText}</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{errorMessage}</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="font-medium">{displayText}</span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'total_amount',
