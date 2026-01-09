@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { RunnerReviewModal } from '@/components/runner/RunnerReviewModal';
 import { toast } from 'sonner';
+import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import type { Order } from '@/types/database';
 
 const driverStatusColors: Record<string, string> = {
@@ -400,7 +401,9 @@ export default function RunnerDriverInbox() {
                             <Badge variant="outline">{order.area || '-'}</Badge>
                           </TableCell>
                           <TableCell>
-                            {order.order_items?.length || 0} SKU · {order.total_qty} units
+                            <span className={`text-sm ${formatOrderItemsDisplay(order.order_items).hasError ? 'text-destructive' : ''}`}>
+                              {formatOrderItemsDisplay(order.order_items).displayText}
+                            </span>
                           </TableCell>
                           <TableCell className="font-medium">RM {Number(order.total_amount).toFixed(2)}</TableCell>
                           <TableCell>

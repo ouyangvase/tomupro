@@ -3,6 +3,21 @@
 import type { OrderItem } from '@/types/database';
 
 /**
+ * Get SKU code from order item - prefers product.sku_code, falls back to sku_label
+ */
+function getSkuCode(item: OrderItem): string | null {
+  // First try the linked product's sku_code
+  if (item.product?.sku_code) {
+    return item.product.sku_code;
+  }
+  // Fall back to sku_label if it looks like a SKU code (not a product name)
+  if (item.sku_label) {
+    return item.sku_label;
+  }
+  return null;
+}
+
+/**
  * Format order items for display in data grids
  * Returns format: "TY03 × 1, TY02 × 2" or appropriate error/placeholder
  */
@@ -19,9 +34,7 @@ export function formatOrderItemsDisplay(orderItems: OrderItem[] | undefined): {
   }
 
   // Check for missing SKU codes
-  const missingSkuItems = orderItems.filter(
-    item => !item.product?.sku_code && !item.sku_label
-  );
+  const missingSkuItems = orderItems.filter(item => !getSkuCode(item));
 
   if (missingSkuItems.length > 0) {
     console.error('Order items missing SKU code:', missingSkuItems);
@@ -34,7 +47,7 @@ export function formatOrderItemsDisplay(orderItems: OrderItem[] | undefined): {
 
   // Format: "TY03 × 1, TY02 × 2"
   const formattedItems = orderItems.map(item => {
-    const skuCode = item.product?.sku_code || item.sku_label || 'Unknown';
+    const skuCode = getSkuCode(item) || 'Unknown';
     return `${skuCode} × ${item.qty}`;
   });
 
