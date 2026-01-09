@@ -103,10 +103,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get the ORIGINAL OWNER's warehouse (salesperson's warehouse - critical for correct stock tracking)
+    // CRITICAL: Stock belongs to salesperson ONLY
+    // Get the salesperson's warehouse - this is the SINGLE SOURCE OF TRUTH
     let warehouseId = order.fulfillment_warehouse_id;
     
-    // Always try salesperson's warehouse first - this is the SOURCE OF TRUTH for stock
+    // Always use salesperson's warehouse - never runner's
     if (!warehouseId) {
       const { data: spWarehouse } = await supabase
         .from('warehouses')
@@ -118,24 +119,15 @@ Deno.serve(async (req) => {
       
       warehouseId = spWarehouse?.id;
     }
-    
-    // Only fall back to runner's warehouse if salesperson doesn't have one
-    // This maintains correct stock tracking - stock belongs to salesperson
-    if (!warehouseId && order.runner_id) {
-      const { data: runnerWarehouse } = await supabase
-        .from('warehouses')
-        .select('id')
-        .eq('owner_user_id', order.runner_id)
-        .eq('warehouse_type', 'RUNNER')
-        .eq('is_active', true)
-        .single();
-      
-      warehouseId = runnerWarehouse?.id;
-    }
 
+    // NO FALLBACK TO RUNNER - stock only belongs to salesperson
     if (!warehouseId) {
+      console.error('No salesperson warehouse found for order', orderId);
       return new Response(
-        JSON.stringify({ success: false, error: 'No fulfillment warehouse found' }),
+        JSON.stringify({ 
+          success: false, 
+          error: 'No salesperson warehouse found. Stock can only be deducted from salesperson inventory.' 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

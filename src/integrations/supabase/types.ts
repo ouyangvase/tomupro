@@ -2112,6 +2112,10 @@ export type Database = {
           warehouse_name: string
         }[]
       }
+      get_stock_owner_warehouse: {
+        Args: { p_order_id: string }
+        Returns: string
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]

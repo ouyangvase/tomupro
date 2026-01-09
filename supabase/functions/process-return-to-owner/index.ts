@@ -104,11 +104,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get the warehouse where stock was deducted from
+    // Get the warehouse where stock was deducted from (MUST be salesperson's warehouse)
     let warehouseId = order.fulfillment_warehouse_id;
     
     if (!warehouseId) {
-      // Try to find salesperson's warehouse
+      // Find salesperson's warehouse - the ONLY valid stock owner
       const { data: spWarehouse } = await supabase
         .from('warehouses')
         .select('id')
@@ -120,9 +120,13 @@ Deno.serve(async (req) => {
       warehouseId = spWarehouse?.id;
     }
 
+    // NO FALLBACK TO RUNNER - stock only belongs to salesperson
     if (!warehouseId) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Cannot determine warehouse for return' }),
+        JSON.stringify({ 
+          success: false, 
+          error: 'No salesperson warehouse found. Stock can only be returned to salesperson inventory.' 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
