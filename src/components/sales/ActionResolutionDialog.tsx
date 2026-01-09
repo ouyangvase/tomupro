@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Package, User, MapPin, Phone, AlertCircle, Loader2 } from 'lucide-react';
+import { CalendarIcon, Package, User, MapPin, Phone, AlertCircle, Loader2, Calendar as CalendarCheck, XCircle, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBND } from '@/lib/currency';
 import { useBindings } from '@/hooks/useBindings';
@@ -25,7 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Order } from '@/types/database';
 
-type ResolutionType = 'RESCHEDULE' | 'CANCEL' | 'SEND_TO_READY';
+type ResolutionType = 'AUTO_RESCHEDULE' | 'CONVERT_TO_BOOKING' | 'CANCEL';
 
 interface ActionResolutionDialogProps {
   order: Order | null;
@@ -43,17 +43,16 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
   const [resolutionType, setResolutionType] = useState<ResolutionType | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Reschedule fields
+  // Auto Reschedule fields - use existing next_delivery_date if available
+  const [autoRescheduleRemark, setAutoRescheduleRemark] = useState('');
+
+  // Convert to Booking fields
   const [newDate, setNewDate] = useState<Date | undefined>(undefined);
-  const [rescheduleRemark, setRescheduleRemark] = useState('');
+  const [bookingRemark, setBookingRemark] = useState('');
 
   // Cancel fields
   const [cancelReasonId, setCancelReasonId] = useState('');
   const [cancelRemark, setCancelRemark] = useState('');
-
-  // Send to Ready fields
-  const [selectedRunnerId, setSelectedRunnerId] = useState('');
-  const [readyRemark, setReadyRemark] = useState('');
 
   // Fetch cancel reasons
   const { data: cancelReasons = [] } = useReasons('CANCEL', true);
@@ -65,17 +64,19 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
     return bindings.map(b => b.runner).filter(Boolean);
   }, [bindings]);
 
+  // Check if order has a reschedule date (for Auto Reschedule option)
+  const hasRescheduleDate = order?.next_delivery_date != null;
+  
   // Check if order is delivered (lock rule)
   const isDelivered = order?.runner_status === 'DELIVERED';
 
   const resetForm = () => {
     setResolutionType(null);
+    setAutoRescheduleRemark('');
     setNewDate(undefined);
-    setRescheduleRemark('');
+    setBookingRemark('');
     setCancelReasonId('');
     setCancelRemark('');
-    setSelectedRunnerId('');
-    setReadyRemark('');
   };
 
   const handleClose = () => {
@@ -89,9 +90,50 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
     setIsSubmitting(true);
 
     try {
-      if (resolutionType === 'RESCHEDULE') {
-        if (!newDate || !rescheduleRemark.trim()) {
-          toast.error('Please select a date and enter a remark');
+      const now = new Date().toISOString();
+      
+      if (resolutionType === 'AUTO_RESCHEDULE') {
+        if (!hasRescheduleDate) {
+          toast.error('No reschedule date available for this order');
+          setIsSubmitting(false);
+          return;
+        }
+
+        // Record the salesperson decision in reschedule history
+        await supabase.from('reschedule_history').insert({
+          order_id: order.id,
+          cycle_no: (order.reschedule_cycle_no || 0) + 1,
+          from_status: order.operational_status || order.status,
+          to_status: 'BOOKING_AUTO_RESCHEDULE',
+          next_delivery_date: order.next_delivery_date,
+          comment: `Salesperson confirmed auto-reschedule: ${autoRescheduleRemark || 'No comment'}`,
+          rescheduled_by: profile.id,
+        });
+
+        // Update order - move to BOOKING, keep next_delivery_date for auto-assignment
+        await updateOrder.mutateAsync({
+          id: order.id,
+          status: 'BOOKING',
+          expected_pickup_date: order.next_delivery_date!,
+          salesperson_action_required: false,
+          salesperson_action_type: 'AUTO_RESCHEDULE',
+          last_status_note: `Auto-reschedule confirmed for ${order.next_delivery_date}: ${autoRescheduleRemark || ''}`,
+          runner_status: 'UNASSIGNED',
+          runner_id: null,
+          driver_id: null,
+          driver_status: null,
+          reschedule_flag: true,
+          reschedule_cycle_no: (order.reschedule_cycle_no || 0) + 1,
+        });
+
+        toast.success('Order confirmed for auto-reschedule');
+        handleClose();
+        onSuccess?.();
+        navigate('/sales/booking');
+
+      } else if (resolutionType === 'CONVERT_TO_BOOKING') {
+        if (!newDate) {
+          toast.error('Please select a new date');
           setIsSubmitting(false);
           return;
         }
@@ -104,25 +146,41 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           changed_by: profile.id,
         });
 
-        // Update order
+        // Record the salesperson decision
+        await supabase.from('reschedule_history').insert({
+          order_id: order.id,
+          cycle_no: (order.reschedule_cycle_no || 0) + 1,
+          from_status: order.operational_status || order.status,
+          to_status: 'BOOKING_MANUAL',
+          next_delivery_date: format(newDate, 'yyyy-MM-dd'),
+          comment: `Salesperson converted to booking: ${bookingRemark || 'No comment'}`,
+          rescheduled_by: profile.id,
+        });
+
+        // Update order - move to BOOKING with new date
         await updateOrder.mutateAsync({
           id: order.id,
           status: 'BOOKING',
           expected_pickup_date: format(newDate, 'yyyy-MM-dd'),
+          next_delivery_date: null, // Clear the auto-schedule date
           salesperson_action_required: false,
-          last_status_note: rescheduleRemark,
+          salesperson_action_type: 'CONVERT_TO_BOOKING',
+          last_status_note: `Converted to booking for ${format(newDate, 'dd MMM yyyy')}: ${bookingRemark || ''}`,
           runner_id: null,
           runner_status: 'UNASSIGNED',
+          driver_id: null,
+          driver_status: null,
+          reschedule_cycle_no: (order.reschedule_cycle_no || 0) + 1,
         });
 
-        toast.success('Order rescheduled to Booking Sales');
+        toast.success('Order converted to Booking Sales');
         handleClose();
         onSuccess?.();
         navigate('/sales/booking');
 
       } else if (resolutionType === 'CANCEL') {
-        if (!cancelReasonId || !cancelRemark.trim()) {
-          toast.error('Please select a reason and enter a remark');
+        if (!cancelReasonId) {
+          toast.error('Please select a cancel reason');
           setIsSubmitting(false);
           return;
         }
@@ -136,40 +194,33 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
 
         const selectedReason = cancelReasons.find(r => r.id === cancelReasonId);
 
+        // Record the salesperson decision
+        await supabase.from('reschedule_history').insert({
+          order_id: order.id,
+          cycle_no: (order.reschedule_cycle_no || 0) + 1,
+          from_status: order.operational_status || order.status,
+          to_status: 'CANCELLED',
+          comment: `Salesperson cancelled: ${selectedReason?.label || ''} - ${cancelRemark || 'No comment'}`,
+          rescheduled_by: profile.id,
+        });
+
         await updateOrder.mutateAsync({
           id: order.id,
           status: 'CANCELLED',
           cancel_reason: selectedReason?.label || '',
-          cancel_notes: cancelRemark,
+          cancel_notes: cancelRemark || null,
+          cancelled_at: now,
+          cancelled_by: profile.id,
           salesperson_action_required: false,
+          salesperson_action_type: 'CANCEL',
           runner_status: 'UNASSIGNED',
+          next_delivery_date: null,
         });
 
         toast.success('Order cancelled');
         handleClose();
         onSuccess?.();
         navigate('/sales/cancelled');
-
-      } else if (resolutionType === 'SEND_TO_READY') {
-        if (!selectedRunnerId) {
-          toast.error('Please select a runner');
-          setIsSubmitting(false);
-          return;
-        }
-
-        await updateOrder.mutateAsync({
-          id: order.id,
-          status: 'READY',
-          runner_id: selectedRunnerId,
-          runner_status: 'ASSIGNED',
-          salesperson_action_required: false,
-          last_status_note: readyRemark || null,
-        });
-
-        toast.success('Order sent to Ready Sales and assigned to runner');
-        handleClose();
-        onSuccess?.();
-        navigate('/sales/ready');
       }
 
     } catch (error: any) {
@@ -181,9 +232,9 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
 
   const canSubmit = () => {
     if (!resolutionType) return false;
-    if (resolutionType === 'RESCHEDULE') return !!newDate && !!rescheduleRemark.trim();
-    if (resolutionType === 'CANCEL') return !!cancelReasonId && !!cancelRemark.trim() && !isDelivered;
-    if (resolutionType === 'SEND_TO_READY') return !!selectedRunnerId;
+    if (resolutionType === 'AUTO_RESCHEDULE') return hasRescheduleDate;
+    if (resolutionType === 'CONVERT_TO_BOOKING') return !!newDate;
+    if (resolutionType === 'CANCEL') return !!cancelReasonId && !isDelivered;
     return false;
   };
 
@@ -263,23 +314,48 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
 
         {/* Resolution Options */}
         <div className="space-y-4">
-          <Label className="text-base font-semibold">Choose Resolution</Label>
+          <Label className="text-base font-semibold">Choose Action</Label>
           
           <RadioGroup 
             value={resolutionType || ''} 
             onValueChange={(v) => setResolutionType(v as ResolutionType)}
             className="space-y-3"
           >
+            {/* Auto Reschedule - only show if order has next_delivery_date */}
             <div className={cn(
               "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
-              resolutionType === 'RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+              resolutionType === 'AUTO_RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+              !hasRescheduleDate && "opacity-50 cursor-not-allowed"
             )}>
-              <RadioGroupItem value="RESCHEDULE" id="reschedule" />
+              <RadioGroupItem value="AUTO_RESCHEDULE" id="auto-reschedule" disabled={!hasRescheduleDate} />
               <div className="flex-1">
-                <Label htmlFor="reschedule" className="font-medium cursor-pointer">
-                  Reschedule / Change Date
+                <Label htmlFor="auto-reschedule" className={cn("font-medium cursor-pointer", !hasRescheduleDate && "cursor-not-allowed")}>
+                  <div className="flex items-center gap-2">
+                    <CalendarCheck className="h-4 w-4 text-green-600" />
+                    Auto Reschedule
+                  </div>
                 </Label>
-                <p className="text-xs text-muted-foreground">Move order to Booking Sales with new expected date</p>
+                <p className="text-xs text-muted-foreground">
+                  {hasRescheduleDate 
+                    ? `Order will auto-assign runner on ${format(parseISO(order!.next_delivery_date!), 'dd MMM yyyy')}`
+                    : "No reschedule date set by runner"}
+                </p>
+              </div>
+            </div>
+
+            <div className={cn(
+              "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
+              resolutionType === 'CONVERT_TO_BOOKING' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            )}>
+              <RadioGroupItem value="CONVERT_TO_BOOKING" id="convert-booking" />
+              <div className="flex-1">
+                <Label htmlFor="convert-booking" className="font-medium cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <ArrowRight className="h-4 w-4 text-blue-600" />
+                    Convert to Booking
+                  </div>
+                </Label>
+                <p className="text-xs text-muted-foreground">Move to Booking Sales with a new date (manual assignment later)</p>
               </div>
             </div>
 
@@ -291,7 +367,10 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
               <RadioGroupItem value="CANCEL" id="cancel" disabled={isDelivered} />
               <div className="flex-1">
                 <Label htmlFor="cancel" className={cn("font-medium cursor-pointer", isDelivered && "cursor-not-allowed")}>
-                  Cancel Order
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-red-600" />
+                    Cancel Order
+                  </div>
                 </Label>
                 <p className="text-xs text-muted-foreground">
                   {isDelivered 
@@ -300,24 +379,34 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
                 </p>
               </div>
             </div>
-
-            <div className={cn(
-              "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
-              resolutionType === 'SEND_TO_READY' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-            )}>
-              <RadioGroupItem value="SEND_TO_READY" id="ready" />
-              <div className="flex-1">
-                <Label htmlFor="ready" className="font-medium cursor-pointer">
-                  Send to Ready Sales
-                </Label>
-                <p className="text-xs text-muted-foreground">Move order to Ready Sales and assign to a runner</p>
-              </div>
-            </div>
           </RadioGroup>
         </div>
 
         {/* Resolution-specific fields */}
-        {resolutionType === 'RESCHEDULE' && (
+        {resolutionType === 'AUTO_RESCHEDULE' && hasRescheduleDate && (
+          <div className="space-y-4 p-4 border rounded-lg bg-green-50/50 dark:bg-green-900/10">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+              <CalendarCheck className="h-5 w-5" />
+              <span className="font-medium">
+                Scheduled for: {format(parseISO(order!.next_delivery_date!), 'EEEE, dd MMM yyyy')}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              When this date arrives, the order will automatically move to Ready Sales and be assigned to a runner.
+            </p>
+            <div className="space-y-2">
+              <Label>Note (Optional)</Label>
+              <Textarea
+                value={autoRescheduleRemark}
+                onChange={(e) => setAutoRescheduleRemark(e.target.value)}
+                placeholder="Add a note about this decision..."
+                rows={2}
+              />
+            </div>
+          </div>
+        )}
+
+        {resolutionType === 'CONVERT_TO_BOOKING' && (
           <div className="space-y-4 p-4 border rounded-lg">
             <div className="space-y-2">
               <Label>New Expected Date *</Label>
@@ -346,19 +435,19 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
               </Popover>
             </div>
             <div className="space-y-2">
-              <Label>Remark *</Label>
+              <Label>Note (Optional)</Label>
               <Textarea
-                value={rescheduleRemark}
-                onChange={(e) => setRescheduleRemark(e.target.value)}
-                placeholder="Enter reason for rescheduling..."
-                rows={3}
+                value={bookingRemark}
+                onChange={(e) => setBookingRemark(e.target.value)}
+                placeholder="Enter reason for booking conversion..."
+                rows={2}
               />
             </div>
           </div>
         )}
 
         {resolutionType === 'CANCEL' && (
-          <div className="space-y-4 p-4 border rounded-lg">
+          <div className="space-y-4 p-4 border rounded-lg border-red-200 bg-red-50/50 dark:bg-red-900/10">
             <div className="space-y-2">
               <Label>Cancel Reason *</Label>
               <Select value={cancelReasonId} onValueChange={setCancelReasonId}>
@@ -375,47 +464,11 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Remark *</Label>
+              <Label>Note (Optional)</Label>
               <Textarea
                 value={cancelRemark}
                 onChange={(e) => setCancelRemark(e.target.value)}
                 placeholder="Enter cancellation notes..."
-                rows={3}
-              />
-            </div>
-          </div>
-        )}
-
-        {resolutionType === 'SEND_TO_READY' && (
-          <div className="space-y-4 p-4 border rounded-lg">
-            <div className="space-y-2">
-              <Label>Assign Runner *</Label>
-              <Select value={selectedRunnerId} onValueChange={setSelectedRunnerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select runner" />
-                </SelectTrigger>
-                <SelectContent>
-                  {boundRunners.length === 0 ? (
-                    <SelectItem value="_none" disabled>No runners available</SelectItem>
-                  ) : (
-                    boundRunners.map((runner) => (
-                      <SelectItem key={runner!.id} value={runner!.id}>
-                        {runner!.display_name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {boundRunners.length === 0 && (
-                <p className="text-xs text-destructive">No runners bound to your account. Contact admin.</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Remark (Optional)</Label>
-              <Textarea
-                value={readyRemark}
-                onChange={(e) => setReadyRemark(e.target.value)}
-                placeholder="Optional notes for runner..."
                 rows={2}
               />
             </div>
@@ -431,7 +484,7 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
             disabled={!canSubmit() || isSubmitting}
           >
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Confirm
+            Confirm Action
           </Button>
         </DialogFooter>
       </DialogContent>
