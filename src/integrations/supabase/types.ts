@@ -1060,6 +1060,7 @@ export type Database = {
           failed_remark: string | null
           fulfillment_warehouse_id: string | null
           id: string
+          inventory_deducted_at: string | null
           last_status_note: string | null
           next_delivery_date: string | null
           notes: string | null
@@ -1119,6 +1120,7 @@ export type Database = {
           failed_remark?: string | null
           fulfillment_warehouse_id?: string | null
           id?: string
+          inventory_deducted_at?: string | null
           last_status_note?: string | null
           next_delivery_date?: string | null
           notes?: string | null
@@ -1178,6 +1180,7 @@ export type Database = {
           failed_remark?: string | null
           fulfillment_warehouse_id?: string | null
           id?: string
+          inventory_deducted_at?: string | null
           last_status_note?: string | null
           next_delivery_date?: string | null
           notes?: string | null

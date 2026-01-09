@@ -227,13 +227,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update order: set delivered status and mark stock as deducted
+    // Update order: set delivered status and mark stock as deducted with timestamp
+    const now = new Date().toISOString();
     const { error: updateError } = await supabase
       .from('orders')
       .update({
         runner_status: 'DELIVERED',
-        delivered_at: new Date().toISOString(),
+        delivered_at: now,
         stock_deducted: true,
+        inventory_deducted_at: now,
       })
       .eq('id', orderId);
 
