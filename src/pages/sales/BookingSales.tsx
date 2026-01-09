@@ -126,6 +126,20 @@ export default function BookingSales() {
       ],
       render: (o) => <StatusBadge status={o.runner_status} type="runner" /> 
     },
+    {
+      key: 'next_delivery_date',
+      header: 'Next Schedule / Remark',
+      width: '140px',
+      sortable: true,
+      render: (o) => {
+        if (!o.next_delivery_date) return null;
+        return (
+          <span className="text-sm text-muted-foreground">
+            Next: {format(new Date(o.next_delivery_date), 'dd MMM yyyy')}
+          </span>
+        );
+      }
+    },
     { 
       key: 'reconciliation_status', 
       header: 'Reconciliation', 
