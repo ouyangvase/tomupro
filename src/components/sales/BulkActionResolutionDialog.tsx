@@ -21,7 +21,7 @@ import {
   Calendar as CalendarCheck, ArrowRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useReasons } from '@/hooks/useReasons';
+import { useCancelReasons } from '@/hooks/useCancelReasons';
 import { useUpdateOrder } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -66,8 +66,8 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
   const [cancelRemark, setCancelRemark] = useState('');
   const [skipDelivered, setSkipDelivered] = useState(true);
 
-  // Fetch cancel reasons
-  const { data: cancelReasons = [] } = useReasons('CANCEL', true);
+  // Fetch cancel reasons from cancel_reasons table
+  const { data: cancelReasons = [] } = useCancelReasons(true);
 
   // Check delivered orders
   const deliveredOrders = useMemo(() => 
@@ -141,7 +141,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               status: 'BOOKING',
               expected_pickup_date: order.next_delivery_date,
               salesperson_action_required: false,
-              salesperson_action_type: 'AUTO_RESCHEDULE',
+              salesperson_action_type: 'RESCHEDULE_DELIVERY',
               last_status_note: `Auto-reschedule confirmed for ${order.next_delivery_date}`,
               runner_status: 'UNASSIGNED',
               runner_id: null,
@@ -196,7 +196,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               expected_pickup_date: format(newDate, 'yyyy-MM-dd'),
               next_delivery_date: null,
               salesperson_action_required: false,
-              salesperson_action_type: 'CONVERT_TO_BOOKING',
+              salesperson_action_type: 'RESCHEDULE_DELIVERY',
               last_status_note: `Converted to booking for ${format(newDate, 'dd MMM yyyy')}`,
               runner_id: null,
               runner_status: 'UNASSIGNED',
@@ -230,7 +230,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
           return;
         }
 
-        const selectedReason = cancelReasons.find(r => r.id === cancelReasonId);
+        const selectedReason = cancelReasons.find(r => r.id === cancelReasonId)?.reason;
 
         for (const order of orders) {
           // Skip delivered orders if toggle is on
@@ -253,19 +253,19 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               cycle_no: (order.reschedule_cycle_no || 0) + 1,
               from_status: order.operational_status || order.status,
               to_status: 'CANCELLED',
-              comment: `Salesperson cancelled: ${selectedReason?.label || ''} - ${cancelRemark || 'Bulk action'}`,
+              comment: `Salesperson cancelled: ${selectedReason || ''} - ${cancelRemark || 'Bulk action'}`,
               rescheduled_by: profile.id,
             });
 
             await updateOrder.mutateAsync({
               id: order.id,
               status: 'CANCELLED',
-              cancel_reason: selectedReason?.label || '',
+              cancel_reason: selectedReason || '',
               cancel_notes: cancelRemark || null,
               cancelled_at: now,
               cancelled_by: profile.id,
               salesperson_action_required: false,
-              salesperson_action_type: 'CANCEL',
+              salesperson_action_type: 'CANCEL_ORDER',
               runner_status: 'UNASSIGNED',
               next_delivery_date: null,
             });
@@ -602,7 +602,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
                 <SelectContent>
                   {cancelReasons.map((reason) => (
                     <SelectItem key={reason.id} value={reason.id}>
-                      {reason.label}
+                      {reason.reason}
                     </SelectItem>
                   ))}
                 </SelectContent>
