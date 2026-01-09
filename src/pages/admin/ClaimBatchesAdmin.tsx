@@ -3,9 +3,11 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useClaimBatches, useAcknowledgeClaimBatch } from '@/hooks/useClaimBatches';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { useClaimBatches, useApproveClaimBatch, useRejectClaimBatch } from '@/hooks/useClaimBatches';
 import { format } from 'date-fns';
-import { CheckCircle, Receipt, Loader2 } from 'lucide-react';
+import { CheckCircle, Receipt, Loader2, XCircle } from 'lucide-react';
 import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
 import type { ClaimBatch } from '@/types/database';
 import {
@@ -24,22 +26,52 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function ClaimBatchesAdmin() {
   const { data: batches = [], isLoading } = useClaimBatches({ status: 'ADMIN_ACK_PENDING' });
-  const acknowledgeClaimBatch = useAcknowledgeClaimBatch();
+  const approveClaimBatch = useApproveClaimBatch();
+  const rejectClaimBatch = useRejectClaimBatch();
   const [selectedBatch, setSelectedBatch] = useState<ClaimBatch | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   const handleViewDetails = (batch: ClaimBatch) => {
     setSelectedBatch(batch);
     setDetailsOpen(true);
   };
 
-  const handleAcknowledge = async (batch: ClaimBatch) => {
-    await acknowledgeClaimBatch.mutateAsync(batch.id);
+  const handleApprove = async (batch: ClaimBatch) => {
+    await approveClaimBatch.mutateAsync(batch.id);
     setDetailsOpen(false);
     setSelectedBatch(null);
+  };
+
+  const handleRejectClick = (batch: ClaimBatch) => {
+    setSelectedBatch(batch);
+    setRejectDialogOpen(true);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!selectedBatch) return;
+    await rejectClaimBatch.mutateAsync({
+      batchId: selectedBatch.id,
+      rejectionReason: rejectionReason || undefined,
+    });
+    setRejectDialogOpen(false);
+    setDetailsOpen(false);
+    setSelectedBatch(null);
+    setRejectionReason('');
   };
 
   const columns: Column<ClaimBatch>[] = [
@@ -87,19 +119,31 @@ export default function ClaimBatchesAdmin() {
       render: (batch) => (
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => handleViewDetails(batch)}>
-            View Details
+            View
           </Button>
           <Button 
             size="sm" 
-            onClick={() => handleAcknowledge(batch)}
-            disabled={acknowledgeClaimBatch.isPending}
+            onClick={() => handleApprove(batch)}
+            disabled={approveClaimBatch.isPending}
+            className="bg-green-600 hover:bg-green-700"
           >
-            {acknowledgeClaimBatch.isPending ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            {approveClaimBatch.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <CheckCircle className="h-4 w-4 mr-1" />
+              <CheckCircle className="h-4 w-4" />
             )}
-            Acknowledge
+          </Button>
+          <Button 
+            size="sm"
+            variant="destructive"
+            onClick={() => handleRejectClick(batch)}
+            disabled={rejectClaimBatch.isPending}
+          >
+            {rejectClaimBatch.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
           </Button>
         </div>
       ),
@@ -113,7 +157,7 @@ export default function ClaimBatchesAdmin() {
           <Receipt className="h-8 w-8 text-primary" />
           <div>
             <h1 className="text-2xl font-bold">Claim Batches</h1>
-            <p className="text-muted-foreground">Review and acknowledge runner claim batches</p>
+            <p className="text-muted-foreground">Review and approve/reject runner claim batches</p>
           </div>
         </div>
 
@@ -127,6 +171,7 @@ export default function ClaimBatchesAdmin() {
         />
       </div>
 
+      {/* Details Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -163,7 +208,7 @@ export default function ClaimBatchesAdmin() {
 
             <div className="p-4 bg-muted rounded-lg">
               <p className="text-sm text-muted-foreground">Status</p>
-              <Badge className="mt-1 bg-yellow-100 text-yellow-800">Pending Admin Acknowledgment</Badge>
+              <Badge className="mt-1 bg-yellow-100 text-yellow-800">Pending Approval</Badge>
             </div>
 
             {selectedBatch?.note && (
@@ -208,24 +253,71 @@ export default function ClaimBatchesAdmin() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDetailsOpen(false)}>
               Close
             </Button>
             <Button
-              onClick={() => selectedBatch && handleAcknowledge(selectedBatch)}
-              disabled={acknowledgeClaimBatch.isPending}
+              variant="destructive"
+              onClick={() => selectedBatch && handleRejectClick(selectedBatch)}
+              disabled={rejectClaimBatch.isPending}
             >
-              {acknowledgeClaimBatch.isPending ? (
+              <XCircle className="h-4 w-4 mr-2" />
+              Reject
+            </Button>
+            <Button
+              onClick={() => selectedBatch && handleApprove(selectedBatch)}
+              disabled={approveClaimBatch.isPending}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {approveClaimBatch.isPending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <CheckCircle className="h-4 w-4 mr-2" />
               )}
-              Acknowledge Batch
+              Approve Batch
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Reject Confirmation Dialog */}
+      <AlertDialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Claim Batch?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will reject the claim batch and revert all {selectedBatch?.items?.length || 0} orders 
+              back to "NOT CLAIMED" status. The runner will be notified.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="space-y-2 py-4">
+            <Label htmlFor="rejectionReason">Rejection Reason (Optional)</Label>
+            <Textarea
+              id="rejectionReason"
+              placeholder="Enter reason for rejection..."
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              maxLength={500}
+            />
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setRejectionReason('')}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmReject}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={rejectClaimBatch.isPending}
+            >
+              {rejectClaimBatch.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : null}
+              Confirm Reject
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }

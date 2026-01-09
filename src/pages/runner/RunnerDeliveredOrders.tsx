@@ -21,12 +21,23 @@ import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useClaimBatches } from '@/hooks/useClaimBatches';
 
-const reconciliationColors: Record<ReconciliationStatus, string> = {
+// Claim status display mapping (user-friendly labels)
+const claimStatusLabels: Record<ReconciliationStatus, string> = {
+  NOT_CLAIMED: 'NOT CLAIMED',
+  ADMIN_ACK_PENDING: 'CLAIM SUBMITTED',
+  CLAIMED: 'APPROVED',
+  SP_ACK_PENDING: 'CLAIM SUBMITTED',
+  SETTLED: 'APPROVED',
+  DISPUTE: 'DISPUTE',
+};
+
+const claimStatusColors: Record<ReconciliationStatus, string> = {
   NOT_CLAIMED: 'bg-muted text-muted-foreground',
-  CLAIMED: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+  ADMIN_ACK_PENDING: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+  CLAIMED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   SP_ACK_PENDING: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  ADMIN_ACK_PENDING: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
   SETTLED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   DISPUTE: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
@@ -36,6 +47,7 @@ export default function RunnerDeliveredOrders() {
   const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
+  const { data: claimBatches = [] } = useClaimBatches({ runnerId: user?.id });
   const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -178,6 +190,20 @@ export default function RunnerDeliveredOrders() {
 
   const allClaimableSelected = claimableOrders.length > 0 && selectedIds.size === claimableOrders.length;
 
+  // Build a map of order_id -> batch reference for showing claim batch info
+  const orderToBatchRef = useMemo(() => {
+    const map = new Map<string, { batchId: string; submittedAt: string }>();
+    for (const batch of claimBatches) {
+      for (const item of batch.items || []) {
+        map.set(item.order_id, {
+          batchId: batch.id.slice(0, 8).toUpperCase(),
+          submittedAt: batch.submitted_at,
+        });
+      }
+    }
+    return map;
+  }, [claimBatches]);
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -318,20 +344,21 @@ export default function RunnerDeliveredOrders() {
                     <TableHead>Driver</TableHead>
                     <TableHead>Salesperson</TableHead>
                     <TableHead>Delivered At</TableHead>
-                    <TableHead>Reconciliation</TableHead>
+                    <TableHead>Claim Status</TableHead>
+                    <TableHead>Claim Batch Ref</TableHead>
                     <TableHead>Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center py-8">
+                      <TableCell colSpan={14} className="text-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                       </TableCell>
                     </TableRow>
                   ) : deliveredOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
                         No delivered orders found
                       </TableCell>
                     </TableRow>
@@ -385,9 +412,27 @@ export default function RunnerDeliveredOrders() {
                               : '-'}
                           </TableCell>
                           <TableCell>
-                            <Badge className={reconciliationColors[order.reconciliation_status]}>
-                              {order.reconciliation_status.replace(/_/g, ' ')}
+                            <Badge className={claimStatusColors[order.reconciliation_status]}>
+                              {claimStatusLabels[order.reconciliation_status]}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {orderToBatchRef.has(order.id) ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
+                                      {orderToBatchRef.get(order.id)?.batchId}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Submitted: {format(new Date(orderToBatchRef.get(order.id)!.submittedAt), 'dd MMM yyyy HH:mm')}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             {isClaimable && (
