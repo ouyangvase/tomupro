@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useOrders } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
@@ -13,8 +15,12 @@ import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
+import { supabase } from '@/integrations/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 const reconciliationColors: Record<ReconciliationStatus, string> = {
   NOT_CLAIMED: 'bg-muted text-muted-foreground',
@@ -30,11 +36,15 @@ export default function RunnerDeliveredOrders() {
   const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
+  const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('all');
   const [driverFilter, setDriverFilter] = useState('all');
   const [salespersonFilter, setSalespersonFilter] = useState('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filter to only delivered orders
   const deliveredOrders = useMemo(() => {
@@ -72,6 +82,76 @@ export default function RunnerDeliveredOrders() {
     return filtered;
   }, [orders, searchQuery, areaFilter, driverFilter, salespersonFilter]);
 
+  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED)
+  const claimableOrders = useMemo(() => {
+    return deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED');
+  }, [deliveredOrders]);
+
+  // Selected orders that are claimable
+  const selectedClaimableOrders = useMemo(() => {
+    return claimableOrders.filter(o => selectedIds.has(o.id));
+  }, [claimableOrders, selectedIds]);
+
+  // Toggle single selection
+  const toggleSelection = useCallback((orderId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Select all claimable orders
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === claimableOrders.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(claimableOrders.map(o => o.id)));
+    }
+  }, [claimableOrders, selectedIds.size]);
+
+  // Handle bulk claim submission
+  const handleBulkClaimSubmit = async (exchangeRate: number, note?: string) => {
+    if (selectedClaimableOrders.length === 0) return;
+    
+    setIsSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await supabase.functions.invoke('submit-bulk-claim', {
+        body: {
+          orderIds: selectedClaimableOrders.map(o => o.id),
+          exchangeRate,
+          note,
+        },
+      });
+
+      if (response.error) throw response.error;
+      if (!response.data?.success) throw new Error(response.data?.error || 'Failed to submit claim');
+
+      toast.success(`Successfully claimed ${selectedClaimableOrders.length} order(s)`);
+      setSelectedIds(new Set());
+      setBulkClaimOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    } catch (error) {
+      console.error('Bulk claim error:', error);
+      throw error;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle single order claim
+  const handleSingleClaim = (order: Order) => {
+    setSelectedIds(new Set([order.id]));
+    setBulkClaimOpen(true);
+  };
+
   // Extract unique areas for filter
   const areaOptions = useMemo(() => {
     if (!orders) return [];
@@ -96,95 +176,7 @@ export default function RunnerDeliveredOrders() {
     }));
   }, [myDrivers]);
 
-  const columns: Column<Order>[] = [
-    {
-      key: 'order_date',
-      header: 'Date',
-      sortable: true,
-      render: (order) => format(new Date(order.order_date), 'dd MMM yyyy'),
-    },
-    {
-      key: 'order_code',
-      header: 'Order Ref',
-      sortable: true,
-      render: (order) => <span className="font-mono text-sm">{order.order_code}</span>,
-    },
-    {
-      key: 'customer_name',
-      header: 'Customer',
-      sortable: true,
-      render: (order) => order.customer_name || '-',
-    },
-    {
-      key: 'area',
-      header: 'Area',
-      sortable: true,
-      render: (order) => <Badge variant="outline">{order.area || '-'}</Badge>,
-    },
-    {
-      key: 'items_summary',
-      header: 'Items',
-      render: (order) => {
-        const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
-        return (
-          <div className="text-sm">
-            {hasError ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-destructive cursor-help">{displayText}</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{errorMessage}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <span className="font-medium">{displayText}</span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: 'total_amount',
-      header: 'Amount (BND)',
-      sortable: true,
-      render: (order) => <span className="font-medium">{formatBND(order.total_amount)}</span>,
-    },
-    {
-      key: 'payment_method',
-      header: 'Payment',
-      render: (order) => <Badge variant="outline">{order.payment_method}</Badge>,
-    },
-    {
-      key: 'driver_id',
-      header: 'Driver',
-      render: (order) => order.driver?.display_name || '-',
-    },
-    {
-      key: 'salesperson_id',
-      header: 'Salesperson',
-      render: (order) => order.salesperson?.display_name || '-',
-    },
-    {
-      key: 'delivered_at',
-      header: 'Delivered At',
-      sortable: true,
-      render: (order) => order.delivered_at 
-        ? format(new Date(order.delivered_at), 'dd MMM yyyy HH:mm')
-        : '-',
-    },
-    {
-      key: 'reconciliation_status',
-      header: 'Reconciliation',
-      render: (order) => (
-        <Badge className={reconciliationColors[order.reconciliation_status]}>
-          {order.reconciliation_status.replace(/_/g, ' ')}
-        </Badge>
-      ),
-    },
-  ];
+  const allClaimableSelected = claimableOrders.length > 0 && selectedIds.size === claimableOrders.length;
 
   return (
     <AppLayout>
@@ -283,13 +275,148 @@ export default function RunnerDeliveredOrders() {
           </CardContent>
         </Card>
 
-        {/* Data Grid */}
-        <DataGrid
-          data={deliveredOrders}
-          columns={columns}
-          keyField="id"
-          loading={isLoading}
-          emptyMessage="No delivered orders found"
+        {/* Action Bar */}
+        {selectedClaimableOrders.length > 0 && (
+          <Card className="border-primary/50 bg-primary/5">
+            <CardContent className="p-4 flex items-center justify-between">
+              <span className="text-sm font-medium">
+                {selectedClaimableOrders.length} order(s) selected • Total: {formatBND(selectedClaimableOrders.reduce((sum, o) => sum + o.total_amount, 0))}
+              </span>
+              <Button onClick={() => setBulkClaimOpen(true)} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Bulk Claim ({selectedClaimableOrders.length})
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Orders Table */}
+        <Card>
+          <CardContent className="p-0">
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={allClaimableSelected}
+                        onCheckedChange={toggleSelectAll}
+                        disabled={claimableOrders.length === 0}
+                      />
+                    </TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Order Ref</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Area</TableHead>
+                    <TableHead>Items</TableHead>
+                    <TableHead>Amount (BND)</TableHead>
+                    <TableHead>Payment</TableHead>
+                    <TableHead>Driver</TableHead>
+                    <TableHead>Salesperson</TableHead>
+                    <TableHead>Delivered At</TableHead>
+                    <TableHead>Reconciliation</TableHead>
+                    <TableHead>Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={13} className="text-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                      </TableCell>
+                    </TableRow>
+                  ) : deliveredOrders.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                        No delivered orders found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    deliveredOrders.map((order) => {
+                      const isClaimable = order.reconciliation_status === 'NOT_CLAIMED';
+                      const isSelected = selectedIds.has(order.id);
+                      const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+
+                      return (
+                        <TableRow key={order.id} className={isSelected ? 'bg-primary/5' : ''}>
+                          <TableCell>
+                            {isClaimable ? (
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleSelection(order.id)}
+                              />
+                            ) : (
+                              <Checkbox disabled checked={false} className="opacity-30" />
+                            )}
+                          </TableCell>
+                          <TableCell>{format(new Date(order.order_date), 'dd MMM yyyy')}</TableCell>
+                          <TableCell><span className="font-mono text-sm">{order.order_code}</span></TableCell>
+                          <TableCell>{order.customer_name || '-'}</TableCell>
+                          <TableCell><Badge variant="outline">{order.area || '-'}</Badge></TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {hasError ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-destructive cursor-help">{displayText}</span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>{errorMessage}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="font-medium">{displayText}</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell><span className="font-medium">{formatBND(order.total_amount)}</span></TableCell>
+                          <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>
+                          <TableCell>{order.driver?.display_name || '-'}</TableCell>
+                          <TableCell>{order.salesperson?.display_name || '-'}</TableCell>
+                          <TableCell>
+                            {order.delivered_at 
+                              ? format(new Date(order.delivered_at), 'dd MMM yyyy HH:mm')
+                              : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={reconciliationColors[order.reconciliation_status]}>
+                              {order.reconciliation_status.replace(/_/g, ' ')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {isClaimable && (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleSingleClaim(order)}
+                              >
+                                Claim
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Bulk Claim Dialog */}
+        <BulkClaimDialog
+          open={bulkClaimOpen}
+          onOpenChange={setBulkClaimOpen}
+          orders={selectedClaimableOrders}
+          onSubmit={handleBulkClaimSubmit}
+          isSubmitting={isSubmitting}
         />
       </div>
     </AppLayout>
