@@ -28,54 +28,37 @@ export function useSalespersonActionRequiredStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // Fetch orders requiring action for this salesperson
+      // SINGLE SOURCE OF TRUTH: Only fetch orders where action is explicitly required
       const { data: orders, error } = await supabase
         .from('orders')
-        .select('id, status, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required')
+        .select('id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment')
         .eq('salesperson_id', user.id)
-        .neq('status', 'CANCELLED');
+        .eq('salesperson_action_required', true);
 
       if (error) throw error;
 
-      // Calculate stats based on action required logic
+      // Calculate stats for display breakdown
       let failedDelivery = 0;
       let rescheduled = 0;
       let runnerFlagged = 0;
 
       orders?.forEach(order => {
         const runnerStatus = order.runner_status as string;
-        
-        // Skip delivered orders unless explicitly flagged
-        if (runnerStatus === 'DELIVERED' && !order.salesperson_action_required) {
-          return;
-        }
 
-        // Rule 1: Failed delivery
+        // Categorize for display
         if (runnerStatus === 'FAILED_DELIVERY') {
           failedDelivery++;
-          return;
-        }
-
-        // Rule 2: Has reschedule date
-        if (order.next_delivery_date) {
+        } else if (order.next_delivery_date) {
           rescheduled++;
-          return;
-        }
-
-        // Rule 3: Runner flagged (has reason or comment)
-        if (order.runner_failed_reason_id || order.runner_comment) {
+        } else if (order.runner_failed_reason_id || order.runner_comment) {
           runnerFlagged++;
-          return;
-        }
-
-        // Rule 4: Manual flag
-        if (order.salesperson_action_required) {
-          runnerFlagged++;
+        } else {
+          runnerFlagged++; // Manual flag
         }
       });
 
       return {
-        total: failedDelivery + rescheduled + runnerFlagged,
+        total: orders?.length || 0,
         failedDelivery,
         rescheduled,
         runnerFlagged,
@@ -134,11 +117,11 @@ export function useAdminActionRequiredStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // Fetch all relevant orders
+      // SINGLE SOURCE OF TRUTH: Only fetch orders where action is explicitly required
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, salesperson_id, status, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required')
-        .neq('status', 'CANCELLED');
+        .select('id, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment')
+        .eq('salesperson_action_required', true);
 
       if (ordersError) throw ordersError;
 
@@ -174,30 +157,21 @@ export function useAdminActionRequiredStats() {
         const runnerStatus = order.runner_status as string;
         const spId = order.salesperson_id;
 
-        // Skip delivered orders unless explicitly flagged
-        if (runnerStatus === 'DELIVERED' && !order.salesperson_action_required) {
-          return;
-        }
+        let category: 'failedDelivery' | 'rescheduled' | 'runnerFlagged';
 
-        let category: 'failedDelivery' | 'rescheduled' | 'runnerFlagged' | null = null;
-
-        // Rule 1: Failed delivery
+        // Categorize for display
         if (runnerStatus === 'FAILED_DELIVERY') {
           category = 'failedDelivery';
           totalFailed++;
-        }
-        // Rule 2: Has reschedule date
-        else if (order.next_delivery_date) {
+        } else if (order.next_delivery_date) {
           category = 'rescheduled';
           totalRescheduled++;
-        }
-        // Rule 3: Runner flagged
-        else if (order.runner_failed_reason_id || order.runner_comment || order.salesperson_action_required) {
+        } else {
           category = 'runnerFlagged';
           totalRunnerFlagged++;
         }
 
-        if (category && spStatsMap[spId]) {
+        if (spStatsMap[spId]) {
           spStatsMap[spId][category]++;
           spStatsMap[spId].total++;
         }
@@ -208,7 +182,7 @@ export function useAdminActionRequiredStats() {
         .sort((a, b) => b.total - a.total);
 
       return {
-        systemTotal: totalFailed + totalRescheduled + totalRunnerFlagged,
+        systemTotal: orders?.length || 0,
         failedDelivery: totalFailed,
         rescheduled: totalRescheduled,
         runnerFlagged: totalRunnerFlagged,

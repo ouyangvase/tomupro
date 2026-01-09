@@ -45,9 +45,8 @@ const outcomeLabels: Record<string, string> = {
   NEED_SALESPERSON_FOLLOWUP: 'Needs Followup',
 };
 
-// Determine why an order requires action
+// Determine why an order requires action (for display purposes only)
 function getActionSource(order: Order): ActionRequiredSource | null {
-  const orderStatus = order.status as string;
   const runnerStatus = order.runner_status as string;
   
   // Rule 1: Check for failed delivery status
@@ -56,7 +55,7 @@ function getActionSource(order: Order): ActionRequiredSource | null {
   }
   
   // Rule 2: Check for reschedule date pending (next_delivery_date exists)
-  if (order.next_delivery_date && orderStatus !== 'CANCELLED') {
+  if (order.next_delivery_date) {
     return 'RESCHEDULED';
   }
   
@@ -65,34 +64,15 @@ function getActionSource(order: Order): ActionRequiredSource | null {
     return 'RUNNER_FLAGGED';
   }
   
-  // Rule 4: Check if explicitly marked as action required by runner/system
-  if (order.salesperson_action_required === true) {
-    return 'MANUAL';
-  }
-  
-  return null;
+  // Rule 4: Manual flag
+  return 'MANUAL';
 }
 
-// Check if order needs salesperson action
+// SINGLE SOURCE OF TRUTH: Check if order needs salesperson action
+// Only orders with salesperson_action_required = true are shown
 function needsSalespersonAction(order: Order): boolean {
-  const orderStatus = order.status as string;
-  const runnerStatus = order.runner_status as string;
-  
-  // Skip cancelled orders - they're done
-  if (orderStatus === 'CANCELLED') {
-    return false;
-  }
-  
-  // Skip delivered orders UNLESS they have unresolved action flags
-  if (runnerStatus === 'DELIVERED') {
-    // Only keep delivered orders in action required if they have unresolved flags
-    if (order.salesperson_action_required === true) {
-      return true;
-    }
-    return false;
-  }
-  
-  return getActionSource(order) !== null;
+  // Primary filter: only show if explicitly marked as action required
+  return order.salesperson_action_required === true;
 }
 
 export default function SalespersonActionInbox() {
