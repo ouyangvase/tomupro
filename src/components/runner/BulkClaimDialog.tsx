@@ -12,8 +12,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, AlertCircle, Info } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { Loader2, AlertCircle, Info, TrendingDown, Banknote } from 'lucide-react';
 import { formatBND, formatRM, convertBNDtoRM } from '@/lib/currency';
+import { useClaimPreview } from '@/hooks/useDeliveryChargePreview';
 import type { Order } from '@/types/database';
 
 interface BulkClaimDialogProps {
@@ -35,14 +37,18 @@ export function BulkClaimDialog({
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
 
-  // Calculate totals
-  const totalBND = useMemo(() => {
-    return orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
-  }, [orders]);
-
   const rate = parseFloat(exchangeRate) || 0;
   const isValidRate = rate > 0 && rate <= 99.9999;
-  const totalRM = isValidRate ? convertBNDtoRM(totalBND, rate) : 0;
+
+  // Get claim preview with delivery charges
+  const preview = useClaimPreview(orders, rate);
+
+  // Calculate RM amounts
+  const grossRM = isValidRate ? convertBNDtoRM(preview.grossBND, rate) : 0;
+  const deliveryChargesRM = isValidRate ? convertBNDtoRM(preview.deliveryChargesBND, rate) : 0;
+  const netRM = isValidRate ? convertBNDtoRM(preview.netBND, rate) : 0;
+
+  const hasMissingCharges = preview.missingAreas.length > 0;
 
   const handleSubmit = async () => {
     if (!isValidRate) {
@@ -50,10 +56,14 @@ export function BulkClaimDialog({
       return;
     }
 
+    if (hasMissingCharges) {
+      setError(`Missing delivery charges for: ${preview.missingAreas.join(', ')}`);
+      return;
+    }
+
     setError('');
     try {
       await onSubmit(rate, note || undefined);
-      // Reset form on success
       setExchangeRate('');
       setNote('');
     } catch (err) {
@@ -72,7 +82,7 @@ export function BulkClaimDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Submit Claim Batch</DialogTitle>
           <DialogDescription>
@@ -81,17 +91,51 @@ export function BulkClaimDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Order Summary */}
-          <div className="p-4 bg-muted rounded-lg space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Orders Selected</span>
-              <span className="font-medium">{orders.length}</span>
+          {/* BND Breakdown */}
+          <div className="p-4 bg-muted rounded-lg space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Banknote className="h-4 w-4" />
+              <span>BND Breakdown</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Total (BND)</span>
-              <span className="font-bold text-lg">{formatBND(totalBND)}</span>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Orders Selected</span>
+                <span className="font-medium">{preview.ordersCount}</span>
+              </div>
+
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Gross Total</span>
+                <span className="font-medium">{formatBND(preview.grossBND)}</span>
+              </div>
+
+              <div className="flex justify-between text-sm text-destructive">
+                <span className="flex items-center gap-1">
+                  <TrendingDown className="h-3 w-3" />
+                  Delivery Charges
+                </span>
+                <span>-{formatBND(preview.deliveryChargesBND)}</span>
+              </div>
+
+              <Separator />
+
+              <div className="flex justify-between font-bold">
+                <span>Net Claim (BND)</span>
+                <span className="text-lg">{formatBND(preview.netBND)}</span>
+              </div>
             </div>
           </div>
+
+          {/* Missing Delivery Charges Warning */}
+          {hasMissingCharges && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                No approved delivery charge for area(s): <strong>{preview.missingAreas.join(', ')}</strong>.
+                Please submit delivery charge proposals first.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Exchange Rate Input */}
           <div className="space-y-2">
@@ -116,14 +160,31 @@ export function BulkClaimDialog({
 
           {/* RM Preview */}
           {isValidRate && (
-            <div className="p-4 border border-primary/20 bg-primary/5 rounded-lg space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Rate</span>
-                <span className="font-mono">{rate.toFixed(4)}</span>
+            <div className="p-4 border border-primary/20 bg-primary/5 rounded-lg space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                <span>RM Conversion (Rate: {rate.toFixed(4)})</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total (RM)</span>
-                <span className="font-bold text-lg text-primary">{formatRM(totalRM)}</span>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Gross Total (RM)</span>
+                  <span className="font-medium">{formatRM(grossRM)}</span>
+                </div>
+
+                <div className="flex justify-between text-sm text-destructive">
+                  <span className="flex items-center gap-1">
+                    <TrendingDown className="h-3 w-3" />
+                    Delivery Charges (RM)
+                  </span>
+                  <span>-{formatRM(deliveryChargesRM)}</span>
+                </div>
+
+                <Separator />
+
+                <div className="flex justify-between font-bold text-primary">
+                  <span>Net Claim (RM)</span>
+                  <span className="text-lg">{formatRM(netRM)}</span>
+                </div>
               </div>
             </div>
           )}
@@ -132,7 +193,7 @@ export function BulkClaimDialog({
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription className="text-xs">
-              RM conversion is for admin reconciliation only. All orders remain recorded in BND.
+              Delivery charges are automatically deducted based on approved area rates.
               The exchange rate cannot be edited after submission.
             </AlertDescription>
           </Alert>
@@ -163,7 +224,10 @@ export function BulkClaimDialog({
           <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting || !isValidRate}>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !isValidRate || hasMissingCharges}
+          >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -175,7 +175,11 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    // Create claim batch with BND and RM amounts
+    // Calculate RM amounts
+    const grossRM = Number((totalGrossAmount * rate).toFixed(2));
+    const deliveryFeesRM = Number((totalDeliveryFees * rate).toFixed(2));
+
+    // Create claim batch with full breakdown
     const { data: batch, error: batchError } = await supabase
       .from('claim_batches')
       .insert({
@@ -184,6 +188,13 @@ serve(async (req) => {
         total_bnd: totalNetBND,
         exchange_rate_to_rm: rate,
         total_rm: totalNetRM,
+        // New breakdown fields
+        gross_bnd: totalGrossAmount,
+        delivery_charges_bnd: totalDeliveryFees,
+        net_bnd: totalNetBND,
+        gross_rm: grossRM,
+        delivery_charges_rm: deliveryFeesRM,
+        net_rm: totalNetRM,
         status: 'ADMIN_ACK_PENDING',
         note: note ? String(note).slice(0, 500) : null,
       })

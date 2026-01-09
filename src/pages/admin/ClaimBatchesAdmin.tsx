@@ -7,8 +7,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useClaimBatches, useApproveClaimBatch, useRejectClaimBatch } from '@/hooks/useClaimBatches';
 import { format } from 'date-fns';
-import { CheckCircle, Receipt, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle, Receipt, Loader2, XCircle, TrendingDown } from 'lucide-react';
 import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
+import { Separator } from '@/components/ui/separator';
 import type { ClaimBatch } from '@/types/database';
 import {
   Dialog,
@@ -92,21 +93,39 @@ export default function ClaimBatchesAdmin() {
       render: (batch) => batch.items?.length || 0,
     },
     {
-      key: 'exchange_rate_to_rm',
-      header: 'FX Rate',
-      render: (batch) => batch.exchange_rate_to_rm ? formatExchangeRate(batch.exchange_rate_to_rm) : '-',
+      key: 'gross_bnd',
+      header: 'Gross (BND)',
+      sortable: true,
+      render: (batch) => formatBND(batch.gross_bnd || batch.total_bnd || batch.total_amount),
     },
     {
-      key: 'total_bnd',
-      header: 'Total (BND)',
-      sortable: true,
-      render: (batch) => formatBND(batch.total_bnd || batch.total_amount),
+      key: 'delivery_charges_bnd',
+      header: 'Charges',
+      render: (batch) => (
+        <span className="text-destructive">
+          -{formatBND(batch.delivery_charges_bnd || 0)}
+        </span>
+      ),
     },
     {
-      key: 'total_rm',
-      header: 'Total (RM)',
+      key: 'net_bnd',
+      header: 'Net (BND)',
       sortable: true,
-      render: (batch) => batch.total_rm ? formatRM(batch.total_rm) : '-',
+      render: (batch) => (
+        <span className="font-bold">
+          {formatBND(batch.net_bnd || batch.total_bnd || batch.total_amount)}
+        </span>
+      ),
+    },
+    {
+      key: 'net_rm',
+      header: 'Net (RM)',
+      sortable: true,
+      render: (batch) => (
+        <span className="font-bold text-primary">
+          {batch.net_rm ? formatRM(batch.net_rm) : batch.total_rm ? formatRM(batch.total_rm) : '-'}
+        </span>
+      ),
     },
     {
       key: 'note',
@@ -183,14 +202,11 @@ export default function ClaimBatchesAdmin() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">Total Orders</p>
                 <p className="text-2xl font-bold">{selectedBatch?.items?.length || 0}</p>
-              </div>
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground">Total (BND)</p>
-                <p className="text-2xl font-bold">{formatBND(selectedBatch?.total_bnd || selectedBatch?.total_amount)}</p>
               </div>
               <div className="p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">FX Rate</p>
@@ -198,18 +214,59 @@ export default function ClaimBatchesAdmin() {
                   {selectedBatch?.exchange_rate_to_rm ? formatExchangeRate(selectedBatch.exchange_rate_to_rm) : '-'}
                 </p>
               </div>
-              <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                <p className="text-sm text-muted-foreground">Total (RM)</p>
-                <p className="text-2xl font-bold text-primary">
-                  {selectedBatch?.total_rm ? formatRM(selectedBatch.total_rm) : '-'}
-                </p>
+              <div className="p-4 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">Status</p>
+                <Badge className="mt-1 bg-yellow-100 text-yellow-800">Pending Approval</Badge>
               </div>
             </div>
 
-            <div className="p-4 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground">Status</p>
-              <Badge className="mt-1 bg-yellow-100 text-yellow-800">Pending Approval</Badge>
+            {/* BND Breakdown */}
+            <div className="p-4 bg-muted rounded-lg space-y-3">
+              <p className="font-medium">BND Breakdown</p>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Gross Total</span>
+                  <span className="font-medium">{formatBND(selectedBatch?.gross_bnd || selectedBatch?.total_bnd || selectedBatch?.total_amount)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-destructive">
+                  <span className="flex items-center gap-1">
+                    <TrendingDown className="h-3 w-3" />
+                    Delivery Charges
+                  </span>
+                  <span>-{formatBND(selectedBatch?.delivery_charges_bnd || 0)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between font-bold">
+                  <span>Net Claim (BND)</span>
+                  <span className="text-lg">{formatBND(selectedBatch?.net_bnd || selectedBatch?.total_bnd || selectedBatch?.total_amount)}</span>
+                </div>
+              </div>
             </div>
+
+            {/* RM Breakdown */}
+            {selectedBatch?.exchange_rate_to_rm && (
+              <div className="p-4 border border-primary/20 bg-primary/5 rounded-lg space-y-3">
+                <p className="font-medium text-primary">RM Conversion</p>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Gross Total (RM)</span>
+                    <span className="font-medium">{formatRM(selectedBatch?.gross_rm || 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-destructive">
+                    <span className="flex items-center gap-1">
+                      <TrendingDown className="h-3 w-3" />
+                      Delivery Charges (RM)
+                    </span>
+                    <span>-{formatRM(selectedBatch?.delivery_charges_rm || 0)}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between font-bold text-primary">
+                    <span>Net Claim (RM)</span>
+                    <span className="text-lg">{formatRM(selectedBatch?.net_rm || selectedBatch?.total_rm || 0)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {selectedBatch?.note && (
               <div className="p-4 bg-muted rounded-lg">
