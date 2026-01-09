@@ -29,7 +29,8 @@ import {
 import { 
   useSalespersonActionRequiredStats, 
   useRunnerActionRequiredStats, 
-  useAdminActionRequiredStats 
+  useAdminActionRequiredStats,
+  useManagerActionRequiredStats
 } from '@/hooks/useActionRequiredStats';
 import { ActionRequiredCard } from '@/components/dashboard/ActionRequiredCard';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
@@ -191,6 +192,70 @@ function RunnerDashboard() {
             </button>
             <button onClick={() => navigate('/inventory')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
               🏭 View Stock Balance
+            </button>
+          </CardContent>
+        </Card>
+
+        <RecentActivityCard activity={activity} isLoading={activityLoading} />
+      </div>
+    </>
+  );
+}
+
+function ManagerDashboard() {
+  const navigate = useNavigate();
+  const { data: stats, isLoading } = useAdminStats();
+  const { data: actionStats, isLoading: actionLoading } = useManagerActionRequiredStats();
+  const { data: activity, isLoading: activityLoading } = useRecentActivity();
+
+  const statCards = [
+    { label: 'Booking Orders', value: stats?.bookingOrders, icon: Package, color: 'text-chart-2', href: '/sales/booking' },
+    { label: 'Ready Orders', value: stats?.readyOrders, icon: ShoppingCart, color: 'text-chart-1', href: '/sales/ready' },
+    { label: 'Pending Delivery', value: stats?.pendingDelivery, icon: Truck, color: 'text-chart-3', href: '/runner/inbox' },
+    { label: 'Delivered', value: stats?.deliveredOrders, icon: CheckCircle, color: 'text-primary', href: '/reconciliation/admin' },
+    { label: 'Disputes', value: stats?.disputes, icon: AlertTriangle, color: 'text-destructive', href: '/disputes' },
+  ];
+
+  return (
+    <>
+      {/* Action Required Overview for Manager's Team */}
+      <ActionRequiredCard
+        total={actionStats?.systemTotal ?? 0}
+        failedDelivery={actionStats?.failedDelivery}
+        rescheduled={actionStats?.rescheduled}
+        runnerFlagged={actionStats?.runnerFlagged}
+        isLoading={actionLoading}
+        href="/sales/action-required"
+        title="Team Action Required"
+        subtitle="Orders from your assigned agents requiring attention"
+      />
+
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+        {statCards.map((stat) => (
+          <StatCard key={stat.label} {...stat} isLoading={isLoading} />
+        ))}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <button onClick={() => navigate('/sales/action-required')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-2">
+              ⚠️ View Team Action Required
+              {(actionStats?.systemTotal ?? 0) > 0 && (
+                <Badge variant="destructive" className="ml-auto">{actionStats?.systemTotal}</Badge>
+              )}
+            </button>
+            <button onClick={() => navigate('/manager/oversight')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+              👥 Team Oversight
+            </button>
+            <button onClick={() => navigate('/sales/booking')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+              📋 View Team Orders
+            </button>
+            <button onClick={() => navigate('/disputes')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+              ⚠️ Handle Disputes
             </button>
           </CardContent>
         </Card>
@@ -418,8 +483,9 @@ export default function Dashboard() {
       case 'runner':
         return <RunnerDashboard />;
       case 'admin':
-      case 'manager':
         return <AdminDashboard />;
+      case 'manager':
+        return <ManagerDashboard />;
       case 'salesperson':
       default:
         return <SalespersonDashboard />;
