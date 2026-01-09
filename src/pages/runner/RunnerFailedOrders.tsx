@@ -134,8 +134,19 @@ export default function RunnerFailedOrders() {
       key: 'items_summary',
       header: 'Items',
       render: (order) => {
-        const { displayText } = formatOrderItemsDisplay(order.order_items);
-        return <span className="text-sm font-medium">{displayText}</span>;
+        const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                {displayText}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[400px]">
+              <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
+            </TooltipContent>
+          </Tooltip>
+        );
       },
     },
     {

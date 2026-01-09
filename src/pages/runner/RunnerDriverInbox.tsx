@@ -401,9 +401,23 @@ export default function RunnerDriverInbox() {
                             <Badge variant="outline">{order.area || '-'}</Badge>
                           </TableCell>
                           <TableCell>
-                            <span className={`text-sm ${formatOrderItemsDisplay(order.order_items).hasError ? 'text-destructive' : ''}`}>
-                              {formatOrderItemsDisplay(order.order_items).displayText}
-                            </span>
+                            {(() => {
+                              const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+                              return (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                                        {displayText}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[400px]">
+                                      <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell className="font-medium">BND {Number(order.total_amount).toFixed(2)}</TableCell>
                           <TableCell>

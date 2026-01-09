@@ -366,7 +366,7 @@ export default function RunnerDeliveredOrders() {
                     deliveredOrders.map((order) => {
                       const isClaimable = order.reconciliation_status === 'NOT_CLAIMED';
                       const isSelected = selectedIds.has(order.id);
-                      const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+                      const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
 
                       return (
                         <TableRow key={order.id} className={isSelected ? 'bg-primary/5' : ''}>
@@ -385,22 +385,18 @@ export default function RunnerDeliveredOrders() {
                           <TableCell>{order.customer_name || '-'}</TableCell>
                           <TableCell><Badge variant="outline">{order.area || '-'}</Badge></TableCell>
                           <TableCell>
-                            <div className="text-sm">
-                              {hasError ? (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="text-destructive cursor-help">{displayText}</span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>{errorMessage}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : (
-                                <span className="font-medium">{displayText}</span>
-                              )}
-                            </div>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                                    {displayText}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[400px]">
+                                  <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </TableCell>
                           <TableCell><span className="font-medium">{formatBND(order.total_amount)}</span></TableCell>
                           <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>

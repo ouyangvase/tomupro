@@ -28,6 +28,7 @@ import { format, startOfMonth, endOfMonth, subMonths, startOfYear } from 'date-f
 import { RotateCcw, Calendar, Filter } from 'lucide-react';
 import { exportToCSV } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
+import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import type { Order, OrderStatus } from '@/types/database';
 import {
   Tooltip,
@@ -160,6 +161,25 @@ export default function CancelledSales() {
       key: 'area', 
       header: 'Area', 
       sortable: true,
+    },
+    {
+      key: 'order_items',
+      header: 'Items',
+      render: (o) => {
+        const { displayText, fullText, hasError } = formatOrderItemsDisplay(o.order_items);
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`text-sm cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                {displayText}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[400px]">
+              <p className="whitespace-pre-wrap">{fullText}</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      },
     },
     { 
       key: 'total_amount', 
