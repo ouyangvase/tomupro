@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, Medal, TrendingUp, TrendingDown, Minus, Crown, Star, User } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Trophy, Medal, TrendingUp, TrendingDown, Minus, Crown, Star, User, AlertTriangle, Radio, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVisibleRankings, useMyRanking, usePreviousPeriodRanking, useLeaderboardSettings, PeriodMode, LeaderboardRanking } from "@/hooks/useLeaderboard";
 import { formatBND } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 function getRankIcon(rank: number) {
   switch (rank) {
@@ -106,16 +108,16 @@ function LeaderboardRow({
             {isCurrentUser && <span className="ml-2 text-xs text-muted-foreground">(You)</span>}
           </p>
           <div className="flex gap-2 text-xs text-muted-foreground">
-            <span>{ranking.completed_orders} completed</span>
-            <span>•</span>
             <span>{ranking.delivered_orders} delivered</span>
+            <span>•</span>
+            <span>{ranking.success_rate}% success</span>
           </div>
         </div>
       </div>
       <div className="text-right">
         <p className="font-semibold">{getPrimaryValue()}</p>
         <p className="text-xs text-muted-foreground">
-          {ranking.success_rate}% success
+          {ranking.completed_orders} completed
         </p>
       </div>
     </div>
@@ -147,6 +149,9 @@ function TopThreeCard({ ranking, position }: { ranking: LeaderboardRanking; posi
       <p className="text-xs text-muted-foreground">
         {formatBND(ranking.net_sales)}
       </p>
+      <p className="text-xs text-muted-foreground">
+        {ranking.delivered_orders} delivered
+      </p>
     </div>
   );
 }
@@ -155,7 +160,7 @@ export default function LeaderboardPage() {
   const [periodMode, setPeriodMode] = useState<PeriodMode>('month');
   const { profile } = useAuth();
   const { data: settings } = useLeaderboardSettings();
-  const rankings = useVisibleRankings(periodMode);
+  const { rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders } = useVisibleRankings(periodMode);
   const myRanking = useMyRanking(periodMode);
   const previousRanking = usePreviousPeriodRanking(periodMode);
   
@@ -172,6 +177,9 @@ export default function LeaderboardPage() {
     }
   };
 
+  // Check if all rankings have zero data
+  const allZeros = rankings.length > 0 && rankings.every(r => r.net_sales === 0 && r.delivered_orders === 0);
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -186,6 +194,25 @@ export default function LeaderboardPage() {
             </p>
           </div>
         </div>
+
+        {/* Data Indicator */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Radio className={cn("h-3 w-3", isFetching ? "text-yellow-500 animate-pulse" : "text-green-500")} />
+          <span>Live data from Orders</span>
+          <span>•</span>
+          <span>Last updated: {format(lastUpdated, 'HH:mm:ss')}</span>
+          {isFetching && <RefreshCw className="h-3 w-3 animate-spin ml-1" />}
+        </div>
+
+        {/* Warning Banner - No matched delivered orders */}
+        {allZeros && rankings.length > 0 && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Leaderboard has no matched delivered orders for this period. Check filters or verify order data.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* My Rank Summary */}
         {profile?.role === 'salesperson' && myRanking && (
@@ -210,7 +237,7 @@ export default function LeaderboardPage() {
                 <div className="text-right">
                   <p className="text-lg font-semibold">{formatBND(myRanking.net_sales)}</p>
                   <p className="text-sm text-muted-foreground">
-                    {myRanking.completed_orders} completed orders
+                    {myRanking.delivered_orders} delivered • {myRanking.success_rate}% success
                   </p>
                 </div>
               </div>
@@ -227,8 +254,16 @@ export default function LeaderboardPage() {
           </TabsList>
           
           <TabsContent value={periodMode} className="mt-4 space-y-4">
+            {/* Loading State */}
+            {isLoading && (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="h-6 w-6 animate-spin text-primary" />
+                <span className="ml-2 text-muted-foreground">Loading rankings...</span>
+              </div>
+            )}
+
             {/* Top 3 Podium */}
-            {top3.length >= 3 && (
+            {!isLoading && top3.length >= 3 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -250,27 +285,34 @@ export default function LeaderboardPage() {
             )}
 
             {/* Full Rankings */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Full Rankings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {rankings.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    No rankings available for this period
-                  </p>
-                ) : (
-                  rankings.map((ranking) => (
-                    <LeaderboardRow
-                      key={ranking.salesperson_id}
-                      ranking={ranking}
-                      isCurrentUser={ranking.salesperson_id === profile?.id}
-                      primaryMetric={primaryMetric}
-                    />
-                  ))
-                )}
-              </CardContent>
-            </Card>
+            {!isLoading && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Full Rankings</span>
+                    <Badge variant="outline" className="font-normal">
+                      {rankings.length} salespeople
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {rankings.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      No rankings available for this period
+                    </p>
+                  ) : (
+                    rankings.map((ranking) => (
+                      <LeaderboardRow
+                        key={ranking.salesperson_id}
+                        ranking={ranking}
+                        isCurrentUser={ranking.salesperson_id === profile?.id}
+                        primaryMetric={primaryMetric}
+                      />
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>
