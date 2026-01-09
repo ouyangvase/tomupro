@@ -31,6 +31,11 @@ const salesItems: NavItem[] = [{
   icon: ShoppingCart,
   roles: ['admin', 'manager', 'salesperson']
 }, {
+  title: "Delivered Orders",
+  url: "/runner/delivered-orders",
+  icon: CheckCircle,
+  roles: ['admin', 'manager', 'salesperson']
+}, {
   title: "Cancelled Sales",
   url: "/sales/cancelled",
   icon: X,

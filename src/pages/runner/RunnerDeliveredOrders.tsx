@@ -23,6 +23,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useClaimBatches } from '@/hooks/useClaimBatches';
 
+// Claim status filter options for the dropdown
+type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
+
+const claimStatusFilterOptions: { label: string; value: ClaimStatusFilter }[] = [
+  { label: 'All', value: 'all' },
+  { label: 'Not Claimed', value: 'NOT_CLAIMED' },
+  { label: 'Claim Submitted', value: 'CLAIM_SUBMITTED' },
+  { label: 'Approved', value: 'APPROVED' },
+  { label: 'Rejected', value: 'REJECTED' },
+];
+
 // Claim status display mapping (user-friendly labels)
 const claimStatusLabels: Record<ReconciliationStatus, string> = {
   NOT_CLAIMED: 'NOT CLAIMED',
@@ -43,20 +54,46 @@ const claimStatusColors: Record<ReconciliationStatus, string> = {
 };
 
 export default function RunnerDeliveredOrders() {
-  const { user } = useAuth();
-  const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
+  const { user, profile, role } = useAuth();
+  const queryClient = useQueryClient();
+  
+  // Fetch orders based on role:
+  // - Runner: fetch their own orders (runner_id = user.id)
+  // - Salesperson: fetch their own orders (salesperson_id = user.id)
+  // - Admin/Manager: fetch all orders
+  const ordersFilter = role === 'runner' 
+    ? { runnerId: user?.id }
+    : role === 'salesperson' 
+      ? { salespersonId: user?.id }
+      : {}; // admin/manager see all
+  
+  const { data: orders, isLoading } = useOrders(ordersFilter);
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
-  const { data: claimBatches = [] } = useClaimBatches({ runnerId: user?.id });
-  const queryClient = useQueryClient();
+  // Only fetch claim batches for runner role (they're the ones who claim)
+  const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : undefined);
+  
+  // Determine if current user can claim orders (only runners can claim)
+  const canClaim = role === 'runner';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('all');
   const [driverFilter, setDriverFilter] = useState('all');
   const [salespersonFilter, setSalespersonFilter] = useState('all');
+  const [claimStatusFilter, setClaimStatusFilter] = useState<ClaimStatusFilter>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Helper function to check if order matches claim status filter
+  const matchesClaimStatusFilter = (status: ReconciliationStatus, filter: ClaimStatusFilter): boolean => {
+    if (filter === 'all') return true;
+    if (filter === 'NOT_CLAIMED') return status === 'NOT_CLAIMED';
+    if (filter === 'CLAIM_SUBMITTED') return status === 'ADMIN_ACK_PENDING' || status === 'SP_ACK_PENDING';
+    if (filter === 'APPROVED') return status === 'CLAIMED' || status === 'SETTLED';
+    if (filter === 'REJECTED') return status === 'DISPUTE';
+    return true;
+  };
 
   // Filter to only delivered orders
   const deliveredOrders = useMemo(() => {
@@ -91,13 +128,19 @@ export default function RunnerDeliveredOrders() {
       filtered = filtered.filter(order => order.salesperson_id === salespersonFilter);
     }
 
-    return filtered;
-  }, [orders, searchQuery, areaFilter, driverFilter, salespersonFilter]);
+    // Apply claim status filter
+    if (claimStatusFilter !== 'all') {
+      filtered = filtered.filter(order => matchesClaimStatusFilter(order.reconciliation_status, claimStatusFilter));
+    }
 
-  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED)
+    return filtered;
+  }, [orders, searchQuery, areaFilter, driverFilter, salespersonFilter, claimStatusFilter]);
+
+  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED) - only relevant for runners
   const claimableOrders = useMemo(() => {
+    if (!canClaim) return [];
     return deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED');
-  }, [deliveredOrders]);
+  }, [deliveredOrders, canClaim]);
 
   // Selected orders that are claimable
   const selectedClaimableOrders = useMemo(() => {
@@ -297,12 +340,22 @@ export default function RunnerDeliveredOrders() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={claimStatusFilter} onValueChange={(v) => setClaimStatusFilter(v as ClaimStatusFilter)}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Claim Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {claimStatusFilterOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
 
-        {/* Action Bar */}
-        {selectedClaimableOrders.length > 0 && (
+        {/* Action Bar - only for runners who can claim */}
+        {canClaim && selectedClaimableOrders.length > 0 && (
           <Card className="border-primary/50 bg-primary/5">
             <CardContent className="p-4 flex items-center justify-between">
               <span className="text-sm font-medium">
@@ -327,13 +380,15 @@ export default function RunnerDeliveredOrders() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={allClaimableSelected}
-                        onCheckedChange={toggleSelectAll}
-                        disabled={claimableOrders.length === 0}
-                      />
-                    </TableHead>
+                    {canClaim && (
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={allClaimableSelected}
+                          onCheckedChange={toggleSelectAll}
+                          disabled={claimableOrders.length === 0}
+                        />
+                      </TableHead>
+                    )}
                     <TableHead>Date</TableHead>
                     <TableHead>Order Ref</TableHead>
                     <TableHead>Customer</TableHead>
@@ -341,45 +396,48 @@ export default function RunnerDeliveredOrders() {
                     <TableHead>Items</TableHead>
                     <TableHead>Amount (BND)</TableHead>
                     <TableHead>Payment</TableHead>
+                    <TableHead>Runner</TableHead>
                     <TableHead>Driver</TableHead>
                     <TableHead>Salesperson</TableHead>
                     <TableHead>Delivered At</TableHead>
                     <TableHead>Claim Status</TableHead>
-                    <TableHead>Claim Batch Ref</TableHead>
-                    <TableHead>Action</TableHead>
+                    {canClaim && <TableHead>Claim Batch Ref</TableHead>}
+                    {canClaim && <TableHead>Action</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={14} className="text-center py-8">
+                      <TableCell colSpan={canClaim ? 16 : 13} className="text-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                       </TableCell>
                     </TableRow>
                   ) : deliveredOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={canClaim ? 16 : 13} className="text-center py-8 text-muted-foreground">
                         No delivered orders found
                       </TableCell>
                     </TableRow>
                   ) : (
                     deliveredOrders.map((order) => {
-                      const isClaimable = order.reconciliation_status === 'NOT_CLAIMED';
+                      const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
                       const isSelected = selectedIds.has(order.id);
                       const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
 
                       return (
                         <TableRow key={order.id} className={isSelected ? 'bg-primary/5' : ''}>
-                          <TableCell>
-                            {isClaimable ? (
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => toggleSelection(order.id)}
-                              />
-                            ) : (
-                              <Checkbox disabled checked={false} className="opacity-30" />
-                            )}
-                          </TableCell>
+                          {canClaim && (
+                            <TableCell>
+                              {isClaimable ? (
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => toggleSelection(order.id)}
+                                />
+                              ) : (
+                                <Checkbox disabled checked={false} className="opacity-30" />
+                              )}
+                            </TableCell>
+                          )}
                           <TableCell>{format(new Date(order.order_date), 'dd MMM yyyy')}</TableCell>
                           <TableCell><span className="font-mono text-sm">{order.order_code}</span></TableCell>
                           <TableCell>{order.customer_name || '-'}</TableCell>
@@ -400,6 +458,7 @@ export default function RunnerDeliveredOrders() {
                           </TableCell>
                           <TableCell><span className="font-medium">{formatBND(order.total_amount)}</span></TableCell>
                           <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>
+                          <TableCell>{order.runner?.display_name || '-'}</TableCell>
                           <TableCell>{order.driver?.display_name || '-'}</TableCell>
                           <TableCell>{order.salesperson?.display_name || '-'}</TableCell>
                           <TableCell>
@@ -412,35 +471,39 @@ export default function RunnerDeliveredOrders() {
                               {claimStatusLabels[order.reconciliation_status]}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            {orderToBatchRef.has(order.id) ? (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
-                                      {orderToBatchRef.get(order.id)?.batchId}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Submitted: {format(new Date(orderToBatchRef.get(order.id)!.submittedAt), 'dd MMM yyyy HH:mm')}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {isClaimable && (
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => handleSingleClaim(order)}
-                              >
-                                Claim
-                              </Button>
-                            )}
-                          </TableCell>
+                          {canClaim && (
+                            <TableCell>
+                              {orderToBatchRef.has(order.id) ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
+                                        {orderToBatchRef.get(order.id)?.batchId}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Submitted: {format(new Date(orderToBatchRef.get(order.id)!.submittedAt), 'dd MMM yyyy HH:mm')}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                          )}
+                          {canClaim && (
+                            <TableCell>
+                              {isClaimable && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => handleSingleClaim(order)}
+                                >
+                                  Claim
+                                </Button>
+                              )}
+                            </TableCell>
+                          )}
                         </TableRow>
                       );
                     })
