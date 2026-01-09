@@ -348,6 +348,152 @@ export type Database = {
           },
         ]
       }
+      commission_settings: {
+        Row: {
+          base_value: number
+          commission_mode: string
+          created_at: string
+          id: string
+          is_tiered: boolean
+          salesperson_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          base_value?: number
+          commission_mode: string
+          created_at?: string
+          id?: string
+          is_tiered?: boolean
+          salesperson_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          base_value?: number
+          commission_mode?: string
+          created_at?: string
+          id?: string
+          is_tiered?: boolean
+          salesperson_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_settings_salesperson_id_fkey"
+            columns: ["salesperson_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commission_snapshots: {
+        Row: {
+          commission_amount: number
+          commission_base_amount: number
+          commission_mode: string
+          commission_value: number
+          created_at: string
+          id: string
+          order_id: string
+          order_sequence_in_month: number
+          reconciled_at: string
+          salesperson_id: string
+          tier_applied: number | null
+          year_month: string
+        }
+        Insert: {
+          commission_amount: number
+          commission_base_amount: number
+          commission_mode: string
+          commission_value: number
+          created_at?: string
+          id?: string
+          order_id: string
+          order_sequence_in_month?: number
+          reconciled_at?: string
+          salesperson_id: string
+          tier_applied?: number | null
+          year_month: string
+        }
+        Update: {
+          commission_amount?: number
+          commission_base_amount?: number
+          commission_mode?: string
+          commission_value?: number
+          created_at?: string
+          id?: string
+          order_id?: string
+          order_sequence_in_month?: number
+          reconciled_at?: string
+          salesperson_id?: string
+          tier_applied?: number | null
+          year_month?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_snapshots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_snapshots_salesperson_id_fkey"
+            columns: ["salesperson_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commission_tiers: {
+        Row: {
+          created_at: string
+          id: string
+          max_orders: number | null
+          min_orders: number
+          settings_id: string
+          tier_order: number
+          tier_value: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          max_orders?: number | null
+          min_orders?: number
+          settings_id: string
+          tier_order?: number
+          tier_value: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          max_orders?: number | null
+          min_orders?: number
+          settings_id?: string
+          tier_order?: number
+          tier_value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_tiers_settings_id_fkey"
+            columns: ["settings_id"]
+            isOneToOne: false
+            referencedRelation: "commission_settings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_task_snapshots: {
         Row: {
           created_at: string | null
@@ -1126,6 +1272,7 @@ export type Database = {
           created_at: string
           customer_name: string
           delivered_at: string | null
+          discount_amount: number | null
           dispute_notes: string | null
           dispute_reason: string | null
           driver_delivered_at: string | null
@@ -1186,6 +1333,7 @@ export type Database = {
           created_at?: string
           customer_name: string
           delivered_at?: string | null
+          discount_amount?: number | null
           dispute_notes?: string | null
           dispute_reason?: string | null
           driver_delivered_at?: string | null
@@ -1246,6 +1394,7 @@ export type Database = {
           created_at?: string
           customer_name?: string
           delivered_at?: string | null
+          discount_amount?: number | null
           dispute_notes?: string | null
           dispute_reason?: string | null
           driver_delivered_at?: string | null
@@ -1572,6 +1721,54 @@ export type Database = {
           {
             foreignKeyName: "runner_drivers_runner_id_fkey"
             columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salesperson_targets: {
+        Row: {
+          created_at: string
+          id: string
+          salesperson_id: string
+          target_type: string
+          target_value: number
+          updated_at: string
+          updated_by: string | null
+          year_month: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          salesperson_id: string
+          target_type: string
+          target_value: number
+          updated_at?: string
+          updated_by?: string | null
+          year_month: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          salesperson_id?: string
+          target_type?: string
+          target_value?: number
+          updated_at?: string
+          updated_by?: string | null
+          year_month?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salesperson_targets_salesperson_id_fkey"
+            columns: ["salesperson_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salesperson_targets_updated_by_fkey"
+            columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
