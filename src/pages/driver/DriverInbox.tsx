@@ -65,15 +65,20 @@ export default function DriverInbox() {
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
   };
 
-  // Format order items to show SKU codes
+  // Format order items to show SKU codes with product names
   const formatOrderItems = (orderItems: any[]) => {
     if (!orderItems || orderItems.length === 0) return [];
-    return orderItems.map(item => ({
-      skuCode: item.product?.sku_code || item.sku_label || 'N/A',
-      skuName: item.product?.sku_name || item.sku_label || 'Unknown',
-      qty: item.qty,
-      price: item.line_total || item.price * item.qty,
-    }));
+    return orderItems.map(item => {
+      const skuCode = item.product?.sku_code || item.sku_label || 'UNKNOWN';
+      const skuName = item.product?.sku_name || 'UNKNOWN';
+      return {
+        skuCode,
+        skuName,
+        displayLabel: `${skuCode}/${skuName}`,
+        qty: item.qty,
+        price: item.line_total || item.price * item.qty,
+      };
+    });
   };
 
   // Count stats for selected tab
@@ -260,10 +265,7 @@ export default function DriverInbox() {
                             {items.map((item, idx) => (
                               <div key={idx} className="flex justify-between items-center text-sm">
                                 <div>
-                                  <span className="font-mono font-medium">{item.skuCode}</span>
-                                  {item.skuName !== item.skuCode && (
-                                    <span className="text-muted-foreground ml-1">({item.skuName})</span>
-                                  )}
+                                  <span className="font-mono font-medium">{item.displayLabel}</span>
                                   <span className="text-muted-foreground ml-2">× {item.qty}</span>
                                 </div>
                                 <span className="font-medium">{formatBND(item.price)}</span>
@@ -338,14 +340,14 @@ export default function DriverInbox() {
                       </div>
                       {order.area && <Badge variant="outline" className="text-xs">{order.area}</Badge>}
                       {items.length > 0 && (
-                        <div className="text-xs space-y-0.5 pt-2 border-t">
-                          {items.map((item, idx) => (
-                            <div key={idx} className="flex justify-between">
-                              <span><span className="font-mono">{item.skuCode}</span> × {item.qty}</span>
-                              <span>{formatBND(item.price)}</span>
-                            </div>
-                          ))}
-                        </div>
+                          <div className="text-xs space-y-0.5 pt-2 border-t">
+                            {items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between">
+                                <span><span className="font-mono">{item.displayLabel}</span> × {item.qty}</span>
+                                <span>{formatBND(item.price)}</span>
+                              </div>
+                            ))}
+                          </div>
                       )}
                       <div className="text-xs text-muted-foreground">
                         Delivered: {order.driver_delivered_at && format(new Date(order.driver_delivered_at), 'dd MMM HH:mm')}
@@ -398,14 +400,14 @@ export default function DriverInbox() {
                       </div>
                       {order.area && <Badge variant="outline" className="text-xs">{order.area}</Badge>}
                       {items.length > 0 && (
-                        <div className="text-xs space-y-0.5 pt-2 border-t">
-                          {items.map((item, idx) => (
-                            <div key={idx} className="flex justify-between">
-                              <span><span className="font-mono">{item.skuCode}</span> × {item.qty}</span>
-                              <span>{formatBND(item.price)}</span>
-                            </div>
-                          ))}
-                        </div>
+                          <div className="text-xs space-y-0.5 pt-2 border-t">
+                            {items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between">
+                                <span><span className="font-mono">{item.displayLabel}</span> × {item.qty}</span>
+                                <span>{formatBND(item.price)}</span>
+                              </div>
+                            ))}
+                          </div>
                       )}
                       <div className="text-xs text-red-600 mt-1">
                         Reason: {order.driver_failed_reason}

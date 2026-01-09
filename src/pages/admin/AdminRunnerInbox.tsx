@@ -217,22 +217,18 @@ export default function AdminRunnerInbox() {
       key: 'items_summary',
       header: 'Items',
       render: (order) => {
-        const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+        const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
         return (
-          <div className="text-sm">
-            {hasError ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="text-destructive cursor-help">{displayText}</span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{errorMessage}</p>
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <span className="font-medium">{displayText}</span>
-            )}
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                {displayText}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[400px]">
+              <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
+            </TooltipContent>
+          </Tooltip>
         );
       },
     },

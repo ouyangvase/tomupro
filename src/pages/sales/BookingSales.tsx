@@ -70,25 +70,19 @@ export default function BookingSales() {
       key: 'items_summary', 
       header: 'Items', 
       render: (o) => {
-        const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(o.order_items);
+        const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(o.order_items);
         return (
-          <div className="text-sm">
-            {hasError ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1 text-destructive">
-                    <AlertTriangle className="h-3 w-3" />
-                    <span>{displayText}</span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{errorMessage}</p>
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <span className="font-medium">{displayText}</span>
-            )}
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className={`text-sm cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                {hasError && <AlertTriangle className="h-3 w-3 inline mr-1" />}
+                <span className="font-medium">{displayText}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[400px]">
+              <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
+            </TooltipContent>
+          </Tooltip>
         );
       }
     },

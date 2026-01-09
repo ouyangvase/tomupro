@@ -20,7 +20,10 @@ export function useOrders(filters?: OrderFilters) {
         .from('orders')
         .select(`
           *,
-          order_items(*)
+          order_items(
+            *,
+            product:products(id, sku_code, sku_name)
+          )
         `)
         .order('created_at', { ascending: false });
 
