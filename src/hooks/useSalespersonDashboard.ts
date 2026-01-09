@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
+import { startOfDay, endOfDay, startOfMonth, endOfMonth, format } from 'date-fns';
 
 export interface SalespersonPerformanceStats {
   // Today's performance
@@ -13,14 +13,26 @@ export interface SalespersonPerformanceStats {
   mtdDeliveredCount: number;
   mtdOrdersCount: number;
   
-  // Monthly target (can be made configurable later)
+  // Monthly target (from database)
   monthlyTarget: number;
+  targetType: 'ORDER_COUNT' | 'SALES_VALUE' | null;
   targetProgress: number;
   remainingToTarget: number;
   
-  // Estimated commission (based on delivered orders)
-  estimatedCommission: number;
+  // Commission stats
+  estimatedCommission: number; // Delivered but not reconciled
+  finalCommission: number; // Reconciled & approved
+  totalCommission: number;
+  commissionMode: 'PER_ORDER' | 'PERCENTAGE' | null;
   commissionRate: number;
+  
+  // Tier progress
+  currentTier: number | null;
+  nextTierAt: number | null;
+  ordersToNextTier: number | null;
+  currentTierValue: number | null;
+  nextTierValue: number | null;
+  isTiered: boolean;
   
   // Action items
   failedOrdersCount: number;
@@ -52,11 +64,7 @@ export function useSalespersonDashboard() {
   const todayEnd = endOfDay(today).toISOString();
   const monthStart = startOfMonth(today).toISOString();
   const monthEnd = endOfMonth(today).toISOString();
-
-  // Default commission rate (5%) - can be made configurable
-  const COMMISSION_RATE = 0.05;
-  // Default monthly target - can be made configurable per user
-  const DEFAULT_MONTHLY_TARGET = 10000;
+  const currentYearMonth = format(today, 'yyyy-MM');
 
   return useQuery({
     queryKey: ['salesperson-dashboard', user?.id],
@@ -71,6 +79,10 @@ export function useSalespersonDashboard() {
         pendingClaimRes,
         stockBalanceRes,
         rankingRes,
+        targetRes,
+        commissionSettingsRes,
+        commissionSnapshotsRes,
+        pendingReconOrdersRes,
       ] = await Promise.all([
         // Today's delivered orders with total amount
         supabase
@@ -127,6 +139,38 @@ export function useSalespersonDashboard() {
           .eq('runner_status', 'DELIVERED')
           .gte('delivered_at', monthStart)
           .lte('delivered_at', monthEnd),
+        
+        // Get monthly target from database
+        supabase
+          .from('salesperson_targets')
+          .select('*')
+          .eq('salesperson_id', user.id)
+          .eq('year_month', currentYearMonth)
+          .maybeSingle(),
+        
+        // Get commission settings
+        supabase
+          .from('commission_settings')
+          .select('*, commission_tiers(*)')
+          .eq('salesperson_id', user.id)
+          .maybeSingle(),
+        
+        // Get commission snapshots for this month (reconciled)
+        supabase
+          .from('commission_snapshots')
+          .select('*')
+          .eq('salesperson_id', user.id)
+          .eq('year_month', currentYearMonth),
+        
+        // Get delivered but not reconciled orders (for estimated commission)
+        supabase
+          .from('orders')
+          .select('id, total_amount, discount_amount')
+          .eq('salesperson_id', user.id)
+          .eq('runner_status', 'DELIVERED')
+          .neq('reconciliation_status', 'SETTLED')
+          .gte('delivered_at', monthStart)
+          .lte('delivered_at', monthEnd),
       ]);
 
       // Calculate today's sales
@@ -143,13 +187,103 @@ export function useSalespersonDashboard() {
       );
       const mtdDeliveredCount = mtdSalesRes.data?.length || 0;
 
-      // Calculate target progress
-      const monthlyTarget = DEFAULT_MONTHLY_TARGET;
-      const targetProgress = Math.min((mtdSalesAmount / monthlyTarget) * 100, 100);
-      const remainingToTarget = Math.max(monthlyTarget - mtdSalesAmount, 0);
+      // Get target from database or use default
+      const targetData = targetRes.data;
+      const targetType = targetData?.target_type as 'ORDER_COUNT' | 'SALES_VALUE' | null;
+      const monthlyTarget = targetData?.target_value ?? 10000; // Default fallback
+      
+      // Calculate target progress based on target type
+      let achievedValue: number;
+      if (targetType === 'ORDER_COUNT') {
+        achievedValue = mtdDeliveredCount;
+      } else {
+        achievedValue = mtdSalesAmount;
+      }
+      const targetProgress = Math.min((achievedValue / monthlyTarget) * 100, 100);
+      const remainingToTarget = Math.max(monthlyTarget - achievedValue, 0);
 
-      // Calculate estimated commission
-      const estimatedCommission = mtdSalesAmount * COMMISSION_RATE;
+      // Calculate commission
+      const commissionSettings = commissionSettingsRes.data;
+      const commissionSnapshots = commissionSnapshotsRes.data || [];
+      const pendingReconOrders = pendingReconOrdersRes.data || [];
+      
+      // Final commission from snapshots (reconciled & approved)
+      const finalCommission = commissionSnapshots.reduce(
+        (sum, s) => sum + (Number(s.commission_amount) || 0), 
+        0
+      );
+      const monthlyReconciledCount = commissionSnapshots.length;
+
+      // Estimated commission from delivered but not reconciled orders
+      let estimatedCommission = 0;
+      const tiers = (commissionSettings?.commission_tiers || []).sort(
+        (a: any, b: any) => a.tier_order - b.tier_order
+      );
+
+      if (commissionSettings) {
+        pendingReconOrders.forEach((order, index) => {
+          const orderSequence = monthlyReconciledCount + index + 1;
+          const commissionBase = (order.total_amount || 0) - (order.discount_amount || 0);
+          
+          let commissionValue = Number(commissionSettings.base_value) || 0;
+          
+          // Apply tiered commission if applicable
+          if (commissionSettings.is_tiered && tiers.length > 0) {
+            const applicableTier = tiers.find((t: any) => 
+              orderSequence >= t.min_orders && 
+              (t.max_orders === null || orderSequence <= t.max_orders)
+            ) || tiers[tiers.length - 1];
+            
+            if (applicableTier) {
+              commissionValue = Number(applicableTier.tier_value) || 0;
+            }
+          }
+          
+          if (commissionSettings.commission_mode === 'PER_ORDER') {
+            estimatedCommission += commissionValue;
+          } else {
+            estimatedCommission += commissionBase * (commissionValue / 100);
+          }
+        });
+      }
+
+      const totalCommission = estimatedCommission + finalCommission;
+      const commissionRate = commissionSettings ? Number(commissionSettings.base_value) || 0 : 5;
+
+      // Calculate tier progress
+      let currentTier: number | null = null;
+      let nextTierAt: number | null = null;
+      let ordersToNextTier: number | null = null;
+      let currentTierValue: number | null = null;
+      let nextTierValue: number | null = null;
+
+      if (commissionSettings?.is_tiered && tiers.length > 0) {
+        const currentOrderCount = mtdDeliveredCount;
+        
+        // Find current tier
+        const currentTierData = tiers.find((t: any) => 
+          currentOrderCount >= t.min_orders && 
+          (t.max_orders === null || currentOrderCount <= t.max_orders)
+        );
+        
+        if (currentTierData) {
+          currentTier = currentTierData.tier_order;
+          currentTierValue = Number(currentTierData.tier_value);
+          
+          // Find next tier
+          const nextTierData = tiers.find((t: any) => t.tier_order === currentTierData.tier_order + 1);
+          if (nextTierData) {
+            nextTierAt = nextTierData.min_orders;
+            nextTierValue = Number(nextTierData.tier_value);
+            ordersToNextTier = Math.max(nextTierData.min_orders - currentOrderCount, 0);
+          }
+        } else if (tiers.length > 0 && currentOrderCount < tiers[0].min_orders) {
+          // Before first tier
+          nextTierAt = tiers[0].min_orders;
+          nextTierValue = Number(tiers[0].tier_value);
+          ordersToNextTier = tiers[0].min_orders - currentOrderCount;
+        }
+      }
 
       // Process stock items
       const stockItems = (stockBalanceRes.data || []).map(item => ({
@@ -205,10 +339,20 @@ export function useSalespersonDashboard() {
         mtdDeliveredCount,
         mtdOrdersCount: mtdDeliveredCount,
         monthlyTarget,
+        targetType,
         targetProgress,
         remainingToTarget,
         estimatedCommission,
-        commissionRate: COMMISSION_RATE,
+        finalCommission,
+        totalCommission,
+        commissionMode: commissionSettings?.commission_mode as 'PER_ORDER' | 'PERCENTAGE' | null,
+        commissionRate,
+        currentTier,
+        nextTierAt,
+        ordersToNextTier,
+        currentTierValue,
+        nextTierValue,
+        isTiered: commissionSettings?.is_tiered ?? false,
         failedOrdersCount: failedOrdersRes.count || 0,
         pendingDeliveryCount: pendingDeliveryRes.count || 0,
         pendingClaimCount: pendingClaimRes.count || 0,

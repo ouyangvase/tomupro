@@ -175,22 +175,27 @@ function SalespersonDashboard() {
             </CardContent>
           </Card>
 
-          {/* Estimated Commission */}
+          {/* Commission Summary */}
           <Card className="bg-gradient-to-br from-yellow-50 to-amber-50 dark:from-yellow-950/30 dark:to-amber-950/30 border-yellow-200 dark:border-yellow-800">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300">Est. Commission (MTD)</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300">Total Commission (MTD)</p>
                   {isLoading ? (
                     <Skeleton className="h-9 w-32 mt-1" />
                   ) : (
                     <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">
-                      {formatBND(dashData?.estimatedCommission ?? 0)}
+                      {formatBND(dashData?.totalCommission ?? 0)}
                     </p>
                   )}
-                  <p className="text-xs text-yellow-600/70 dark:text-yellow-400/70 mt-1">
-                    {((dashData?.commissionRate ?? 0) * 100).toFixed(0)}% of delivered sales
-                  </p>
+                  <div className="flex gap-3 text-xs mt-1">
+                    <span className="text-green-600">
+                      ✓ Final: {formatBND(dashData?.finalCommission ?? 0)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      Est: {formatBND(dashData?.estimatedCommission ?? 0)}
+                    </span>
+                  </div>
                 </div>
                 <Trophy className="h-10 w-10 text-yellow-500/50" />
               </div>
@@ -200,48 +205,114 @@ function SalespersonDashboard() {
       </div>
 
       {/* Section 2: Monthly Target Progress */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Target className="h-5 w-5 text-primary" />
-            Monthly Target Progress
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Target: {formatBND(dashData?.monthlyTarget ?? 0)}</p>
-              <p className="text-2xl font-bold">{formatBND(dashData?.mtdSalesAmount ?? 0)}</p>
-            </div>
-            <div className="text-right">
-              {isLoading ? (
-                <Skeleton className="h-12 w-16" />
-              ) : (
-                <p className={cn(
-                  "text-3xl font-bold",
-                  (dashData?.targetProgress ?? 0) >= 100 
-                    ? "text-green-600" 
-                    : (dashData?.targetProgress ?? 0) >= 75 
-                      ? "text-yellow-600" 
-                      : "text-muted-foreground"
-                )}>
-                  {(dashData?.targetProgress ?? 0).toFixed(0)}%
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" />
+              Monthly Target Progress
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Target: {dashData?.targetType === 'ORDER_COUNT' 
+                    ? `${dashData?.monthlyTarget ?? 0} orders` 
+                    : formatBND(dashData?.monthlyTarget ?? 0)}
                 </p>
-              )}
+                <p className="text-2xl font-bold">
+                  {dashData?.targetType === 'ORDER_COUNT' 
+                    ? `${dashData?.mtdDeliveredCount ?? 0} orders`
+                    : formatBND(dashData?.mtdSalesAmount ?? 0)}
+                </p>
+              </div>
+              <div className="text-right">
+                {isLoading ? (
+                  <Skeleton className="h-12 w-16" />
+                ) : (
+                  <p className={cn(
+                    "text-3xl font-bold",
+                    (dashData?.targetProgress ?? 0) >= 100 
+                      ? "text-green-600" 
+                      : (dashData?.targetProgress ?? 0) >= 75 
+                        ? "text-yellow-600" 
+                        : "text-muted-foreground"
+                  )}>
+                    {(dashData?.targetProgress ?? 0).toFixed(0)}%
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-          <Progress value={dashData?.targetProgress ?? 0} className="h-3" />
-          {(dashData?.remainingToTarget ?? 0) > 0 ? (
-            <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-primary">{formatBND(dashData?.remainingToTarget ?? 0)}</span> more to reach your monthly target
-            </p>
-          ) : (
-            <p className="text-sm text-green-600 font-medium">
-              🎉 Congratulations! You've reached your monthly target!
-            </p>
-          )}
-        </CardContent>
-      </Card>
+            <Progress value={dashData?.targetProgress ?? 0} className="h-3" />
+            {(dashData?.remainingToTarget ?? 0) > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-primary">
+                  {dashData?.targetType === 'ORDER_COUNT'
+                    ? `${Math.ceil(dashData?.remainingToTarget ?? 0)} orders`
+                    : formatBND(dashData?.remainingToTarget ?? 0)}
+                </span> more to reach your target
+              </p>
+            ) : (
+              <p className="text-sm text-green-600 font-medium">
+                🎉 You've reached your monthly target!
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Tier Progress (if applicable) */}
+        {dashData?.isTiered && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                Commission Tier Progress
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Current Tier</p>
+                  <p className="text-2xl font-bold">
+                    {dashData?.currentTier ? `Tier ${dashData.currentTier}` : 'Not started'}
+                  </p>
+                  {dashData?.currentTierValue && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {dashData.commissionMode === 'PER_ORDER' 
+                        ? `${formatBND(dashData.currentTierValue)} per order`
+                        : `${dashData.currentTierValue}% commission`}
+                    </p>
+                  )}
+                </div>
+                {dashData?.nextTierValue && (
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Next Tier</p>
+                    <p className="text-lg font-semibold text-primary">
+                      {dashData.commissionMode === 'PER_ORDER'
+                        ? formatBND(dashData.nextTierValue)
+                        : `${dashData.nextTierValue}%`}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {dashData?.ordersToNextTier !== null && dashData?.nextTierAt !== null && (
+                <>
+                  <Progress 
+                    value={dashData?.nextTierAt > 0 
+                      ? ((dashData.nextTierAt - (dashData.ordersToNextTier ?? 0)) / dashData.nextTierAt) * 100 
+                      : 0} 
+                    className="h-2" 
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-primary">{dashData.ordersToNextTier}</span> more orders to unlock next tier
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Section 3: Action Required */}
       <div className="space-y-4">
