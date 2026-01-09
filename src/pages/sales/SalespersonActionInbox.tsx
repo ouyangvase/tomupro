@@ -77,28 +77,90 @@ function needsSalespersonAction(order: Order): boolean {
 
 export default function SalespersonActionInbox() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
   const { data: allOrders = [], isLoading, refetch } = useOrders();
   
   const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [salespersonFilter, setSalespersonFilter] = useState<string>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
-  // Filter orders requiring salesperson action (for current salesperson)
-  const actionRequiredOrders = useMemo(() => {
-    let filtered = allOrders.filter(order => 
-      order.salesperson_id === profile?.id &&
-      needsSalespersonAction(order)
-    );
+  // For manager: Get their group member IDs
+  const { data: groupMembers = [] } = useQuery({
+    queryKey: ['manager-group-members', profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return [];
+      const { data, error } = await supabase
+        .from('group_members')
+        .select(`
+          member_user_id,
+          manager_groups!inner(manager_user_id)
+        `)
+        .eq('manager_groups.manager_user_id', profile.id);
+      if (error) return [];
+      return data?.map(gm => gm.member_user_id) || [];
+    },
+    enabled: role === 'manager' && !!profile?.id,
+  });
 
+  // Fetch salesperson info for filtering (manager/admin)
+  const salespersonIds = useMemo(() => {
+    if (role === 'admin') {
+      return [...new Set(allOrders.filter(o => o.salesperson_action_required).map(o => o.salesperson_id))];
+    }
+    if (role === 'manager') {
+      return groupMembers;
+    }
+    return [];
+  }, [role, allOrders, groupMembers]);
+
+  const { data: salespersons = [] } = useQuery({
+    queryKey: ['salespersons-for-filter', salespersonIds],
+    queryFn: async () => {
+      if (salespersonIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('user_directory')
+        .select('id, display_name')
+        .in('id', salespersonIds);
+      if (error) return [];
+      return data;
+    },
+    enabled: (role === 'admin' || role === 'manager') && salespersonIds.length > 0,
+  });
+
+  // Determine if user can view all (admin), group members (manager), or just own (salesperson)
+  const canViewAll = role === 'admin';
+  const canViewGroup = role === 'manager';
+
+  // Filter orders requiring salesperson action based on role
+  const actionRequiredOrders = useMemo(() => {
+    let filtered = allOrders.filter(order => needsSalespersonAction(order));
+
+    // Role-based filtering
+    if (canViewAll) {
+      // Admin sees all - no additional filter
+    } else if (canViewGroup) {
+      // Manager sees only their group members
+      filtered = filtered.filter(order => groupMembers.includes(order.salesperson_id));
+    } else {
+      // Salesperson sees only their own
+      filtered = filtered.filter(order => order.salesperson_id === profile?.id);
+    }
+
+    // Apply salesperson filter (for admin/manager)
+    if (salespersonFilter !== 'all') {
+      filtered = filtered.filter(o => o.salesperson_id === salespersonFilter);
+    }
+
+    // Apply source filter
     if (sourceFilter !== 'all') {
       filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
     }
 
     return filtered;
-  }, [allOrders, profile?.id, sourceFilter]);
+  }, [allOrders, profile?.id, sourceFilter, salespersonFilter, canViewAll, canViewGroup, groupMembers]);
 
   // Fetch reasons for failed orders
   const reasonIds = useMemo(() => 
@@ -268,20 +330,41 @@ export default function SalespersonActionInbox() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <Label className="text-xs">Action Type</Label>
-              <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Sources</SelectItem>
-                    <SelectItem value="FAILED_DELIVERY">Failed Delivery</SelectItem>
-                    <SelectItem value="RESCHEDULED">Rescheduled</SelectItem>
-                    <SelectItem value="RUNNER_FLAGGED">Runner Notes</SelectItem>
-                    <SelectItem value="MANUAL">Manual Flag</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-4">
+                {/* Salesperson Filter - only for admin/manager */}
+                {(canViewAll || canViewGroup) && salespersons.length > 0 && (
+                  <div>
+                    <Label className="text-xs">Agent</Label>
+                    <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="All Agents" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Agents</SelectItem>
+                        {salespersons.map(sp => (
+                          <SelectItem key={sp.id} value={sp.id}>
+                            {sp.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div>
+                  <Label className="text-xs">Action Type</Label>
+                  <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sources</SelectItem>
+                      <SelectItem value="FAILED_DELIVERY">Failed Delivery</SelectItem>
+                      <SelectItem value="RESCHEDULED">Rescheduled</SelectItem>
+                      <SelectItem value="RUNNER_FLAGGED">Runner Notes</SelectItem>
+                      <SelectItem value="MANUAL">Manual Flag</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
               {selectedRows.size > 0 && (
@@ -321,6 +404,7 @@ export default function SalespersonActionInbox() {
                     />
                   </TableHead>
                   <TableHead>Order Ref</TableHead>
+                  {(canViewAll || canViewGroup) && <TableHead>Agent</TableHead>}
                   <TableHead>Customer</TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Next Date</TableHead>
@@ -333,7 +417,7 @@ export default function SalespersonActionInbox() {
               <TableBody>
                 {actionRequiredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={(canViewAll || canViewGroup) ? 10 : 9} className="text-center py-8 text-muted-foreground">
                       No orders requiring action
                     </TableCell>
                   </TableRow>
@@ -348,6 +432,13 @@ export default function SalespersonActionInbox() {
                         />
                       </TableCell>
                       <TableCell className="font-mono text-sm">{order.order_code}</TableCell>
+                      {(canViewAll || canViewGroup) && (
+                        <TableCell>
+                          <span className="text-sm">
+                            {salespersons.find(sp => sp.id === order.salesperson_id)?.display_name || '-'}
+                          </span>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <div>
                           <div className="font-medium">{order.customer_name}</div>
