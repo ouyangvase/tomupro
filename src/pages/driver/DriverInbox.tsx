@@ -12,10 +12,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Check, X, Phone, MapPin, Package, User, Calendar, Loader2, Truck } from 'lucide-react';
-import { format, isToday, isTomorrow, parseISO, addDays, startOfDay } from 'date-fns';
-import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
+import { Check, X, Phone, MapPin, Package, User, Calendar, Loader2, Truck, Navigation } from 'lucide-react';
+import { format, isToday, isTomorrow, parseISO } from 'date-fns';
+import { formatBND } from '@/lib/currency';
 
 const driverStatusColors: Record<string, string> = {
   ASSIGNED: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -38,7 +37,6 @@ export default function DriverInbox() {
   const [failedReason, setFailedReason] = useState('');
   const [failedRemark, setFailedRemark] = useState('');
   const [nextDeliveryDate, setNextDeliveryDate] = useState('');
-  const [dateFilter, setDateFilter] = useState<'today' | 'tomorrow'>('today');
 
   // Filter orders assigned to this driver
   const myOrders = useMemo(() => {
@@ -53,28 +51,30 @@ export default function DriverInbox() {
     return new Date();
   };
 
-  // Apply date filter - only Today and Tomorrow
+  // Get ALL assigned driver orders (no date filtering)
   const filteredOrders = useMemo(() => {
-    const today = startOfDay(new Date());
-    const tomorrow = startOfDay(addDays(new Date(), 1));
-    
     return myOrders.filter(order => {
-      // Only show orders with driver statuses
-      if (!['ASSIGNED', 'OUT_FOR_DELIVERY', 'DRIVER_DELIVERED', 'DRIVER_FAILED'].includes(order.driver_status || '')) {
-        return false;
-      }
-      
-      const deliveryDate = startOfDay(getDeliveryDate(order));
-      
-      if (dateFilter === 'today') {
-        return deliveryDate.getTime() === today.getTime();
-      }
-      if (dateFilter === 'tomorrow') {
-        return deliveryDate.getTime() === tomorrow.getTime();
-      }
-      return false;
+      // Only show orders with active driver statuses
+      return ['ASSIGNED', 'OUT_FOR_DELIVERY', 'DRIVER_DELIVERED', 'DRIVER_FAILED'].includes(order.driver_status || '');
     });
-  }, [myOrders, dateFilter]);
+  }, [myOrders]);
+
+  // Open Google Maps with address
+  const openGoogleMaps = (address: string) => {
+    const encodedAddress = encodeURIComponent(address);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
+  };
+
+  // Format order items to show SKU codes
+  const formatOrderItems = (orderItems: any[]) => {
+    if (!orderItems || orderItems.length === 0) return [];
+    return orderItems.map(item => ({
+      skuCode: item.product?.sku_code || item.sku_label || 'N/A',
+      skuName: item.product?.sku_name || item.sku_label || 'Unknown',
+      qty: item.qty,
+      price: item.line_total || item.price * item.qty,
+    }));
+  };
 
   // Count stats for selected tab
   const pendingOrders = filteredOrders.filter(o => 
@@ -149,15 +149,7 @@ export default function DriverInbox() {
           )}
         </div>
 
-        {/* Date Filter - Only Today and Tomorrow */}
-        <Tabs value={dateFilter} onValueChange={(v) => setDateFilter(v as 'today' | 'tomorrow')}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="today">Today</TabsTrigger>
-            <TabsTrigger value="tomorrow">Tomorrow</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {/* Stats for selected tab */}
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           <Card className="p-3">
             <div className="text-2xl font-bold text-center">{pendingOrders.length}</div>
@@ -165,7 +157,7 @@ export default function DriverInbox() {
           </Card>
           <Card className="p-3">
             <div className="text-2xl font-bold text-center text-amber-600">{deliveredPendingAcceptance.length}</div>
-            <div className="text-xs text-center text-muted-foreground">Delivered (Pending Accept)</div>
+            <div className="text-xs text-center text-muted-foreground">Delivered (Pending)</div>
           </Card>
           <Card className="p-3">
             <div className="text-2xl font-bold text-center text-red-600">{failedOrdersList.length}</div>
@@ -176,102 +168,135 @@ export default function DriverInbox() {
         {/* Pending Orders */}
         {pendingOrders.length > 0 && (
           <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-3">Pending Deliveries</h2>
+            <h2 className="text-lg font-semibold mb-3">Pending Deliveries ({pendingOrders.length})</h2>
             <div className="space-y-3">
-              {pendingOrders.map(order => (
-                <Card key={order.id} className="overflow-hidden">
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          {order.order_code}
-                          <span className="text-xs text-muted-foreground font-normal">
-                            {getDateLabel(order)}
-                          </span>
-                        </CardTitle>
-                        <div className="flex gap-2 mt-1">
-                          <Badge className={driverStatusColors[order.driver_status || 'ASSIGNED']}>
-                            {order.driver_status?.replace('_', ' ')}
-                          </Badge>
-                          {order.driver_status === 'ASSIGNED' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 text-xs"
-                              onClick={() => handleToggleOutForDelivery(order.id, order.driver_status || 'ASSIGNED')}
-                            >
-                              <Truck className="h-3 w-3 mr-1" />
-                              Start Delivery
-                            </Button>
-                          )}
-                          {order.driver_status === 'OUT_FOR_DELIVERY' && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 text-xs"
-                              onClick={() => handleToggleOutForDelivery(order.id, order.driver_status || 'ASSIGNED')}
-                            >
-                              Reset
-                            </Button>
-                          )}
+              {pendingOrders.map(order => {
+                const items = formatOrderItems(order.order_items || []);
+                return (
+                  <Card key={order.id} className="overflow-hidden">
+                    <CardHeader className="pb-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle className="text-base flex items-center gap-2">
+                            {order.order_code}
+                            <span className="text-xs text-muted-foreground font-normal">
+                              {getDateLabel(order)}
+                            </span>
+                          </CardTitle>
+                          <div className="flex gap-2 mt-1 flex-wrap">
+                            <Badge className={driverStatusColors[order.driver_status || 'ASSIGNED']}>
+                              {order.driver_status?.replace('_', ' ')}
+                            </Badge>
+                            {order.driver_status === 'ASSIGNED' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-6 text-xs"
+                                onClick={() => handleToggleOutForDelivery(order.id, order.driver_status || 'ASSIGNED')}
+                              >
+                                <Truck className="h-3 w-3 mr-1" />
+                                Start Delivery
+                              </Button>
+                            )}
+                            {order.driver_status === 'OUT_FOR_DELIVERY' && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-xs"
+                                onClick={() => handleToggleOutForDelivery(order.id, order.driver_status || 'ASSIGNED')}
+                              >
+                                Reset
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold">{formatBND(order.total_amount)}</div>
+                          <div className="text-xs text-muted-foreground">{order.payment_method}</div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold">RM {order.total_amount}</div>
-                        <div className="text-xs text-muted-foreground">{order.payment_method}</div>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {/* Customer Info */}
+                      <div className="flex items-center gap-2 text-sm">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{order.customer_name}</span>
                       </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <span>{order.customer_name}</span>
-                    </div>
-                    <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-sm text-primary">
-                      <Phone className="h-4 w-4" />
-                      <span>{order.phone}</span>
-                    </a>
-                    <div className="flex items-start gap-2 text-sm">
-                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                      <span className="flex-1">{order.address}</span>
-                    </div>
-                    {order.area && (
-                      <Badge variant="outline" className="text-xs">{order.area}</Badge>
-                    )}
-                    {order.order_items && order.order_items.length > 0 && (
-                      <div className="flex items-start gap-2 text-sm border-t pt-2 mt-2">
-                        <Package className="h-4 w-4 text-muted-foreground mt-0.5" />
-                        <div className="flex-1">
-                          <span className={`text-xs ${formatOrderItemsDisplay(order.order_items).hasError ? 'text-destructive' : ''}`}>
-                            {formatOrderItemsDisplay(order.order_items).displayText}
-                          </span>
+                      
+                      {/* Phone */}
+                      <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-sm text-primary">
+                        <Phone className="h-4 w-4" />
+                        <span>{order.phone}</span>
+                      </a>
+                      
+                      {/* Address with Google Maps button */}
+                      <div className="flex items-start gap-2 text-sm">
+                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <span className="flex-1">{order.address}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 flex-shrink-0"
+                          onClick={() => openGoogleMaps(order.address)}
+                        >
+                          <Navigation className="h-3 w-3 mr-1" />
+                          Maps
+                        </Button>
+                      </div>
+                      
+                      {/* Area */}
+                      {order.area && (
+                        <Badge variant="outline" className="text-xs">{order.area}</Badge>
+                      )}
+                      
+                      {/* Order Items with full SKU details */}
+                      {items.length > 0 && (
+                        <div className="border-t pt-2 mt-2">
+                          <div className="flex items-center gap-2 text-sm mb-2">
+                            <Package className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">Order Items</span>
+                          </div>
+                          <div className="space-y-1 pl-6">
+                            {items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between items-center text-sm">
+                                <div>
+                                  <span className="font-mono font-medium">{item.skuCode}</span>
+                                  {item.skuName !== item.skuCode && (
+                                    <span className="text-muted-foreground ml-1">({item.skuName})</span>
+                                  )}
+                                  <span className="text-muted-foreground ml-2">× {item.qty}</span>
+                                </div>
+                                <span className="font-medium">{formatBND(item.price)}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
+                      )}
+                      
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 pt-3 border-t mt-3">
+                        <Button 
+                          className="flex-1" 
+                          variant="default"
+                          onClick={() => handleMarkDelivered(order.id)}
+                          disabled={markDelivered.isPending}
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          Delivered
+                        </Button>
+                        <Button 
+                          className="flex-1" 
+                          variant="destructive"
+                          onClick={() => handleOpenFailedDialog(order.id)}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Failed
+                        </Button>
                       </div>
-                    )}
-                    
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 pt-3 border-t mt-3">
-                      <Button 
-                        className="flex-1" 
-                        variant="default"
-                        onClick={() => handleMarkDelivered(order.id)}
-                        disabled={markDelivered.isPending}
-                      >
-                        <Check className="h-4 w-4 mr-1" />
-                        Delivered
-                      </Button>
-                      <Button 
-                        className="flex-1" 
-                        variant="destructive"
-                        onClick={() => handleOpenFailedDialog(order.id)}
-                      >
-                        <X className="h-4 w-4 mr-1" />
-                        Failed
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -279,26 +304,56 @@ export default function DriverInbox() {
         {/* Delivered Orders (Pending Runner Acceptance) */}
         {deliveredPendingAcceptance.length > 0 && (
           <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-3">Pending Runner Acceptance</h2>
+            <h2 className="text-lg font-semibold mb-3">Pending Runner Acceptance ({deliveredPendingAcceptance.length})</h2>
             <div className="space-y-3">
-              {deliveredPendingAcceptance.map(order => (
-                <Card key={order.id} className="overflow-hidden border-amber-200 bg-amber-50">
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-medium">{order.order_code}</div>
-                        <div className="text-sm text-muted-foreground">{order.customer_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {order.driver_delivered_at && format(new Date(order.driver_delivered_at), 'dd MMM HH:mm')}
+              {deliveredPendingAcceptance.map(order => {
+                const items = formatOrderItems(order.order_items || []);
+                return (
+                  <Card key={order.id} className="overflow-hidden border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium">{order.order_code}</div>
+                          <div className="text-sm text-muted-foreground">{order.customer_name}</div>
                         </div>
+                        <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                          Awaiting Acceptance
+                        </Badge>
                       </div>
-                      <Badge className="bg-amber-100 text-amber-800">
-                        Awaiting Acceptance
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-sm text-primary">
+                        <Phone className="h-4 w-4" />
+                        <span>{order.phone}</span>
+                      </a>
+                      <div className="flex items-start gap-2 text-sm">
+                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <span className="flex-1">{order.address}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 flex-shrink-0"
+                          onClick={() => openGoogleMaps(order.address)}
+                        >
+                          <Navigation className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {order.area && <Badge variant="outline" className="text-xs">{order.area}</Badge>}
+                      {items.length > 0 && (
+                        <div className="text-xs space-y-0.5 pt-2 border-t">
+                          {items.map((item, idx) => (
+                            <div key={idx} className="flex justify-between">
+                              <span><span className="font-mono">{item.skuCode}</span> × {item.qty}</span>
+                              <span>{formatBND(item.price)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        Delivered: {order.driver_delivered_at && format(new Date(order.driver_delivered_at), 'dd MMM HH:mm')}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -306,29 +361,59 @@ export default function DriverInbox() {
         {/* Failed Orders */}
         {failedOrdersList.length > 0 && (
           <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-3">Failed Deliveries</h2>
+            <h2 className="text-lg font-semibold mb-3">Failed Deliveries ({failedOrdersList.length})</h2>
             <div className="space-y-3">
-              {failedOrdersList.map(order => (
-                <Card key={order.id} className="overflow-hidden border-red-200 bg-red-50">
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-medium">{order.order_code}</div>
-                        <div className="text-sm text-muted-foreground">{order.customer_name}</div>
-                        <div className="text-xs text-red-600 mt-1">
-                          {order.driver_failed_reason}
+              {failedOrdersList.map(order => {
+                const items = formatOrderItems(order.order_items || []);
+                return (
+                  <Card key={order.id} className="overflow-hidden border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium">{order.order_code}</div>
+                          <div className="text-sm text-muted-foreground">{order.customer_name}</div>
                         </div>
+                        {order.driver_next_delivery_date && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            {format(new Date(order.driver_next_delivery_date), 'dd MMM')}
+                          </div>
+                        )}
                       </div>
-                      {order.driver_next_delivery_date && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Calendar className="h-3 w-3" />
-                          {format(new Date(order.driver_next_delivery_date), 'dd MMM')}
+                      <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-sm text-primary">
+                        <Phone className="h-4 w-4" />
+                        <span>{order.phone}</span>
+                      </a>
+                      <div className="flex items-start gap-2 text-sm">
+                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <span className="flex-1">{order.address}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 flex-shrink-0"
+                          onClick={() => openGoogleMaps(order.address)}
+                        >
+                          <Navigation className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {order.area && <Badge variant="outline" className="text-xs">{order.area}</Badge>}
+                      {items.length > 0 && (
+                        <div className="text-xs space-y-0.5 pt-2 border-t">
+                          {items.map((item, idx) => (
+                            <div key={idx} className="flex justify-between">
+                              <span><span className="font-mono">{item.skuCode}</span> × {item.qty}</span>
+                              <span>{formatBND(item.price)}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      <div className="text-xs text-red-600 mt-1">
+                        Reason: {order.driver_failed_reason}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -337,7 +422,7 @@ export default function DriverInbox() {
         {filteredOrders.length === 0 && (
           <div className="text-center py-12">
             <Package className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-            <h3 className="text-lg font-medium">No deliveries for {dateFilter}</h3>
+            <h3 className="text-lg font-medium">No deliveries assigned</h3>
             <p className="text-muted-foreground text-sm">
               Wait for your runner to assign orders
             </p>
