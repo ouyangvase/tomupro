@@ -15,6 +15,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useRunnerDriverOrders, useMyDrivers, useBulkAssignOrdersToDriver, useUnassignDriverFromOrder, useRunnerAcceptDelivery, useRunnerRejectDelivery, useDriverOrderCount } from '@/hooks/useDrivers';
 import { useManualReopenOrder } from '@/hooks/useRescheduleHistory';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
+import { useCancelOrders } from '@/hooks/useCancelOrder';
+import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -64,12 +66,17 @@ export default function RunnerDriverInbox() {
   const rejectDelivery = useRunnerRejectDelivery();
   const manualReopen = useManualReopenOrder();
   const revertDelivery = useRevertDelivery();
+  const cancelOrders = useCancelOrders();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<string>('');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectOrderId, setRejectOrderId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  
+  // Cancel dialog state
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   
   // Runner Review Modal state
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
@@ -232,6 +239,25 @@ export default function RunnerDriverInbox() {
     });
   };
 
+  // Handle cancel order
+  const handleOpenCancelDialog = (orderId: string) => {
+    setCancelOrderId(orderId);
+    setCancelDialogOpen(true);
+  };
+
+  const handleConfirmCancel = (reason: string, notes: string) => {
+    if (!cancelOrderId) return;
+    cancelOrders.mutate(
+      { orderIds: [cancelOrderId], cancelReason: reason, cancelNotes: notes },
+      {
+        onSuccess: () => {
+          setCancelDialogOpen(false);
+          setCancelOrderId(null);
+        },
+      }
+    );
+  };
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -358,12 +384,13 @@ export default function RunnerDriverInbox() {
                       <TableHead>Payment</TableHead>
                       <TableHead>Runner Status</TableHead>
                       <TableHead>Driver</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {assignableOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                           No orders to assign
                         </TableCell>
                       </TableRow>
@@ -430,6 +457,17 @@ export default function RunnerDriverInbox() {
                             ) : (
                               <span className="text-muted-foreground">-</span>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleOpenCancelDialog(order.id)}
+                            >
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Cancel
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))
@@ -826,6 +864,15 @@ export default function RunnerDriverInbox() {
           open={reviewModalOpen}
           onOpenChange={setReviewModalOpen}
           order={reviewOrder}
+        />
+
+        {/* Cancel Order Dialog */}
+        <CancelOrderDialog
+          open={cancelDialogOpen}
+          onOpenChange={setCancelDialogOpen}
+          orderCount={1}
+          onConfirm={handleConfirmCancel}
+          loading={cancelOrders.isPending}
         />
       </div>
     </AppLayout>
