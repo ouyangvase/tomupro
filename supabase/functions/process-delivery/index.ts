@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
           product_id: item.product_id,
           movement_type: 'DELIVER_DEDUCT',
           qty_change: -item.qty,
-          reference_type: 'ORDER',
+          reference_type: 'ORDER_ITEM',
           reference_id: item.id,
           order_id: orderId,
           created_by: authenticatedUserId,
