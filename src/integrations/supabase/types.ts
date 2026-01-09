@@ -1118,6 +1118,125 @@ export type Database = {
           },
         ]
       }
+      leaderboard_archive: {
+        Row: {
+          created_at: string
+          id: string
+          metric_config_snapshot: Json
+          period_end: string
+          period_start: string
+          ranks: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metric_config_snapshot: Json
+          period_end: string
+          period_start: string
+          ranks: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metric_config_snapshot?: Json
+          period_end?: string
+          period_start?: string
+          ranks?: Json
+        }
+        Relationships: []
+      }
+      leaderboard_participants: {
+        Row: {
+          created_at: string
+          id: string
+          is_included: boolean
+          salesperson_id: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_included?: boolean
+          salesperson_id: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_included?: boolean
+          salesperson_id?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leaderboard_participants_salesperson_id_fkey"
+            columns: ["salesperson_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leaderboard_participants_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leaderboard_settings: {
+        Row: {
+          created_at: string
+          enabled_metrics: string[]
+          excluded_salesperson_ids: string[] | null
+          filters_default: Json | null
+          id: string
+          included_salesperson_ids: string[] | null
+          period_mode: string
+          primary_metric: string
+          tie_breakers: string[]
+          updated_at: string
+          updated_by: string | null
+          visibility_mode: string
+        }
+        Insert: {
+          created_at?: string
+          enabled_metrics?: string[]
+          excluded_salesperson_ids?: string[] | null
+          filters_default?: Json | null
+          id?: string
+          included_salesperson_ids?: string[] | null
+          period_mode?: string
+          primary_metric?: string
+          tie_breakers?: string[]
+          updated_at?: string
+          updated_by?: string | null
+          visibility_mode?: string
+        }
+        Update: {
+          created_at?: string
+          enabled_metrics?: string[]
+          excluded_salesperson_ids?: string[] | null
+          filters_default?: Json | null
+          id?: string
+          included_salesperson_ids?: string[] | null
+          period_mode?: string
+          primary_metric?: string
+          tie_breakers?: string[]
+          updated_at?: string
+          updated_by?: string | null
+          visibility_mode?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leaderboard_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manager_groups: {
         Row: {
           created_at: string
@@ -2293,6 +2412,24 @@ export type Database = {
           returned_qty: number
           sku_code: string
           sku_name: string
+        }[]
+      }
+      get_leaderboard_rankings: {
+        Args: {
+          p_period_end: string
+          p_period_start: string
+          p_primary_metric?: string
+        }
+        Returns: {
+          completed_orders: number
+          conversion_score: number
+          delivered_orders: number
+          failed_orders: number
+          net_sales: number
+          rank_position: number
+          salesperson_id: string
+          salesperson_name: string
+          success_rate: number
         }[]
       }
       get_stock_balance: {
