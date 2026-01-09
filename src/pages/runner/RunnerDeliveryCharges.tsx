@@ -158,7 +158,7 @@ export default function RunnerDeliveryCharges() {
                       <TableCell className="font-medium">{area}</TableCell>
                       <TableCell>
                         {data.active ? (
-                          <span className="font-mono">RM {Number(data.active.charge_amount).toFixed(2)}</span>
+                          <span className="font-mono">BND {Number(data.active.charge_amount).toFixed(2)}</span>
                         ) : (
                           <span className="text-muted-foreground">Not set</span>
                         )}
@@ -181,7 +181,7 @@ export default function RunnerDeliveryCharges() {
                       <TableCell>
                         {data.pending ? (
                           <div className="flex items-center gap-2">
-                            <span className="font-mono">RM {Number(data.pending.charge_amount).toFixed(2)}</span>
+                            <span className="font-mono">BND {Number(data.pending.charge_amount).toFixed(2)}</span>
                             <Badge variant="secondary" className="text-xs">Pending</Badge>
                           </div>
                         ) : (
@@ -246,7 +246,7 @@ export default function RunnerDeliveryCharges() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="amount">Charge Amount (RM)</Label>
+              <Label htmlFor="amount">Charge Amount (BND)</Label>
               <Input
                 id="amount"
                 type="number"
@@ -298,7 +298,7 @@ export default function RunnerDeliveryCharges() {
                 return (
                   <TableRow key={charge.id}>
                     <TableCell className="font-mono">
-                      RM {Number(charge.charge_amount).toFixed(2)}
+                      BND {Number(charge.charge_amount).toFixed(2)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={config.variant} className="gap-1">
