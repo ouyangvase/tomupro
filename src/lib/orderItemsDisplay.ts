@@ -71,22 +71,13 @@ export function formatOrderItemsDisplay(orderItems: OrderItem[] | undefined): {
     })));
   }
 
-  // Format all items
+  // Format all items in a single line, comma-separated
   const formattedItems = orderItems.map(item => formatSingleItem(item));
-  const fullText = formattedItems.join(', ');
-
-  // For display, show first 2 items then "+N more" if there are more
-  let displayText: string;
-  if (orderItems.length <= 2) {
-    displayText = fullText;
-  } else {
-    const firstTwo = formattedItems.slice(0, 2).join(', ');
-    displayText = `${firstTwo} +${orderItems.length - 2} more`;
-  }
+  const displayText = formattedItems.join(', ');
 
   return {
     displayText,
-    fullText,
+    fullText: displayText,
     hasError: itemsWithMissingData.length > 0,
     errorMessage: itemsWithMissingData.length > 0 
       ? `${itemsWithMissingData.length} item(s) missing product data`
