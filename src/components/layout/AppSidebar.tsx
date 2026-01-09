@@ -425,7 +425,7 @@ export function AppSidebar() {
         <Button 
           variant="outline" 
           size={collapsed ? "icon" : "default"} 
-          onClick={() => signOut()} 
+          onClick={signOut} 
           className="w-full gap-2"
         >
           <LogOut className="h-4 w-4" />
