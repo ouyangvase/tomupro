@@ -1,12 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, TrendingUp, TrendingDown, Minus, Crown, Medal, ChevronRight } from "lucide-react";
+import { Trophy, TrendingUp, TrendingDown, Minus, Crown, Medal, ChevronRight, Radio, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVisibleRankings, useMyRanking, usePreviousPeriodRanking, useLeaderboardSettings } from "@/hooks/useLeaderboard";
 import { formatBND } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 function getRankIcon(rank: number, size: "sm" | "lg" = "sm") {
   const iconClass = size === "lg" ? "h-6 w-6" : "h-4 w-4";
@@ -58,7 +59,7 @@ export function LeaderboardDashboardCard() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { data: settings } = useLeaderboardSettings();
-  const rankings = useVisibleRankings('month');
+  const { rankings, lastUpdated, isFetching } = useVisibleRankings('month');
   const myRanking = useMyRanking('month');
   const previousRanking = usePreviousPeriodRanking('month');
   
@@ -82,6 +83,12 @@ export function LeaderboardDashboardCard() {
             <ChevronRight className="h-4 w-4 ml-1" />
           </Button>
         </div>
+        {/* Live indicator */}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Radio className={cn("h-2 w-2", isFetching ? "text-yellow-500 animate-pulse" : "text-green-500")} />
+          <span>Live • {format(lastUpdated, 'HH:mm')}</span>
+          {isFetching && <RefreshCw className="h-2 w-2 animate-spin" />}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* My Rank (for salesperson) */}
@@ -103,7 +110,7 @@ export function LeaderboardDashboardCard() {
             <div className="text-right">
               <p className="font-semibold">{formatBND(myRanking.net_sales)}</p>
               <p className="text-xs text-muted-foreground">
-                {myRanking.completed_orders} completed
+                {myRanking.delivered_orders} delivered
               </p>
             </div>
           </div>
@@ -142,9 +149,14 @@ export function LeaderboardDashboardCard() {
                     )}
                   </span>
                 </div>
-                <span className="text-sm font-medium">
-                  {formatBND(ranking.net_sales)}
-                </span>
+                <div className="text-right">
+                  <span className="text-sm font-medium">
+                    {formatBND(ranking.net_sales)}
+                  </span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {ranking.delivered_orders} del
+                  </span>
+                </div>
               </div>
             ))
           )}

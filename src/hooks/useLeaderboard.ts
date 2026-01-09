@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, format, subMonths } from "date-fns";
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, format, subMonths, subWeeks, subDays } from "date-fns";
+import { useEffect, useState, useCallback } from "react";
 
 export type PeriodMode = 'today' | 'week' | 'month' | 'custom';
 export type PrimaryMetric = 'completed_orders' | 'net_sales' | 'delivered_orders' | 'conversion_score' | 'success_rate';
@@ -51,7 +52,7 @@ export interface LeaderboardArchive {
   created_at: string;
 }
 
-// Get period dates based on mode
+// Get period dates based on mode (local time)
 export function getPeriodDates(mode: PeriodMode, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
   const now = new Date();
   switch (mode) {
@@ -186,7 +187,7 @@ export function useUpsertLeaderboardParticipant() {
   });
 }
 
-// Hook to fetch leaderboard rankings
+// Hook to fetch leaderboard rankings with real-time data
 export function useLeaderboardRankings(
   periodMode: PeriodMode = 'month',
   primaryMetric: PrimaryMetric = 'net_sales',
@@ -194,28 +195,62 @@ export function useLeaderboardRankings(
   customEnd?: Date
 ) {
   const { profile } = useAuth();
-  const { data: settings } = useLeaderboardSettings();
+  const queryClient = useQueryClient();
   const { data: participants } = useLeaderboardParticipants();
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   
   const { start, end } = getPeriodDates(periodMode, customStart, customEnd);
+  const startStr = formatDateForQuery(start);
+  const endStr = formatDateForQuery(end);
+  
+  // Set up real-time subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('leaderboard-orders-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders'
+        },
+        () => {
+          // Invalidate and refetch on any order change
+          queryClient.invalidateQueries({ queryKey: ['leaderboard-rankings'] });
+          setLastUpdated(new Date());
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
   
   return useQuery({
-    queryKey: ['leaderboard-rankings', periodMode, primaryMetric, formatDateForQuery(start), formatDateForQuery(end)],
+    queryKey: ['leaderboard-rankings', periodMode, primaryMetric, startStr, endStr],
     queryFn: async () => {
-      // Calculate rankings from orders directly
+      // Fetch orders with CORRECT filters:
+      // - runner_status = 'DELIVERED' for delivered orders
+      // - status != 'CANCELLED' for non-cancelled orders
+      // - Order date within period
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
         .select(`
+          id,
           salesperson_id,
           total_amount,
           discount_amount,
           runner_status,
           driver_status,
           reconciliation_status,
+          status,
+          delivered_at,
           order_date
         `)
-        .gte('order_date', formatDateForQuery(start))
-        .lte('order_date', formatDateForQuery(end));
+        .neq('status', 'CANCELLED')
+        .gte('order_date', startStr)
+        .lte('order_date', endStr);
       
       if (ordersError) throw ordersError;
       
@@ -253,26 +288,32 @@ export function useLeaderboardRankings(
         }
       });
       
-      // Aggregate order data
+      // Aggregate order data using REAL filters:
+      // - Delivered = runner_status = 'DELIVERED' AND status != 'CANCELLED'
+      // - Failed = runner_status = 'FAILED_DELIVERY' AND status != 'CANCELLED'
+      // - Completed = reconciliation_status = 'SETTLED' (admin approved)
       orders?.forEach(order => {
         const spId = order.salesperson_id;
         if (!metricsMap.has(spId)) return;
         
         const metrics = metricsMap.get(spId)!;
+        const orderTotal = Number(order.total_amount) || 0;
+        const discount = Number(order.discount_amount) || 0;
+        const netAmount = orderTotal - discount;
         
-        // Completed orders (reconciliation approved)
-        if (order.reconciliation_status === 'SETTLED') {
-          metrics.completed_orders++;
-          metrics.net_sales += (order.total_amount || 0) - (order.discount_amount || 0);
-        }
-        
-        // Delivered orders
+        // Delivered orders (runner_status = DELIVERED, not cancelled)
         if (order.runner_status === 'DELIVERED') {
           metrics.delivered_orders++;
+          metrics.net_sales += netAmount;
+        }
+        
+        // Completed orders (reconciliation approved/settled)
+        if (order.reconciliation_status === 'SETTLED') {
+          metrics.completed_orders++;
         }
         
         // Failed orders
-        if (order.runner_status === 'FAILED_DELIVERY' || order.driver_status === 'FAILED') {
+        if (order.runner_status === 'FAILED_DELIVERY') {
           metrics.failed_orders++;
         }
       });
@@ -287,7 +328,7 @@ export function useLeaderboardRankings(
         
         rankings.push({
           salesperson_id: sp.id,
-          salesperson_name: sp.display_name,
+          salesperson_name: sp.display_name || 'Unknown',
           completed_orders: metrics.completed_orders,
           net_sales: metrics.net_sales,
           delivered_orders: metrics.delivered_orders,
@@ -302,20 +343,13 @@ export function useLeaderboardRankings(
         });
       });
       
-      // Sort by primary metric and assign ranks
+      // Sort by net_sales desc (tie-breaker: delivered_orders desc)
       rankings.sort((a, b) => {
-        // Primary metric
-        const aVal = a[primaryMetric as keyof LeaderboardRanking] as number;
-        const bVal = b[primaryMetric as keyof LeaderboardRanking] as number;
-        if (bVal !== aVal) return bVal - aVal;
-        
-        // Tie-breakers
-        if (primaryMetric !== 'net_sales' && b.net_sales !== a.net_sales) {
-          return b.net_sales - a.net_sales;
-        }
-        if (primaryMetric !== 'completed_orders' && b.completed_orders !== a.completed_orders) {
-          return b.completed_orders - a.completed_orders;
-        }
+        // Primary: net_sales descending
+        if (b.net_sales !== a.net_sales) return b.net_sales - a.net_sales;
+        // Tie-breaker 1: delivered_orders descending
+        if (b.delivered_orders !== a.delivered_orders) return b.delivered_orders - a.delivered_orders;
+        // Tie-breaker 2: fewer failed orders is better
         return a.failed_orders - b.failed_orders;
       });
       
@@ -324,20 +358,24 @@ export function useLeaderboardRankings(
         r.rank_position = i + 1;
       });
       
-      return rankings;
+      // Update last updated timestamp
+      setLastUpdated(new Date());
+      
+      return { rankings, lastUpdated: new Date() };
     },
-    refetchInterval: 30000,
+    refetchInterval: 30000, // Auto-refresh every 30 seconds as fallback
+    staleTime: 5000,
   });
 }
 
 // Hook to get user's own ranking
 export function useMyRanking(periodMode: PeriodMode = 'month') {
   const { profile } = useAuth();
-  const { data: rankings } = useLeaderboardRankings(periodMode);
+  const { data } = useLeaderboardRankings(periodMode);
   
-  if (!profile || !rankings) return null;
+  if (!profile || !data?.rankings) return null;
   
-  return rankings.find(r => r.salesperson_id === profile.id) || null;
+  return data.rankings.find(r => r.salesperson_id === profile.id) || null;
 }
 
 // Hook to get previous period ranking for comparison
@@ -350,13 +388,12 @@ export function usePreviousPeriodRanking(periodMode: PeriodMode = 'month') {
   
   switch (periodMode) {
     case 'today':
-      prevStart = startOfDay(new Date(now.getTime() - 24 * 60 * 60 * 1000));
-      prevEnd = endOfDay(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+      prevStart = startOfDay(subDays(now, 1));
+      prevEnd = endOfDay(subDays(now, 1));
       break;
     case 'week':
-      const prevWeekStart = startOfWeek(now, { weekStartsOn: 1 });
-      prevStart = new Date(prevWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-      prevEnd = new Date(prevStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+      prevStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
+      prevEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
       break;
     case 'month':
     default:
@@ -366,11 +403,11 @@ export function usePreviousPeriodRanking(periodMode: PeriodMode = 'month') {
       break;
   }
   
-  const { data: rankings } = useLeaderboardRankings('custom', 'net_sales', prevStart, prevEnd);
+  const { data } = useLeaderboardRankings('custom', 'net_sales', prevStart, prevEnd);
   
-  if (!profile || !rankings) return null;
+  if (!profile || !data?.rankings) return null;
   
-  return rankings.find(r => r.salesperson_id === profile.id) || null;
+  return data.rankings.find(r => r.salesperson_id === profile.id) || null;
 }
 
 // Hook to fetch leaderboard archive
@@ -425,42 +462,55 @@ export function useCreateLeaderboardArchive() {
 export function useVisibleRankings(periodMode: PeriodMode = 'month') {
   const { profile } = useAuth();
   const { data: settings } = useLeaderboardSettings();
-  const { data: allRankings } = useLeaderboardRankings(periodMode, settings?.primary_metric);
+  const { data: rankingsData, isLoading, isFetching } = useLeaderboardRankings(periodMode, settings?.primary_metric);
   
-  if (!allRankings || !profile) return [];
+  const rankings = rankingsData?.rankings || [];
+  const lastUpdated = rankingsData?.lastUpdated || new Date();
+  
+  if (!rankings.length || !profile) {
+    return { rankings: [], lastUpdated, isLoading, isFetching, hasDeliveredOrders: false };
+  }
   
   const visibilityMode = settings?.visibility_mode || 'all';
   const userRole = profile.role;
   
+  // Check if there are any delivered orders
+  const hasDeliveredOrders = rankings.some(r => r.delivered_orders > 0 || r.net_sales > 0);
+  
   // Admin sees all
   if (userRole === 'admin') {
-    return allRankings;
+    return { rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
   }
   
-  // Manager sees bound salespeople only - would need bindings check
-  // For now, managers see all
+  // Manager sees bound salespeople only - for now, managers see all
   if (userRole === 'manager') {
-    return allRankings;
+    return { rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
   }
   
   // Salesperson visibility based on settings
   if (userRole === 'salesperson') {
+    let filteredRankings: LeaderboardRanking[];
     switch (visibilityMode) {
       case 'all':
-        return allRankings;
+        filteredRankings = rankings;
+        break;
       case 'top_10_self':
-        const top10 = allRankings.slice(0, 10);
-        const selfRanking = allRankings.find(r => r.salesperson_id === profile.id);
+        const top10 = rankings.slice(0, 10);
+        const selfRanking = rankings.find(r => r.salesperson_id === profile.id);
         if (selfRanking && selfRanking.rank_position > 10) {
-          return [...top10, selfRanking];
+          filteredRankings = [...top10, selfRanking];
+        } else {
+          filteredRankings = top10;
         }
-        return top10;
+        break;
       case 'self_only':
-        return allRankings.filter(r => r.salesperson_id === profile.id);
+        filteredRankings = rankings.filter(r => r.salesperson_id === profile.id);
+        break;
       default:
-        return allRankings;
+        filteredRankings = rankings;
     }
+    return { rankings: filteredRankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
   }
   
-  return [];
+  return { rankings: [], lastUpdated, isLoading, isFetching, hasDeliveredOrders: false };
 }
