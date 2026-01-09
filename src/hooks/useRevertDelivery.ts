@@ -44,33 +44,44 @@ export function useRevertDelivery() {
       }
 
       // If stock was deducted, use idempotent RETURN_TO_OWNER movements
+      // Stock returns to salesperson's warehouse (the ONLY stock owner)
       if (order.stock_deducted && order.fulfillment_warehouse_id) {
-        // Create RETURN_TO_OWNER movements for each item (idempotent)
-        for (const item of order.order_items) {
-          if (!item.product_id) continue;
-          
-          // Check if return already exists
-          const { data: existing } = await supabase
-            .from('stock_movements')
-            .select('id')
-            .eq('order_id', orderId)
-            .eq('product_id', item.product_id)
-            .eq('movement_type', 'RETURN_TO_OWNER')
-            .maybeSingle();
-          
-          if (existing) continue; // Already returned
-          
-          await supabase
-            .from('stock_movements')
-            .insert({
-              warehouse_id: order.fulfillment_warehouse_id,
-              product_id: item.product_id,
-              movement_type: 'RETURN_TO_OWNER' as MovementType,
-              qty_change: item.qty, // Positive to add back
-              reference_type: 'ORDER' as ReferenceType,
-              order_id: orderId,
-              created_by: user.id,
-            });
+        // Verify the warehouse belongs to salesperson (not runner)
+        const { data: warehouse } = await supabase
+          .from('warehouses')
+          .select('owner_user_id, warehouse_type')
+          .eq('id', order.fulfillment_warehouse_id)
+          .single();
+
+        // Only process returns to salesperson warehouses
+        if (warehouse?.warehouse_type === 'SALESPERSON') {
+          // Create RETURN_TO_OWNER movements for each item (idempotent)
+          for (const item of order.order_items) {
+            if (!item.product_id) continue;
+            
+            // Check if return already exists
+            const { data: existing } = await supabase
+              .from('stock_movements')
+              .select('id')
+              .eq('order_id', orderId)
+              .eq('product_id', item.product_id)
+              .eq('movement_type', 'RETURN_TO_OWNER')
+              .maybeSingle();
+            
+            if (existing) continue; // Already returned
+            
+            await supabase
+              .from('stock_movements')
+              .insert({
+                warehouse_id: order.fulfillment_warehouse_id,
+                product_id: item.product_id,
+                movement_type: 'RETURN_TO_OWNER' as MovementType,
+                qty_change: item.qty, // Positive to add back
+                reference_type: 'ORDER' as ReferenceType,
+                order_id: orderId,
+                created_by: user.id,
+              });
+          }
         }
       }
 
