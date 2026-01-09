@@ -26,6 +26,12 @@ import {
   useAdminStats, 
   useRecentActivity 
 } from '@/hooks/useDashboardStats';
+import { 
+  useSalespersonActionRequiredStats, 
+  useRunnerActionRequiredStats, 
+  useAdminActionRequiredStats 
+} from '@/hooks/useActionRequiredStats';
+import { ActionRequiredCard } from '@/components/dashboard/ActionRequiredCard';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -66,6 +72,7 @@ function StatCard({ label, value, icon: Icon, color, href, isLoading }: StatCard
 function SalespersonDashboard() {
   const navigate = useNavigate();
   const { data: stats, isLoading } = useSalespersonStats();
+  const { data: actionStats, isLoading: actionLoading } = useSalespersonActionRequiredStats();
   const { data: activity, isLoading: activityLoading } = useRecentActivity();
 
   const statCards = [
@@ -79,6 +86,18 @@ function SalespersonDashboard() {
 
   return (
     <>
+      {/* Action Required - Priority Display */}
+      <ActionRequiredCard
+        total={actionStats?.total ?? 0}
+        failedDelivery={actionStats?.failedDelivery}
+        rescheduled={actionStats?.rescheduled}
+        runnerFlagged={actionStats?.runnerFlagged}
+        isLoading={actionLoading}
+        href="/sales/action-required"
+        title="Action Required"
+        subtitle="Orders requiring your decision before workflow can continue"
+      />
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {statCards.map((stat) => (
           <StatCard key={stat.label} {...stat} isLoading={isLoading} />
@@ -91,6 +110,12 @@ function SalespersonDashboard() {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
+            <button onClick={() => navigate('/sales/action-required')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-2">
+              ⚠️ Resolve Action Required
+              {(actionStats?.total ?? 0) > 0 && (
+                <Badge variant="destructive" className="ml-auto">{actionStats?.total}</Badge>
+              )}
+            </button>
             <button onClick={() => navigate('/sales/booking')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
               📋 Manage Booking Orders
             </button>
@@ -115,17 +140,31 @@ function SalespersonDashboard() {
 function RunnerDashboard() {
   const navigate = useNavigate();
   const { data: stats, isLoading } = useRunnerStats();
+  const { data: actionStats, isLoading: actionLoading } = useRunnerActionRequiredStats();
   const { data: activity, isLoading: activityLoading } = useRecentActivity();
 
   const statCards = [
     { label: 'Assigned Jobs', value: stats?.assignedToday, icon: Inbox, color: 'text-chart-2', href: '/runner/inbox' },
     { label: 'Delivered Today', value: stats?.deliveredToday, icon: CheckCircle, color: 'text-chart-1', href: '/runner/inbox' },
-    { label: 'Failed Today', value: stats?.failedToday, icon: XCircle, color: 'text-destructive', href: '/runner/inbox' },
+    { label: 'Failed Today', value: stats?.failedToday, icon: XCircle, color: 'text-destructive', href: '/runner/failed-orders' },
     { label: 'Pending Claims', value: stats?.pendingClaims, icon: Receipt, color: 'text-chart-4', href: '/runner/inbox' },
   ];
 
   return (
     <>
+      {/* Action Required - Priority Display */}
+      {(actionStats?.total ?? 0) > 0 && (
+        <ActionRequiredCard
+          total={actionStats?.total ?? 0}
+          failedDelivery={actionStats?.failedDelivery}
+          cancelled={actionStats?.cancelled}
+          isLoading={actionLoading}
+          href="/runner/failed-orders"
+          title="Failed Orders"
+          subtitle="Orders that failed delivery or were cancelled"
+        />
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => (
           <StatCard key={stat.label} {...stat} isLoading={isLoading} />
@@ -141,6 +180,12 @@ function RunnerDashboard() {
             <button onClick={() => navigate('/runner/inbox')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
               📥 View Assigned Orders
             </button>
+            {(actionStats?.total ?? 0) > 0 && (
+              <button onClick={() => navigate('/runner/failed-orders')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-2">
+                ⚠️ View Failed Orders
+                <Badge variant="destructive" className="ml-auto">{actionStats?.total}</Badge>
+              </button>
+            )}
             <button onClick={() => navigate('/runner/inbound')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
               📦 Create Inbound Shipment
             </button>
@@ -159,6 +204,7 @@ function RunnerDashboard() {
 function AdminDashboard() {
   const navigate = useNavigate();
   const { data: stats, isLoading } = useAdminStats();
+  const { data: actionStats, isLoading: actionLoading } = useAdminActionRequiredStats();
   const { data: activity, isLoading: activityLoading } = useRecentActivity();
 
   const statCards = [
@@ -175,6 +221,18 @@ function AdminDashboard() {
 
   return (
     <>
+      {/* Action Required Overview - Priority Display */}
+      <ActionRequiredCard
+        total={actionStats?.systemTotal ?? 0}
+        failedDelivery={actionStats?.failedDelivery}
+        rescheduled={actionStats?.rescheduled}
+        runnerFlagged={actionStats?.runnerFlagged}
+        isLoading={actionLoading}
+        href="/sales/action-required"
+        title="System-Wide Action Required"
+        subtitle="Total orders across all salespersons requiring attention"
+      />
+
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
         {statCards.map((stat) => (
           <StatCard key={stat.label} {...stat} isLoading={isLoading} />
@@ -187,6 +245,12 @@ function AdminDashboard() {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
+            <button onClick={() => navigate('/admin/overview')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-2">
+              📊 Action Required Overview
+              {(actionStats?.systemTotal ?? 0) > 0 && (
+                <Badge variant="destructive" className="ml-auto">{actionStats?.systemTotal}</Badge>
+              )}
+            </button>
             <button onClick={() => navigate('/sales/booking')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
               📋 Manage All Orders
             </button>
