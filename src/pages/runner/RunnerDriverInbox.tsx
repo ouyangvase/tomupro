@@ -405,7 +405,7 @@ export default function RunnerDriverInbox() {
                               {formatOrderItemsDisplay(order.order_items).displayText}
                             </span>
                           </TableCell>
-                          <TableCell className="font-medium">RM {Number(order.total_amount).toFixed(2)}</TableCell>
+                          <TableCell className="font-medium">BND {Number(order.total_amount).toFixed(2)}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">{order.payment_method}</Badge>
                           </TableCell>
@@ -753,7 +753,7 @@ export default function RunnerDriverInbox() {
                       </div>
                       <div className="flex items-center gap-2 text-sm">
                         <Package className="h-4 w-4 text-muted-foreground" />
-                        {order.order_items?.length || 0} items · RM {Number(order.total_amount).toFixed(2)}
+                        {order.order_items?.length || 0} items · BND {Number(order.total_amount).toFixed(2)}
                       </div>
                       {order.driver_delivered_at && (
                         <div className="text-xs text-muted-foreground">

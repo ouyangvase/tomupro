@@ -158,8 +158,8 @@ export default function DriverManagement() {
     { key: 'area', header: 'Area' },
     { 
       key: 'total_amount', 
-      header: 'Amount',
-      render: (order: any) => `RM ${order.total_amount}`,
+      header: 'Amount (BND)',
+      render: (order: any) => `BND ${Number(order.total_amount).toFixed(2)}`,
     },
   ];
 

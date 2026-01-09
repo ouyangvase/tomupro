@@ -82,11 +82,12 @@ export default function RunnerInbox() {
   // - Are READY status
   // - Are assigned to this runner
   // - Are pending delivery (NOT failed, NOT cancelled)
+  // Runner Inbox should ONLY show active orders (not delivered, not failed, not cancelled)
   const filteredOrders = useMemo(() => {
     if (!orders) return [];
     
-    // First filter to only show deliverable orders
-    const deliverableOrders = orders.filter(order => {
+    // Filter to only show active delivery orders
+    const activeOrders = orders.filter(order => {
       const status = order.status as string;
       const runnerStatus = order.runner_status as string;
       
@@ -96,12 +97,14 @@ export default function RunnerInbox() {
       // Exclude failed delivery orders - they go to Failed Orders page
       if (runnerStatus === 'FAILED_DELIVERY') return false;
       
-      // Include READY orders that are assigned/taken/delivered
-      // and BOOKING orders that are assigned (for visibility)
+      // Exclude delivered orders - they go to Delivered Orders page
+      if (runnerStatus === 'DELIVERED') return false;
+      
+      // Include only active orders (UNASSIGNED, ASSIGNED, TAKEN)
       return true;
     });
     
-    return applyOrderFilters(deliverableOrders, panelFilters);
+    return applyOrderFilters(activeOrders, panelFilters);
   }, [orders, panelFilters]);
 
   // Extract unique areas for filter dropdown
