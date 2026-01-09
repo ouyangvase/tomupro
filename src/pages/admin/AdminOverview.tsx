@@ -8,9 +8,12 @@ import { useDailyTaskSnapshots } from '@/hooks/useNotificationSystem';
 import { useOrders } from '@/hooks/useOrders';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useClaimBatches } from '@/hooks/useClaimBatches';
+import { useAdminActionRequiredStats } from '@/hooks/useActionRequiredStats';
+import { ActionRequiredCard } from '@/components/dashboard/ActionRequiredCard';
 import { 
   Users, AlertTriangle, Clock, CheckCircle, FileWarning, 
-  RefreshCw, Package, DollarSign, TrendingUp, Truck 
+  RefreshCw, Package, DollarSign, TrendingUp, Truck, AlertCircle,
+  XCircle, Calendar, MessageSquare, ExternalLink
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -18,6 +21,7 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 export default function AdminOverview() {
   const navigate = useNavigate();
@@ -27,6 +31,7 @@ export default function AdminOverview() {
   const { data: orders = [] } = useOrders();
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: claimBatches = [] } = useClaimBatches();
+  const { data: actionStats, isLoading: actionStatsLoading } = useAdminActionRequiredStats();
 
   const pendingClaimBatches = claimBatches.filter(b => b.status === 'ADMIN_ACK_PENDING');
 
@@ -125,6 +130,160 @@ export default function AdminOverview() {
               {generatingDigest ? 'Generating...' : 'Generate Digest'}
             </Button>
           </div>
+        </div>
+
+        {/* ACTION REQUIRED OVERVIEW - TOP PRIORITY */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-orange-500" />
+            Action Required Overview
+          </h2>
+          
+          <div className="grid md:grid-cols-4 gap-4">
+            {/* System-wide Total */}
+            <Card className={cn(
+              "border-2",
+              (actionStats?.systemTotal ?? 0) > 0 
+                ? "border-orange-500 bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950/30 dark:to-red-950/30" 
+                : "border-border"
+            )}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className={cn(
+                    "h-8 w-8",
+                    (actionStats?.systemTotal ?? 0) > 0 ? "text-orange-500 animate-pulse" : "text-muted-foreground"
+                  )} />
+                  <div>
+                    <p className="text-3xl font-bold">{actionStats?.systemTotal ?? 0}</p>
+                    <p className="text-sm text-muted-foreground">Total Action Required</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Failed Delivery */}
+            <Card className={(actionStats?.failedDelivery ?? 0) > 0 ? "border-red-200 bg-red-50 dark:bg-red-950/20" : ""}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <XCircle className="h-6 w-6 text-red-500" />
+                  <div>
+                    <p className="text-2xl font-bold">{actionStats?.failedDelivery ?? 0}</p>
+                    <p className="text-sm text-muted-foreground">Failed Delivery</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Rescheduled */}
+            <Card className={(actionStats?.rescheduled ?? 0) > 0 ? "border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20" : ""}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Calendar className="h-6 w-6 text-yellow-500" />
+                  <div>
+                    <p className="text-2xl font-bold">{actionStats?.rescheduled ?? 0}</p>
+                    <p className="text-sm text-muted-foreground">Rescheduled</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Runner Notes */}
+            <Card className={(actionStats?.runnerFlagged ?? 0) > 0 ? "border-blue-200 bg-blue-50 dark:bg-blue-950/20" : ""}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="h-6 w-6 text-blue-500" />
+                  <div>
+                    <p className="text-2xl font-bold">{actionStats?.runnerFlagged ?? 0}</p>
+                    <p className="text-sm text-muted-foreground">Runner Notes</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Salesperson Accountability Table */}
+          {(actionStats?.systemTotal ?? 0) > 0 && (
+            <Card className="border-orange-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Salesperson Accountability
+                </CardTitle>
+                <CardDescription>
+                  Orders requiring action by each salesperson (sorted by highest count)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Salesperson</TableHead>
+                      <TableHead className="text-center">Total</TableHead>
+                      <TableHead className="text-center">Failed</TableHead>
+                      <TableHead className="text-center">Reschedule</TableHead>
+                      <TableHead className="text-center">Notes</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {actionStats?.bySalesperson.filter(sp => sp.total > 0).map((sp) => (
+                      <TableRow key={sp.salespersonId} className="hover:bg-orange-50 dark:hover:bg-orange-950/10">
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{sp.salespersonName}</p>
+                            <p className="text-xs text-muted-foreground">{sp.email}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="destructive" className="text-base px-3">
+                            {sp.total}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {sp.failedDelivery > 0 ? (
+                            <Badge className="bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300">
+                              {sp.failedDelivery}
+                            </Badge>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {sp.rescheduled > 0 ? (
+                            <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300">
+                              {sp.rescheduled}
+                            </Badge>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {sp.runnerFlagged > 0 ? (
+                            <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+                              {sp.runnerFlagged}
+                            </Badge>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => navigate(`/sales/action-required`)}
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {actionStats?.bySalesperson.filter(sp => sp.total > 0).length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                          No action required items
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Global KPIs */}
