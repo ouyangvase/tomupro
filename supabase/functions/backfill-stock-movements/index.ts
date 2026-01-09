@@ -66,28 +66,31 @@ Deno.serve(async (req) => {
     
     const results = {
       deliveredOrdersScanned: 0,
+      deliveredNotDeductedFixed: 0,
       missingDeductionsCreated: 0,
       duplicateDeductionsReversed: 0,
       failedOrdersScanned: 0,
       missingReturnsCreated: 0,
       duplicateReturnsReversed: 0,
       errors: [] as string[],
+      fixedOrders: [] as string[],
     };
 
-    // PART 1: Process DELIVERED orders
+    // PART 1: Process ALL DELIVERED orders (including those with stock_deducted = false)
     console.log('Scanning delivered orders...');
     
+    // Get ALL delivered orders regardless of stock_deducted flag
     const { data: deliveredOrders, error: deliveredError } = await supabase
       .from('orders')
       .select(`
         id,
+        order_code,
         salesperson_id,
         fulfillment_warehouse_id,
         stock_deducted,
-        order_items (id, product_id, qty)
+        order_items (id, product_id, qty, sku_label)
       `)
-      .eq('runner_status', 'DELIVERED')
-      .eq('stock_deducted', true);
+      .eq('runner_status', 'DELIVERED');
 
     if (deliveredError) {
       results.errors.push(`Error fetching delivered orders: ${deliveredError.message}`);
@@ -127,7 +130,7 @@ Deno.serve(async (req) => {
           
           if (!deductions || deductions.length === 0) {
             // Missing deduction - create one
-            console.log(`Creating missing deduction for order ${order.id}, product ${item.product_id}`);
+            console.log(`Creating missing deduction for order ${order.id} (${order.order_code}), product ${item.product_id}`);
             
             if (!dryRun) {
               const { error: insertError } = await supabase
@@ -138,17 +141,34 @@ Deno.serve(async (req) => {
                   movement_type: 'DELIVER_DEDUCT',
                   qty_change: -item.qty,
                   reference_type: 'ORDER',
+                  reference_id: item.id,
                   order_id: order.id,
                   created_by: user.id,
                 });
               
               if (insertError) {
-                results.errors.push(`Order ${order.id}: Failed to create deduction - ${insertError.message}`);
+                // Handle unique constraint - might be concurrent
+                if (insertError.code === '23505') {
+                  console.log(`Deduction already exists (concurrent) for order ${order.id}`);
+                } else {
+                  results.errors.push(`Order ${order.id}: Failed to create deduction - ${insertError.message}`);
+                }
               } else {
                 results.missingDeductionsCreated++;
+                if (!results.fixedOrders.includes(order.order_code || order.id)) {
+                  results.fixedOrders.push(order.order_code || order.id);
+                  // Track orders that were not previously marked as deducted
+                  if (!order.stock_deducted) {
+                    results.deliveredNotDeductedFixed++;
+                  }
+                }
               }
             } else {
               results.missingDeductionsCreated++;
+              if (!order.stock_deducted && !results.fixedOrders.includes(order.order_code || order.id)) {
+                results.fixedOrders.push(order.order_code || order.id);
+                results.deliveredNotDeductedFixed++;
+              }
             }
           } else if (deductions.length > 1) {
             // Duplicate deductions - reverse extras
@@ -182,12 +202,27 @@ Deno.serve(async (req) => {
               }
             }
           }
-          // Exactly 1 deduction is correct - no action needed
+          // Exactly 1 deduction is correct - but ensure order flag is set
+          if (!order.stock_deducted && !dryRun) {
+            await supabase
+              .from('orders')
+              .update({ 
+                stock_deducted: true, 
+                inventory_deducted_at: new Date().toISOString() 
+              })
+              .eq('id', order.id);
+            
+            results.deliveredNotDeductedFixed++;
+            if (!results.fixedOrders.includes(order.order_code || order.id)) {
+              results.fixedOrders.push(order.order_code || order.id);
+            }
+          }
         }
       }
     }
 
-    // PART 2: Process FAILED/CANCELLED orders that had stock deducted
+    // PART 2: Process FAILED/CANCELLED orders - these should NOT affect stock at all
+    // If stock was incorrectly deducted, we need to return it
     console.log('Scanning failed/cancelled orders...');
     
     const { data: failedOrders, error: failedError } = await supabase
