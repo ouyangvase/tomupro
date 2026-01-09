@@ -239,28 +239,70 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         }
       }
 
-      // Group by order_ref
+      // Group by order_ref and validate for duplicate SKUs
       const orderGroups = new Map<string, {
         orderRef: string;
         orderData: ValidatedOrderLine;
-        items: { sku_name_or_code: string; qty: number; price: number }[];
+        items: { sku_name_or_code: string; qty: number; price: number; productId: string | null }[];
       }>();
+      
+      const duplicateSkuErrors: string[] = [];
       
       for (const row of validation.valid) {
         const orderRef = row.order_ref.trim();
+        const skuValue = row.sku_name_or_code?.trim();
+        
+        if (!skuValue) {
+          duplicateSkuErrors.push(`Order ${orderRef}: SKU code is required for all order items.`);
+          continue;
+        }
+        
+        // Find product ID for this SKU
+        const productId = findProductId(skuValue);
+        if (!productId) {
+          duplicateSkuErrors.push(`Order ${orderRef}: SKU "${skuValue}" not found in product list.`);
+          continue;
+        }
         
         if (!orderGroups.has(orderRef)) {
           orderGroups.set(orderRef, { orderRef, orderData: row, items: [] });
         }
 
         const group = orderGroups.get(orderRef)!;
-        if (row.sku_name_or_code?.trim()) {
-          group.items.push({
-            sku_name_or_code: row.sku_name_or_code,
-            qty: row.qty,
-            price: row.price,
-          });
+        
+        // Check for duplicate SKU within the same order
+        const existingItem = group.items.find(i => i.productId === productId);
+        if (existingItem) {
+          duplicateSkuErrors.push(`Order ${orderRef}: Duplicate SKU detected - "${skuValue}" appears more than once. Each SKU can only appear once per order.`);
+          continue;
         }
+        
+        group.items.push({
+          sku_name_or_code: skuValue,
+          qty: row.qty,
+          price: row.price,
+          productId,
+        });
+      }
+      
+      // If there are duplicate SKU errors, reject the entire import
+      if (duplicateSkuErrors.length > 0) {
+        setErrors(['Import FAILED: Validation errors found. No orders were imported.', '', ...duplicateSkuErrors]);
+        setImporting(false);
+        return;
+      }
+      
+      // Check that all orders have at least one valid item
+      for (const [orderRef, group] of orderGroups) {
+        if (group.items.length === 0) {
+          duplicateSkuErrors.push(`Order ${orderRef}: No valid SKU items found.`);
+        }
+      }
+      
+      if (duplicateSkuErrors.length > 0) {
+        setErrors(['Import FAILED: Orders without valid items. No orders were imported.', '', ...duplicateSkuErrors]);
+        setImporting(false);
+        return;
       }
 
       // Create orders
@@ -303,10 +345,9 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           }
 
           for (const item of group.items) {
-            const productId = findProductId(item.sku_name_or_code);
             await supabase.from('order_items').insert({
               order_id: order.id,
-              product_id: productId,
+              product_id: item.productId,
               sku_label: item.sku_name_or_code,
               qty: item.qty,
               price: item.price,
