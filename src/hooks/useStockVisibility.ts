@@ -98,6 +98,7 @@ export function useStockTransfers() {
 }
 
 // Filtered stock balance based on user role and visibility
+// Uses get_stock_balance() function which handles visibility filtering at DB level
 export function useFilteredStockBalance() {
   const { profile } = useAuth();
   
@@ -106,64 +107,12 @@ export function useFilteredStockBalance() {
     queryFn: async () => {
       if (!profile) return [];
       
-      // Fetch all stock balances
-      const { data: stockData, error: stockError } = await supabase
-        .from('stock_balance_view')
-        .select('*');
+      // Use the database function which handles visibility filtering
+      const { data, error } = await supabase.rpc('get_stock_balance');
       
-      if (stockError) throw stockError;
+      if (error) throw error;
       
-      // Admin sees all
-      if (profile.role === 'admin') {
-        return stockData as StockBalance[];
-      }
-      
-      // Get visibility overrides for this user
-      const { data: overrides } = await supabase
-        .from('stock_visibility_overrides')
-        .select('owner_user_id, can_view')
-        .eq('viewer_user_id', profile.id);
-      
-      const overrideMap = new Map(
-        overrides?.map(o => [o.owner_user_id, o.can_view]) || []
-      );
-      
-      // Manager: get group members
-      let groupMemberIds: string[] = [];
-      if (profile.role === 'manager') {
-        const { data: myGroup } = await supabase
-          .from('manager_groups')
-          .select('id')
-          .eq('manager_user_id', profile.id)
-          .maybeSingle();
-        
-        if (myGroup) {
-          const { data: members } = await supabase
-            .from('group_members')
-            .select('member_user_id')
-            .eq('group_id', myGroup.id);
-          
-          groupMemberIds = members?.map(m => m.member_user_id) || [];
-        }
-      }
-      
-      // Filter based on visibility rules
-      return (stockData as StockBalance[]).filter(stock => {
-        // Own stock
-        if (stock.owner_user_id === profile.id) return true;
-        
-        // Explicit override
-        if (overrideMap.has(stock.owner_user_id)) {
-          return overrideMap.get(stock.owner_user_id);
-        }
-        
-        // Manager group visibility
-        if (profile.role === 'manager' && groupMemberIds.includes(stock.owner_user_id)) {
-          return true;
-        }
-        
-        return false;
-      });
+      return (data || []) as StockBalance[];
     },
     enabled: !!profile,
   });
