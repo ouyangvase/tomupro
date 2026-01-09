@@ -52,6 +52,7 @@ import NotificationCenter from "./pages/notifications/NotificationCenter";
 import ManagerOversight from "./pages/manager/ManagerOversight";
 import AdminOverview from "./pages/admin/AdminOverview";
 import RunnerDeliveryCharges from "./pages/runner/RunnerDeliveryCharges";
+import RunnerDeliveredOrders from "./pages/runner/RunnerDeliveredOrders";
 import DeliveryChargesAdmin from "./pages/admin/DeliveryChargesAdmin";
 import DeliveryFeesReport from "./pages/admin/DeliveryFeesReport";
 import WarehouseManagement from "./pages/admin/WarehouseManagement";
@@ -136,6 +137,7 @@ function AppRoutes() {
       <Route path="/manager/oversight" element={<ProtectedRoute><ManagerOversight /></ProtectedRoute>} />
       <Route path="/admin/overview" element={<ProtectedRoute><AdminOverview /></ProtectedRoute>} />
       <Route path="/runner/delivery-charges" element={<ProtectedRoute><RunnerDeliveryCharges /></ProtectedRoute>} />
+      <Route path="/runner/delivered-orders" element={<ProtectedRoute><RunnerDeliveredOrders /></ProtectedRoute>} />
       <Route path="/admin/delivery-charges" element={<ProtectedRoute><DeliveryChargesAdmin /></ProtectedRoute>} />
       <Route path="/admin/delivery-fees-report" element={<ProtectedRoute><DeliveryFeesReport /></ProtectedRoute>} />
       <Route path="/admin/warehouses" element={<ProtectedRoute><WarehouseManagement /></ProtectedRoute>} />

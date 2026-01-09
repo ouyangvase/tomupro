@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -46,6 +46,11 @@ const runnerQuickActions: NavItem[] = [{
   title: "Runner Inbox",
   url: "/runner/inbox",
   icon: Inbox,
+  roles: ['runner']
+}, {
+  title: "Delivered Orders",
+  url: "/runner/delivered-orders",
+  icon: CheckCircle,
   roles: ['runner']
 }, {
   title: "Failed Orders",
