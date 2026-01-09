@@ -195,7 +195,7 @@ export default function DeliveryFeesReport() {
       key: 'total_gross_amount',
       header: 'Gross Amount',
       sortable: true,
-      render: (row) => `RM ${row.total_gross_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+      render: (row) => `BND ${row.total_gross_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
     },
     {
       key: 'total_delivery_fees',
@@ -203,7 +203,7 @@ export default function DeliveryFeesReport() {
       sortable: true,
       render: (row) => (
         <span className="font-medium text-primary">
-          RM {row.total_delivery_fees.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          BND {row.total_delivery_fees.toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </span>
       ),
     },
@@ -211,14 +211,14 @@ export default function DeliveryFeesReport() {
       key: 'total_net_amount',
       header: 'Net Amount',
       sortable: true,
-      render: (row) => `RM ${row.total_net_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+      render: (row) => `BND ${row.total_net_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
     },
     {
       key: 'avg_fee',
       header: 'Avg Fee/Order',
       render: (row) => {
         const avg = row.total_orders > 0 ? row.total_delivery_fees / row.total_orders : 0;
-        return `RM ${avg.toFixed(2)}`;
+        return `BND ${avg.toFixed(2)}`;
       },
     },
   ];
@@ -313,7 +313,7 @@ export default function DeliveryFeesReport() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                RM {totals.gross.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                BND {totals.gross.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </CardContent>
           </Card>
@@ -324,7 +324,7 @@ export default function DeliveryFeesReport() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-primary">
-                RM {totals.fees.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                BND {totals.fees.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </CardContent>
           </Card>
@@ -365,15 +365,15 @@ export default function DeliveryFeesReport() {
               </div>
               <div className="p-3 bg-muted rounded-lg">
                 <p className="text-xs text-muted-foreground">Gross Amount</p>
-                <p className="text-xl font-bold">RM {selectedRunner.total_gross_amount.toFixed(2)}</p>
+                <p className="text-xl font-bold">BND {selectedRunner.total_gross_amount.toFixed(2)}</p>
               </div>
               <div className="p-3 bg-primary/10 rounded-lg">
                 <p className="text-xs text-muted-foreground">Delivery Fees</p>
-                <p className="text-xl font-bold text-primary">RM {selectedRunner.total_delivery_fees.toFixed(2)}</p>
+                <p className="text-xl font-bold text-primary">BND {selectedRunner.total_delivery_fees.toFixed(2)}</p>
               </div>
               <div className="p-3 bg-muted rounded-lg">
                 <p className="text-xs text-muted-foreground">Net Amount</p>
-                <p className="text-xl font-bold">RM {selectedRunner.total_net_amount.toFixed(2)}</p>
+                <p className="text-xl font-bold">BND {selectedRunner.total_net_amount.toFixed(2)}</p>
               </div>
             </div>
           )}
@@ -420,13 +420,13 @@ export default function DeliveryFeesReport() {
                       <TableCell>{claim.order?.area || '-'}</TableCell>
                       <TableCell>{claim.order?.payment_method}</TableCell>
                       <TableCell className="text-right font-mono">
-                        RM {Number(claim.gross_amount || 0).toFixed(2)}
+                        BND {Number(claim.gross_amount || 0).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right font-mono text-primary font-medium">
-                        RM {Number(claim.delivery_fee || 0).toFixed(2)}
+                        BND {Number(claim.delivery_fee || 0).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right font-mono font-medium">
-                        RM {Number(claim.net_claim_amount || 0).toFixed(2)}
+                        BND {Number(claim.net_claim_amount || 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))

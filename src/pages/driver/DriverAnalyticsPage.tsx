@@ -77,7 +77,7 @@ export default function DriverAnalyticsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Avg Order Value</p>
-                <p className="text-2xl font-bold">RM {analytics.avgOrderValue}</p>
+                <p className="text-2xl font-bold">BND {analytics.avgOrderValue}</p>
               </div>
               <DollarSign className="h-8 w-8 text-primary" />
             </div>
@@ -261,7 +261,7 @@ export default function DriverAnalyticsPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-medium">RM {area.totalAmount.toLocaleString()}</p>
+                          <p className="text-sm font-medium">BND {area.totalAmount.toLocaleString()}</p>
                           {area.avgDeliveryTime && (
                             <p className="text-xs text-muted-foreground flex items-center gap-1">
                               <Clock className="h-3 w-3" />
