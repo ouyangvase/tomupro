@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription 
 } from '@/components/ui/dialog';
@@ -17,11 +17,10 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
-  CalendarIcon, AlertCircle, Loader2, CheckCircle2, XCircle, AlertTriangle 
+  CalendarIcon, AlertCircle, Loader2, CheckCircle2, XCircle, AlertTriangle,
+  Calendar as CalendarCheck, ArrowRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatBND } from '@/lib/currency';
-import { useBindings } from '@/hooks/useBindings';
 import { useReasons } from '@/hooks/useReasons';
 import { useUpdateOrder } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,7 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Order } from '@/types/database';
 
-type ResolutionType = 'RESCHEDULE' | 'CANCEL' | 'SEND_TO_READY';
+type ResolutionType = 'AUTO_RESCHEDULE' | 'CONVERT_TO_BOOKING' | 'CANCEL';
 
 interface ResultItem {
   orderId: string;
@@ -55,30 +54,20 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [results, setResults] = useState<ResultItem[] | null>(null);
 
-  // Reschedule fields
+  // Auto Reschedule fields
+  const [autoRescheduleRemark, setAutoRescheduleRemark] = useState('');
+
+  // Convert to Booking fields
   const [newDate, setNewDate] = useState<Date | undefined>(undefined);
-  const [rescheduleRemark, setRescheduleRemark] = useState('');
-  const [keepRunner, setKeepRunner] = useState(false);
+  const [bookingRemark, setBookingRemark] = useState('');
 
   // Cancel fields
   const [cancelReasonId, setCancelReasonId] = useState('');
   const [cancelRemark, setCancelRemark] = useState('');
   const [skipDelivered, setSkipDelivered] = useState(true);
 
-  // Send to Ready fields
-  const [selectedRunnerId, setSelectedRunnerId] = useState('');
-  const [readyRemark, setReadyRemark] = useState('');
-  const [notifyRunner, setNotifyRunner] = useState(true);
-
   // Fetch cancel reasons
   const { data: cancelReasons = [] } = useReasons('CANCEL', true);
-
-  // Fetch bound runners for this salesperson
-  const { data: bindings = [] } = useBindings({ salespersonId: profile?.id, active: true });
-
-  const boundRunners = useMemo(() => {
-    return bindings.map(b => b.runner).filter(Boolean);
-  }, [bindings]);
 
   // Check delivered orders
   const deliveredOrders = useMemo(() => 
@@ -86,22 +75,25 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
     [orders]
   );
 
-  const nonDeliveredOrders = useMemo(() => 
-    orders.filter(o => o.runner_status !== 'DELIVERED'),
+  // Orders with reschedule date
+  const ordersWithRescheduleDate = useMemo(() =>
+    orders.filter(o => o.next_delivery_date != null),
+    [orders]
+  );
+
+  const ordersWithoutRescheduleDate = useMemo(() =>
+    orders.filter(o => o.next_delivery_date == null),
     [orders]
   );
 
   const resetForm = () => {
     setResolutionType(null);
+    setAutoRescheduleRemark('');
     setNewDate(undefined);
-    setRescheduleRemark('');
-    setKeepRunner(false);
+    setBookingRemark('');
     setCancelReasonId('');
     setCancelRemark('');
     setSkipDelivered(true);
-    setSelectedRunnerId('');
-    setReadyRemark('');
-    setNotifyRunner(true);
     setResults(null);
   };
 
@@ -117,9 +109,62 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
     const resultItems: ResultItem[] = [];
 
     try {
-      if (resolutionType === 'RESCHEDULE') {
-        if (!newDate || !rescheduleRemark.trim()) {
-          toast.error('Please select a date and enter a remark');
+      const now = new Date().toISOString();
+
+      if (resolutionType === 'AUTO_RESCHEDULE') {
+        for (const order of orders) {
+          // Skip orders without reschedule date
+          if (!order.next_delivery_date) {
+            resultItems.push({ 
+              orderId: order.id, 
+              orderCode: order.order_code, 
+              status: 'skipped',
+              reason: 'No reschedule date'
+            });
+            continue;
+          }
+
+          try {
+            // Record the salesperson decision
+            await supabase.from('reschedule_history').insert({
+              order_id: order.id,
+              cycle_no: (order.reschedule_cycle_no || 0) + 1,
+              from_status: order.operational_status || order.status,
+              to_status: 'BOOKING_AUTO_RESCHEDULE',
+              next_delivery_date: order.next_delivery_date,
+              comment: `Salesperson confirmed auto-reschedule: ${autoRescheduleRemark || 'Bulk action'}`,
+              rescheduled_by: profile.id,
+            });
+
+            await updateOrder.mutateAsync({
+              id: order.id,
+              status: 'BOOKING',
+              expected_pickup_date: order.next_delivery_date,
+              salesperson_action_required: false,
+              salesperson_action_type: 'AUTO_RESCHEDULE',
+              last_status_note: `Auto-reschedule confirmed for ${order.next_delivery_date}`,
+              runner_status: 'UNASSIGNED',
+              runner_id: null,
+              driver_id: null,
+              driver_status: null,
+              reschedule_flag: true,
+              reschedule_cycle_no: (order.reschedule_cycle_no || 0) + 1,
+            });
+
+            resultItems.push({ orderId: order.id, orderCode: order.order_code, status: 'success' });
+          } catch (error: any) {
+            resultItems.push({ 
+              orderId: order.id, 
+              orderCode: order.order_code, 
+              status: 'failed',
+              reason: error.message || 'Update failed'
+            });
+          }
+        }
+
+      } else if (resolutionType === 'CONVERT_TO_BOOKING') {
+        if (!newDate) {
+          toast.error('Please select a date');
           setIsSubmitting(false);
           return;
         }
@@ -134,14 +179,30 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               changed_by: profile.id,
             });
 
-            // Update order
+            // Record the salesperson decision
+            await supabase.from('reschedule_history').insert({
+              order_id: order.id,
+              cycle_no: (order.reschedule_cycle_no || 0) + 1,
+              from_status: order.operational_status || order.status,
+              to_status: 'BOOKING_MANUAL',
+              next_delivery_date: format(newDate, 'yyyy-MM-dd'),
+              comment: `Salesperson converted to booking: ${bookingRemark || 'Bulk action'}`,
+              rescheduled_by: profile.id,
+            });
+
             await updateOrder.mutateAsync({
               id: order.id,
               status: 'BOOKING',
               expected_pickup_date: format(newDate, 'yyyy-MM-dd'),
+              next_delivery_date: null,
               salesperson_action_required: false,
-              last_status_note: rescheduleRemark,
-              ...(keepRunner ? {} : { runner_id: null, runner_status: 'UNASSIGNED' }),
+              salesperson_action_type: 'CONVERT_TO_BOOKING',
+              last_status_note: `Converted to booking for ${format(newDate, 'dd MMM yyyy')}`,
+              runner_id: null,
+              runner_status: 'UNASSIGNED',
+              driver_id: null,
+              driver_status: null,
+              reschedule_cycle_no: (order.reschedule_cycle_no || 0) + 1,
             });
 
             resultItems.push({ orderId: order.id, orderCode: order.order_code, status: 'success' });
@@ -156,8 +217,8 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
         }
 
       } else if (resolutionType === 'CANCEL') {
-        if (!cancelReasonId || !cancelRemark.trim()) {
-          toast.error('Please select a reason and enter a remark');
+        if (!cancelReasonId) {
+          toast.error('Please select a cancel reason');
           setIsSubmitting(false);
           return;
         }
@@ -186,42 +247,27 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
           }
 
           try {
+            // Record the salesperson decision
+            await supabase.from('reschedule_history').insert({
+              order_id: order.id,
+              cycle_no: (order.reschedule_cycle_no || 0) + 1,
+              from_status: order.operational_status || order.status,
+              to_status: 'CANCELLED',
+              comment: `Salesperson cancelled: ${selectedReason?.label || ''} - ${cancelRemark || 'Bulk action'}`,
+              rescheduled_by: profile.id,
+            });
+
             await updateOrder.mutateAsync({
               id: order.id,
               status: 'CANCELLED',
               cancel_reason: selectedReason?.label || '',
-              cancel_notes: cancelRemark,
+              cancel_notes: cancelRemark || null,
+              cancelled_at: now,
+              cancelled_by: profile.id,
               salesperson_action_required: false,
+              salesperson_action_type: 'CANCEL',
               runner_status: 'UNASSIGNED',
-            });
-
-            resultItems.push({ orderId: order.id, orderCode: order.order_code, status: 'success' });
-          } catch (error: any) {
-            resultItems.push({ 
-              orderId: order.id, 
-              orderCode: order.order_code, 
-              status: 'failed',
-              reason: error.message || 'Update failed'
-            });
-          }
-        }
-
-      } else if (resolutionType === 'SEND_TO_READY') {
-        if (!selectedRunnerId) {
-          toast.error('Please select a runner');
-          setIsSubmitting(false);
-          return;
-        }
-
-        for (const order of orders) {
-          try {
-            await updateOrder.mutateAsync({
-              id: order.id,
-              status: 'READY',
-              runner_id: selectedRunnerId,
-              runner_status: 'ASSIGNED',
-              salesperson_action_required: false,
-              last_status_note: readyRemark || null,
+              next_delivery_date: null,
             });
 
             resultItems.push({ orderId: order.id, orderCode: order.order_code, status: 'success' });
@@ -266,25 +312,23 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
     handleClose();
     
     if (successCount > 0) {
-      if (resolutionType === 'RESCHEDULE') {
+      if (resolutionType === 'AUTO_RESCHEDULE' || resolutionType === 'CONVERT_TO_BOOKING') {
         navigate('/sales/booking');
       } else if (resolutionType === 'CANCEL') {
         navigate('/sales/cancelled');
-      } else if (resolutionType === 'SEND_TO_READY') {
-        navigate('/sales/ready');
       }
     }
   };
 
   const canSubmit = () => {
     if (!resolutionType) return false;
-    if (resolutionType === 'RESCHEDULE') return !!newDate && !!rescheduleRemark.trim();
+    if (resolutionType === 'AUTO_RESCHEDULE') return ordersWithRescheduleDate.length > 0;
+    if (resolutionType === 'CONVERT_TO_BOOKING') return !!newDate;
     if (resolutionType === 'CANCEL') {
-      if (!cancelReasonId || !cancelRemark.trim()) return false;
+      if (!cancelReasonId) return false;
       if (!skipDelivered && deliveredOrders.length > 0) return false;
       return true;
     }
-    if (resolutionType === 'SEND_TO_READY') return !!selectedRunnerId;
     return false;
   };
 
@@ -384,16 +428,24 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
           <ScrollArea className="h-24 mt-2">
             <div className="space-y-1">
               {orders.map(order => (
-                <div key={order.id} className="flex items-center justify-between text-sm">
+                <div key={order.id} className="flex items-center justify-between text-sm gap-2">
                   <span className="font-mono">{order.order_code}</span>
-                  <span className="text-muted-foreground truncate max-w-[150px]">{order.customer_name}</span>
-                  {order.runner_status === 'DELIVERED' && (
-                    <Badge variant="outline" className="text-xs">Delivered</Badge>
-                  )}
+                  <span className="text-muted-foreground truncate max-w-[120px]">{order.customer_name}</span>
+                  <div className="flex gap-1">
+                    {order.next_delivery_date && (
+                      <Badge variant="outline" className="text-xs bg-green-50">
+                        {format(parseISO(order.next_delivery_date), 'dd MMM')}
+                      </Badge>
+                    )}
+                    {order.runner_status === 'DELIVERED' && (
+                      <Badge variant="outline" className="text-xs">Delivered</Badge>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           </ScrollArea>
+          
           {deliveredOrders.length > 0 && (
             <Alert className="mt-2" variant="default">
               <AlertTriangle className="h-4 w-4" />
@@ -417,14 +469,43 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
           >
             <div className={cn(
               "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
-              resolutionType === 'RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+              resolutionType === 'AUTO_RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+              ordersWithRescheduleDate.length === 0 && "opacity-50 cursor-not-allowed"
             )}>
-              <RadioGroupItem value="RESCHEDULE" id="bulk-reschedule" />
+              <RadioGroupItem value="AUTO_RESCHEDULE" id="bulk-auto-reschedule" disabled={ordersWithRescheduleDate.length === 0} />
               <div className="flex-1">
-                <Label htmlFor="bulk-reschedule" className="font-medium cursor-pointer">
-                  Reschedule / Change Date
+                <Label htmlFor="bulk-auto-reschedule" className={cn("font-medium cursor-pointer", ordersWithRescheduleDate.length === 0 && "cursor-not-allowed")}>
+                  <div className="flex items-center gap-2">
+                    <CalendarCheck className="h-4 w-4 text-green-600" />
+                    Auto Reschedule
+                  </div>
                 </Label>
-                <p className="text-xs text-muted-foreground">Move all orders to Booking Sales with new date</p>
+                <p className="text-xs text-muted-foreground">
+                  {ordersWithRescheduleDate.length > 0 
+                    ? `${ordersWithRescheduleDate.length} order(s) have reschedule dates - will auto-assign on those dates`
+                    : "No orders have reschedule dates"}
+                </p>
+                {ordersWithoutRescheduleDate.length > 0 && ordersWithRescheduleDate.length > 0 && (
+                  <p className="text-xs text-yellow-600 mt-1">
+                    {ordersWithoutRescheduleDate.length} order(s) will be skipped (no reschedule date)
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className={cn(
+              "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
+              resolutionType === 'CONVERT_TO_BOOKING' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            )}>
+              <RadioGroupItem value="CONVERT_TO_BOOKING" id="bulk-convert-booking" />
+              <div className="flex-1">
+                <Label htmlFor="bulk-convert-booking" className="font-medium cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <ArrowRight className="h-4 w-4 text-blue-600" />
+                    Convert to Booking
+                  </div>
+                </Label>
+                <p className="text-xs text-muted-foreground">Move all orders to Booking Sales with a new date</p>
               </div>
             </div>
 
@@ -435,29 +516,42 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               <RadioGroupItem value="CANCEL" id="bulk-cancel" />
               <div className="flex-1">
                 <Label htmlFor="bulk-cancel" className="font-medium cursor-pointer">
-                  Cancel Orders
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-red-600" />
+                    Cancel Orders
+                  </div>
                 </Label>
                 <p className="text-xs text-muted-foreground">Move orders to Cancelled Sales</p>
-              </div>
-            </div>
-
-            <div className={cn(
-              "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
-              resolutionType === 'SEND_TO_READY' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-            )}>
-              <RadioGroupItem value="SEND_TO_READY" id="bulk-ready" />
-              <div className="flex-1">
-                <Label htmlFor="bulk-ready" className="font-medium cursor-pointer">
-                  Send to Ready Sales
-                </Label>
-                <p className="text-xs text-muted-foreground">Move orders to Ready Sales and assign runner</p>
               </div>
             </div>
           </RadioGroup>
         </div>
 
         {/* Resolution-specific fields */}
-        {resolutionType === 'RESCHEDULE' && (
+        {resolutionType === 'AUTO_RESCHEDULE' && ordersWithRescheduleDate.length > 0 && (
+          <div className="space-y-4 p-4 border rounded-lg bg-green-50/50 dark:bg-green-900/10">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+              <CalendarCheck className="h-5 w-5" />
+              <span className="font-medium">
+                {ordersWithRescheduleDate.length} order(s) will be auto-rescheduled
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Each order will move to Booking Sales and auto-assign to a runner on its scheduled date.
+            </p>
+            <div className="space-y-2">
+              <Label>Note (Optional)</Label>
+              <Textarea
+                value={autoRescheduleRemark}
+                onChange={(e) => setAutoRescheduleRemark(e.target.value)}
+                placeholder="Add a note about this decision..."
+                rows={2}
+              />
+            </div>
+          </div>
+        )}
+
+        {resolutionType === 'CONVERT_TO_BOOKING' && (
           <div className="space-y-4 p-4 border rounded-lg">
             <div className="space-y-2">
               <Label>New Expected Date *</Label>
@@ -486,27 +580,19 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               </Popover>
             </div>
             <div className="space-y-2">
-              <Label>Remark *</Label>
+              <Label>Note (Optional)</Label>
               <Textarea
-                value={rescheduleRemark}
-                onChange={(e) => setRescheduleRemark(e.target.value)}
-                placeholder="Enter reason for rescheduling..."
+                value={bookingRemark}
+                onChange={(e) => setBookingRemark(e.target.value)}
+                placeholder="Enter reason for booking conversion..."
                 rows={2}
               />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="keep-runner" 
-                checked={keepRunner} 
-                onCheckedChange={(c) => setKeepRunner(c === true)} 
-              />
-              <Label htmlFor="keep-runner" className="text-sm">Keep current runner assignment</Label>
             </div>
           </div>
         )}
 
         {resolutionType === 'CANCEL' && (
-          <div className="space-y-4 p-4 border rounded-lg">
+          <div className="space-y-4 p-4 border rounded-lg border-red-200 bg-red-50/50 dark:bg-red-900/10">
             <div className="space-y-2">
               <Label>Cancel Reason *</Label>
               <Select value={cancelReasonId} onValueChange={setCancelReasonId}>
@@ -523,7 +609,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Remark *</Label>
+              <Label>Note (Optional)</Label>
               <Textarea
                 value={cancelRemark}
                 onChange={(e) => setCancelRemark(e.target.value)}
@@ -554,50 +640,6 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
                 </AlertDescription>
               </Alert>
             )}
-          </div>
-        )}
-
-        {resolutionType === 'SEND_TO_READY' && (
-          <div className="space-y-4 p-4 border rounded-lg">
-            <div className="space-y-2">
-              <Label>Assign Runner *</Label>
-              <Select value={selectedRunnerId} onValueChange={setSelectedRunnerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select runner" />
-                </SelectTrigger>
-                <SelectContent>
-                  {boundRunners.length === 0 ? (
-                    <SelectItem value="_none" disabled>No runners available</SelectItem>
-                  ) : (
-                    boundRunners.map((runner) => (
-                      <SelectItem key={runner!.id} value={runner!.id}>
-                        {runner!.display_name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {boundRunners.length === 0 && (
-                <p className="text-xs text-destructive">No runners bound to your account. Contact admin.</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Remark (Optional)</Label>
-              <Textarea
-                value={readyRemark}
-                onChange={(e) => setReadyRemark(e.target.value)}
-                placeholder="Optional notes for runner..."
-                rows={2}
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="notify-runner" 
-                checked={notifyRunner} 
-                onCheckedChange={(c) => setNotifyRunner(c === true)} 
-              />
-              <Label htmlFor="notify-runner" className="text-sm">Notify runner for each order</Label>
-            </div>
           </div>
         )}
 

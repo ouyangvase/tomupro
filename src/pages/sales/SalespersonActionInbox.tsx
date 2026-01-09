@@ -17,22 +17,25 @@ import { ActionResolutionDialog } from '@/components/sales/ActionResolutionDialo
 import { BulkActionResolutionDialog } from '@/components/sales/BulkActionResolutionDialog';
 import { 
   AlertCircle, MessageSquare, User, 
-  CalendarClock, Loader2, RefreshCw, Play, ListChecks 
+  CalendarClock, Loader2, RefreshCw, Play, ListChecks, XCircle, Calendar, AlertTriangle
 } from 'lucide-react';
 import type { Order } from '@/types/database';
 
-const actionTypeColors: Record<string, string> = {
-  FOLLOWUP_CUSTOMER: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  RESCHEDULE_DELIVERY: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-  UPDATE_ADDRESS: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-  CANCEL_ORDER: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+// Reason types for action required
+type ActionRequiredSource = 'FAILED_DELIVERY' | 'RESCHEDULED' | 'RUNNER_FLAGGED' | 'MANUAL';
+
+const sourceColors: Record<ActionRequiredSource, string> = {
+  FAILED_DELIVERY: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  RESCHEDULED: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
+  RUNNER_FLAGGED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  MANUAL: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
 };
 
-const actionTypeLabels: Record<string, string> = {
-  FOLLOWUP_CUSTOMER: 'Followup Customer',
-  RESCHEDULE_DELIVERY: 'Reschedule Delivery',
-  UPDATE_ADDRESS: 'Update Address',
-  CANCEL_ORDER: 'Cancel Order',
+const sourceLabels: Record<ActionRequiredSource, string> = {
+  FAILED_DELIVERY: 'Failed Delivery',
+  RESCHEDULED: 'Rescheduled',
+  RUNNER_FLAGGED: 'Runner Note',
+  MANUAL: 'Manual Flag',
 };
 
 const outcomeLabels: Record<string, string> = {
@@ -42,12 +45,50 @@ const outcomeLabels: Record<string, string> = {
   NEED_SALESPERSON_FOLLOWUP: 'Needs Followup',
 };
 
+// Determine why an order requires action
+function getActionSource(order: Order): ActionRequiredSource | null {
+  // Check if explicitly marked as action required by runner/system
+  if (order.salesperson_action_required === true) {
+    return 'MANUAL';
+  }
+  // Check for failed delivery (use string comparison for flexibility)
+  const driverStatus = order.driver_status as string;
+  const runnerStatus = order.runner_status as string;
+  if (driverStatus === 'FAILED_DELIVERY' || runnerStatus === 'FAILED_DELIVERY') {
+    return 'FAILED_DELIVERY';
+  }
+  // Check for reschedule date pending
+  const orderStatus = order.status as string;
+  if (order.next_delivery_date && orderStatus !== 'CANCELLED' && orderStatus !== 'DELIVERED') {
+    return 'RESCHEDULED';
+  }
+  // Check for runner failed reason or remark
+  if ((order.runner_failed_reason_id || order.runner_comment) && 
+      order.runner_review_status === 'REVIEWED' &&
+      order.runner_final_outcome && 
+      order.runner_final_outcome !== 'CONFIRM_DELIVERED') {
+    return 'RUNNER_FLAGGED';
+  }
+  return null;
+}
+
+// Check if order needs salesperson action
+function needsSalespersonAction(order: Order): boolean {
+  // Skip delivered or cancelled orders
+  const orderStatus = order.status as string;
+  const runnerStatus = order.runner_status as string;
+  if (orderStatus === 'CANCELLED' || runnerStatus === 'DELIVERED') {
+    return false;
+  }
+  return getActionSource(order) !== null;
+}
+
 export default function SalespersonActionInbox() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { data: allOrders = [], isLoading, refetch } = useOrders();
   
-  const [actionTypeFilter, setActionTypeFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
@@ -56,16 +97,16 @@ export default function SalespersonActionInbox() {
   // Filter orders requiring salesperson action (for current salesperson)
   const actionRequiredOrders = useMemo(() => {
     let filtered = allOrders.filter(order => 
-      order.salesperson_action_required === true &&
-      order.salesperson_id === profile?.id
+      order.salesperson_id === profile?.id &&
+      needsSalespersonAction(order)
     );
 
-    if (actionTypeFilter !== 'all') {
-      filtered = filtered.filter(o => o.salesperson_action_type === actionTypeFilter);
+    if (sourceFilter !== 'all') {
+      filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
     }
 
     return filtered;
-  }, [allOrders, profile?.id, actionTypeFilter]);
+  }, [allOrders, profile?.id, sourceFilter]);
 
   // Fetch reasons for failed orders
   const reasonIds = useMemo(() => 
@@ -194,28 +235,39 @@ export default function SalespersonActionInbox() {
               <div className="text-sm text-muted-foreground">Total Pending</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">
-                {actionRequiredOrders.filter(o => o.salesperson_action_type === 'FOLLOWUP_CUSTOMER').length}
+          <Card className="border-red-200 bg-red-50 dark:bg-red-900/10">
+            <CardContent className="p-4 flex items-center gap-3">
+              <XCircle className="h-5 w-5 text-red-500" />
+              <div>
+                <div className="text-2xl font-bold text-red-600">
+                  {actionRequiredOrders.filter(o => getActionSource(o) === 'FAILED_DELIVERY').length}
+                </div>
+                <div className="text-sm text-muted-foreground">Failed Delivery</div>
               </div>
-              <div className="text-sm text-muted-foreground">Followup</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">
-                {actionRequiredOrders.filter(o => o.salesperson_action_type === 'RESCHEDULE_DELIVERY').length}
+          <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/10">
+            <CardContent className="p-4 flex items-center gap-3">
+              <Calendar className="h-5 w-5 text-yellow-500" />
+              <div>
+                <div className="text-2xl font-bold text-yellow-600">
+                  {actionRequiredOrders.filter(o => getActionSource(o) === 'RESCHEDULED').length}
+                </div>
+                <div className="text-sm text-muted-foreground">Rescheduled</div>
               </div>
-              <div className="text-sm text-muted-foreground">Reschedule</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">
-                {actionRequiredOrders.filter(o => o.salesperson_action_type === 'UPDATE_ADDRESS').length}
+          <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/10">
+            <CardContent className="p-4 flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-blue-500" />
+              <div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {actionRequiredOrders.filter(o => 
+                    getActionSource(o) === 'RUNNER_FLAGGED' || getActionSource(o) === 'MANUAL'
+                  ).length}
+                </div>
+                <div className="text-sm text-muted-foreground">Runner Notes</div>
               </div>
-              <div className="text-sm text-muted-foreground">Update Address</div>
             </CardContent>
           </Card>
         </div>
@@ -226,16 +278,16 @@ export default function SalespersonActionInbox() {
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <Label className="text-xs">Action Type</Label>
-                <Select value={actionTypeFilter} onValueChange={setActionTypeFilter}>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="FOLLOWUP_CUSTOMER">Followup Customer</SelectItem>
-                    <SelectItem value="RESCHEDULE_DELIVERY">Reschedule Delivery</SelectItem>
-                    <SelectItem value="UPDATE_ADDRESS">Update Address</SelectItem>
-                    <SelectItem value="CANCEL_ORDER">Cancel Order</SelectItem>
+                    <SelectItem value="all">All Sources</SelectItem>
+                    <SelectItem value="FAILED_DELIVERY">Failed Delivery</SelectItem>
+                    <SelectItem value="RESCHEDULED">Rescheduled</SelectItem>
+                    <SelectItem value="RUNNER_FLAGGED">Runner Notes</SelectItem>
+                    <SelectItem value="MANUAL">Manual Flag</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -278,19 +330,18 @@ export default function SalespersonActionInbox() {
                   </TableHead>
                   <TableHead>Order Ref</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>Action Type</TableHead>
-                  <TableHead>Outcome</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Next Date</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Runner Comment</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Reviewed By</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {actionRequiredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       No orders requiring action
                     </TableCell>
                   </TableRow>
@@ -312,23 +363,32 @@ export default function SalespersonActionInbox() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {order.salesperson_action_type && (
-                          <Badge className={actionTypeColors[order.salesperson_action_type] || ''}>
-                            {actionTypeLabels[order.salesperson_action_type] || order.salesperson_action_type}
-                          </Badge>
-                        )}
+                        {(() => {
+                          const source = getActionSource(order);
+                          if (!source) return '-';
+                          return (
+                            <Badge className={sourceColors[source]}>
+                              {sourceLabels[source]}
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
-                        {order.runner_final_outcome && (
-                          <span className="text-sm">
-                            {outcomeLabels[order.runner_final_outcome] || order.runner_final_outcome}
-                          </span>
+                        {order.next_delivery_date ? (
+                          <div className="flex items-center gap-1 text-sm">
+                            <CalendarClock className="h-3 w-3" />
+                            {format(parseISO(order.next_delivery_date), 'dd MMM yyyy')}
+                          </div>
+                        ) : (
+                          '-'
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-red-600">
-                        {order.runner_failed_reason_id ? reasonsMap[order.runner_failed_reason_id] || '-' : '-'}
+                      <TableCell className="text-sm text-red-600 max-w-[120px]">
+                        {order.runner_failed_reason_id ? (
+                          <span className="truncate block">{reasonsMap[order.runner_failed_reason_id] || '-'}</span>
+                        ) : '-'}
                       </TableCell>
-                      <TableCell className="max-w-[200px]">
+                      <TableCell className="max-w-[180px]">
                         {order.runner_comment ? (
                           <div className="flex items-start gap-1">
                             <MessageSquare className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
@@ -339,19 +399,13 @@ export default function SalespersonActionInbox() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {order.salesperson_action_due_date ? (
-                          <div className="flex items-center gap-1 text-sm">
-                            <CalendarClock className="h-3 w-3" />
-                            {format(parseISO(order.salesperson_action_due_date), 'dd MMM')}
-                          </div>
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <User className="h-3 w-3" />
-                          {order.runner_reviewed_by ? reviewersMap[order.runner_reviewed_by] || '-' : '-'}
+                        <div className="flex flex-col gap-1">
+                          <Badge variant="outline" className="text-xs w-fit">
+                            {order.status}
+                          </Badge>
+                          {order.runner_status && order.runner_status !== 'UNASSIGNED' && (
+                            <span className="text-xs text-muted-foreground">{order.runner_status}</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
