@@ -56,6 +56,9 @@ import RunnerDeliveredOrders from "./pages/runner/RunnerDeliveredOrders";
 import DeliveryChargesAdmin from "./pages/admin/DeliveryChargesAdmin";
 import DeliveryFeesReport from "./pages/admin/DeliveryFeesReport";
 import WarehouseManagement from "./pages/admin/WarehouseManagement";
+import CommissionSettings from "./pages/admin/CommissionSettings";
+import LeaderboardSettings from "./pages/admin/LeaderboardSettings";
+import LeaderboardPage from "./pages/leaderboard/LeaderboardPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -141,6 +144,9 @@ function AppRoutes() {
       <Route path="/admin/delivery-charges" element={<ProtectedRoute><DeliveryChargesAdmin /></ProtectedRoute>} />
       <Route path="/admin/delivery-fees-report" element={<ProtectedRoute><DeliveryFeesReport /></ProtectedRoute>} />
       <Route path="/admin/warehouses" element={<ProtectedRoute><WarehouseManagement /></ProtectedRoute>} />
+      <Route path="/settings/commission" element={<ProtectedRoute><CommissionSettings /></ProtectedRoute>} />
+      <Route path="/admin/leaderboard-settings" element={<ProtectedRoute><LeaderboardSettings /></ProtectedRoute>} />
+      <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
