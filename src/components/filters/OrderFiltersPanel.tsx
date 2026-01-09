@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/collapsible';
 import { Filter, X, ChevronDown, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useReasons } from '@/hooks/useReasons';
 
 export interface OrderFilters {
   year?: string;
@@ -30,6 +31,7 @@ export interface OrderFilters {
   salespersonId?: string;
   driverId?: string;
   paymentMethod?: string;
+  deliveryReasonId?: string;
 }
 
 interface FilterOption {
@@ -123,6 +125,26 @@ export function OrderFiltersPanel({
 }: OrderFiltersPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
 
+  // Fetch CANCEL and FAILED_DELIVERY reasons for the dropdown
+  const { data: cancelReasons = [] } = useReasons('CANCEL', true);
+  const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY', true);
+
+  // Determine if reason filter should be enabled
+  const isReasonFilterEnabled = useMemo(() => {
+    return filters.runnerStatus === 'FAILED_DELIVERY' || filters.orderStatus === 'CANCELLED';
+  }, [filters.runnerStatus, filters.orderStatus]);
+
+  // Get the appropriate reasons based on current filter
+  const reasonOptions = useMemo(() => {
+    if (filters.orderStatus === 'CANCELLED') {
+      return cancelReasons.map(r => ({ label: r.label, value: r.id }));
+    }
+    if (filters.runnerStatus === 'FAILED_DELIVERY') {
+      return failedReasons.map(r => ({ label: r.label, value: r.id }));
+    }
+    return [];
+  }, [filters.orderStatus, filters.runnerStatus, cancelReasons, failedReasons]);
+
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.year) count++;
@@ -135,11 +157,22 @@ export function OrderFiltersPanel({
     if (filters.salespersonId) count++;
     if (filters.driverId) count++;
     if (filters.paymentMethod) count++;
+    if (filters.deliveryReasonId) count++;
     return count;
   }, [filters]);
 
   const updateFilter = (key: keyof OrderFilters, value: string | undefined) => {
-    onFiltersChange({ ...filters, [key]: value === 'all' ? undefined : value });
+    const newFilters = { ...filters, [key]: value === 'all' ? undefined : value };
+    // Clear deliveryReasonId if runnerStatus/orderStatus changes to something that doesn't support it
+    if (key === 'runnerStatus' || key === 'orderStatus') {
+      const newRunnerStatus = key === 'runnerStatus' ? value : filters.runnerStatus;
+      const newOrderStatus = key === 'orderStatus' ? value : filters.orderStatus;
+      const stillEnabled = newRunnerStatus === 'FAILED_DELIVERY' || newOrderStatus === 'CANCELLED';
+      if (!stillEnabled) {
+        newFilters.deliveryReasonId = undefined;
+      }
+    }
+    onFiltersChange(newFilters);
   };
 
   const clearAllFilters = () => {
@@ -340,6 +373,24 @@ export function OrderFiltersPanel({
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Delivery Reason</Label>
+                <Select
+                  value={filters.deliveryReasonId || 'all'}
+                  onValueChange={(v) => updateFilter('deliveryReasonId', v)}
+                  disabled={!isReasonFilterEnabled}
+                >
+                  <SelectTrigger className={cn("h-9", !isReasonFilterEnabled && "opacity-50")}>
+                    <SelectValue placeholder="All Reasons" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Reasons</SelectItem>
+                    {reasonOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Other Filters Row */}
@@ -429,6 +480,8 @@ export function applyOrderFilters<T extends {
   area?: string | null;
   salesperson_id?: string;
   payment_method?: string;
+  cancel_reason?: string | null;
+  runner_failed_reason_id?: string | null;
 }>(orders: T[], filters: OrderFilters): T[] {
   return orders.filter((order) => {
     // Year/Month filter
@@ -455,6 +508,17 @@ export function applyOrderFilters<T extends {
     if (filters.salespersonId && order.salesperson_id !== filters.salespersonId) return false;
     if (filters.driverId && order.driver_id !== filters.driverId) return false;
     if (filters.paymentMethod && order.payment_method !== filters.paymentMethod) return false;
+
+    // Delivery Reason filter - match based on status context
+    if (filters.deliveryReasonId) {
+      if (filters.orderStatus === 'CANCELLED') {
+        // For cancelled orders, match against cancel_reason (which stores the reason ID)
+        if (order.cancel_reason !== filters.deliveryReasonId) return false;
+      } else if (filters.runnerStatus === 'FAILED_DELIVERY') {
+        // For failed delivery, match against runner_failed_reason_id
+        if (order.runner_failed_reason_id !== filters.deliveryReasonId) return false;
+      }
+    }
 
     return true;
   });
