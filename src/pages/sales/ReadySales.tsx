@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck, Lock, Plus } from 'lucide-react';
+import { Truck, UserCheck, Lock, Plus, AlertTriangle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -38,6 +38,7 @@ import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
+import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useToast } from '@/hooks/use-toast';
 import type { Order } from '@/types/database';
 
@@ -133,11 +134,24 @@ export default function ReadySales() {
       key: 'items_summary', 
       header: 'Items', 
       render: (o) => {
-        const itemCount = o.order_items?.length || 0;
+        const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(o.order_items);
         return (
           <div className="text-sm">
-            <span className="font-medium">{itemCount} SKU</span>
-            <span className="text-muted-foreground"> · {o.total_qty} units</span>
+            {hasError ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1 text-destructive">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>{displayText}</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{errorMessage}</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="font-medium">{displayText}</span>
+            )}
           </div>
         );
       }
