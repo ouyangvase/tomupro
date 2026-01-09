@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
 import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { RunnerReviewInfo } from '@/components/orders/RunnerReviewInfo';
 import { RescheduleHistorySection } from '@/components/orders/RescheduleHistorySection';
@@ -125,12 +126,15 @@ function ProductCombobox({ products, value, onSelect }: ProductComboboxProps) {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-8 w-full justify-between text-left font-normal"
+          className={cn(
+            "h-8 w-full justify-between text-left font-normal",
+            !value && "border-destructive text-destructive"
+          )}
         >
           <span className="truncate">
             {selectedProduct
               ? `${selectedProduct.sku_code ? selectedProduct.sku_code + ' - ' : ''}${selectedProduct.sku_name}`
-              : 'Custom / Select...'}
+              : 'Select SKU *'}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -141,16 +145,6 @@ function ProductCombobox({ products, value, onSelect }: ProductComboboxProps) {
           <CommandList>
             <CommandEmpty>No product found.</CommandEmpty>
             <CommandGroup>
-              <CommandItem
-                value="__custom__"
-                onSelect={() => {
-                  onSelect(null);
-                  setOpen(false);
-                }}
-              >
-                <Check className={cn("mr-2 h-4 w-4", !value ? "opacity-100" : "opacity-0")} />
-                Custom (type below)
-              </CommandItem>
               {products.map((p) => (
                 <CommandItem
                   key={p.id}
@@ -174,6 +168,7 @@ function ProductCombobox({ products, value, onSelect }: ProductComboboxProps) {
 
 export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = 'BOOKING' }: OrderEditorProps) {
   const { profile, role } = useAuth();
+  const { toast } = useToast();
   const { data: allProducts = [] } = useProducts();
   // Filter products for salespersons - only show their own products
   const products = role === 'salesperson' 
@@ -301,6 +296,41 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
   const onSubmit = async (values: OrderFormValues) => {
     try {
+      // Validate all items have product_id (SKU is mandatory)
+      const itemsWithoutProduct = items.filter(item => !item.product_id);
+      if (itemsWithoutProduct.length > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'SKU Required',
+          description: 'All order items must have a valid SKU selected. Please select a product for each item.',
+        });
+        return;
+      }
+
+      // Validate no duplicate SKUs within the order
+      const productIds = items.map(item => item.product_id).filter(Boolean);
+      const uniqueProductIds = new Set(productIds);
+      if (productIds.length !== uniqueProductIds.size) {
+        // Find the duplicate
+        const seen = new Set<string>();
+        const duplicates: string[] = [];
+        for (const item of items) {
+          if (item.product_id) {
+            if (seen.has(item.product_id)) {
+              const product = products.find(p => p.id === item.product_id);
+              duplicates.push(product?.sku_name || item.sku_label || 'Unknown');
+            }
+            seen.add(item.product_id);
+          }
+        }
+        toast({
+          variant: 'destructive',
+          title: 'Duplicate SKU Detected',
+          description: `Each SKU can only appear once per order. Duplicate: ${duplicates.join(', ')}`,
+        });
+        return;
+      }
+
       let orderId = order?.id;
 
       const orderData = {
@@ -590,61 +620,69 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {items.map((item, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <ProductCombobox
-                            products={products}
-                            value={item.product_id}
-                            onSelect={(productId, productName) => {
-                              updateItem(index, 'product_id', productId);
-                              if (productName) {
-                                updateItem(index, 'sku_label', productName);
-                              }
-                            }}
-                          />
-                          {!item.product_id && (
+                    {items.map((item, index) => {
+                      // Check if this item's product_id is duplicated
+                      const isDuplicate = item.product_id && items.filter((i, idx) => idx !== index && i.product_id === item.product_id).length > 0;
+                      
+                      return (
+                        <TableRow key={index} className={isDuplicate ? "bg-destructive/10" : undefined}>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <ProductCombobox
+                                products={products}
+                                value={item.product_id}
+                                onSelect={(productId, productName) => {
+                                  updateItem(index, 'product_id', productId);
+                                  if (productName) {
+                                    updateItem(index, 'sku_label', productName);
+                                  }
+                                }}
+                              />
+                              {isDuplicate && (
+                                <p className="text-xs text-destructive flex items-center gap-1">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  Duplicate SKU
+                                </p>
+                              )}
+                              {!item.product_id && (
+                                <p className="text-xs text-destructive">SKU is required</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
                             <Input
-                              value={item.sku_label}
-                              onChange={(e) => updateItem(index, 'sku_label', e.target.value)}
-                              placeholder="Custom SKU label"
-                              className="mt-1 h-8"
+                              type="number"
+                              value={item.qty}
+                              onChange={(e) => updateItem(index, 'qty', parseInt(e.target.value) || 0)}
+                              className="h-8 w-16"
+                              min={1}
                             />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={item.qty}
-                            onChange={(e) => updateItem(index, 'qty', parseInt(e.target.value) || 0)}
-                            className="h-8 w-16"
-                            min={1}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={item.price}
-                            onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
-                            className="h-8 w-24"
-                            min={0}
-                            step={0.01}
-                            placeholder="Line amount"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeItem(index)}
-                            disabled={items.length === 1}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              value={item.price}
+                              onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
+                              className="h-8 w-24"
+                              min={0}
+                              step={0.01}
+                              placeholder="Line amount"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeItem(index)}
+                              disabled={items.length === 1}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

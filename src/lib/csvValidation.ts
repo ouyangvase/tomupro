@@ -83,7 +83,7 @@ export const orderLineSchema = z.object({
   }),
   expected_pickup_date: z.string().transform(parseFlexibleDate),
   notes: z.string().max(1000).optional().default(''),
-  sku_name_or_code: z.string().max(255).optional().default(''),
+  sku_name_or_code: z.string().min(1, 'SKU code is required for all order items').max(255, 'SKU too long'),
   qty: z.string().transform((val) => {
     const num = parseInt(val || '1', 10);
     if (isNaN(num) || num < 0 || num > 99999) return 1;
@@ -137,6 +137,35 @@ export function validateOrderLines(rows: Record<string, string>[]): ValidationRe
       }
     }
   });
+
+  // Check for duplicate SKUs within the same order_ref
+  const orderSkuMap = new Map<string, Map<string, number[]>>();
+  valid.forEach((row, idx) => {
+    const orderRef = row.order_ref.trim().toLowerCase();
+    const sku = row.sku_name_or_code.trim().toLowerCase();
+    
+    if (!orderSkuMap.has(orderRef)) {
+      orderSkuMap.set(orderRef, new Map());
+    }
+    const skuMap = orderSkuMap.get(orderRef)!;
+    
+    if (!skuMap.has(sku)) {
+      skuMap.set(sku, []);
+    }
+    skuMap.get(sku)!.push(idx + 2); // CSV row number (1-indexed + header)
+  });
+
+  // Report duplicate SKU errors
+  for (const [orderRef, skuMap] of orderSkuMap) {
+    for (const [sku, rowNumbers] of skuMap) {
+      if (rowNumbers.length > 1) {
+        errors.push({
+          row: rowNumbers[0],
+          message: `Duplicate SKU detected: "${sku}" appears ${rowNumbers.length} times in order "${orderRef}" (rows: ${rowNumbers.join(', ')}). Each SKU can only appear once per order.`
+        });
+      }
+    }
+  }
 
   return { valid, errors };
 }
