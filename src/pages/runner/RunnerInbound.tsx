@@ -76,12 +76,6 @@ export default function RunnerInbound() {
       return;
     }
 
-    // Check all items have photos
-    const missingPhotos = items.filter(i => !i.photo_file);
-    if (missingPhotos.length > 0) {
-      toast({ variant: 'destructive', title: 'All items require a photo' });
-      return;
-    }
 
     setIsSubmitting(true);
 
@@ -97,9 +91,10 @@ export default function RunnerInbound() {
 
       // Upload photos and create items
       for (const item of items) {
-        if (!item.photo_file) continue;
-
-        const photoUrl = await uploadInboundPhoto(item.photo_file, user.id);
+        let photoUrl = '';
+        if (item.photo_file) {
+          photoUrl = await uploadInboundPhoto(item.photo_file, user.id);
+        }
 
         await createItem.mutateAsync({
           inbound_id: shipment.id,
@@ -251,7 +246,7 @@ export default function RunnerInbound() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Photo *</Label>
+                          <Label>Photo</Label>
                           {item.photo_preview ? (
                             <div className="relative">
                               <img
