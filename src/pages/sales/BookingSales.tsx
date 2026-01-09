@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { Plus, AlertCircle, Lock } from 'lucide-react';
+import { Plus, AlertCircle, Lock, AlertTriangle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -19,6 +19,7 @@ import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
+import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { calculateReminderState, getReminderBadgeProps } from '@/lib/reminders';
 import type { Order } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
@@ -69,11 +70,24 @@ export default function BookingSales() {
       key: 'items_summary', 
       header: 'Items', 
       render: (o) => {
-        const itemCount = o.order_items?.length || 0;
+        const { displayText, hasError, errorMessage } = formatOrderItemsDisplay(o.order_items);
         return (
           <div className="text-sm">
-            <span className="font-medium">{itemCount} SKU</span>
-            <span className="text-muted-foreground"> · {o.total_qty} units</span>
+            {hasError ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1 text-destructive">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>{displayText}</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{errorMessage}</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="font-medium">{displayText}</span>
+            )}
           </div>
         );
       }
