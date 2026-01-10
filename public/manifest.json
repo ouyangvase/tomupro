@@ -1,7 +1,7 @@
 {
-  "name": "TOMU - Operations Management",
-  "short_name": "TOMU",
-  "description": "TOMU Operations Management System",
+  "name": "Tomu Pro",
+  "short_name": "Tomu Pro",
+  "description": "Tomu Pro - Operations Management System",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a2744",
