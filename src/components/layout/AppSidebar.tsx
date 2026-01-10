@@ -283,7 +283,8 @@ export function AppSidebar() {
     signingOut
   } = useAuth();
   const {
-    state
+    state,
+    isMobile
   } = useSidebar();
   const collapsed = state === 'collapsed';
   const userRole = profile?.role || 'salesperson';
@@ -298,11 +299,11 @@ export function AppSidebar() {
           <NavLink 
             to={item.url} 
             end 
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all duration-200" 
+            className="flex items-center gap-3 px-3 md:px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all duration-200 min-h-[44px]" 
             activeClassName="bg-primary/15 text-primary border border-primary/20"
           >
             <item.icon className="h-5 w-5 shrink-0" />
-            {!collapsed && <span className="font-medium">{item.title}</span>}
+            {!collapsed && <span className="font-medium text-sm md:text-base">{item.title}</span>}
           </NavLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -310,24 +311,27 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className={cn("border-r border-border/50 bg-sidebar", collapsed ? "w-20" : "w-72")}>
-      <SidebarHeader className="p-6 border-b border-border/50">
+    <Sidebar className={cn(
+      "border-r border-border/50 bg-sidebar",
+      collapsed ? "w-16 md:w-20" : "w-64 md:w-72"
+    )}>
+      <SidebarHeader className="p-4 md:p-6 border-b border-border/50">
         <div className="flex items-center gap-3">
-          <img src={tomuLogo} alt="TOMU Logo" className="h-10 w-10 object-contain" />
+          <img src={tomuLogo} alt="TOMU Logo" className="h-8 w-8 md:h-10 md:w-10 object-contain" />
           {!collapsed && (
             <div>
-              <h2 className="font-bold text-xl tracking-tight">TOMU</h2>
+              <h2 className="font-bold text-lg md:text-xl tracking-tight">TOMU</h2>
               <p className="text-xs text-muted-foreground capitalize font-medium">{userRole}</p>
             </div>
           )}
         </div>
       </SidebarHeader>
       
-      <SidebarContent className="px-3 py-6 space-y-6">
+      <SidebarContent className="px-2 md:px-3 py-4 md:py-6 space-y-4 md:space-y-6">
         {filterItems(salesItems).length > 0 && (
           <SidebarGroup>
             {!collapsed && (
-              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              <SidebarGroupLabel className="px-3 md:px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                 Sales
               </SidebarGroupLabel>
             )}
