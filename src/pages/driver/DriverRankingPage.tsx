@@ -90,7 +90,7 @@ export default function DriverRankingPage() {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <p className="text-sm text-muted-foreground">Total Amount</p>
-                <p className="font-semibold">RM {myRanking.total_amount?.toLocaleString() || '0'}</p>
+                <p className="font-semibold">BND {myRanking.total_amount?.toLocaleString() || '0'}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Failed</p>
