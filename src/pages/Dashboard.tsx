@@ -695,58 +695,67 @@ function RunnerDashboard() {
       </div>
 
       {/* Section 2: How much have I earned today? */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-green-500" />
-          How much have I earned today?
-        </h2>
+      <div className="space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-2xl bg-gradient-to-br from-[hsl(var(--status-success)/0.2)] to-[hsl(var(--status-success)/0.05)] border border-[hsl(var(--status-success)/0.2)]">
+            <TrendingUp className="h-5 w-5 text-[hsl(var(--status-success))]" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">How much have I earned today?</h2>
+        </div>
 
         <div className="grid gap-4 md:grid-cols-3">
           {/* Today's Delivered Value */}
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-green-200 dark:border-green-800">
-            <CardContent className="pt-6">
+          <Card className="relative overflow-hidden bg-gradient-to-br from-[hsl(var(--status-success)/0.15)] via-[hsl(var(--status-success)/0.08)] to-transparent border-[hsl(var(--status-success)/0.3)] shadow-md hover:shadow-lg transition-all group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-[hsl(var(--status-success)/0.1)] rounded-full blur-2xl translate-x-1/3 -translate-y-1/3" />
+            <CardContent className="pt-6 relative">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-green-700 dark:text-green-300">Today's Earnings</p>
+                  <p className="text-sm font-medium text-[hsl(var(--status-success))]">Today's Earnings</p>
                   {isLoading ? (
                     <Skeleton className="h-9 w-32 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold text-green-700 dark:text-green-300">
+                    <p className="text-3xl font-extrabold text-[hsl(var(--status-success))] tracking-tight">
                       {formatBND(dashData?.earningsStats.deliveredTodayValue ?? 0)}
                     </p>
                   )}
                 </div>
-                <DollarSign className="h-10 w-10 text-green-500" />
+                <div className="p-3 rounded-2xl bg-[hsl(var(--status-success)/0.2)] group-hover:scale-110 transition-transform">
+                  <DollarSign className="h-8 w-8 text-[hsl(var(--status-success))]" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Ready to Claim */}
           <Card 
-            className="cursor-pointer hover:shadow-md transition-all border-primary/30 bg-primary/5"
+            className="relative overflow-hidden cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all border-primary/40 bg-gradient-to-br from-primary/15 via-primary/8 to-transparent group"
             onClick={() => navigate('/runner/delivered-orders')}
           >
-            <CardContent className="pt-6">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-2xl translate-x-1/3 -translate-y-1/3" />
+            <div className="absolute bottom-0 left-0 w-20 h-20 bg-primary/5 rounded-full blur-xl" />
+            <CardContent className="pt-6 relative">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Ready to Claim</p>
+                  <p className="text-sm font-medium text-primary">Ready to Claim</p>
                   {isLoading ? (
                     <Skeleton className="h-9 w-32 mt-1" />
                   ) : (
                     <>
-                      <p className="text-2xl font-bold text-primary">
+                      <p className="text-3xl font-extrabold text-primary tracking-tight">
                         {formatBND(dashData?.earningsStats.pendingClaimValue ?? 0)}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1 font-medium">
                         {dashData?.earningsStats.pendingClaimCount ?? 0} orders
                       </p>
                     </>
                   )}
                 </div>
-                <Send className="h-8 w-8 text-primary" />
+                <div className="p-3 rounded-2xl bg-primary/20 group-hover:scale-110 transition-transform">
+                  <Send className="h-7 w-7 text-primary" />
+                </div>
               </div>
               {(dashData?.earningsStats.pendingClaimCount ?? 0) > 0 && (
-                <Button size="sm" className="w-full mt-4" onClick={(e) => { e.stopPropagation(); navigate('/runner/delivered-orders'); }}>
+                <Button size="sm" className="w-full mt-4 shadow-md hover:shadow-lg font-semibold" onClick={(e) => { e.stopPropagation(); navigate('/runner/delivered-orders'); }}>
                   Claim Now <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               )}
@@ -1275,18 +1284,26 @@ export default function Dashboard() {
   return (
     <AppLayout>
       <div className="space-y-8">
-        {/* Premium Welcome Header */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/15 via-primary/10 to-transparent p-6 md:p-8 border border-primary/20">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <div className="absolute bottom-0 left-1/2 w-48 h-48 bg-primary/5 rounded-full blur-2xl" />
-          <div className="relative">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-              Welcome back, <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">{profile?.display_name}</span>
+        {/* Premium Welcome Header - Modern Orange/Silver */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/20 via-secondary/40 to-primary/5 p-8 md:p-10 border border-primary/30 shadow-lg">
+          {/* Decorative orbs */}
+          <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-primary/30 to-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 animate-pulse" />
+          <div className="absolute bottom-0 left-0 w-60 h-60 bg-gradient-to-tr from-secondary/60 to-transparent rounded-full blur-2xl translate-y-1/3 -translate-x-1/4" />
+          <div className="absolute top-1/2 left-1/2 w-40 h-40 bg-primary/10 rounded-full blur-xl -translate-x-1/2 -translate-y-1/2" />
+          
+          {/* Content */}
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="h-1.5 w-12 rounded-full bg-gradient-to-r from-primary to-primary/50" />
+              <span className="text-xs font-semibold uppercase tracking-widest text-primary">Dashboard</span>
+            </div>
+            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
+              Welcome back, <span className="bg-gradient-to-r from-primary via-primary/80 to-[hsl(var(--status-warning))] bg-clip-text text-transparent drop-shadow-sm">{profile?.display_name}</span>
             </h1>
-            <p className="text-muted-foreground mt-2 flex items-center gap-2">
+            <p className="text-muted-foreground mt-3 text-base flex items-center gap-3">
               Here's an overview of your operations
-              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
-                <RefreshCw className="h-3 w-3" /> auto-refreshes
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full bg-primary/15 text-primary border border-primary/20 shadow-sm">
+                <RefreshCw className="h-3 w-3 animate-spin" style={{ animationDuration: '3s' }} /> Live
               </span>
             </p>
           </div>
