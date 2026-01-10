@@ -117,26 +117,71 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <img src={tomuLogo} alt="TOMU PRO Logo" className="mx-auto h-20 w-20 object-contain mb-4" />
-          <CardTitle className="text-2xl">TOMU PRO</CardTitle>
-          <CardDescription>
-            Orders + Runner + Reconciliation + Inventory
-          </CardDescription>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-secondary/30 p-4 relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute top-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+      <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-secondary/20 rounded-full blur-2xl -translate-x-1/2 -translate-y-1/2" />
+      
+      {/* Floating accent lines */}
+      <div className="absolute top-20 right-20 w-32 h-1 bg-gradient-to-r from-primary/40 to-transparent rounded-full" />
+      <div className="absolute bottom-32 left-16 w-24 h-1 bg-gradient-to-r from-transparent to-primary/30 rounded-full" />
+      
+      <Card className="w-full max-w-md relative z-10 border-border/50 bg-card/80 backdrop-blur-xl shadow-2xl">
+        {/* Top accent bar */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-primary to-transparent rounded-full" />
+        
+        <CardHeader className="text-center pt-8 pb-4">
+          {/* Logo container with glow */}
+          <div className="relative mx-auto mb-6">
+            <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full scale-150" />
+            <div className="relative p-4 rounded-2xl bg-gradient-to-br from-secondary/80 to-secondary/40 border border-border/50 shadow-lg">
+              <img 
+                src={tomuLogo} 
+                alt="TOMU PRO Logo" 
+                className="h-16 w-16 object-contain drop-shadow-lg" 
+              />
+            </div>
+          </div>
+          
+          {/* Title with gradient */}
+          <CardTitle className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-primary to-foreground bg-clip-text text-transparent">
+            TOMU PRO
+          </CardTitle>
+          
+          {/* Tagline with separator */}
+          <div className="flex items-center justify-center gap-3 mt-3">
+            <div className="h-px w-8 bg-gradient-to-r from-transparent to-border" />
+            <CardDescription className="text-sm font-medium text-muted-foreground/80">
+              Orders • Runner • Reconciliation • Inventory
+            </CardDescription>
+            <div className="h-px w-8 bg-gradient-to-l from-transparent to-border" />
+          </div>
         </CardHeader>
-        <CardContent>
+        
+        <CardContent className="pb-8">
           <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 p-1 bg-secondary/50 rounded-xl">
+              <TabsTrigger 
+                value="login" 
+                className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-foreground transition-all duration-200"
+              >
+                Login
+              </TabsTrigger>
+              <TabsTrigger 
+                value="signup"
+                className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-foreground transition-all duration-200"
+              >
+                Sign Up
+              </TabsTrigger>
             </TabsList>
             
             <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-4 mt-4">
+              <form onSubmit={handleLogin} className="space-y-5 mt-6">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
+                  <Label htmlFor="login-email" className="text-sm font-medium text-foreground/80">
+                    Email
+                  </Label>
                   <Input
                     id="login-email"
                     type="email"
@@ -144,10 +189,13 @@ export default function Auth() {
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     required
+                    className="h-12 bg-secondary/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="login-password">Password</Label>
+                  <Label htmlFor="login-password" className="text-sm font-medium text-foreground/80">
+                    Password
+                  </Label>
                   <Input
                     id="login-password"
                     type="password"
@@ -155,18 +203,25 @@ export default function Auth() {
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     required
+                    className="h-12 bg-secondary/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button 
+                  type="submit" 
+                  className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl hover:shadow-primary/20 transition-all duration-300" 
+                  disabled={loading}
+                >
                   {loading ? 'Signing in...' : 'Sign In'}
                 </Button>
               </form>
             </TabsContent>
             
             <TabsContent value="signup">
-              <form onSubmit={handleSignup} className="space-y-4 mt-4">
+              <form onSubmit={handleSignup} className="space-y-5 mt-6">
                 <div className="space-y-2">
-                  <Label htmlFor="display-name">Display Name</Label>
+                  <Label htmlFor="display-name" className="text-sm font-medium text-foreground/80">
+                    Display Name
+                  </Label>
                   <Input
                     id="display-name"
                     type="text"
@@ -174,10 +229,13 @@ export default function Auth() {
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     required
+                    className="h-12 bg-secondary/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
+                  <Label htmlFor="signup-email" className="text-sm font-medium text-foreground/80">
+                    Email
+                  </Label>
                   <Input
                     id="signup-email"
                     type="email"
@@ -185,10 +243,13 @@ export default function Auth() {
                     value={signupEmail}
                     onChange={(e) => setSignupEmail(e.target.value)}
                     required
+                    className="h-12 bg-secondary/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-password">Password</Label>
+                  <Label htmlFor="signup-password" className="text-sm font-medium text-foreground/80">
+                    Password
+                  </Label>
                   <Input
                     id="signup-password"
                     type="password"
@@ -196,15 +257,23 @@ export default function Auth() {
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
                     required
+                    className="h-12 bg-secondary/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button 
+                  type="submit" 
+                  className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl hover:shadow-primary/20 transition-all duration-300" 
+                  disabled={loading}
+                >
                   {loading ? 'Creating account...' : 'Create Account'}
                 </Button>
               </form>
             </TabsContent>
           </Tabs>
         </CardContent>
+        
+        {/* Bottom accent */}
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-24 h-0.5 bg-gradient-to-r from-transparent via-primary/50 to-transparent rounded-full" />
       </Card>
     </div>
   );
