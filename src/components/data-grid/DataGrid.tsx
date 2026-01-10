@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Search, 
   ArrowUpDown, 
@@ -19,7 +21,9 @@ import {
   Download,
   Upload,
   Filter,
-  X
+  X,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -34,6 +38,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export interface Column<T> {
   key: string;
@@ -81,12 +93,14 @@ export function DataGrid<T extends object>({
   onExport,
   onImport,
 }: DataGridProps<T>) {
+  const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   const filteredData = useMemo(() => {
     let result = [...data];
@@ -203,232 +217,397 @@ export function DataGrid<T extends object>({
 
   const hasActiveFilters = Object.values(columnFilters).some((v) => v && v !== 'all');
 
+  const toggleCardExpanded = (id: string) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Filter columns for mobile - show first 4 as primary, rest as expandable
+  const mobileVisibleColumns = columns.slice(0, 4);
+  const mobileExpandedColumns = columns.slice(4);
+
+  // Filter content for both mobile sheet and desktop popover
+  const filterContent = (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold">Filters</h4>
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setColumnFilters({})}
+          >
+            <X className="h-4 w-4 mr-1" />
+            Clear all
+          </Button>
+        )}
+      </div>
+      {columns
+        .filter((c) => c.filterable && c.filterOptions)
+        .map((col) => (
+          <div key={col.key} className="space-y-2">
+            <label className="text-sm font-medium text-muted-foreground">{col.header}</label>
+            <Select
+              value={columnFilters[col.key] || 'all'}
+              onValueChange={(value) =>
+                setColumnFilters((prev) => ({ ...prev, [col.key]: value }))
+              }
+            >
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {col.filterOptions?.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <div className="space-y-4 md:space-y-6">
+      {/* Toolbar - Responsive */}
+      <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-4">
+        {/* Search - full width on mobile */}
+        <div className="relative flex-1 min-w-0 md:max-w-md">
+          <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-9 md:pl-10 h-11 md:h-10"
           />
         </div>
 
-        {/* Column filters */}
-        {columns.some((c) => c.filterable && c.filterOptions) && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant={hasActiveFilters ? "default" : "outline"} size="sm">
-                <Filter className="h-4 w-4 mr-2" />
-                Filters
-                {hasActiveFilters && (
-                  <Badge variant="secondary" className="ml-2">
-                    {Object.values(columnFilters).filter((v) => v && v !== 'all').length}
-                  </Badge>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80" align="start">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold">Filters</h4>
-                  {hasActiveFilters && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setColumnFilters({})}
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Clear all
-                    </Button>
-                  )}
-                </div>
-                {columns
-                  .filter((c) => c.filterable && c.filterOptions)
-                  .map((col) => (
-                    <div key={col.key} className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">{col.header}</label>
-                      <Select
-                        value={columnFilters[col.key] || 'all'}
-                        onValueChange={(value) =>
-                          setColumnFilters((prev) => ({ ...prev, [col.key]: value }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="All" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All</SelectItem>
-                          {col.filterOptions?.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        )}
+        {/* Action buttons row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Column filters - Sheet on mobile, Popover on desktop */}
+          {columns.some((c) => c.filterable && c.filterOptions) && (
+            isMobile ? (
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant={hasActiveFilters ? "default" : "outline"} size="sm" className="h-10 px-3">
+                    <Filter className="h-4 w-4 mr-2" />
+                    Filters
+                    {hasActiveFilters && (
+                      <Badge variant="secondary" className="ml-2">
+                        {Object.values(columnFilters).filter((v) => v && v !== 'all').length}
+                      </Badge>
+                    )}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="h-[80vh] rounded-t-2xl">
+                  <SheetHeader>
+                    <SheetTitle>Filters</SheetTitle>
+                  </SheetHeader>
+                  <ScrollArea className="h-full py-4">
+                    {filterContent}
+                  </ScrollArea>
+                </SheetContent>
+              </Sheet>
+            ) : (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant={hasActiveFilters ? "default" : "outline"} size="sm">
+                    <Filter className="h-4 w-4 mr-2" />
+                    Filters
+                    {hasActiveFilters && (
+                      <Badge variant="secondary" className="ml-2">
+                        {Object.values(columnFilters).filter((v) => v && v !== 'all').length}
+                      </Badge>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="start">
+                  {filterContent}
+                </PopoverContent>
+              </Popover>
+            )
+          )}
 
-        <div className="flex items-center gap-3 ml-auto">
-          {selectedRows.length > 0 && bulkActions}
-          
-          {onImport && (
-            <Button variant="outline" size="sm" onClick={onImport}>
-              <Upload className="h-4 w-4 mr-2" />
-              Import
-            </Button>
-          )}
-          
-          {onExport && (
-            <Button variant="outline" size="sm" onClick={onExport}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          )}
+          <div className="flex items-center gap-2 ml-auto">
+            {onImport && (
+              <Button variant="outline" size="sm" onClick={onImport} className="h-10 md:h-9">
+                <Upload className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Import</span>
+              </Button>
+            )}
+            
+            {onExport && (
+              <Button variant="outline" size="sm" onClick={onExport} className="h-10 md:h-9">
+                <Download className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Export</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Selection info */}
+      {/* Bulk actions row - responsive */}
       {selectedRows.length > 0 && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/20 rounded-xl">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-3 px-3 md:px-4 py-3 bg-primary/10 border border-primary/20 rounded-xl">
           <span className="text-sm font-medium text-primary">
             {selectedRows.length} row{selectedRows.length !== 1 ? 's' : ''} selected
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onSelectionChange?.([])}
-            className="text-primary hover:text-primary"
-          >
-            Clear selection
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {bulkActions}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onSelectionChange?.([])}
+              className="text-primary hover:text-primary h-9"
+            >
+              Clear selection
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* Table */}
-      <div className="rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-secondary/30 hover:bg-secondary/30">
-                {selectable && (
-                  <TableHead className="w-14">
-                    <Checkbox
-                      checked={isAllSelected}
-                      onCheckedChange={handleSelectAll}
-                    />
-                  </TableHead>
-                )}
-                {columns.map((col) => (
-                  <TableHead
-                    key={col.key}
-                    style={{ width: col.width }}
-                    className={cn(col.sortable && 'cursor-pointer select-none hover:text-foreground transition-colors')}
-                    onClick={() => col.sortable && handleSort(col.key)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span>{col.header}</span>
-                      {col.sortable && getSortIcon(col.key)}
-                    </div>
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length + (selectable ? 1 : 0)}
-                    className="text-center py-12"
-                  >
-                    <div className="flex items-center justify-center gap-3">
-                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      <span className="text-muted-foreground">Loading...</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : filteredData.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length + (selectable ? 1 : 0)}
-                    className="text-center py-12 text-muted-foreground"
-                  >
-                    {emptyMessage}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredData.map((item) => {
-                  const id = String(item[keyField]);
-                  const isSelected = selectedRows.includes(id);
+      {/* Content - Cards on mobile, Table on desktop */}
+      {isMobile ? (
+        // Mobile Card View
+        <div className="space-y-3">
+          {/* Select all on mobile */}
+          {selectable && filteredData.length > 0 && (
+            <div className="flex items-center gap-3 px-3 py-2 bg-secondary/30 rounded-lg">
+              <Checkbox
+                checked={isAllSelected}
+                onCheckedChange={handleSelectAll}
+                className="h-5 w-5"
+              />
+              <span className="text-sm font-medium">Select all</span>
+            </div>
+          )}
 
-                  return (
-                    <TableRow
-                      key={id}
-                      className={cn(
-                        'cursor-pointer transition-colors',
-                        isSelected && 'bg-primary/5'
-                      )}
+          {loading ? (
+            <div className="flex items-center justify-center gap-3 py-12">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <span className="text-muted-foreground">Loading...</span>
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              {emptyMessage}
+            </div>
+          ) : (
+            filteredData.map((item) => {
+              const id = String(item[keyField]);
+              const isSelected = selectedRows.includes(id);
+              const isExpanded = expandedCards.has(id);
+
+              return (
+                <Card
+                  key={id}
+                  className={cn(
+                    'p-3 transition-colors',
+                    isSelected && 'bg-primary/5 border-primary/30',
+                    onRowClick && 'active:bg-secondary/50'
+                  )}
+                >
+                  {/* Card header with checkbox and primary columns */}
+                  <div className="flex items-start gap-3">
+                    {selectable && (
+                      <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => handleSelectRow(id, checked as boolean)}
+                          className="h-5 w-5"
+                        />
+                      </div>
+                    )}
+                    <div 
+                      className="flex-1 min-w-0 space-y-2"
                       onClick={() => onRowClick?.(item)}
                     >
-                      {selectable && (
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={(checked) =>
-                              handleSelectRow(id, checked as boolean)
-                            }
-                          />
-                        </TableCell>
-                      )}
-                      {columns.map((col) => {
-                        const isEditing =
-                          editingCell?.id === id && editingCell?.field === col.key;
-                        const value = item[col.key];
+                      {mobileVisibleColumns.map((col) => (
+                        <div key={col.key} className="flex items-start justify-between gap-2">
+                          <span className="text-xs text-muted-foreground font-medium shrink-0">
+                            {col.header}
+                          </span>
+                          <div className="text-sm font-medium text-right min-w-0 max-w-[65%]">
+                            <div className="truncate">
+                              {col.render ? col.render(item) : String(item[col.key] ?? '-')}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-                        return (
-                          <TableCell
-                            key={col.key}
-                            onDoubleClick={(e) => {
-                              e.stopPropagation();
-                              handleCellDoubleClick(id, col.key, value);
-                            }}
-                          >
-                            {isEditing ? (
-                              <Input
-                                type={col.editType === 'number' ? 'number' : 'text'}
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                onBlur={handleCellBlur}
-                                onKeyDown={handleCellKeyDown}
-                                autoFocus
-                                className="h-10"
-                              />
-                            ) : col.render ? (
-                              col.render(item)
-                            ) : (
-                              <span>{String(value ?? '')}</span>
-                            )}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+                  {/* Expandable section */}
+                  {mobileExpandedColumns.length > 0 && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleCardExpanded(id)}
+                        className="w-full mt-2 h-8 text-xs text-muted-foreground"
+                      >
+                        {isExpanded ? (
+                          <>
+                            <ChevronUp className="h-3 w-3 mr-1" />
+                            Show less
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-3 w-3 mr-1" />
+                            Show {mobileExpandedColumns.length} more fields
+                          </>
+                        )}
+                      </Button>
+
+                      {isExpanded && (
+                        <div className="mt-3 pt-3 border-t border-border/50 grid grid-cols-2 gap-x-4 gap-y-3">
+                          {mobileExpandedColumns.map((col) => (
+                            <div key={col.key} className="min-w-0">
+                              <span className="text-xs text-muted-foreground block mb-0.5">
+                                {col.header}
+                              </span>
+                              <div className="text-sm break-words">
+                                {col.render ? col.render(item) : String(item[col.key] ?? '-')}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Card>
+              );
+            })
+          )}
         </div>
-      </div>
+      ) : (
+        // Desktop Table View
+        <div className="rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-secondary/30 hover:bg-secondary/30">
+                  {selectable && (
+                    <TableHead className="w-14">
+                      <Checkbox
+                        checked={isAllSelected}
+                        onCheckedChange={handleSelectAll}
+                      />
+                    </TableHead>
+                  )}
+                  {columns.map((col) => (
+                    <TableHead
+                      key={col.key}
+                      style={{ width: col.width }}
+                      className={cn(col.sortable && 'cursor-pointer select-none hover:text-foreground transition-colors')}
+                      onClick={() => col.sortable && handleSort(col.key)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>{col.header}</span>
+                        {col.sortable && getSortIcon(col.key)}
+                      </div>
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={columns.length + (selectable ? 1 : 0)}
+                      className="text-center py-12"
+                    >
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        <span className="text-muted-foreground">Loading...</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : filteredData.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={columns.length + (selectable ? 1 : 0)}
+                      className="text-center py-12 text-muted-foreground"
+                    >
+                      {emptyMessage}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredData.map((item) => {
+                    const id = String(item[keyField]);
+                    const isSelected = selectedRows.includes(id);
+
+                    return (
+                      <TableRow
+                        key={id}
+                        className={cn(
+                          'cursor-pointer transition-colors',
+                          isSelected && 'bg-primary/5'
+                        )}
+                        onClick={() => onRowClick?.(item)}
+                      >
+                        {selectable && (
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) =>
+                                handleSelectRow(id, checked as boolean)
+                              }
+                            />
+                          </TableCell>
+                        )}
+                        {columns.map((col) => {
+                          const isEditing =
+                            editingCell?.id === id && editingCell?.field === col.key;
+                          const value = item[col.key];
+
+                          return (
+                            <TableCell
+                              key={col.key}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                handleCellDoubleClick(id, col.key, value);
+                              }}
+                            >
+                              {isEditing ? (
+                                <Input
+                                  type={col.editType === 'number' ? 'number' : 'text'}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={handleCellBlur}
+                                  onKeyDown={handleCellKeyDown}
+                                  autoFocus
+                                  className="h-10"
+                                />
+                              ) : col.render ? (
+                                col.render(item)
+                              ) : (
+                                <span>{String(value ?? '')}</span>
+                              )}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
+      <div className="flex items-center justify-between text-xs md:text-sm text-muted-foreground px-1">
         <span>
           Showing {filteredData.length} of {data.length} rows
         </span>

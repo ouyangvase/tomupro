@@ -15,9 +15,18 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Filter, X, ChevronDown, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useReasons } from '@/hooks/useReasons';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export interface OrderFilters {
   year?: string;
@@ -124,6 +133,7 @@ export function OrderFiltersPanel({
   showReconciliationStatus = true,
 }: OrderFiltersPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Fetch CANCEL and FAILED_DELIVERY reasons for the dropdown
   const { data: cancelReasons = [] } = useReasons('CANCEL', true);
@@ -194,268 +204,327 @@ export function OrderFiltersPanel({
     return parts.length > 0 ? parts.join(', ') : null;
   }, [filters]);
 
+  // Shared filter content for both mobile sheet and desktop collapsible
+  const filterContent = (
+    <div className="space-y-4">
+      {/* Date Filters Row */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Calendar className="h-4 w-4" />
+          Date Filters
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Year</Label>
+            <Select
+              value={filters.year || 'all'}
+              onValueChange={(v) => updateFilter('year', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All years" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All years</SelectItem>
+                {yearOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Month</Label>
+            <Select
+              value={filters.month || 'all'}
+              onValueChange={(v) => updateFilter('month', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All months" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All months</SelectItem>
+                {monthOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="col-span-2 flex items-center gap-3 pt-1">
+            <Switch
+              id="date-mode"
+              checked={filters.dateMode === 'delivered'}
+              onCheckedChange={(checked) =>
+                updateFilter('dateMode', checked ? 'delivered' : 'created')
+              }
+            />
+            <Label htmlFor="date-mode" className="text-xs">
+              Filter by Delivery Date
+            </Label>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Filters Row */}
+      <div className="grid grid-cols-2 gap-3">
+        {showRunnerStatus && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Delivery Status</Label>
+            <Select
+              value={filters.runnerStatus || 'all'}
+              onValueChange={(v) => updateFilter('runnerStatus', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {runnerStatusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {showDriverStatus && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Driver Status</Label>
+            <Select
+              value={filters.driverStatus || 'all'}
+              onValueChange={(v) => updateFilter('driverStatus', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {driverStatusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {showOrderStatus && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Order Status</Label>
+            <Select
+              value={filters.orderStatus || 'all'}
+              onValueChange={(v) => updateFilter('orderStatus', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {orderStatusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {showReconciliationStatus && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Reconciliation</Label>
+            <Select
+              value={filters.reconciliationStatus || 'all'}
+              onValueChange={(v) => updateFilter('reconciliationStatus', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {reconciliationStatusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Payment</Label>
+          <Select
+            value={filters.paymentMethod || 'all'}
+            onValueChange={(v) => updateFilter('paymentMethod', v)}
+          >
+            <SelectTrigger className="h-11 md:h-9">
+              <SelectValue placeholder="All" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {paymentMethodOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Delivery Reason</Label>
+          <Select
+            value={filters.deliveryReasonId || 'all'}
+            onValueChange={(v) => updateFilter('deliveryReasonId', v)}
+            disabled={!isReasonFilterEnabled}
+          >
+            <SelectTrigger className={cn("h-11 md:h-9", !isReasonFilterEnabled && "opacity-50")}>
+              <SelectValue placeholder="All Reasons" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Reasons</SelectItem>
+              {reasonOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Other Filters Row */}
+      <div className="grid grid-cols-2 gap-3">
+        {areaOptions.length > 0 && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Area</Label>
+            <Select
+              value={filters.area || 'all'}
+              onValueChange={(v) => updateFilter('area', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All areas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All areas</SelectItem>
+                {areaOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {showSalespersonFilter && salespersonOptions.length > 0 && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Salesperson</Label>
+            <Select
+              value={filters.salespersonId || 'all'}
+              onValueChange={(v) => updateFilter('salespersonId', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {salespersonOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {showDriverFilter && driverOptions.length > 0 && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Driver</Label>
+            <Select
+              value={filters.driverId || 'all'}
+              onValueChange={(v) => updateFilter('driverId', v)}
+            >
+              <SelectTrigger className="h-11 md:h-9">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {driverOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
+      {/* Clear All button for mobile sheet */}
+      {isMobile && activeFilterCount > 0 && (
+        <Button 
+          variant="outline" 
+          className="w-full h-11 mt-4"
+          onClick={clearAllFilters}
+        >
+          <X className="h-4 w-4 mr-2" />
+          Clear all filters
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-2">
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      {isMobile ? (
+        // Mobile: Use Sheet (bottom drawer)
         <div className="flex items-center gap-2">
-          <CollapsibleTrigger asChild>
-            <Button variant={activeFilterCount > 0 ? 'default' : 'outline'} size="sm">
-              <Filter className="h-4 w-4 mr-2" />
-              Filters
-              {activeFilterCount > 0 && (
-                <Badge variant="secondary" className="ml-2">
-                  {activeFilterCount}
-                </Badge>
-              )}
-              <ChevronDown className={cn('h-4 w-4 ml-1 transition-transform', isOpen && 'rotate-180')} />
-            </Button>
-          </CollapsibleTrigger>
+          <Sheet open={isOpen} onOpenChange={setIsOpen}>
+            <SheetTrigger asChild>
+              <Button variant={activeFilterCount > 0 ? 'default' : 'outline'} size="sm" className="h-10">
+                <Filter className="h-4 w-4 mr-2" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl">
+              <SheetHeader className="pb-4">
+                <SheetTitle className="flex items-center gap-2">
+                  <Filter className="h-5 w-5" />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <Badge variant="secondary">{activeFilterCount}</Badge>
+                  )}
+                </SheetTitle>
+              </SheetHeader>
+              <ScrollArea className="h-[calc(100%-4rem)]">
+                <div className="pb-6">
+                  {filterContent}
+                </div>
+              </ScrollArea>
+            </SheetContent>
+          </Sheet>
           {activeFilterCount > 0 && (
-            <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+            <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-10">
               <X className="h-4 w-4 mr-1" />
-              Clear all
+              Clear
             </Button>
           )}
         </div>
-
-        <CollapsibleContent>
-          <div className="mt-3 p-4 border rounded-lg bg-card space-y-4">
-            {/* Date Filters Row */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Calendar className="h-4 w-4" />
-                Date Filters
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Year</Label>
-                  <Select
-                    value={filters.year || 'all'}
-                    onValueChange={(v) => updateFilter('year', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All years" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All years</SelectItem>
-                      {yearOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Month</Label>
-                  <Select
-                    value={filters.month || 'all'}
-                    onValueChange={(v) => updateFilter('month', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All months" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All months</SelectItem>
-                      {monthOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="col-span-2 flex items-end gap-3 pb-0.5">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="date-mode"
-                      checked={filters.dateMode === 'delivered'}
-                      onCheckedChange={(checked) =>
-                        updateFilter('dateMode', checked ? 'delivered' : 'created')
-                      }
-                    />
-                    <Label htmlFor="date-mode" className="text-xs">
-                      Filter by Delivery Date
-                    </Label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Status Filters Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {showRunnerStatus && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Delivery Status</Label>
-                  <Select
-                    value={filters.runnerStatus || 'all'}
-                    onValueChange={(v) => updateFilter('runnerStatus', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      {runnerStatusOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {showDriverStatus && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Driver Status</Label>
-                  <Select
-                    value={filters.driverStatus || 'all'}
-                    onValueChange={(v) => updateFilter('driverStatus', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      {driverStatusOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {showOrderStatus && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Order Status</Label>
-                  <Select
-                    value={filters.orderStatus || 'all'}
-                    onValueChange={(v) => updateFilter('orderStatus', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      {orderStatusOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {showReconciliationStatus && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Reconciliation</Label>
-                  <Select
-                    value={filters.reconciliationStatus || 'all'}
-                    onValueChange={(v) => updateFilter('reconciliationStatus', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      {reconciliationStatusOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <Label className="text-xs">Payment</Label>
-                <Select
-                  value={filters.paymentMethod || 'all'}
-                  onValueChange={(v) => updateFilter('paymentMethod', v)}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    {paymentMethodOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Delivery Reason</Label>
-                <Select
-                  value={filters.deliveryReasonId || 'all'}
-                  onValueChange={(v) => updateFilter('deliveryReasonId', v)}
-                  disabled={!isReasonFilterEnabled}
-                >
-                  <SelectTrigger className={cn("h-9", !isReasonFilterEnabled && "opacity-50")}>
-                    <SelectValue placeholder="All Reasons" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Reasons</SelectItem>
-                    {reasonOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Other Filters Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {areaOptions.length > 0 && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Area</Label>
-                  <Select
-                    value={filters.area || 'all'}
-                    onValueChange={(v) => updateFilter('area', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All areas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All areas</SelectItem>
-                      {areaOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {showSalespersonFilter && salespersonOptions.length > 0 && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Salesperson</Label>
-                  <Select
-                    value={filters.salespersonId || 'all'}
-                    onValueChange={(v) => updateFilter('salespersonId', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      {salespersonOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {showDriverFilter && driverOptions.length > 0 && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Driver</Label>
-                  <Select
-                    value={filters.driverId || 'all'}
-                    onValueChange={(v) => updateFilter('driverId', v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      {driverOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
+      ) : (
+        // Desktop: Use Collapsible
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <div className="flex items-center gap-2">
+            <CollapsibleTrigger asChild>
+              <Button variant={activeFilterCount > 0 ? 'default' : 'outline'} size="sm">
+                <Filter className="h-4 w-4 mr-2" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+                <ChevronDown className={cn('h-4 w-4 ml-1 transition-transform', isOpen && 'rotate-180')} />
+              </Button>
+            </CollapsibleTrigger>
+            {activeFilterCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                <X className="h-4 w-4 mr-1" />
+                Clear all
+              </Button>
+            )}
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+
+          <CollapsibleContent>
+            <div className="mt-3 p-4 border rounded-lg bg-card">
+              {filterContent}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {/* Active filter scope indicator */}
       {filterScopeLabel && (
