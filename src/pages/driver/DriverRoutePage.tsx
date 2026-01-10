@@ -92,7 +92,7 @@ export default function DriverRoutePage() {
                       {group.area || 'Unknown Area'}
                     </CardTitle>
                     <CardDescription>
-                      {group.orders.length} orders · RM {group.totalAmount.toLocaleString()}
+                      {group.orders.length} orders · BND {group.totalAmount.toLocaleString()}
                     </CardDescription>
                   </div>
                 </div>
@@ -113,7 +113,7 @@ export default function DriverRoutePage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-sm">RM {order.total_amount}</p>
+                      <p className="font-medium text-sm">BND {order.total_amount}</p>
                       <p className="text-xs text-muted-foreground">{order.payment_method}</p>
                     </div>
                   </div>
