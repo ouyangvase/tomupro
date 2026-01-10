@@ -94,111 +94,123 @@ function SalespersonDashboard() {
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
 
   return (
-    <div className="space-y-6">
-      {/* Real-time indicator */}
+    <div className="space-y-8">
+      {/* Real-time indicator - Modern floating pill */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>
+        <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-secondary/50 backdrop-blur-sm border border-border/50">
+          <RefreshCw className={cn("h-4 w-4 text-primary", isLoading && "animate-spin")} />
+          <span className="text-sm font-medium text-muted-foreground">
             {lastUpdated ? `Updated ${formatDistanceToNow(lastUpdated, { addSuffix: true })}` : 'Loading...'}
           </span>
         </div>
-        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800">
-          <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse" />
+        <Badge className="bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))] border-[hsl(var(--status-success)/0.3)] px-3 py-1.5">
+          <span className="w-2 h-2 bg-[hsl(var(--status-success))] rounded-full mr-2 animate-pulse" />
           Live
         </Badge>
       </div>
 
-      {/* Section 1: Top Performance Summary */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-primary" />
+      {/* Section 1: Hero Performance Cards */}
+      <div className="space-y-5">
+        <h2 className="text-xl font-bold flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-primary/10">
+            <TrendingUp className="h-5 w-5 text-primary" />
+          </div>
           Performance Summary
         </h2>
         
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* Today's Sales Amount */}
-          <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-            <CardContent className="pt-6">
+          {/* Today's Sales Amount - Hero Card */}
+          <Card className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-primary/30 shadow-lg">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-6 relative">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Today Sales</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-primary/80">Today Sales</p>
                   {isLoading ? (
                     <Skeleton className="h-9 w-32 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold text-primary">
+                    <p className="text-3xl font-bold text-primary tracking-tight">
                       {formatBND(dashData?.todaySalesAmount ?? 0)}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+                    <CheckCircle className="h-3.5 w-3.5 text-[hsl(var(--status-success))]" />
                     {dashData?.todayDeliveredCount ?? 0} orders delivered
                   </p>
                 </div>
-                <DollarSign className="h-10 w-10 text-primary/50" />
+                <div className="p-3 rounded-2xl bg-primary/20">
+                  <DollarSign className="h-8 w-8 text-primary" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* MTD Sales Amount */}
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-green-200 dark:border-green-800">
-            <CardContent className="pt-6">
+          <Card className="relative overflow-hidden bg-gradient-to-br from-[hsl(var(--status-success)/0.15)] to-[hsl(var(--status-success)/0.05)] border-[hsl(var(--status-success)/0.3)]">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-[hsl(var(--status-success)/0.1)] rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-6 relative">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-green-700 dark:text-green-300">Month-to-Date Sales</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-[hsl(var(--status-success))]">Month-to-Date</p>
                   {isLoading ? (
                     <Skeleton className="h-9 w-32 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold text-green-700 dark:text-green-300">
+                    <p className="text-3xl font-bold text-[hsl(var(--status-success))] tracking-tight">
                       {formatBND(dashData?.mtdSalesAmount ?? 0)}
                     </p>
                   )}
                 </div>
-                <BarChart3 className="h-10 w-10 text-green-500/50" />
+                <div className="p-3 rounded-2xl bg-[hsl(var(--status-success)/0.2)]">
+                  <BarChart3 className="h-8 w-8 text-[hsl(var(--status-success))]" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Delivered Orders MTD */}
-          <Card>
-            <CardContent className="pt-6">
+          <Card className="relative overflow-hidden border-border/50 hover:border-primary/30 transition-colors">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-secondary/50 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-6 relative">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Delivered (MTD)</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Delivered (MTD)</p>
                   {isLoading ? (
                     <Skeleton className="h-9 w-16 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold">{dashData?.mtdDeliveredCount ?? 0}</p>
+                    <p className="text-3xl font-bold tracking-tight">{dashData?.mtdDeliveredCount ?? 0}</p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-1">orders this month</p>
+                  <p className="text-xs text-muted-foreground mt-2">orders this month</p>
                 </div>
-                <CheckCircle className="h-10 w-10 text-green-500/50" />
+                <div className="p-3 rounded-2xl bg-[hsl(var(--status-success)/0.15)]">
+                  <CheckCircle className="h-8 w-8 text-[hsl(var(--status-success))]" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Commission Summary */}
-          <Card className="bg-gradient-to-br from-yellow-50 to-amber-50 dark:from-yellow-950/30 dark:to-amber-950/30 border-yellow-200 dark:border-yellow-800">
-            <CardContent className="pt-6">
+          {/* Commission Summary - Premium Gold */}
+          <Card className="relative overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-primary/40">
+            <div className="absolute top-0 right-0 w-28 h-28 bg-primary/15 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-6 relative">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300">Total Commission (MTD)</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-primary/80">Commission (MTD)</p>
                   {isLoading ? (
                     <Skeleton className="h-9 w-32 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">
+                    <p className="text-3xl font-bold text-primary tracking-tight">
                       {formatBND(dashData?.totalCommission ?? 0)}
                     </p>
                   )}
-                  <div className="flex gap-3 text-xs mt-1">
-                    <span className="text-green-600">
-                      ✓ Final: {formatBND(dashData?.finalCommission ?? 0)}
-                    </span>
-                    <span className="text-muted-foreground">
-                      Est: {formatBND(dashData?.estimatedCommission ?? 0)}
+                  <div className="flex gap-2 text-xs mt-2">
+                    <span className="px-2 py-0.5 rounded-full bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))] font-medium">
+                      ✓ {formatBND(dashData?.finalCommission ?? 0)}
                     </span>
                   </div>
                 </div>
-                <Trophy className="h-10 w-10 text-yellow-500/50" />
+                <div className="p-3 rounded-2xl bg-primary/20">
+                  <Trophy className="h-8 w-8 text-primary" />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -315,86 +327,104 @@ function SalespersonDashboard() {
         )}
       </div>
 
-      {/* Section 3: Action Required */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 text-orange-500" />
+      {/* Section 3: Action Required - Modern Alert Cards */}
+      <div className="space-y-5">
+        <h2 className="text-xl font-bold flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-[hsl(var(--status-warning)/0.15)]">
+            <AlertCircle className="h-5 w-5 text-[hsl(var(--status-warning))]" />
+          </div>
           Action Required
         </h2>
         
         <div className="grid gap-4 md:grid-cols-3">
-          {/* Failed Orders */}
+          {/* Failed Orders - Urgent Card */}
           <Card 
             className={cn(
-              "cursor-pointer hover:shadow-md transition-all",
-              (dashData?.failedOrdersCount ?? 0) > 0 && "border-destructive/50 bg-destructive/5"
+              "cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group",
+              (dashData?.failedOrdersCount ?? 0) > 0 
+                ? "border-destructive/50 bg-gradient-to-br from-destructive/10 to-destructive/5" 
+                : "border-border/50"
             )}
             onClick={() => navigate('/sales/action-required')}
           >
+            {(dashData?.failedOrdersCount ?? 0) > 0 && (
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-destructive to-destructive/50" />
+            )}
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Failed Orders</p>
+              <div className="flex items-center justify-between mb-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Failed Orders</p>
                   {isLoading ? (
-                    <Skeleton className="h-9 w-16 mt-1" />
+                    <Skeleton className="h-10 w-16 mt-1" />
                   ) : (
                     <p className={cn(
-                      "text-3xl font-bold",
+                      "text-4xl font-bold tracking-tight",
                       (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"
                     )}>
                       {dashData?.failedOrdersCount ?? 0}
                     </p>
                   )}
                 </div>
-                <XCircle className={cn(
-                  "h-8 w-8",
-                  (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground/50"
-                )} />
+                <div className={cn(
+                  "p-3 rounded-2xl transition-colors",
+                  (dashData?.failedOrdersCount ?? 0) > 0 
+                    ? "bg-destructive/20 group-hover:bg-destructive/30" 
+                    : "bg-secondary"
+                )}>
+                  <XCircle className={cn(
+                    "h-7 w-7",
+                    (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground/50"
+                  )} />
+                </div>
               </div>
               {(dashData?.failedOrdersCount ?? 0) > 0 && (
-                <Button size="sm" variant="destructive" className="w-full mt-4">
-                  Resolve Now <ArrowRight className="h-4 w-4 ml-2" />
+                <Button size="sm" variant="destructive" className="w-full gap-2 shadow-lg">
+                  Resolve Now <ArrowRight className="h-4 w-4" />
                 </Button>
               )}
             </CardContent>
           </Card>
 
-          {/* Pending Delivery */}
+          {/* Pending Delivery - Info Card */}
           <Card 
-            className="cursor-pointer hover:shadow-md transition-all"
+            className="cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group border-border/50 hover:border-primary/30"
             onClick={() => navigate('/sales/ready')}
           >
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Pending Delivery</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Pending Delivery</p>
                   {isLoading ? (
-                    <Skeleton className="h-9 w-16 mt-1" />
+                    <Skeleton className="h-10 w-16 mt-1" />
                   ) : (
-                    <p className="text-3xl font-bold text-blue-600">{dashData?.pendingDeliveryCount ?? 0}</p>
+                    <p className="text-4xl font-bold text-primary tracking-tight">{dashData?.pendingDeliveryCount ?? 0}</p>
                   )}
                 </div>
-                <Truck className="h-8 w-8 text-blue-500/50" />
+                <div className="p-3 rounded-2xl bg-primary/15 group-hover:bg-primary/25 transition-colors">
+                  <Truck className="h-7 w-7 text-primary" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Pending Claim */}
           <Card 
-            className="cursor-pointer hover:shadow-md transition-all"
+            className="cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group border-border/50 hover:border-[hsl(var(--status-pending))/0.5]"
             onClick={() => navigate('/runner/delivered-orders')}
           >
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Pending Claim</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Pending Claim</p>
                   {isLoading ? (
-                    <Skeleton className="h-9 w-16 mt-1" />
+                    <Skeleton className="h-10 w-16 mt-1" />
                   ) : (
-                    <p className="text-3xl font-bold text-yellow-600">{dashData?.pendingClaimCount ?? 0}</p>
+                    <p className="text-4xl font-bold text-[hsl(var(--status-pending))] tracking-tight">{dashData?.pendingClaimCount ?? 0}</p>
                   )}
                 </div>
-                <Receipt className="h-8 w-8 text-yellow-500/50" />
+                <div className="p-3 rounded-2xl bg-[hsl(var(--status-pending)/0.15)] group-hover:bg-[hsl(var(--status-pending)/0.25)] transition-colors">
+                  <Receipt className="h-7 w-7 text-[hsl(var(--status-pending))]" />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1153,13 +1183,22 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Welcome back, {profile?.display_name}</h1>
-          <p className="text-muted-foreground mt-1">
-            Here's an overview of your operations
-            <span className="text-xs ml-2">(auto-refreshes every 30s)</span>
-          </p>
+      <div className="space-y-8">
+        {/* Premium Welcome Header */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/15 via-primary/10 to-transparent p-6 md:p-8 border border-primary/20">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+          <div className="absolute bottom-0 left-1/2 w-48 h-48 bg-primary/5 rounded-full blur-2xl" />
+          <div className="relative">
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+              Welcome back, <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">{profile?.display_name}</span>
+            </h1>
+            <p className="text-muted-foreground mt-2 flex items-center gap-2">
+              Here's an overview of your operations
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">
+                <RefreshCw className="h-3 w-3" /> auto-refreshes
+              </span>
+            </p>
+          </div>
         </div>
 
         {renderDashboard()}

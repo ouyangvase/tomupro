@@ -299,10 +299,12 @@ export function AppSidebar() {
           <NavLink 
             to={item.url} 
             end 
-            className="flex items-center gap-3 px-3 md:px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all duration-200 min-h-[44px]" 
-            activeClassName="bg-primary/15 text-primary border border-primary/20"
+            className="flex items-center gap-3 px-3 md:px-4 py-3 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200 min-h-[44px] group" 
+            activeClassName="bg-gradient-to-r from-primary/20 to-primary/10 text-primary border-l-2 border-primary shadow-sm"
           >
-            <item.icon className="h-5 w-5 shrink-0" />
+            <div className="p-1.5 rounded-lg bg-transparent group-hover:bg-primary/15 transition-colors">
+              <item.icon className="h-4 w-4 shrink-0" />
+            </div>
             {!collapsed && <span className="font-medium text-sm md:text-base">{item.title}</span>}
           </NavLink>
         </SidebarMenuButton>
@@ -312,16 +314,20 @@ export function AppSidebar() {
 
   return (
     <Sidebar className={cn(
-      "border-r border-border/50 bg-sidebar",
+      "border-r border-border/30 bg-gradient-to-b from-sidebar via-sidebar to-sidebar/95",
       collapsed ? "w-16 md:w-20" : "w-64 md:w-72"
     )}>
-      <SidebarHeader className="p-4 md:p-6 border-b border-border/50">
+      {/* Premium Header with Gradient */}
+      <SidebarHeader className="p-4 md:p-6 border-b border-border/30 bg-gradient-to-r from-primary/5 to-transparent">
         <div className="flex items-center gap-3">
-          <img src={tomuLogo} alt="TOMU Logo" className="h-8 w-8 md:h-10 md:w-10 object-contain" />
+          <div className="relative">
+            <div className="absolute inset-0 bg-primary/20 rounded-xl blur-md" />
+            <img src={tomuLogo} alt="TOMU Logo" className="relative h-9 w-9 md:h-11 md:w-11 object-contain drop-shadow-lg" />
+          </div>
           {!collapsed && (
             <div>
-              <h2 className="font-bold text-lg md:text-xl tracking-tight">TOMU</h2>
-              <p className="text-xs text-muted-foreground capitalize font-medium">{userRole}</p>
+              <h2 className="font-bold text-xl md:text-2xl tracking-tight bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">TOMU</h2>
+              <p className="text-xs text-muted-foreground capitalize font-semibold tracking-wide">{userRole}</p>
             </div>
           )}
         </div>
@@ -433,16 +439,20 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-border/50">
+      {/* Premium Footer with User Card */}
+      <SidebarFooter className="p-4 border-t border-border/30 bg-gradient-to-t from-primary/5 to-transparent">
         {!collapsed && (
-          <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="h-10 w-10 rounded-xl bg-secondary flex items-center justify-center">
-              <span className="text-sm font-semibold text-foreground">
-                {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
-              </span>
+          <div className="flex items-center gap-3 mb-4 p-3 rounded-xl bg-secondary/50 backdrop-blur-sm border border-border/30">
+            <div className="relative">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg">
+                <span className="text-sm font-bold text-primary-foreground">
+                  {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
+                </span>
+              </div>
+              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[hsl(var(--status-success))] rounded-full border-2 border-sidebar" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{profile?.display_name}</p>
+              <p className="text-sm font-semibold truncate">{profile?.display_name}</p>
               <p className="text-xs text-muted-foreground truncate">{profile?.email}</p>
             </div>
           </div>
@@ -452,7 +462,7 @@ export function AppSidebar() {
           size={collapsed ? "icon" : "default"} 
           onClick={signOut} 
           disabled={signingOut}
-          className="w-full gap-2"
+          className="w-full gap-2 border-border/50 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-all"
         >
           {signingOut ? (
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
