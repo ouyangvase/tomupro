@@ -15,13 +15,15 @@ import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2 } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useClaimBatches } from '@/hooks/useClaimBatches';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 
 // Claim status filter options for the dropdown
 type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -247,6 +249,21 @@ export default function RunnerDeliveredOrders() {
     return map;
   }, [claimBatches]);
 
+  const isMobile = useIsMobile();
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+
+  const toggleCardExpanded = (id: string) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -261,7 +278,7 @@ export default function RunnerDeliveredOrders() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Delivered</CardTitle>
@@ -295,61 +312,41 @@ export default function RunnerDeliveredOrders() {
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex flex-wrap gap-4">
-              <div className="flex-1 min-w-[200px]">
+            <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:gap-4">
+              <div className="flex-1 min-w-0 md:min-w-[200px]">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search order code, customer, area..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 h-10"
                   />
                 </div>
               </div>
-              <Select value={areaFilter} onValueChange={setAreaFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="All Areas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Areas</SelectItem>
-                  {areaOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={driverFilter} onValueChange={setDriverFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="All Drivers" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Drivers</SelectItem>
-                  {driverOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="All Salespersons" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Salespersons</SelectItem>
-                  {salespersonOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={claimStatusFilter} onValueChange={(v) => setClaimStatusFilter(v as ClaimStatusFilter)}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Claim Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {claimStatusFilterOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-2 gap-2 md:flex md:gap-4">
+                <Select value={areaFilter} onValueChange={setAreaFilter}>
+                  <SelectTrigger className="w-full md:w-[150px] h-10">
+                    <SelectValue placeholder="All Areas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Areas</SelectItem>
+                    {areaOptions.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={claimStatusFilter} onValueChange={(v) => setClaimStatusFilter(v as ClaimStatusFilter)}>
+                  <SelectTrigger className="w-full md:w-[160px] h-10">
+                    <SelectValue placeholder="Claim Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {claimStatusFilterOptions.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -357,7 +354,7 @@ export default function RunnerDeliveredOrders() {
         {/* Action Bar - only for runners who can claim */}
         {canClaim && selectedClaimableOrders.length > 0 && (
           <Card className="border-primary/50 bg-primary/5">
-            <CardContent className="p-4 flex items-center justify-between">
+            <CardContent className="p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <span className="text-sm font-medium">
                 {selectedClaimableOrders.length} order(s) selected • Total: {formatBND(selectedClaimableOrders.reduce((sum, o) => sum + o.total_amount, 0))}
               </span>
@@ -373,146 +370,238 @@ export default function RunnerDeliveredOrders() {
           </Card>
         )}
 
-        {/* Orders Table */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {canClaim && (
-                      <TableHead className="w-12">
-                        <Checkbox
-                          checked={allClaimableSelected}
-                          onCheckedChange={toggleSelectAll}
-                          disabled={claimableOrders.length === 0}
-                        />
-                      </TableHead>
-                    )}
-                    <TableHead>Date</TableHead>
-                    <TableHead>Order Ref</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Area</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Amount (BND)</TableHead>
-                    <TableHead>Payment</TableHead>
-                    <TableHead>Runner</TableHead>
-                    <TableHead>Driver</TableHead>
-                    <TableHead>Salesperson</TableHead>
-                    <TableHead>Delivered At</TableHead>
-                    <TableHead>Claim Status</TableHead>
-                    {canClaim && <TableHead>Claim Batch Ref</TableHead>}
-                    {canClaim && <TableHead>Action</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={canClaim ? 16 : 13} className="text-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                      </TableCell>
-                    </TableRow>
-                  ) : deliveredOrders.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={canClaim ? 16 : 13} className="text-center py-8 text-muted-foreground">
-                        No delivered orders found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    deliveredOrders.map((order) => {
-                      const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
-                      const isSelected = selectedIds.has(order.id);
-                      const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+        {/* Mobile Card View */}
+        {isMobile ? (
+          <div className="space-y-3">
+            {canClaim && claimableOrders.length > 0 && (
+              <MobileSelectAllCard
+                isAllSelected={allClaimableSelected}
+                onSelectAll={(checked) => {
+                  if (checked) {
+                    setSelectedIds(new Set(claimableOrders.map(o => o.id)));
+                  } else {
+                    setSelectedIds(new Set());
+                  }
+                }}
+                selectedCount={selectedIds.size}
+                totalCount={claimableOrders.length}
+              />
+            )}
 
-                      return (
-                        <TableRow key={order.id} className={isSelected ? 'bg-primary/5' : ''}>
-                          {canClaim && (
+            {isLoading ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+              </div>
+            ) : deliveredOrders.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No delivered orders found
+              </div>
+            ) : (
+              deliveredOrders.map((order) => {
+                const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
+                const isSelected = selectedIds.has(order.id);
+                const { displayText } = formatOrderItemsDisplay(order.order_items);
+                const batchRef = orderToBatchRef.get(order.id);
+
+                return (
+                  <MobileOrderCard
+                    key={order.id}
+                    id={order.id}
+                    orderRef={order.order_code}
+                    areaBadge={order.area ? <Badge variant="outline" className="text-xs">{order.area}</Badge> : undefined}
+                    statusBadge={
+                      <Badge className={claimStatusColors[order.reconciliation_status]}>
+                        {claimStatusLabels[order.reconciliation_status]}
+                      </Badge>
+                    }
+                    selectable={canClaim && isClaimable}
+                    isSelected={isSelected}
+                    onSelectionChange={(checked) => {
+                      if (checked) {
+                        setSelectedIds(prev => new Set([...prev, order.id]));
+                      } else {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev);
+                          next.delete(order.id);
+                          return next;
+                        });
+                      }
+                    }}
+                    primaryFields={[
+                      { label: 'Date', value: format(new Date(order.order_date), 'dd MMM') },
+                      { label: 'Items', value: displayText },
+                      { label: 'Amount', value: formatBND(order.total_amount) },
+                      { label: 'Delivered', value: order.delivered_at ? format(new Date(order.delivered_at), 'dd MMM HH:mm') : '-' },
+                    ]}
+                    expandedFields={[
+                      { label: 'Customer', value: order.customer_name || '-' },
+                      { label: 'Payment', value: order.payment_method },
+                      { label: 'Runner', value: order.runner?.display_name || '-' },
+                      { label: 'Driver', value: order.driver?.display_name || '-' },
+                      { label: 'Salesperson', value: order.salesperson?.display_name || '-' },
+                      ...(batchRef ? [{ label: 'Batch Ref', value: batchRef.batchId }] : []),
+                    ]}
+                    primaryAction={
+                      isClaimable ? (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSingleClaim(order);
+                          }}
+                        >
+                          Claim
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                );
+              })
+            )}
+          </div>
+        ) : (
+          /* Desktop Table View */
+          <Card>
+            <CardContent className="p-0">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {canClaim && (
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={allClaimableSelected}
+                            onCheckedChange={toggleSelectAll}
+                            disabled={claimableOrders.length === 0}
+                          />
+                        </TableHead>
+                      )}
+                      <TableHead>Date</TableHead>
+                      <TableHead>Order Ref</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Area</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Amount (BND)</TableHead>
+                      <TableHead>Payment</TableHead>
+                      <TableHead>Runner</TableHead>
+                      <TableHead>Driver</TableHead>
+                      <TableHead>Salesperson</TableHead>
+                      <TableHead>Delivered At</TableHead>
+                      <TableHead>Claim Status</TableHead>
+                      {canClaim && <TableHead>Claim Batch Ref</TableHead>}
+                      {canClaim && <TableHead>Action</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={canClaim ? 16 : 13} className="text-center py-8">
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                        </TableCell>
+                      </TableRow>
+                    ) : deliveredOrders.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={canClaim ? 16 : 13} className="text-center py-8 text-muted-foreground">
+                          No delivered orders found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      deliveredOrders.map((order) => {
+                        const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
+                        const isSelected = selectedIds.has(order.id);
+                        const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+
+                        return (
+                          <TableRow key={order.id} className={isSelected ? 'bg-primary/5' : ''}>
+                            {canClaim && (
+                              <TableCell>
+                                {isClaimable ? (
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={() => toggleSelection(order.id)}
+                                  />
+                                ) : (
+                                  <Checkbox disabled checked={false} className="opacity-30" />
+                                )}
+                              </TableCell>
+                            )}
+                            <TableCell>{format(new Date(order.order_date), 'dd MMM yyyy')}</TableCell>
+                            <TableCell><span className="font-mono text-sm">{order.order_code}</span></TableCell>
+                            <TableCell>{order.customer_name || '-'}</TableCell>
+                            <TableCell><Badge variant="outline">{order.area || '-'}</Badge></TableCell>
                             <TableCell>
-                              {isClaimable ? (
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={() => toggleSelection(order.id)}
-                                />
-                              ) : (
-                                <Checkbox disabled checked={false} className="opacity-30" />
-                              )}
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                                      {displayText}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-[400px]">
+                                    <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </TableCell>
-                          )}
-                          <TableCell>{format(new Date(order.order_date), 'dd MMM yyyy')}</TableCell>
-                          <TableCell><span className="font-mono text-sm">{order.order_code}</span></TableCell>
-                          <TableCell>{order.customer_name || '-'}</TableCell>
-                          <TableCell><Badge variant="outline">{order.area || '-'}</Badge></TableCell>
-                          <TableCell>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
-                                    {displayText}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-[400px]">
-                                  <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </TableCell>
-                          <TableCell><span className="font-medium">{formatBND(order.total_amount)}</span></TableCell>
-                          <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>
-                          <TableCell>{order.runner?.display_name || '-'}</TableCell>
-                          <TableCell>{order.driver?.display_name || '-'}</TableCell>
-                          <TableCell>{order.salesperson?.display_name || '-'}</TableCell>
-                          <TableCell>
-                            {order.delivered_at 
-                              ? format(new Date(order.delivered_at), 'dd MMM yyyy HH:mm')
-                              : '-'}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={claimStatusColors[order.reconciliation_status]}>
-                              {claimStatusLabels[order.reconciliation_status]}
-                            </Badge>
-                          </TableCell>
-                          {canClaim && (
+                            <TableCell><span className="font-medium">{formatBND(order.total_amount)}</span></TableCell>
+                            <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>
+                            <TableCell>{order.runner?.display_name || '-'}</TableCell>
+                            <TableCell>{order.driver?.display_name || '-'}</TableCell>
+                            <TableCell>{order.salesperson?.display_name || '-'}</TableCell>
                             <TableCell>
-                              {orderToBatchRef.has(order.id) ? (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
-                                        {orderToBatchRef.get(order.id)?.batchId}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Submitted: {format(new Date(orderToBatchRef.get(order.id)!.submittedAt), 'dd MMM yyyy HH:mm')}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
+                              {order.delivered_at 
+                                ? format(new Date(order.delivered_at), 'dd MMM yyyy HH:mm')
+                                : '-'}
                             </TableCell>
-                          )}
-                          {canClaim && (
                             <TableCell>
-                              {isClaimable && (
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => handleSingleClaim(order)}
-                                >
-                                  Claim
-                                </Button>
-                              )}
+                              <Badge className={claimStatusColors[order.reconciliation_status]}>
+                                {claimStatusLabels[order.reconciliation_status]}
+                              </Badge>
                             </TableCell>
-                          )}
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                            {canClaim && (
+                              <TableCell>
+                                {orderToBatchRef.has(order.id) ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
+                                          {orderToBatchRef.get(order.id)?.batchId}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Submitted: {format(new Date(orderToBatchRef.get(order.id)!.submittedAt), 'dd MMM yyyy HH:mm')}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                            )}
+                            {canClaim && (
+                              <TableCell>
+                                {isClaimable && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => handleSingleClaim(order)}
+                                  >
+                                    Claim
+                                  </Button>
+                                )}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Bulk Claim Dialog */}
         <BulkClaimDialog
