@@ -962,19 +962,19 @@ function AdminDashboard() {
   const { data: activity, isLoading: activityLoading } = useRecentActivity();
 
   const statCards = [
-    { label: 'Booking Orders', value: stats?.bookingOrders, icon: Package, color: 'text-chart-2', href: '/sales/booking' },
-    { label: 'Ready Orders', value: stats?.readyOrders, icon: ShoppingCart, color: 'text-chart-1', href: '/sales/ready' },
-    { label: 'Pending Delivery', value: stats?.pendingDelivery, icon: Truck, color: 'text-chart-3', href: '/runner/inbox' },
-    { label: 'Delivered', value: stats?.deliveredOrders, icon: CheckCircle, color: 'text-primary', href: '/reconciliation/admin' },
+    { label: 'Booking Orders', value: stats?.bookingOrders, icon: Package, color: 'text-primary', href: '/sales/booking' },
+    { label: 'Ready Orders', value: stats?.readyOrders, icon: ShoppingCart, color: 'text-[hsl(var(--status-success))]', href: '/sales/ready' },
+    { label: 'Pending Delivery', value: stats?.pendingDelivery, icon: Truck, color: 'text-[hsl(var(--status-pending))]', href: '/runner/inbox' },
+    { label: 'Delivered', value: stats?.deliveredOrders, icon: CheckCircle, color: 'text-[hsl(var(--status-success))]', href: '/reconciliation/admin' },
     { label: 'Disputes', value: stats?.disputes, icon: AlertTriangle, color: 'text-destructive', href: '/disputes' },
-    { label: 'Products', value: stats?.productsCount, icon: BarChart3, color: 'text-secondary', href: '/products' },
-    { label: 'Total Claims', value: stats?.totalClaims, icon: Receipt, color: 'text-chart-4', href: '/reconciliation/admin' },
-    { label: 'Inbound Shipments', value: stats?.totalInbounds, icon: PackageCheck, color: 'text-chart-5', href: '/inbound/pending' },
+    { label: 'Products', value: stats?.productsCount, icon: BarChart3, color: 'text-muted-foreground', href: '/products' },
+    { label: 'Total Claims', value: stats?.totalClaims, icon: Receipt, color: 'text-primary', href: '/reconciliation/admin' },
+    { label: 'Inbound Shipments', value: stats?.totalInbounds, icon: PackageCheck, color: 'text-[hsl(var(--status-warning))]', href: '/inbound/pending' },
     { label: 'Total Users', value: stats?.totalUsers, icon: Users, color: 'text-muted-foreground', href: '/settings/users' },
   ];
 
   return (
-    <>
+    <div className="space-y-8">
       {/* Action Required Overview - Priority Display */}
       <ActionRequiredCard
         total={actionStats?.systemTotal ?? 0}
@@ -987,42 +987,119 @@ function AdminDashboard() {
         subtitle="Total orders across all salespersons requiring attention"
       />
 
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
-        {statCards.map((stat) => (
-          <StatCard key={stat.label} {...stat} isLoading={isLoading} />
-        ))}
+      {/* Stats Grid - Modern Cards */}
+      <div className="space-y-5">
+        <h2 className="text-xl font-bold flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-primary/10">
+            <BarChart3 className="h-5 w-5 text-primary" />
+          </div>
+          System Overview
+        </h2>
+        
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
+          {statCards.map((stat) => (
+            <Card 
+              key={stat.label}
+              className="cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group border-border/50 hover:border-primary/30 relative overflow-hidden"
+              onClick={() => navigate(stat.href)}
+            >
+              <div className="absolute top-0 right-0 w-20 h-20 bg-secondary/30 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:bg-primary/10 transition-colors" />
+              <CardContent className="pt-6 relative">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                    {isLoading ? (
+                      <Skeleton className="h-9 w-16 mt-1" />
+                    ) : (
+                      <p className="text-3xl font-bold tracking-tight">{stat.value ?? 0}</p>
+                    )}
+                  </div>
+                  <div className={cn("p-3 rounded-2xl bg-secondary/50 group-hover:bg-primary/15 transition-colors", stat.color)}>
+                    <stat.icon className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+      {/* Quick Actions & Activity */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Quick Actions - Modern Button List */}
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-bold flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-primary/10">
+                <Zap className="h-4 w-4 text-primary" />
+              </div>
+              Quick Actions
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <button onClick={() => navigate('/admin/overview')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-2">
-              📊 Action Required Overview
+            <button 
+              onClick={() => navigate('/admin/overview')} 
+              className="w-full text-left p-4 rounded-xl bg-gradient-to-r from-[hsl(var(--status-warning)/0.1)] to-transparent border border-[hsl(var(--status-warning)/0.2)] hover:border-[hsl(var(--status-warning)/0.4)] hover:shadow-md transition-all flex items-center gap-3 group"
+            >
+              <div className="p-2 rounded-lg bg-[hsl(var(--status-warning)/0.15)]">
+                <AlertCircle className="h-4 w-4 text-[hsl(var(--status-warning))]" />
+              </div>
+              <span className="font-medium">Action Required Overview</span>
               {(actionStats?.systemTotal ?? 0) > 0 && (
-                <Badge variant="destructive" className="ml-auto">{actionStats?.systemTotal}</Badge>
+                <Badge variant="destructive" className="ml-auto shadow-lg">{actionStats?.systemTotal}</Badge>
               )}
+              <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform ml-auto" />
             </button>
-            <button onClick={() => navigate('/sales/booking')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              📋 Manage All Orders
+            
+            <button 
+              onClick={() => navigate('/sales/booking')} 
+              className="w-full text-left p-4 rounded-xl hover:bg-secondary/50 border border-transparent hover:border-border/50 transition-all flex items-center gap-3 group"
+            >
+              <div className="p-2 rounded-lg bg-secondary/50">
+                <Package className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <span className="font-medium">Manage All Orders</span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform ml-auto" />
             </button>
-            <button onClick={() => navigate('/reconciliation/admin')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              ✅ Admin Reconciliation
+            
+            <button 
+              onClick={() => navigate('/reconciliation/admin')} 
+              className="w-full text-left p-4 rounded-xl hover:bg-secondary/50 border border-transparent hover:border-border/50 transition-all flex items-center gap-3 group"
+            >
+              <div className="p-2 rounded-lg bg-[hsl(var(--status-success)/0.15)]">
+                <FileCheck className="h-4 w-4 text-[hsl(var(--status-success))]" />
+              </div>
+              <span className="font-medium">Admin Reconciliation</span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform ml-auto" />
             </button>
-            <button onClick={() => navigate('/disputes')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              ⚠️ Handle Disputes
+            
+            <button 
+              onClick={() => navigate('/disputes')} 
+              className="w-full text-left p-4 rounded-xl hover:bg-secondary/50 border border-transparent hover:border-border/50 transition-all flex items-center gap-3 group"
+            >
+              <div className="p-2 rounded-lg bg-destructive/15">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+              </div>
+              <span className="font-medium">Handle Disputes</span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform ml-auto" />
             </button>
-            <button onClick={() => navigate('/settings/users')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              👥 Manage Users
+            
+            <button 
+              onClick={() => navigate('/settings/users')} 
+              className="w-full text-left p-4 rounded-xl hover:bg-secondary/50 border border-transparent hover:border-border/50 transition-all flex items-center gap-3 group"
+            >
+              <div className="p-2 rounded-lg bg-secondary/50">
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <span className="font-medium">Manage Users</span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform ml-auto" />
             </button>
           </CardContent>
         </Card>
 
         <RecentActivityCard activity={activity} isLoading={activityLoading} />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1048,37 +1125,51 @@ function RecentActivityCard({ activity, isLoading }: { activity: ActivityItem[] 
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recent Activity</CardTitle>
+    <Card className="border-border/50">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg font-bold flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-primary/10">
+            <Clock className="h-4 w-4 text-primary" />
+          </div>
+          Recent Activity
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
+              <Skeleton key={i} className="h-12 w-full rounded-xl" />
             ))}
           </div>
         ) : activity && activity.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {activity.map((item) => (
-              <div key={item.id} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Badge variant={getActionBadgeVariant(item.action)} className="text-xs">
+              <div 
+                key={item.id} 
+                className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors border border-transparent hover:border-border/30"
+              >
+                <div className="flex items-center gap-3">
+                  <Badge 
+                    variant={getActionBadgeVariant(item.action)} 
+                    className="text-xs font-medium px-2.5 py-1"
+                  >
                     {item.action}
                   </Badge>
-                  <span className="text-muted-foreground">
+                  <span className="text-sm text-muted-foreground font-medium">
                     {formatEntityType(item.entity_type)}
                   </span>
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground/70 font-medium">
                   {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
                 </span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-muted-foreground text-sm">No recent activity</p>
+          <div className="text-center py-8">
+            <Clock className="h-10 w-10 mx-auto mb-2 text-muted-foreground/30" />
+            <p className="text-muted-foreground text-sm">No recent activity</p>
+          </div>
         )}
       </CardContent>
     </Card>
