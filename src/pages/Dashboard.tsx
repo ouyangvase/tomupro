@@ -29,7 +29,9 @@ import {
   RefreshCw,
   Trophy,
   AlertCircle,
-  Warehouse
+  Warehouse,
+  ChevronRight,
+  RotateCcw
 } from 'lucide-react';
 import { 
   useSalespersonStats, 
@@ -1236,22 +1238,68 @@ function DriverDashboard() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
+      <Card className="border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
+        <CardHeader className="border-b border-border/30 bg-gradient-to-r from-primary/5 to-secondary/10">
+          <CardTitle className="flex items-center gap-2">
+            <div className="h-8 w-1 rounded-full bg-gradient-to-b from-primary to-primary/50" />
+            Quick Actions
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <button onClick={() => navigate('/driver/inbox')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-            📥 View My Deliveries
+        <CardContent className="p-4 space-y-3">
+          <button 
+            onClick={() => navigate('/driver/inbox')} 
+            className="group w-full flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-secondary/40 to-secondary/20 hover:from-primary/20 hover:to-primary/10 border border-border/40 hover:border-primary/40 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10"
+          >
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 group-hover:from-primary/30 group-hover:to-primary/10 transition-colors">
+              <Inbox className="h-6 w-6 text-primary" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-semibold text-foreground group-hover:text-primary transition-colors">View My Deliveries</p>
+              <p className="text-sm text-muted-foreground">Check assigned orders</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
           </button>
-          <button onClick={() => navigate('/driver/route')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-            🗺️ Plan Optimized Route
+          
+          <button 
+            onClick={() => navigate('/driver/route')} 
+            className="group w-full flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-secondary/40 to-secondary/20 hover:from-primary/20 hover:to-primary/10 border border-border/40 hover:border-primary/40 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10"
+          >
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-chart-2/20 to-chart-2/5 group-hover:from-primary/30 group-hover:to-primary/10 transition-colors">
+              <Navigation className="h-6 w-6 text-chart-2 group-hover:text-primary transition-colors" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-semibold text-foreground group-hover:text-primary transition-colors">Plan Optimized Route</p>
+              <p className="text-sm text-muted-foreground">Efficient delivery paths</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
           </button>
-          <button onClick={() => navigate('/driver/pickups')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-            📦 View Pickups
+          
+          <button 
+            onClick={() => navigate('/driver/pickups')} 
+            className="group w-full flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-secondary/40 to-secondary/20 hover:from-primary/20 hover:to-primary/10 border border-border/40 hover:border-primary/40 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10"
+          >
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-chart-3/20 to-chart-3/5 group-hover:from-primary/30 group-hover:to-primary/10 transition-colors">
+              <Package className="h-6 w-6 text-chart-3 group-hover:text-primary transition-colors" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-semibold text-foreground group-hover:text-primary transition-colors">View Pickups</p>
+              <p className="text-sm text-muted-foreground">Scheduled stock pickups</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
           </button>
-          <button onClick={() => navigate('/driver/returns')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-            🔄 Submit Returns
+          
+          <button 
+            onClick={() => navigate('/driver/returns')} 
+            className="group w-full flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-secondary/40 to-secondary/20 hover:from-primary/20 hover:to-primary/10 border border-border/40 hover:border-primary/40 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10"
+          >
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-chart-4/20 to-chart-4/5 group-hover:from-primary/30 group-hover:to-primary/10 transition-colors">
+              <RotateCcw className="h-6 w-6 text-chart-4 group-hover:text-primary transition-colors" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-semibold text-foreground group-hover:text-primary transition-colors">Submit Returns</p>
+              <p className="text-sm text-muted-foreground">Return unsold items</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
           </button>
         </CardContent>
       </Card>
