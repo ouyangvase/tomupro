@@ -299,13 +299,13 @@ export function AppSidebar() {
           <NavLink 
             to={item.url} 
             end 
-            className="flex items-center gap-3 px-3 md:px-4 py-3 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200 min-h-[44px] group" 
-            activeClassName="bg-gradient-to-r from-primary/20 to-primary/10 text-primary border-l-2 border-primary shadow-sm"
+            className="flex items-center gap-3 px-3 md:px-4 py-2.5 rounded-xl text-muted-foreground hover:text-primary hover:bg-gradient-to-r hover:from-primary/15 hover:to-primary/5 transition-all duration-300 min-h-[44px] group border border-transparent hover:border-primary/20" 
+            activeClassName="bg-gradient-to-r from-primary/25 via-primary/15 to-transparent text-primary border-l-3 border-primary shadow-md font-semibold"
           >
-            <div className="p-1.5 rounded-lg bg-transparent group-hover:bg-primary/15 transition-colors">
+            <div className="p-2 rounded-xl bg-secondary/50 group-hover:bg-primary/20 transition-all duration-300 group-hover:shadow-sm">
               <item.icon className="h-4 w-4 shrink-0" />
             </div>
-            {!collapsed && <span className="font-medium text-sm md:text-base">{item.title}</span>}
+            {!collapsed && <span className="text-sm md:text-base tracking-tight">{item.title}</span>}
           </NavLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -317,17 +317,22 @@ export function AppSidebar() {
       "border-r border-border/30 bg-gradient-to-b from-sidebar via-sidebar to-sidebar/95",
       collapsed ? "w-16 md:w-20" : "w-64 md:w-72"
     )}>
-      {/* Premium Header with Gradient */}
-      <SidebarHeader className="p-4 md:p-6 border-b border-border/30 bg-gradient-to-r from-primary/5 to-transparent">
+      {/* Premium Header - Modern Orange/Silver */}
+      <SidebarHeader className="p-4 md:p-6 border-b border-primary/20 bg-gradient-to-br from-primary/10 via-secondary/30 to-transparent">
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="absolute inset-0 bg-primary/20 rounded-xl blur-md" />
-            <img src={tomuLogo} alt="TOMU Logo" className="relative h-9 w-9 md:h-11 md:w-11 object-contain drop-shadow-lg" />
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/40 to-primary/10 rounded-2xl blur-lg group-hover:blur-xl transition-all" />
+            <div className="relative p-1.5 rounded-2xl bg-gradient-to-br from-primary/20 to-transparent border border-primary/20">
+              <img src={tomuLogo} alt="TOMU Logo" className="h-8 w-8 md:h-10 md:w-10 object-contain drop-shadow-lg" />
+            </div>
           </div>
           {!collapsed && (
             <div>
-              <h2 className="font-bold text-xl md:text-2xl tracking-tight bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">TOMU</h2>
-              <p className="text-xs text-muted-foreground capitalize font-semibold tracking-wide">{userRole}</p>
+              <h2 className="font-extrabold text-xl md:text-2xl tracking-tight bg-gradient-to-r from-primary via-primary/80 to-[hsl(var(--status-warning))] bg-clip-text text-transparent">TOMU</h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--status-success))] animate-pulse" />
+                <p className="text-xs text-muted-foreground capitalize font-semibold tracking-widest">{userRole}</p>
+              </div>
             </div>
           )}
         </div>
