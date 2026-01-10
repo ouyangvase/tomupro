@@ -9,6 +9,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -25,7 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck, Lock, Plus, AlertTriangle } from 'lucide-react';
+import { Truck, UserCheck, Lock, Plus, AlertTriangle, ChevronDown, ChevronUp, Send } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -40,6 +42,9 @@ import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
+import { cn } from '@/lib/utils';
 import type { Order } from '@/types/database';
 
 export default function ReadySales() {
@@ -294,6 +299,39 @@ export default function ReadySales() {
 
   const unassignedCount = orders.filter(o => o.runner_status === 'UNASSIGNED').length;
 
+  const isMobile = useIsMobile();
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+
+  const toggleCardExpanded = (id: string) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelection = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedRows(prev => [...prev, id]);
+    } else {
+      setSelectedRows(prev => prev.filter(r => r !== id));
+    }
+  };
+
+  const isAllSelected = filteredOrders.length > 0 && selectedRows.length === filteredOrders.length;
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedRows(filteredOrders.map(o => o.id));
+    } else {
+      setSelectedRows([]);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-4">
@@ -305,9 +343,9 @@ export default function ReadySales() {
             </p>
           </div>
           {isEditable && (
-            <Button onClick={handleCreateNew}>
+            <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
               <Plus className="h-4 w-4 mr-2" />
-              New Order
+              {isMobile ? 'New' : 'New Order'}
             </Button>
           )}
         </div>
@@ -323,78 +361,160 @@ export default function ReadySales() {
           showReconciliationStatus={true}
         />
 
-        <DataGrid
-          data={filteredOrders}
-          columns={columns}
-          keyField="id"
-          selectable={isEditable}
-          selectedRows={selectedRows}
-          onSelectionChange={setSelectedRows}
-          onRowClick={handleRowClick}
-          loading={isLoading}
-          emptyMessage="No ready orders"
-          onExport={handleExport}
-          onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
-          bulkActions={
-            isEditable && selectedRows.length > 0 ? (
-              (() => {
-                const selectedOrdersInfo = orders.filter(o => selectedRows.includes(o.id));
-                const hasDeliveredOrders = selectedOrdersInfo.some(o => o.runner_status === 'DELIVERED');
-                const isAdmin = role === 'admin';
-                const canCancel = isAdmin || !hasDeliveredOrders;
-                
+        {/* Bulk Actions - Mobile */}
+        {isMobile && isEditable && selectedRows.length > 0 && (
+          <Card className="p-3 border-primary/50 bg-primary/5">
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-primary">
+                {selectedRows.length} order{selectedRows.length !== 1 ? 's' : ''} selected
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => setAssignDialogOpen(true)}>
+                  <UserCheck className="h-4 w-4 mr-1" />
+                  Assign
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleExportSelected}>
+                  Export
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleDispute}>
+                  Dispute
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => setCancelDialogOpen(true)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Mobile Card View */}
+        {isMobile ? (
+          <div className="space-y-3">
+            {isEditable && filteredOrders.length > 0 && (
+              <MobileSelectAllCard
+                isAllSelected={isAllSelected}
+                onSelectAll={handleSelectAll}
+                selectedCount={selectedRows.length}
+                totalCount={filteredOrders.length}
+              />
+            )}
+
+            {isLoading ? (
+              <div className="text-center py-8 text-muted-foreground">Loading...</div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No ready orders</div>
+            ) : (
+              filteredOrders.map((order) => {
+                const { displayText } = formatOrderItemsDisplay(order.order_items);
+                const isExpanded = expandedCards.has(order.id);
+                const isSelected = selectedRows.includes(order.id);
+
                 return (
-                  <div className="flex gap-2 items-center">
-                    <Button 
-                      size="sm" 
-                      onClick={() => setAssignDialogOpen(true)}
-                    >
-                      <UserCheck className="h-4 w-4 mr-2" />
-                      Assign Runner
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={handleExportSelected}>
-                      Export Selected
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={handleDispute}>
-                      Mark Dispute
-                    </Button>
-                    {canCancel ? (
+                  <MobileOrderCard
+                    key={order.id}
+                    id={order.id}
+                    orderRef={order.order_code}
+                    areaBadge={order.area ? <Badge variant="outline" className="text-xs">{order.area}</Badge> : undefined}
+                    statusBadge={<StatusBadge status={order.runner_status} type="runner" />}
+                    selectable={isEditable}
+                    isSelected={isSelected}
+                    onSelectionChange={(checked) => toggleSelection(order.id, checked)}
+                    onClick={() => handleRowClick(order)}
+                    primaryFields={[
+                      { label: 'Date', value: format(new Date(order.order_date), 'dd MMM') },
+                      { label: 'Items', value: displayText },
+                      { label: 'Amount', value: formatBND(order.total_amount) },
+                      { label: 'Runner', value: order.runner?.display_name || 'Unassigned' },
+                    ]}
+                    expandedFields={[
+                      { label: 'Customer', value: order.customer_name },
+                      { label: 'Phone', value: order.phone },
+                      { label: 'Payment', value: order.payment_method },
+                      { label: 'Reconciliation', value: <StatusBadge status={order.reconciliation_status} type="reconciliation" /> },
+                      { label: 'Address', value: order.address || '-', fullWidth: true },
+                      ...(order.runner_comment ? [{ label: 'Runner Note', value: order.runner_comment, fullWidth: true }] : []),
+                      ...(order.next_delivery_date ? [{ label: 'Next Delivery', value: format(new Date(order.next_delivery_date), 'dd MMM yyyy') }] : []),
+                    ]}
+                  />
+                );
+              })
+            )}
+          </div>
+        ) : (
+          /* Desktop Table View */
+          <DataGrid
+            data={filteredOrders}
+            columns={columns}
+            keyField="id"
+            selectable={isEditable}
+            selectedRows={selectedRows}
+            onSelectionChange={setSelectedRows}
+            onRowClick={handleRowClick}
+            loading={isLoading}
+            emptyMessage="No ready orders"
+            onExport={handleExport}
+            onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
+            bulkActions={
+              isEditable && selectedRows.length > 0 ? (
+                (() => {
+                  const selectedOrdersInfo = orders.filter(o => selectedRows.includes(o.id));
+                  const hasDeliveredOrders = selectedOrdersInfo.some(o => o.runner_status === 'DELIVERED');
+                  const isAdmin = role === 'admin';
+                  const canCancel = isAdmin || !hasDeliveredOrders;
+                  
+                  return (
+                    <div className="flex gap-2 items-center">
                       <Button 
                         size="sm" 
-                        variant="destructive" 
-                        onClick={() => setCancelDialogOpen(true)}
+                        onClick={() => setAssignDialogOpen(true)}
                       >
-                        Cancel
+                        <UserCheck className="h-4 w-4 mr-2" />
+                        Assign Runner
                       </Button>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span>
-                            <Button 
-                              size="sm" 
-                              variant="destructive" 
-                              disabled
-                            >
-                              Cancel
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delivered order is locked. Only admin can modify.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                    {hasDeliveredOrders && !isAdmin && (
-                      <Badge variant="secondary" className="ml-2">
-                        Selection includes delivered orders
-                      </Badge>
-                    )}
-                  </div>
-                );
-              })()
-            ) : undefined
-          }
-        />
+                      <Button size="sm" variant="outline" onClick={handleExportSelected}>
+                        Export Selected
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleDispute}>
+                        Mark Dispute
+                      </Button>
+                      {canCancel ? (
+                        <Button 
+                          size="sm" 
+                          variant="destructive" 
+                          onClick={() => setCancelDialogOpen(true)}
+                        >
+                          Cancel
+                        </Button>
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button 
+                                size="sm" 
+                                variant="destructive" 
+                                disabled
+                              >
+                                Cancel
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Delivered order is locked. Only admin can modify.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      {hasDeliveredOrders && !isAdmin && (
+                        <Badge variant="secondary" className="ml-2">
+                          Selection includes delivered orders
+                        </Badge>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : undefined
+            }
+          />
+        )}
       </div>
 
       <OrderEditor

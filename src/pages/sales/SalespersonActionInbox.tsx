@@ -20,6 +20,8 @@ import {
   CalendarClock, Loader2, RefreshCw, Play, ListChecks, XCircle, Calendar, AlertTriangle
 } from 'lucide-react';
 import type { Order } from '@/types/database';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 
 // Reason types for action required
 type ActionRequiredSource = 'FAILED_DELIVERY' | 'RESCHEDULED' | 'RUNNER_FLAGGED' | 'MANUAL';
@@ -253,6 +255,8 @@ export default function SalespersonActionInbox() {
     refetch();
   };
 
+  const isMobile = useIsMobile();
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -265,62 +269,62 @@ export default function SalespersonActionInbox() {
 
   return (
     <AppLayout>
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <AlertCircle className="h-8 w-8 text-orange-500" />
+            <AlertCircle className="h-6 w-6 md:h-8 md:w-8 text-orange-500" />
             <div>
-              <h1 className="text-2xl font-bold">Action Required</h1>
-              <p className="text-muted-foreground">Orders requiring your attention with runner notes</p>
+              <h1 className="text-xl md:text-2xl font-bold">Action Required</h1>
+              <p className="text-sm text-muted-foreground">Orders requiring your attention</p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            <RefreshCw className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Refresh</span>
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        {/* Stats - responsive grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
           <Card className="border-orange-200 bg-orange-50 dark:bg-orange-900/10">
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-orange-600">{actionRequiredOrders.length}</div>
-              <div className="text-sm text-muted-foreground">Total Pending</div>
+            <CardContent className="p-3 md:p-4">
+              <div className="text-xl md:text-2xl font-bold text-orange-600">{actionRequiredOrders.length}</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Total Pending</div>
             </CardContent>
           </Card>
           <Card className="border-red-200 bg-red-50 dark:bg-red-900/10">
-            <CardContent className="p-4 flex items-center gap-3">
-              <XCircle className="h-5 w-5 text-red-500" />
+            <CardContent className="p-3 md:p-4 flex items-center gap-2">
+              <XCircle className="h-4 w-4 md:h-5 md:w-5 text-red-500" />
               <div>
-                <div className="text-2xl font-bold text-red-600">
+                <div className="text-xl md:text-2xl font-bold text-red-600">
                   {actionRequiredOrders.filter(o => getActionSource(o) === 'FAILED_DELIVERY').length}
                 </div>
-                <div className="text-sm text-muted-foreground">Failed Delivery</div>
+                <div className="text-xs md:text-sm text-muted-foreground">Failed</div>
               </div>
             </CardContent>
           </Card>
           <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/10">
-            <CardContent className="p-4 flex items-center gap-3">
-              <Calendar className="h-5 w-5 text-yellow-500" />
+            <CardContent className="p-3 md:p-4 flex items-center gap-2">
+              <Calendar className="h-4 w-4 md:h-5 md:w-5 text-yellow-500" />
               <div>
-                <div className="text-2xl font-bold text-yellow-600">
+                <div className="text-xl md:text-2xl font-bold text-yellow-600">
                   {actionRequiredOrders.filter(o => getActionSource(o) === 'RESCHEDULED').length}
                 </div>
-                <div className="text-sm text-muted-foreground">Rescheduled</div>
+                <div className="text-xs md:text-sm text-muted-foreground">Rescheduled</div>
               </div>
             </CardContent>
           </Card>
           <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/10">
-            <CardContent className="p-4 flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-blue-500" />
+            <CardContent className="p-3 md:p-4 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 md:h-5 md:w-5 text-blue-500" />
               <div>
-                <div className="text-2xl font-bold text-blue-600">
+                <div className="text-xl md:text-2xl font-bold text-blue-600">
                   {actionRequiredOrders.filter(o => 
                     getActionSource(o) === 'RUNNER_FLAGGED' || getActionSource(o) === 'MANUAL'
                   ).length}
                 </div>
-                <div className="text-sm text-muted-foreground">Runner Notes</div>
+                <div className="text-xs md:text-sm text-muted-foreground">Notes</div>
               </div>
             </CardContent>
           </Card>
@@ -328,15 +332,15 @@ export default function SalespersonActionInbox() {
 
         {/* Filter + Bulk Actions */}
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-4">
+          <CardContent className="p-3 md:p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
                 {/* Salesperson Filter - only for admin/manager */}
                 {(canViewAll || canViewGroup) && salespersons.length > 0 && (
-                  <div>
+                  <div className="flex-1 md:flex-none">
                     <Label className="text-xs">Agent</Label>
                     <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-full md:w-[180px] h-10">
                         <SelectValue placeholder="All Agents" />
                       </SelectTrigger>
                       <SelectContent>
@@ -350,10 +354,10 @@ export default function SalespersonActionInbox() {
                     </Select>
                   </div>
                 )}
-                <div>
+                <div className="flex-1 md:flex-none">
                   <Label className="text-xs">Action Type</Label>
                   <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                    <SelectTrigger className="w-[180px]">
+                    <SelectTrigger className="w-full md:w-[180px] h-10">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -368,12 +372,12 @@ export default function SalespersonActionInbox() {
               </div>
               
               {selectedRows.size > 0 && (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="secondary" className="text-sm">
-                    Selected: {selectedRows.size}
+                    {selectedRows.size} selected
                   </Badge>
                   <Button size="sm" onClick={() => setBulkDialogOpen(true)}>
-                    <ListChecks className="h-4 w-4 mr-2" />
+                    <ListChecks className="h-4 w-4 mr-1" />
                     Bulk Action
                   </Button>
                   <Button 
@@ -389,125 +393,197 @@ export default function SalespersonActionInbox() {
           </CardContent>
         </Card>
 
-        {/* Table */}
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox 
-                      checked={isAllSelected}
-                      onCheckedChange={toggleSelectAll}
-                      aria-label="Select all"
-                      className={isSomeSelected ? "data-[state=checked]:bg-primary/50" : ""}
-                    />
-                  </TableHead>
-                  <TableHead>Order Ref</TableHead>
-                  {(canViewAll || canViewGroup) && <TableHead>Agent</TableHead>}
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Next Date</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Runner Comment</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {actionRequiredOrders.length === 0 ? (
+        {/* Mobile Card View */}
+        {isMobile ? (
+          <div className="space-y-3">
+            <MobileSelectAllCard
+              isAllSelected={isAllSelected}
+              onSelectAll={(checked) => {
+                if (checked) {
+                  setSelectedRows(new Set(actionRequiredOrders.map(o => o.id)));
+                } else {
+                  setSelectedRows(new Set());
+                }
+              }}
+              selectedCount={selectedRows.size}
+              totalCount={actionRequiredOrders.length}
+            />
+
+            {actionRequiredOrders.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No orders requiring action
+              </div>
+            ) : (
+              actionRequiredOrders.map(order => {
+                const source = getActionSource(order);
+                const isSelected = selectedRows.has(order.id);
+
+                return (
+                  <MobileOrderCard
+                    key={order.id}
+                    id={order.id}
+                    orderRef={order.order_code}
+                    areaBadge={order.area ? <Badge variant="outline" className="text-xs">{order.area}</Badge> : undefined}
+                    statusBadge={
+                      source ? (
+                        <Badge className={sourceColors[source]}>
+                          {sourceLabels[source]}
+                        </Badge>
+                      ) : undefined
+                    }
+                    selectable={true}
+                    isSelected={isSelected}
+                    onSelectionChange={() => toggleRow(order.id)}
+                    primaryFields={[
+                      { label: 'Customer', value: order.customer_name },
+                      { label: 'Phone', value: order.phone },
+                      ...(order.next_delivery_date ? [{ label: 'Next Date', value: format(parseISO(order.next_delivery_date), 'dd MMM') }] : []),
+                    ]}
+                    expandedFields={[
+                      ...(order.runner_failed_reason_id ? [{ label: 'Reason', value: reasonsMap[order.runner_failed_reason_id] || '-' }] : []),
+                      ...(order.runner_comment ? [{ label: 'Runner Comment', value: order.runner_comment, fullWidth: true }] : []),
+                      { label: 'Order Status', value: order.status },
+                      { label: 'Runner Status', value: order.runner_status || '-' },
+                      ...((canViewAll || canViewGroup) ? [{ label: 'Agent', value: salespersons.find(sp => sp.id === order.salesperson_id)?.display_name || '-' }] : []),
+                    ]}
+                    primaryAction={
+                      <Button
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleActionClick(order);
+                        }}
+                      >
+                        <Play className="h-3.5 w-3.5 mr-1" />
+                        Resolve
+                      </Button>
+                    }
+                  />
+                );
+              })
+            )}
+          </div>
+        ) : (
+          /* Desktop Table View */
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={(canViewAll || canViewGroup) ? 10 : 9} className="text-center py-8 text-muted-foreground">
-                      No orders requiring action
-                    </TableCell>
+                    <TableHead className="w-10">
+                      <Checkbox 
+                        checked={isAllSelected}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Select all"
+                        className={isSomeSelected ? "data-[state=checked]:bg-primary/50" : ""}
+                      />
+                    </TableHead>
+                    <TableHead>Order Ref</TableHead>
+                    {(canViewAll || canViewGroup) && <TableHead>Agent</TableHead>}
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Next Date</TableHead>
+                    <TableHead>Reason</TableHead>
+                    <TableHead>Runner Comment</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ) : (
-                  actionRequiredOrders.map(order => (
-                    <TableRow key={order.id} className={selectedRows.has(order.id) ? "bg-muted/50" : ""}>
-                      <TableCell>
-                        <Checkbox 
-                          checked={selectedRows.has(order.id)}
-                          onCheckedChange={() => toggleRow(order.id)}
-                          aria-label={`Select ${order.order_code}`}
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{order.order_code}</TableCell>
-                      {(canViewAll || canViewGroup) && (
-                        <TableCell>
-                          <span className="text-sm">
-                            {salespersons.find(sp => sp.id === order.salesperson_id)?.display_name || '-'}
-                          </span>
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{order.customer_name}</div>
-                          <div className="text-xs text-muted-foreground">{order.phone}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {(() => {
-                          const source = getActionSource(order);
-                          if (!source) return '-';
-                          return (
-                            <Badge className={sourceColors[source]}>
-                              {sourceLabels[source]}
-                            </Badge>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        {order.next_delivery_date ? (
-                          <div className="flex items-center gap-1 text-sm">
-                            <CalendarClock className="h-3 w-3" />
-                            {format(parseISO(order.next_delivery_date), 'dd MMM yyyy')}
-                          </div>
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-red-600 max-w-[120px]">
-                        {order.runner_failed_reason_id ? (
-                          <span className="truncate block">{reasonsMap[order.runner_failed_reason_id] || '-'}</span>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell className="max-w-[180px]">
-                        {order.runner_comment ? (
-                          <div className="flex items-start gap-1">
-                            <MessageSquare className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <span className="text-sm truncate">{order.runner_comment}</span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <Badge variant="outline" className="text-xs w-fit">
-                            {order.status}
-                          </Badge>
-                          {order.runner_status && order.runner_status !== 'UNASSIGNED' && (
-                            <span className="text-xs text-muted-foreground">{order.runner_status}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          className="h-7"
-                          onClick={() => handleActionClick(order)}
-                        >
-                          <Play className="h-3.5 w-3.5 mr-1" />
-                          Action
-                        </Button>
+                </TableHeader>
+                <TableBody>
+                  {actionRequiredOrders.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={(canViewAll || canViewGroup) ? 10 : 9} className="text-center py-8 text-muted-foreground">
+                        No orders requiring action
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                  ) : (
+                    actionRequiredOrders.map(order => (
+                      <TableRow key={order.id} className={selectedRows.has(order.id) ? "bg-muted/50" : ""}>
+                        <TableCell>
+                          <Checkbox 
+                            checked={selectedRows.has(order.id)}
+                            onCheckedChange={() => toggleRow(order.id)}
+                            aria-label={`Select ${order.order_code}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{order.order_code}</TableCell>
+                        {(canViewAll || canViewGroup) && (
+                          <TableCell>
+                            <span className="text-sm">
+                              {salespersons.find(sp => sp.id === order.salesperson_id)?.display_name || '-'}
+                            </span>
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{order.customer_name}</div>
+                            <div className="text-xs text-muted-foreground">{order.phone}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const source = getActionSource(order);
+                            if (!source) return '-';
+                            return (
+                              <Badge className={sourceColors[source]}>
+                                {sourceLabels[source]}
+                              </Badge>
+                            );
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          {order.next_delivery_date ? (
+                            <div className="flex items-center gap-1 text-sm">
+                              <CalendarClock className="h-3 w-3" />
+                              {format(parseISO(order.next_delivery_date), 'dd MMM yyyy')}
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-red-600 max-w-[120px]">
+                          {order.runner_failed_reason_id ? (
+                            <span className="truncate block">{reasonsMap[order.runner_failed_reason_id] || '-'}</span>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className="max-w-[180px]">
+                          {order.runner_comment ? (
+                            <div className="flex items-start gap-1">
+                              <MessageSquare className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                              <span className="text-sm truncate">{order.runner_comment}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <Badge variant="outline" className="text-xs w-fit">
+                              {order.status}
+                            </Badge>
+                            {order.runner_status && order.runner_status !== 'UNASSIGNED' && (
+                              <span className="text-xs text-muted-foreground">{order.runner_status}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            className="h-7"
+                            onClick={() => handleActionClick(order)}
+                          >
+                            <Play className="h-3.5 w-3.5 mr-1" />
+                            Action
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Single Action Resolution Dialog */}
