@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, MapPin, Navigation, Package, Loader2, AlertTriangle, Route } from "lucide-react";
-import { useDriverLatestLocations } from "@/hooks/useDriverLocations";
+import { useDriverLatestLocations, getDriverStatus } from "@/hooks/useDriverLocations";
 import { useMyDrivers } from "@/hooks/useDrivers";
 import { useOrders } from "@/hooks/useOrders";
 import { useGeocoding, GeocodedLocation } from "@/hooks/useGeocoding";

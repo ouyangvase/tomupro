@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverRouteOptimization } from '@/hooks/useRouteOptimization';
 import { AppLayout } from '@/components/layout/AppLayout';
+import LocationTracker from '@/components/driver/LocationTracker';
 import { MapPin, Package, Navigation, ArrowRight } from 'lucide-react';
 
 export default function DriverRoutePage() {
@@ -38,6 +39,7 @@ export default function DriverRoutePage() {
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl mx-auto">
+      <LocationTracker />
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Navigation className="h-6 w-6" />
