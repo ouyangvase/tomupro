@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
+import LocationTracker from '@/components/driver/LocationTracker';
 import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { formatBND } from '@/lib/currency';
 
@@ -145,6 +146,9 @@ export default function DriverInbox() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        {/* Location Tracker - shows location sharing status */}
+        <LocationTracker />
+
         {/* Header */}
         <div className="mb-4">
           <h1 className="text-2xl font-bold">My Deliveries</h1>

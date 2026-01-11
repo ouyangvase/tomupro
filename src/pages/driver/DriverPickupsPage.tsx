@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useDriverPickups, useAcknowledgePickup } from '@/hooks/useDriverPickups';
 import { AppLayout } from '@/components/layout/AppLayout';
+import LocationTracker from '@/components/driver/LocationTracker';
 import { Package, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -25,6 +26,7 @@ export default function DriverPickupsPage() {
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl mx-auto">
+      <LocationTracker />
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Package className="h-6 w-6" />

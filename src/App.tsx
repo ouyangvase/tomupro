@@ -5,8 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { LocationProvider } from "@/contexts/LocationContext";
 import { RoleChangeBanner } from "@/components/RoleChangeBanner";
 import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
+import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
 
 // Pages
 import Auth from "./pages/Auth";
@@ -109,6 +111,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/settings/profile" replace />;
   }
   
+  // For drivers, wrap with location permission gate
+  if (isDriver) {
+    return <LocationPermissionGate>{children}</LocationPermissionGate>;
+  }
+  
   return <>{children}</>;
 }
 
@@ -175,14 +182,16 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <ThemeProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <RoleChangeBanner />
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </TooltipProvider>
+        <LocationProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <RoleChangeBanner />
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </TooltipProvider>
+        </LocationProvider>
       </ThemeProvider>
     </AuthProvider>
   </QueryClientProvider>
