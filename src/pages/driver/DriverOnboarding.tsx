@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,15 +10,70 @@ import { Truck, ArrowRight, Loader2 } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 
 const DriverOnboarding: React.FC = () => {
-  const { profile, signOut, signingOut } = useAuth();
-  const { linkToRunner } = useDriverOnboarding();
+  const navigate = useNavigate();
+  const { profile, signOut, signingOut, loading } = useAuth();
+  const { linkToRunner, isLinked } = useDriverOnboarding();
   const [code, setCode] = useState("");
+
+  // Guard: Redirect non-drivers immediately
+  useEffect(() => {
+    if (loading) return;
+    
+    if (!profile) return;
+    
+    // Only drivers should see this page
+    if (profile.role !== "driver") {
+      // Redirect based on role
+      switch (profile.role) {
+        case "salesperson":
+          navigate("/", { replace: true });
+          break;
+        case "runner":
+          navigate("/runner/inbox", { replace: true });
+          break;
+        case "admin":
+          navigate("/admin/overview", { replace: true });
+          break;
+        case "manager":
+          navigate("/manager/oversight", { replace: true });
+          break;
+        default:
+          navigate("/", { replace: true });
+      }
+      return;
+    }
+    
+    // If driver is already linked, redirect to driver dashboard
+    if (isLinked) {
+      navigate("/driver/inbox", { replace: true });
+    }
+  }, [profile, loading, isLinked, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (code.trim().length < 4) return;
-    await linkToRunner.mutateAsync(code);
+    const result = await linkToRunner.mutateAsync(code);
+    if (result.success) {
+      navigate("/driver/inbox", { replace: true });
+    }
   };
+
+  // Show loading while checking
+  if (loading || !profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span>Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if not a driver (redirect effect will handle)
+  if (profile.role !== "driver") {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
