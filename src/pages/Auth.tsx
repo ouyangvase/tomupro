@@ -170,16 +170,13 @@ export default function Auth() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-primary to-transparent rounded-full" />
         
         <CardHeader className="text-center pt-8 pb-4">
-          {/* Logo container with glow */}
-          <div className="relative mx-auto mb-6">
-            <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full scale-150" />
-            <div className="relative p-4 rounded-2xl bg-gradient-to-br from-secondary/80 to-secondary/40 border border-border/50 shadow-lg">
-              <img 
-                src={tomuLogo} 
-                alt="TOMU PRO Logo" 
-                className="h-16 w-16 object-contain drop-shadow-lg" 
-              />
-            </div>
+          {/* Logo */}
+          <div className="mx-auto mb-6">
+            <img
+              src={tomuLogo}
+              alt="TOMU PRO Logo"
+              className="h-24 w-24 md:h-28 md:w-28 object-contain drop-shadow-lg"
+            />
           </div>
           
           {/* Title with gradient */}
