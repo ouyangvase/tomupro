@@ -12,8 +12,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import type { Order } from '@/types/database';
-import { XCircle, RefreshCw, Calendar, MessageCircle, AlertTriangle, Ban } from 'lucide-react';
-import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
+import { XCircle, RefreshCw, Calendar, AlertTriangle, Ban } from 'lucide-react';
+import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { format, parseISO } from 'date-fns';
 
@@ -103,27 +103,7 @@ export default function RunnerFailedOrders() {
     {
       key: 'phone',
       header: 'Phone',
-      render: (order) => (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <a
-                href={generateWhatsAppUrl(order)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 text-green-600 hover:text-green-700 hover:underline font-medium"
-              >
-                <MessageCircle className="h-4 w-4" />
-                {formatPhoneDisplay(order.phone)}
-              </a>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Chat customer on WhatsApp</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ),
+      render: (order) => <WhatsAppPhoneLink order={order} />,
     },
     {
       key: 'area',
