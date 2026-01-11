@@ -15,6 +15,9 @@ export const useDriverOnboarding = () => {
   const queryClient = useQueryClient();
 
   // Check if driver is linked to a runner
+  // Only runs for drivers - other roles skip this entirely
+  const isDriver = profile?.role === "driver";
+  
   const { data: isLinked, isLoading: checkingLink } = useQuery({
     queryKey: ["driver-runner-link", user?.id],
     queryFn: async () => {
@@ -30,7 +33,8 @@ export const useDriverOnboarding = () => {
       if (error) throw error;
       return !!data;
     },
-    enabled: !!user && profile?.role === "driver",
+    // Only enable for drivers - salespersons, runners, admins, managers skip this
+    enabled: !!user && isDriver,
   });
 
   // Link driver to runner by code
@@ -78,9 +82,11 @@ export const useDriverOnboarding = () => {
 
   return {
     isLinked,
-    checkingLink,
+    // Only show checkingLink for drivers - other roles are never checking
+    checkingLink: isDriver ? checkingLink : false,
     linkToRunner,
     runnerCode,
-    needsOnboarding: profile?.role === "driver" && isLinked === false && !checkingLink,
+    // Only drivers can need onboarding - salespersons/runners/admins/managers never do
+    needsOnboarding: isDriver && isLinked === false && !checkingLink,
   };
 };

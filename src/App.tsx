@@ -68,7 +68,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
   
-  if (loading || checkingLink) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex items-center gap-2">
@@ -83,8 +83,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Show onboarding for drivers not linked to a runner
-  if (profile?.role === "driver" && needsOnboarding) {
+  // Only check runner binding for drivers - salespersons, runners, admins, managers never need this
+  const isDriver = profile?.role === "driver";
+  
+  // Show loading while checking driver-runner link (only for drivers)
+  if (isDriver && checkingLink) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span>Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show onboarding ONLY for drivers not linked to a runner
+  // Salespersons, runners, admins, managers bypass this completely
+  if (isDriver && needsOnboarding) {
     return <DriverOnboarding />;
   }
 

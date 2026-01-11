@@ -99,8 +99,9 @@ export default function Auth() {
     
     setLoading(true);
     
-    // Default role is 'user'
-    let assignedRole: 'user' | 'salesperson' | 'runner' | 'driver' = 'user';
+    // Default role is 'driver' - requires runner binding after registration
+    // If valid admin code provided, role will be 'salesperson' and skip runner binding
+    let assignedRole: 'user' | 'salesperson' | 'runner' | 'driver' = 'driver';
     
     // Validate invite code if provided
     if (inviteCode.trim()) {
@@ -119,9 +120,9 @@ export default function Auth() {
         toast({
           variant: 'destructive',
           title: 'Invalid Code',
-          description: 'The invite code is invalid or expired. You can continue without a code.',
+          description: 'The invite code is invalid or expired. You will be registered as a Driver.',
         });
-        // Continue with default role - don't block registration
+        // Continue with driver role - requires runner binding
       }
     }
     
@@ -139,11 +140,15 @@ export default function Auth() {
         description: message,
       });
     } else {
+      const roleDescription = assignedRole === 'salesperson' 
+        ? "Welcome! You've been registered as a Salesperson."
+        : assignedRole === 'driver'
+          ? "Welcome! You've been registered as a Driver. Please link to your runner to continue."
+          : `Welcome! You've been registered as a ${assignedRole}.`;
+      
       toast({
         title: 'Account Created',
-        description: assignedRole !== 'user' 
-          ? `Welcome! You've been registered as a ${assignedRole}.`
-          : 'You can now log in with your credentials.',
+        description: roleDescription,
       });
       navigate('/');
     }
@@ -296,8 +301,8 @@ export default function Auth() {
                 <div className="space-y-2">
                   <Label htmlFor="invite-code" className="text-sm font-medium text-foreground/80 flex items-center gap-2">
                     <Ticket className="h-4 w-4" />
-                    Admin Registration Code
-                    <span className="text-xs text-muted-foreground">(Optional)</span>
+                    Admin Code
+                    <span className="text-xs text-muted-foreground">(Optional - for Salesperson registration)</span>
                   </Label>
                   <Input
                     id="invite-code"
