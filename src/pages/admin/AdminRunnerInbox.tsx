@@ -11,8 +11,8 @@ import { exportSelectedOrderLines } from '@/lib/csv';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useToast } from '@/hooks/use-toast';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
-import { Inbox, MessageCircle, UserPlus } from 'lucide-react';
-import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
+import { Inbox, UserPlus } from 'lucide-react';
+import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
@@ -183,27 +183,7 @@ export default function AdminRunnerInbox() {
     {
       key: 'phone',
       header: 'Phone',
-      render: (order) => (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <a
-                href={generateWhatsAppUrl(order)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 text-green-600 hover:text-green-700 hover:underline font-medium"
-              >
-                <MessageCircle className="h-4 w-4" />
-                {formatPhoneDisplay(order.phone)}
-              </a>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Chat customer on WhatsApp</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ),
+      render: (order) => <WhatsAppPhoneLink order={order} />,
     },
     {
       key: 'area',

@@ -9,7 +9,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { CalendarIcon, ExternalLink, Phone, MapPin, Package, CreditCard } from 'lucide-react';
+import { CalendarIcon, ExternalLink, MapPin, Package, CreditCard } from 'lucide-react';
+import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useReasons } from '@/hooks/useReasons';
@@ -142,15 +143,7 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Phone</p>
-              <a 
-                href={generateWhatsAppUrlSimple(order.phone, `Hi, regarding order ORD-${order.order_code}`)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-primary hover:underline flex items-center gap-1"
-              >
-                <Phone className="h-3 w-3" />
-                {order.phone}
-              </a>
+              <WhatsAppPhoneLink order={order as any} showIcon={false} />
             </div>
             <div className="col-span-2">
               <p className="text-sm text-muted-foreground flex items-center gap-1">

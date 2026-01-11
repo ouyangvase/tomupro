@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Check, X, Phone, MapPin, Package, User, Calendar, Loader2, Truck, Navigation } from 'lucide-react';
+import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation } from 'lucide-react';
+import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { formatBND } from '@/lib/currency';
 
@@ -228,11 +229,8 @@ export default function DriverInbox() {
                         <span className="font-medium">{order.customer_name}</span>
                       </div>
                       
-                      {/* Phone */}
-                      <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-sm text-primary">
-                        <Phone className="h-4 w-4" />
-                        <span>{order.phone}</span>
-                      </a>
+                      {/* Phone - WhatsApp click-to-chat */}
+                      <WhatsAppPhoneLink order={order} />
                       
                       {/* Address with Google Maps button */}
                       <div className="flex items-start gap-2 text-sm">
@@ -322,10 +320,7 @@ export default function DriverInbox() {
                           Awaiting Acceptance
                         </Badge>
                       </div>
-                      <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-sm text-primary">
-                        <Phone className="h-4 w-4" />
-                        <span>{order.phone}</span>
-                      </a>
+                      <WhatsAppPhoneLink order={order} />
                       <div className="flex items-start gap-2 text-sm">
                         <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                         <span className="flex-1">{order.address}</span>
@@ -382,10 +377,7 @@ export default function DriverInbox() {
                           </div>
                         )}
                       </div>
-                      <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-sm text-primary">
-                        <Phone className="h-4 w-4" />
-                        <span>{order.phone}</span>
-                      </a>
+                      <WhatsAppPhoneLink order={order} />
                       <div className="flex items-start gap-2 text-sm">
                         <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                         <span className="flex-1">{order.address}</span>

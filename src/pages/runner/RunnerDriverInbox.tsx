@@ -21,10 +21,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { 
   Truck, Users, CheckCircle, XCircle, Clock, Package, 
-  MessageCircle, MapPin, Calendar,
+  MapPin, Calendar,
   Loader2, RefreshCw, User, ExternalLink, ArrowRight, ClipboardCheck, RotateCcw, History, Undo2
 } from 'lucide-react';
 import { RunnerReviewModal } from '@/components/runner/RunnerReviewModal';
+import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { toast } from 'sonner';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import type { Order } from '@/types/database';
@@ -42,13 +43,6 @@ const runnerAcceptColors: Record<string, string> = {
   PENDING: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
   ACCEPTED: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-};
-
-// WhatsApp URL generator
-const generateWhatsAppUrl = (order: any) => {
-  const phone = order.phone?.replace(/\D/g, '');
-  const message = `Hi ${order.customer_name}, regarding your order ${order.order_code}...`;
-  return `https://wa.me/673${phone}?text=${encodeURIComponent(message)}`;
 };
 
 export default function RunnerDriverInbox() {
@@ -380,22 +374,7 @@ export default function RunnerDriverInbox() {
                           <TableCell className="font-mono text-sm">{order.order_code}</TableCell>
                           <TableCell>{order.customer_name}</TableCell>
                           <TableCell>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <a
-                                    href={generateWhatsAppUrl(order)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-green-600 hover:underline"
-                                  >
-                                    <MessageCircle className="h-3 w-3" />
-                                    {order.phone}
-                                  </a>
-                                </TooltipTrigger>
-                                <TooltipContent>Chat on WhatsApp</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <WhatsAppPhoneLink order={order} />
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{order.area || '-'}</Badge>
