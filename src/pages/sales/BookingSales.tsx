@@ -67,6 +67,22 @@ export default function BookingSales() {
       filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a!, value: a! })) 
     },
     { 
+      key: 'address', 
+      header: 'Address', 
+      render: (o) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-sm truncate max-w-[200px] block cursor-help">
+              {o.address || '-'}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[400px]">
+            <p className="whitespace-pre-wrap">{o.address || 'No address'}</p>
+          </TooltipContent>
+        </Tooltip>
+      )
+    },
+    { 
       key: 'items_summary', 
       header: 'Items', 
       render: (o) => {

@@ -435,6 +435,7 @@ export default function RunnerDeliveredOrders() {
                     ]}
                     expandedFields={[
                       { label: 'Customer', value: order.customer_name || '-' },
+                      { label: 'Address', value: order.address || '-', fullWidth: true },
                       { label: 'Payment', value: order.payment_method },
                       { label: 'Runner', value: order.runner?.display_name || '-' },
                       { label: 'Driver', value: order.driver?.display_name || '-' },
@@ -481,6 +482,7 @@ export default function RunnerDeliveredOrders() {
                       <TableHead>Order Ref</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Area</TableHead>
+                      <TableHead>Address</TableHead>
                       <TableHead>Items</TableHead>
                       <TableHead>Amount (BND)</TableHead>
                       <TableHead>Payment</TableHead>
@@ -496,13 +498,13 @@ export default function RunnerDeliveredOrders() {
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={canClaim ? 16 : 13} className="text-center py-8">
+                        <TableCell colSpan={canClaim ? 17 : 14} className="text-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canClaim ? 16 : 13} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={canClaim ? 17 : 14} className="text-center py-8 text-muted-foreground">
                           No delivered orders found
                         </TableCell>
                       </TableRow>
@@ -530,6 +532,20 @@ export default function RunnerDeliveredOrders() {
                             <TableCell><span className="font-mono text-sm">{order.order_code}</span></TableCell>
                             <TableCell>{order.customer_name || '-'}</TableCell>
                             <TableCell><Badge variant="outline">{order.area || '-'}</Badge></TableCell>
+                            <TableCell>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-sm truncate max-w-[180px] block cursor-help">
+                                      {order.address || '-'}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-[400px]">
+                                    <p className="whitespace-pre-wrap">{order.address || 'No address'}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </TableCell>
                             <TableCell>
                               <TooltipProvider>
                                 <Tooltip>
