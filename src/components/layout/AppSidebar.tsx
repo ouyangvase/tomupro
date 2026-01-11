@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award, Ticket } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -259,6 +259,11 @@ const settingsItems: NavItem[] = [{
   url: "/settings/users",
   icon: Users,
   roles: ['admin', 'manager']
+}, {
+  title: "Invite Codes",
+  url: "/admin/invite-codes",
+  icon: Ticket,
+  roles: ['admin']
 }, {
   title: "Commission System",
   url: "/settings/commission",

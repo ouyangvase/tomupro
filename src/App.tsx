@@ -59,6 +59,7 @@ import WarehouseManagement from "./pages/admin/WarehouseManagement";
 import CommissionSettings from "./pages/admin/CommissionSettings";
 import LeaderboardSettings from "./pages/admin/LeaderboardSettings";
 import LeaderboardPage from "./pages/leaderboard/LeaderboardPage";
+import InviteCodesAdmin from "./pages/admin/InviteCodesAdmin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -146,6 +147,7 @@ function AppRoutes() {
       <Route path="/admin/warehouses" element={<ProtectedRoute><WarehouseManagement /></ProtectedRoute>} />
       <Route path="/settings/commission" element={<ProtectedRoute><CommissionSettings /></ProtectedRoute>} />
       <Route path="/admin/leaderboard-settings" element={<ProtectedRoute><LeaderboardSettings /></ProtectedRoute>} />
+      <Route path="/admin/invite-codes" element={<ProtectedRoute><InviteCodesAdmin /></ProtectedRoute>} />
       <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
