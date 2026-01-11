@@ -1118,6 +1118,50 @@ export type Database = {
           },
         ]
       }
+      invite_codes: {
+        Row: {
+          code: string
+          created_at: string | null
+          created_by: string
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          max_uses: number | null
+          role: string
+          used_count: number | null
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          created_by: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_uses?: number | null
+          role?: string
+          used_count?: number | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_uses?: number | null
+          role?: string
+          used_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invite_codes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leaderboard_archive: {
         Row: {
           created_at: string
@@ -2471,6 +2515,7 @@ export type Database = {
       }
       link_driver_to_runner_by_code: { Args: { p_code: string }; Returns: Json }
       reopen_rescheduled_orders: { Args: never; Returns: Json }
+      validate_invite_code: { Args: { code_text: string }; Returns: string }
     }
     Enums: {
       app_role:

@@ -6,9 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { validateInviteCode } from '@/hooks/useInviteCodes';
+import { supabase } from '@/integrations/supabase/client';
 import tomuLogo from '@/assets/tomu-logo.png';
+import { Ticket } from 'lucide-react';
 
 import { z } from 'zod';
 
@@ -38,6 +40,8 @@ export default function Auth() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [codeStatus, setCodeStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
 
   useEffect(() => {
     if (user) {
@@ -94,7 +98,34 @@ export default function Auth() {
     }
     
     setLoading(true);
-    const { error } = await signUp(signupEmail, signupPassword, displayName, 'user');
+    
+    // Default role is 'user'
+    let assignedRole: 'user' | 'salesperson' | 'runner' | 'driver' = 'user';
+    
+    // Validate invite code if provided
+    if (inviteCode.trim()) {
+      setCodeStatus('validating');
+      const validatedRole = await validateInviteCode(inviteCode.trim());
+      
+      if (validatedRole) {
+        assignedRole = validatedRole as 'salesperson' | 'runner' | 'driver';
+        setCodeStatus('valid');
+        toast({
+          title: 'Code Applied',
+          description: `Role assigned: ${assignedRole.charAt(0).toUpperCase() + assignedRole.slice(1)}`,
+        });
+      } else {
+        setCodeStatus('invalid');
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Code',
+          description: 'The invite code is invalid or expired. You can continue without a code.',
+        });
+        // Continue with default role - don't block registration
+      }
+    }
+    
+    const { error } = await signUp(signupEmail, signupPassword, displayName, assignedRole);
     setLoading(false);
     
     if (error) {
@@ -110,7 +141,9 @@ export default function Auth() {
     } else {
       toast({
         title: 'Account Created',
-        description: 'You can now log in with your credentials.',
+        description: assignedRole !== 'user' 
+          ? `Welcome! You've been registered as a ${assignedRole}.`
+          : 'You can now log in with your credentials.',
       });
       navigate('/');
     }
@@ -259,6 +292,33 @@ export default function Auth() {
                     required
                     className="h-12 bg-secondary/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invite-code" className="text-sm font-medium text-foreground/80 flex items-center gap-2">
+                    <Ticket className="h-4 w-4" />
+                    Admin Registration Code
+                    <span className="text-xs text-muted-foreground">(Optional)</span>
+                  </Label>
+                  <Input
+                    id="invite-code"
+                    type="text"
+                    placeholder="TOMU-SP-XXXX"
+                    value={inviteCode}
+                    onChange={(e) => {
+                      setInviteCode(e.target.value.toUpperCase());
+                      setCodeStatus('idle');
+                    }}
+                    className={`h-12 bg-secondary/30 border-border/50 focus:border-primary/50 focus:ring-primary/20 font-mono uppercase ${
+                      codeStatus === 'valid' ? 'border-emerald-500 bg-emerald-500/10' :
+                      codeStatus === 'invalid' ? 'border-destructive bg-destructive/10' : ''
+                    }`}
+                  />
+                  {codeStatus === 'valid' && (
+                    <p className="text-xs text-emerald-500">✓ Valid code - role will be assigned</p>
+                  )}
+                  {codeStatus === 'invalid' && (
+                    <p className="text-xs text-destructive">✗ Invalid or expired code</p>
+                  )}
                 </div>
                 <Button 
                   type="submit" 
