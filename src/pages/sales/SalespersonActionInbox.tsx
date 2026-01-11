@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrders } from '@/hooks/useOrders';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -440,6 +441,7 @@ export default function SalespersonActionInbox() {
                       ...(order.next_delivery_date ? [{ label: 'Next Date', value: format(parseISO(order.next_delivery_date), 'dd MMM') }] : []),
                     ]}
                     expandedFields={[
+                      { label: 'Address', value: order.address || '-', fullWidth: true },
                       ...(order.runner_failed_reason_id ? [{ label: 'Reason', value: reasonsMap[order.runner_failed_reason_id] || '-' }] : []),
                       ...(order.runner_comment ? [{ label: 'Runner Comment', value: order.runner_comment, fullWidth: true }] : []),
                       { label: 'Order Status', value: order.status },
@@ -481,6 +483,7 @@ export default function SalespersonActionInbox() {
                     <TableHead>Order Ref</TableHead>
                     {(canViewAll || canViewGroup) && <TableHead>Agent</TableHead>}
                     <TableHead>Customer</TableHead>
+                    <TableHead>Address</TableHead>
                     <TableHead>Source</TableHead>
                     <TableHead>Next Date</TableHead>
                     <TableHead>Reason</TableHead>
@@ -492,7 +495,7 @@ export default function SalespersonActionInbox() {
                 <TableBody>
                   {actionRequiredOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={(canViewAll || canViewGroup) ? 10 : 9} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={(canViewAll || canViewGroup) ? 11 : 10} className="text-center py-8 text-muted-foreground">
                         No orders requiring action
                       </TableCell>
                     </TableRow>
@@ -519,6 +522,18 @@ export default function SalespersonActionInbox() {
                             <div className="font-medium">{order.customer_name}</div>
                             <div className="text-xs text-muted-foreground">{order.phone}</div>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-sm truncate max-w-[180px] block cursor-help">
+                                {order.address || '-'}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-[400px]">
+                              <p className="whitespace-pre-wrap">{order.address || 'No address'}</p>
+                            </TooltipContent>
+                          </Tooltip>
                         </TableCell>
                         <TableCell>
                           {(() => {

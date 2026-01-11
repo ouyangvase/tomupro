@@ -214,6 +214,22 @@ export default function AdminRunnerInbox() {
       render: (order) => order.area || '-',
     },
     {
+      key: 'address',
+      header: 'Address',
+      render: (order) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-sm truncate max-w-[200px] block cursor-help">
+              {order.address || '-'}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[400px]">
+            <p className="whitespace-pre-wrap">{order.address || 'No address'}</p>
+          </TooltipContent>
+        </Tooltip>
+      ),
+    },
+    {
       key: 'items_summary',
       header: 'Items',
       render: (order) => {
