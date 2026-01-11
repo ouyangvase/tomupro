@@ -326,10 +326,8 @@ export function AppSidebar() {
       <SidebarHeader className="p-4 md:p-6 border-b border-primary/20 bg-gradient-to-br from-primary/10 via-secondary/30 to-transparent">
         <div className="flex items-center gap-3">
           <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/40 to-primary/10 rounded-2xl blur-lg group-hover:blur-xl transition-all" />
-            <div className="relative p-1.5 rounded-2xl bg-gradient-to-br from-primary/20 to-transparent border border-primary/20">
-              <img src={tomuLogo} alt="TOMU Logo" className="h-8 w-8 md:h-10 md:w-10 object-contain drop-shadow-lg" />
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-transparent rounded-lg blur-md opacity-0 group-hover:opacity-100 transition-opacity" />
+            <img src={tomuLogo} alt="TOMU Logo" className="relative h-12 w-12 md:h-14 md:w-14 object-contain drop-shadow-lg" />
           </div>
           {!collapsed && (
             <div>
