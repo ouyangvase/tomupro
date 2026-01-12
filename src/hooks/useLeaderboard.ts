@@ -195,9 +195,7 @@ export function useLeaderboardRankings(
   customStart?: Date,
   customEnd?: Date
 ) {
-  const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const { data: participants } = useLeaderboardParticipants();
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   
   const { start, end } = getPeriodDates(periodMode, customStart, customEnd);
@@ -231,133 +229,43 @@ export function useLeaderboardRankings(
   return useQuery({
     queryKey: ['leaderboard-rankings', periodMode, primaryMetric, startStr, endStr],
     queryFn: async () => {
-      // Fetch orders with CORRECT filters:
-      // - runner_status = 'DELIVERED' for delivered orders
-      // - status != 'CANCELLED' for non-cancelled orders
-      // - Order date within period
-      const { data: orders, error: ordersError } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          salesperson_id,
-          total_amount,
-          discount_amount,
-          runner_status,
-          driver_status,
-          reconciliation_status,
-          status,
-          delivered_at,
-          order_date
-        `)
-        .neq('status', 'CANCELLED')
-        .gte('order_date', startStr)
-        .lte('order_date', endStr);
+      // Use the SECURITY DEFINER function that bypasses RLS
+      // This allows all authenticated users to see the full leaderboard
+      const { data, error } = await supabase.rpc('get_leaderboard_rankings', {
+        p_start_date: startStr,
+        p_end_date: endStr
+      });
       
-      if (ordersError) throw ordersError;
+      if (error) throw error;
       
-      // Get all active salespeople with avatar
-      const { data: salespeople, error: spError } = await supabase
-        .from('profiles')
-        .select('id, display_name, avatar_url')
-        .eq('role', 'salesperson')
-        .eq('is_active', true);
-      
-      if (spError) throw spError;
-      
-      // Build exclusion list from participants table
-      const excludedIds = new Set(
-        participants?.filter(p => !p.is_included).map(p => p.salesperson_id) || []
-      );
-      
-      // Calculate metrics per salesperson
-      const metricsMap = new Map<string, {
-        completed_orders: number;
-        net_sales: number;
+      // Build rankings array with proper typing
+      const rankings: LeaderboardRanking[] = (data || []).map((row: {
+        salesperson_id: string;
+        salesperson_name: string;
+        avatar_url: string | null;
         delivered_orders: number;
         failed_orders: number;
-      }>();
-      
-      // Initialize with all salespeople
-      salespeople?.forEach(sp => {
-        if (!excludedIds.has(sp.id)) {
-          metricsMap.set(sp.id, {
-            completed_orders: 0,
-            net_sales: 0,
-            delivered_orders: 0,
-            failed_orders: 0
-          });
-        }
-      });
-      
-      // Aggregate order data using REAL filters:
-      // - Delivered = runner_status = 'DELIVERED' AND status != 'CANCELLED'
-      // - Failed = runner_status = 'FAILED_DELIVERY' AND status != 'CANCELLED'
-      // - Completed = reconciliation_status = 'SETTLED' (admin approved)
-      orders?.forEach(order => {
-        const spId = order.salesperson_id;
-        if (!metricsMap.has(spId)) return;
+        net_sales: number;
+        completed_orders: number;
+      }, index: number) => {
+        const deliveredTotal = row.delivered_orders + row.failed_orders;
         
-        const metrics = metricsMap.get(spId)!;
-        const orderTotal = Number(order.total_amount) || 0;
-        const discount = Number(order.discount_amount) || 0;
-        const netAmount = orderTotal - discount;
-        
-        // Delivered orders (runner_status = DELIVERED, not cancelled)
-        if (order.runner_status === 'DELIVERED') {
-          metrics.delivered_orders++;
-          metrics.net_sales += netAmount;
-        }
-        
-        // Completed orders (reconciliation approved/settled)
-        if (order.reconciliation_status === 'SETTLED') {
-          metrics.completed_orders++;
-        }
-        
-        // Failed orders
-        if (order.runner_status === 'FAILED_DELIVERY') {
-          metrics.failed_orders++;
-        }
-      });
-      
-      // Build rankings array
-      const rankings: LeaderboardRanking[] = [];
-      salespeople?.forEach(sp => {
-        if (!metricsMap.has(sp.id)) return;
-        
-        const metrics = metricsMap.get(sp.id)!;
-        const deliveredTotal = metrics.delivered_orders + metrics.failed_orders;
-        
-        rankings.push({
-          salesperson_id: sp.id,
-          salesperson_name: sp.display_name || 'Unknown',
-          avatar_url: sp.avatar_url || null,
-          completed_orders: metrics.completed_orders,
-          net_sales: metrics.net_sales,
-          delivered_orders: metrics.delivered_orders,
-          failed_orders: metrics.failed_orders,
-          conversion_score: metrics.delivered_orders > 0 
-            ? Math.round((metrics.completed_orders / metrics.delivered_orders) * 100 * 100) / 100
+        return {
+          salesperson_id: row.salesperson_id,
+          salesperson_name: row.salesperson_name || 'Unknown',
+          avatar_url: row.avatar_url || null,
+          completed_orders: row.completed_orders,
+          net_sales: Number(row.net_sales) || 0,
+          delivered_orders: row.delivered_orders,
+          failed_orders: row.failed_orders,
+          conversion_score: row.delivered_orders > 0 
+            ? Math.round((row.completed_orders / row.delivered_orders) * 100 * 100) / 100
             : 0,
           success_rate: deliveredTotal > 0
-            ? Math.round((metrics.delivered_orders / deliveredTotal) * 100 * 100) / 100
+            ? Math.round((row.delivered_orders / deliveredTotal) * 100 * 100) / 100
             : 0,
-          rank_position: 0
-        });
-      });
-      
-      // Sort by net_sales desc (tie-breaker: delivered_orders desc)
-      rankings.sort((a, b) => {
-        // Primary: net_sales descending
-        if (b.net_sales !== a.net_sales) return b.net_sales - a.net_sales;
-        // Tie-breaker 1: delivered_orders descending
-        if (b.delivered_orders !== a.delivered_orders) return b.delivered_orders - a.delivered_orders;
-        // Tie-breaker 2: fewer failed orders is better
-        return a.failed_orders - b.failed_orders;
-      });
-      
-      // Assign rank positions
-      rankings.forEach((r, i) => {
-        r.rank_position = i + 1;
+          rank_position: index + 1
+        };
       });
       
       // Update last updated timestamp

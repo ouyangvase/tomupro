@@ -2458,24 +2458,37 @@ export type Database = {
           sku_name: string
         }[]
       }
-      get_leaderboard_rankings: {
-        Args: {
-          p_period_end: string
-          p_period_start: string
-          p_primary_metric?: string
-        }
-        Returns: {
-          completed_orders: number
-          conversion_score: number
-          delivered_orders: number
-          failed_orders: number
-          net_sales: number
-          rank_position: number
-          salesperson_id: string
-          salesperson_name: string
-          success_rate: number
-        }[]
-      }
+      get_leaderboard_rankings:
+        | {
+            Args: {
+              p_period_end: string
+              p_period_start: string
+              p_primary_metric?: string
+            }
+            Returns: {
+              completed_orders: number
+              conversion_score: number
+              delivered_orders: number
+              failed_orders: number
+              net_sales: number
+              rank_position: number
+              salesperson_id: string
+              salesperson_name: string
+              success_rate: number
+            }[]
+          }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              avatar_url: string
+              completed_orders: number
+              delivered_orders: number
+              failed_orders: number
+              net_sales: number
+              salesperson_id: string
+              salesperson_name: string
+            }[]
+          }
       get_stock_balance: {
         Args: never
         Returns: {
