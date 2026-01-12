@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { Plus, AlertCircle, Lock, AlertTriangle } from 'lucide-react';
+import { Plus, AlertTriangle, Clock } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -17,6 +17,7 @@ import {
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
+import { RescheduleOrderDialog } from '@/components/sales/RescheduleOrderDialog';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
@@ -32,6 +33,8 @@ export default function BookingSales() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
+  const [rescheduleOrder, setRescheduleOrder] = useState<Order | null>(null);
 
   const { data: orders = [], isLoading } = useOrders({ 
     status: 'BOOKING',
@@ -138,15 +141,39 @@ export default function BookingSales() {
     },
     {
       key: 'next_delivery_date',
-      header: 'Next Schedule / Remark',
-      width: '140px',
+      header: 'Next Schedule',
+      width: '160px',
       sortable: true,
       render: (o) => {
-        if (!o.next_delivery_date) return null;
+        const isAutoReschedule = o.operational_status === 'BOOKING_AUTO_RESCHEDULE';
+        if (!o.next_delivery_date) {
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRescheduleOrder(o);
+                setRescheduleDialogOpen(true);
+              }}
+            >
+              <Clock className="h-3 w-3 mr-1" />
+              Schedule
+            </Button>
+          );
+        }
         return (
-          <span className="text-sm text-muted-foreground">
-            Next: {format(new Date(o.next_delivery_date), 'dd MMM yyyy')}
-          </span>
+          <div className="flex items-center gap-1">
+            {isAutoReschedule && (
+              <Badge variant="secondary" className="text-xs px-1">
+                Auto
+              </Badge>
+            )}
+            <span className="text-sm text-muted-foreground">
+              {format(new Date(o.next_delivery_date), 'dd MMM')}
+            </span>
+          </div>
         );
       }
     },
@@ -265,6 +292,22 @@ export default function BookingSales() {
                     <Button size="sm" onClick={handleConvertToReady}>
                       Convert to Ready
                     </Button>
+                    {selectedRows.length === 1 && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          const order = orders.find(o => o.id === selectedRows[0]);
+                          if (order) {
+                            setRescheduleOrder(order);
+                            setRescheduleDialogOpen(true);
+                          }
+                        }}
+                      >
+                        <Clock className="h-3 w-3 mr-1" />
+                        Reschedule
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" onClick={handleExportSelected}>
                       Export Selected
                     </Button>
@@ -328,6 +371,12 @@ export default function BookingSales() {
       <ImportOrdersDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
+      />
+
+      <RescheduleOrderDialog
+        open={rescheduleDialogOpen}
+        onOpenChange={setRescheduleDialogOpen}
+        order={rescheduleOrder}
       />
     </AppLayout>
   );
