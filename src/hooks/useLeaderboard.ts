@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, format, subMonths, subWeeks, subDays } from "date-fns";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect } from "react";
 
 export type PeriodMode = 'today' | 'week' | 'month' | 'custom';
 export type PrimaryMetric = 'completed_orders' | 'net_sales' | 'delivered_orders' | 'conversion_score' | 'success_rate';
@@ -196,7 +196,6 @@ export function useLeaderboardRankings(
   customEnd?: Date
 ) {
   const queryClient = useQueryClient();
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   
   const { start, end } = getPeriodDates(periodMode, customStart, customEnd);
   const startStr = formatDateForQuery(start);
@@ -216,7 +215,6 @@ export function useLeaderboardRankings(
         () => {
           // Invalidate and refetch on any order change
           queryClient.invalidateQueries({ queryKey: ['leaderboard-rankings'] });
-          setLastUpdated(new Date());
         }
       )
       .subscribe();
@@ -226,7 +224,7 @@ export function useLeaderboardRankings(
     };
   }, [queryClient]);
   
-  return useQuery({
+  const query = useQuery({
     queryKey: ['leaderboard-rankings', periodMode, primaryMetric, startStr, endStr],
     queryFn: async () => {
       // Use the SECURITY DEFINER function that bypasses RLS
@@ -268,14 +266,13 @@ export function useLeaderboardRankings(
         };
       });
       
-      // Update last updated timestamp
-      setLastUpdated(new Date());
-      
       return { rankings, lastUpdated: new Date() };
     },
     refetchInterval: 30000, // Auto-refresh every 30 seconds as fallback
     staleTime: 5000,
   });
+  
+  return query;
 }
 
 // Hook to get user's own ranking
