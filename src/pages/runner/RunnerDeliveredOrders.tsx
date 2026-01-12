@@ -11,11 +11,12 @@ import { useOrders } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers } from '@/hooks/useDrivers';
+import { useProducts } from '@/hooks/useProducts';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -72,8 +73,12 @@ export default function RunnerDeliveredOrders() {
   const { data: orders, isLoading } = useOrders(ordersFilter);
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
+  const { data: products = [] } = useProducts();
   // Only fetch claim batches for runner role (they're the ones who claim)
   const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : undefined);
+  
+  // Check if user is admin or manager (can see additional filters)
+  const isAdminOrManager = role === 'admin' || role === 'manager';
   
   // Determine if current user can claim orders (only runners can claim)
   const canClaim = role === 'runner';
@@ -82,6 +87,7 @@ export default function RunnerDeliveredOrders() {
   const [areaFilter, setAreaFilter] = useState('all');
   const [driverFilter, setDriverFilter] = useState('all');
   const [salespersonFilter, setSalespersonFilter] = useState('all');
+  const [skuFilter, setSkuFilter] = useState('all');
   const [claimStatusFilter, setClaimStatusFilter] = useState<ClaimStatusFilter>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
@@ -130,13 +136,20 @@ export default function RunnerDeliveredOrders() {
       filtered = filtered.filter(order => order.salesperson_id === salespersonFilter);
     }
 
+    // Apply SKU filter
+    if (skuFilter !== 'all') {
+      filtered = filtered.filter(order => 
+        order.order_items?.some(item => item.product_id === skuFilter)
+      );
+    }
+
     // Apply claim status filter
     if (claimStatusFilter !== 'all') {
       filtered = filtered.filter(order => matchesClaimStatusFilter(order.reconciliation_status, claimStatusFilter));
     }
 
     return filtered;
-  }, [orders, searchQuery, areaFilter, driverFilter, salespersonFilter, claimStatusFilter]);
+  }, [orders, searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
 
   // Orders eligible for claiming (DELIVERED + NOT_CLAIMED) - only relevant for runners
   const claimableOrders = useMemo(() => {
@@ -233,6 +246,44 @@ export default function RunnerDeliveredOrders() {
     }));
   }, [myDrivers]);
 
+  // SKU filter options (for admin/manager)
+  const skuOptions = useMemo(() => {
+    return products.map(p => ({
+      label: `${p.sku_code || p.sku_name}`,
+      value: p.id,
+      fullLabel: `${p.sku_code || ''}${p.sku_code ? ' / ' : ''}${p.sku_name}`,
+    }));
+  }, [products]);
+
+  // SKU Summary - calculate total delivered qty for selected SKU
+  const skuSummary = useMemo(() => {
+    if (skuFilter === 'all') return null;
+    
+    let totalQty = 0;
+    let totalOrders = 0;
+    let totalAmount = 0;
+    
+    deliveredOrders.forEach(order => {
+      const matchingItems = order.order_items?.filter(item => item.product_id === skuFilter) || [];
+      if (matchingItems.length > 0) {
+        totalOrders++;
+        matchingItems.forEach(item => {
+          totalQty += item.qty || 0;
+          totalAmount += item.line_total || 0;
+        });
+      }
+    });
+    
+    const selectedProduct = products.find(p => p.id === skuFilter);
+    
+    return {
+      skuName: selectedProduct ? `${selectedProduct.sku_code || selectedProduct.sku_name}` : 'Selected SKU',
+      totalQty,
+      totalOrders,
+      totalAmount,
+    };
+  }, [skuFilter, deliveredOrders, products]);
+
   const allClaimableSelected = claimableOrders.length > 0 && selectedIds.size === claimableOrders.length;
 
   // Build a map of order_id -> batch reference for showing claim batch info
@@ -324,7 +375,7 @@ export default function RunnerDeliveredOrders() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 md:flex md:gap-4">
+              <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-4">
                 <Select value={areaFilter} onValueChange={setAreaFilter}>
                   <SelectTrigger className="w-full md:w-[150px] h-10">
                     <SelectValue placeholder="All Areas" />
@@ -346,10 +397,68 @@ export default function RunnerDeliveredOrders() {
                     ))}
                   </SelectContent>
                 </Select>
+                
+                {/* User filter - Admin/Manager only */}
+                {isAdminOrManager && (
+                  <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
+                    <SelectTrigger className="w-full md:w-[180px] h-10">
+                      <SelectValue placeholder="All Users" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Users</SelectItem>
+                      {salespersonOptions.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                
+                {/* SKU filter - Admin/Manager only */}
+                {isAdminOrManager && (
+                  <Select value={skuFilter} onValueChange={setSkuFilter}>
+                    <SelectTrigger className="w-full md:w-[200px] h-10">
+                      <SelectValue placeholder="All SKUs" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All SKUs</SelectItem>
+                      {skuOptions.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.fullLabel}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* SKU Summary Card - Only shown when SKU filter is active */}
+        {isAdminOrManager && skuSummary && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-medium">
+                <Package className="h-4 w-4 text-primary" />
+                SKU Analysis: {skuSummary.skuName}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Delivered Qty</p>
+                  <p className="text-2xl font-bold text-primary">{skuSummary.totalQty}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Orders</p>
+                  <p className="text-2xl font-bold">{skuSummary.totalOrders}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Amount</p>
+                  <p className="text-2xl font-bold">{formatBND(skuSummary.totalAmount)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Action Bar - only for runners who can claim */}
         {canClaim && selectedClaimableOrders.length > 0 && (
