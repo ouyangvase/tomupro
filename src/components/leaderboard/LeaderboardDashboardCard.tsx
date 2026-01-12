@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Trophy, TrendingUp, TrendingDown, Minus, Crown, Medal, ChevronRight, Radio, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +9,15 @@ import { useVisibleRankings, useMyRanking, usePreviousPeriodRanking, useLeaderbo
 import { formatBND } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 function getRankIcon(rank: number, size: "sm" | "lg" = "sm") {
   const iconClass = size === "lg" ? "h-6 w-6" : "h-4 w-4";
@@ -139,6 +149,14 @@ export function LeaderboardDashboardCard() {
                       <span className="text-sm text-muted-foreground">#{idx + 1}</span>
                     )}
                   </div>
+                  <Avatar className="h-7 w-7">
+                    {ranking.avatar_url && (
+                      <AvatarImage src={ranking.avatar_url} alt={ranking.salesperson_name} />
+                    )}
+                    <AvatarFallback className="text-xs bg-muted">
+                      {getInitials(ranking.salesperson_name)}
+                    </AvatarFallback>
+                  </Avatar>
                   <span className={cn(
                     "text-sm",
                     ranking.salesperson_id === profile?.id && "font-medium text-primary"

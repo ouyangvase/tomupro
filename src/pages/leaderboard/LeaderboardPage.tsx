@@ -3,7 +3,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Trophy, TrendingUp, TrendingDown, Minus, AlertTriangle, Sparkles, RefreshCw, Award, Crown, Timer, Medal, Flame } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -135,6 +135,9 @@ function PodiumCard({
 
           {/* Avatar */}
           <Avatar className={cn(config.avatar, "mb-4 transition-transform hover:scale-105")}>
+            {ranking.avatar_url && (
+              <AvatarImage src={ranking.avatar_url} alt={ranking.salesperson_name} />
+            )}
             <AvatarFallback className={cn("text-2xl font-bold", config.avatarBg)}>
               {getInitials(ranking.salesperson_name)}
             </AvatarFallback>
@@ -329,6 +332,9 @@ function LeaderboardTable({
                       ranking.rank_position === 2 && "ring-muted-foreground/30",
                       ranking.rank_position === 3 && "ring-[hsl(25,80%,55%)]/30"
                     )}>
+                      {ranking.avatar_url && (
+                        <AvatarImage src={ranking.avatar_url} alt={ranking.salesperson_name} />
+                      )}
                       <AvatarFallback className={cn(
                         "text-sm font-semibold",
                         ranking.rank_position === 1 && "bg-primary/20 text-primary",
