@@ -182,6 +182,8 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const deleteOrderItem = useDeleteOrderItem();
 
   const [items, setItems] = useState<LocalOrderItem[]>([]);
+  const [itemsInitialized, setItemsInitialized] = useState(false);
+  const [deletedItemIds, setDeletedItemIds] = useState<string[]>([]);
   const [showDeliveredWarning, setShowDeliveredWarning] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<OrderFormValues | null>(null);
   
@@ -218,7 +220,10 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         payment_method: order.payment_method,
         expected_pickup_date: order.expected_pickup_date ? new Date(order.expected_pickup_date) : undefined,
       });
-    } else {
+      // Reset items initialization when order changes for re-hydration
+      setItemsInitialized(false);
+      setDeletedItemIds([]);
+    } else if (mode === 'create') {
       form.reset({
         order_code: '',
         customer_name: '',
@@ -229,12 +234,15 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         notes: '',
         payment_method: 'COD',
       });
+      setItemsInitialized(false);
+      setDeletedItemIds([]);
     }
   }, [order, mode, form]);
 
-  // Initialize items from existing order items - use order.id as stable dependency
+  // Initialize items from existing order items when they load
   useEffect(() => {
-    if (mode === 'edit' && existingItems.length > 0) {
+    // For edit mode: wait for existingItems to load and hydrate once
+    if (mode === 'edit' && existingItems.length > 0 && !itemsInitialized) {
       setItems(existingItems.map(item => ({
         id: item.id,
         product_id: item.product_id,
@@ -243,12 +251,14 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         price: Number(item.price),
         line_total: Number(item.line_total),
         notes: item.notes || '',
+        isNew: false,
       })));
-    } else if (mode === 'create' || (mode === 'edit' && existingItems.length === 0)) {
+      setItemsInitialized(true);
+    } else if (mode === 'create' && !itemsInitialized) {
       setItems([{ product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
+      setItemsInitialized(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order?.id, mode]);
+  }, [mode, existingItems, itemsInitialized]);
 
   const addItem = () => {
     setItems([...items, { product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
@@ -256,8 +266,9 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
   const removeItem = (index: number) => {
     const item = items[index];
+    // Track existing item IDs for deletion on save (don't delete immediately)
     if (item.id) {
-      deleteOrderItem.mutate(item.id);
+      setDeletedItemIds(prev => [...prev, item.id!]);
     }
     setItems(items.filter((_, i) => i !== index));
   };
@@ -354,6 +365,12 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
       // Save order items
       if (orderId) {
+        // First, delete any removed items
+        for (const deletedId of deletedItemIds) {
+          await deleteOrderItem.mutateAsync(deletedId);
+        }
+
+        // Then, create or update items
         for (const item of items) {
           if (item.isNew || !item.id) {
             await createOrderItem.mutateAsync({
