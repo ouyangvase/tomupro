@@ -34,6 +34,7 @@ export interface LeaderboardParticipant {
 export interface LeaderboardRanking {
   salesperson_id: string;
   salesperson_name: string;
+  avatar_url: string | null;
   completed_orders: number;
   net_sales: number;
   delivered_orders: number;
@@ -254,10 +255,10 @@ export function useLeaderboardRankings(
       
       if (ordersError) throw ordersError;
       
-      // Get all active salespeople
+      // Get all active salespeople with avatar
       const { data: salespeople, error: spError } = await supabase
         .from('profiles')
-        .select('id, display_name')
+        .select('id, display_name, avatar_url')
         .eq('role', 'salesperson')
         .eq('is_active', true);
       
@@ -329,6 +330,7 @@ export function useLeaderboardRankings(
         rankings.push({
           salesperson_id: sp.id,
           salesperson_name: sp.display_name || 'Unknown',
+          avatar_url: sp.avatar_url || null,
           completed_orders: metrics.completed_orders,
           net_sales: metrics.net_sales,
           delivered_orders: metrics.delivered_orders,
