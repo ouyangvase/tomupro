@@ -244,6 +244,13 @@ const inventoryItems: NavItem[] = [{
   roles: ['admin', 'manager', 'salesperson']
 }];
 
+const packageItems: NavItem[] = [{
+  title: "My Packages",
+  url: "/packages",
+  icon: Package,
+  roles: ['admin', 'manager', 'salesperson']
+}];
+
 const settingsItems: NavItem[] = [{
   title: "Profile",
   url: "/settings/profile",
@@ -429,6 +436,19 @@ export function AppSidebar() {
             )}
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">{renderMenuItems(inventoryItems)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {filterItems(packageItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Packages
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu className="space-y-1">{renderMenuItems(packageItems)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         )}

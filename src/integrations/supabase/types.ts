@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          is_read: boolean
+          title: string
+          user_email: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          is_read?: boolean
+          title: string
+          user_email: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          is_read?: boolean
+          title?: string
+          user_email?: string
+        }
+        Relationships: []
+      }
       attachments: {
         Row: {
           claim_id: string | null
@@ -345,6 +378,104 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      cn_package_skus: {
+        Row: {
+          created_at: string
+          id: string
+          package_id: string
+          product_title: string | null
+          qty: number | null
+          sku_code: string | null
+          sku_ref: string | null
+          unit_price_cny: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          package_id: string
+          product_title?: string | null
+          qty?: number | null
+          sku_code?: string | null
+          sku_ref?: string | null
+          unit_price_cny?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          package_id?: string
+          product_title?: string | null
+          qty?: number | null
+          sku_code?: string | null
+          sku_ref?: string | null
+          unit_price_cny?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cn_package_skus_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "cn_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cn_package_skus_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "v_my_packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cn_packages: {
+        Row: {
+          batch_id: string | null
+          created_at: string
+          id: string
+          intl_order_id: string | null
+          latest_paid_at: string | null
+          owner_id: string
+          status: string
+          total_paid_cny: number | null
+          tracking_no: string
+          updated_at: string
+          weight_kg: number | null
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string
+          id?: string
+          intl_order_id?: string | null
+          latest_paid_at?: string | null
+          owner_id: string
+          status?: string
+          total_paid_cny?: number | null
+          tracking_no: string
+          updated_at?: string
+          weight_kg?: number | null
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string
+          id?: string
+          intl_order_id?: string | null
+          latest_paid_at?: string | null
+          owner_id?: string
+          status?: string
+          total_paid_cny?: number | null
+          tracking_no?: string
+          updated_at?: string
+          weight_kg?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cn_packages_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "pc_owners"
+            referencedColumns: ["owner_id"]
           },
         ]
       }
@@ -1659,6 +1790,56 @@ export type Database = {
           },
         ]
       }
+      owner_access: {
+        Row: {
+          can_operate: boolean
+          created_at: string
+          id: string
+          owner_id: string
+          user_email: string
+        }
+        Insert: {
+          can_operate?: boolean
+          created_at?: string
+          id?: string
+          owner_id: string
+          user_email: string
+        }
+        Update: {
+          can_operate?: boolean
+          created_at?: string
+          id?: string
+          owner_id?: string
+          user_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_access_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "pc_owners"
+            referencedColumns: ["owner_id"]
+          },
+        ]
+      }
+      pc_owners: {
+        Row: {
+          created_at: string
+          owner_id: string
+          owner_name: string
+        }
+        Insert: {
+          created_at?: string
+          owner_id?: string
+          owner_name: string
+        }
+        Update: {
+          created_at?: string
+          owner_id?: string
+          owner_name?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           created_at: string
@@ -2383,6 +2564,31 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_my_packages: {
+        Row: {
+          batch_id: string | null
+          id: string | null
+          intl_order_id: string | null
+          last_updated_at: string | null
+          latest_paid_at: string | null
+          owner_id: string | null
+          owner_name: string | null
+          sku_codes: string[] | null
+          status: string | null
+          total_paid_cny: number | null
+          tracking_no: string | null
+          weight_kg: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cn_packages_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "pc_owners"
+            referencedColumns: ["owner_id"]
           },
         ]
       }
