@@ -29,10 +29,12 @@ export function useOrders(filters?: OrderFilters) {
 
       if (filters?.status) {
         query = query.eq('status', filters.status);
-        // For READY and BOOKING status, exclude DELIVERED orders
+        // For READY and BOOKING status, exclude DELIVERED and FAILED_DELIVERY orders
         // Delivered orders should only appear in Delivered Orders page
+        // Failed Delivery orders should only appear in Action Required / Failed Orders page
         if (filters.status === 'READY' || filters.status === 'BOOKING') {
           query = query.neq('runner_status', 'DELIVERED');
+          query = query.neq('runner_status', 'FAILED_DELIVERY');
         }
       }
       if (filters?.salespersonId) {
