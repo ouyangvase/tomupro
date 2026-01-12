@@ -69,11 +69,10 @@ export function LeaderboardDashboardCard() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { data: settings } = useLeaderboardSettings();
-  const { rankings, lastUpdated, isFetching } = useVisibleRankings('month');
+  const { rankings, top3Rankings, lastUpdated, isFetching } = useVisibleRankings('month');
   const myRanking = useMyRanking('month');
   const previousRanking = usePreviousPeriodRanking('month');
   
-  const top3 = rankings.slice(0, 3);
   const isSalesperson = profile?.role === 'salesperson';
 
   return (
@@ -126,15 +125,15 @@ export function LeaderboardDashboardCard() {
           </div>
         )}
 
-        {/* Top 3 */}
+        {/* Top 3 - Always shows actual top 3 regardless of visibility settings */}
         <div className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">Top Performers</p>
-          {top3.length === 0 ? (
+          {top3Rankings.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               No rankings yet
             </p>
           ) : (
-            top3.map((ranking, idx) => (
+            top3Rankings.map((ranking, idx) => (
               <div 
                 key={ranking.salesperson_id}
                 className={cn(
