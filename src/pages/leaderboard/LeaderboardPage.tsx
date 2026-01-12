@@ -395,12 +395,11 @@ export default function LeaderboardPage() {
   const [periodMode, setPeriodMode] = useState<PeriodMode>('month');
   const { profile } = useAuth();
   const { data: settings } = useLeaderboardSettings();
-  const { rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders } = useVisibleRankings(periodMode);
+  const { rankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders } = useVisibleRankings(periodMode);
   const myRanking = useMyRanking(periodMode);
   const previousRanking = usePreviousPeriodRanking(periodMode);
   
   const primaryMetric = settings?.primary_metric || 'net_sales';
-  const top3 = rankings.slice(0, 3);
   
   // Check if all rankings have zero data
   const allZeros = rankings.length > 0 && rankings.every(r => r.net_sales === 0 && r.delivered_orders === 0);
@@ -483,31 +482,31 @@ export default function LeaderboardPage() {
               </div>
             )}
 
-            {/* Top 3 Podium */}
-            {!isLoading && top3.length >= 3 && (
+            {/* Top 3 Podium - Always shows actual top 3 regardless of visibility settings */}
+            {!isLoading && top3Rankings.length >= 3 && (
               <div className="flex justify-center items-end gap-3 md:gap-6 py-6">
                 <PodiumCard 
-                  ranking={top3[1]} 
+                  ranking={top3Rankings[1]} 
                   position={2} 
-                  isCurrentUser={top3[1].salesperson_id === profile?.id}
+                  isCurrentUser={top3Rankings[1].salesperson_id === profile?.id}
                 />
                 <PodiumCard 
-                  ranking={top3[0]} 
+                  ranking={top3Rankings[0]} 
                   position={1} 
-                  isCurrentUser={top3[0].salesperson_id === profile?.id}
+                  isCurrentUser={top3Rankings[0].salesperson_id === profile?.id}
                 />
                 <PodiumCard 
-                  ranking={top3[2]} 
+                  ranking={top3Rankings[2]} 
                   position={3} 
-                  isCurrentUser={top3[2].salesperson_id === profile?.id}
+                  isCurrentUser={top3Rankings[2].salesperson_id === profile?.id}
                 />
               </div>
             )}
 
             {/* Less than 3 participants */}
-            {!isLoading && top3.length > 0 && top3.length < 3 && (
+            {!isLoading && top3Rankings.length > 0 && top3Rankings.length < 3 && (
               <div className="flex justify-center items-end gap-3 md:gap-6 py-6">
-                {top3.map((ranking, index) => (
+                {top3Rankings.map((ranking, index) => (
                   <PodiumCard 
                     key={ranking.salesperson_id}
                     ranking={ranking} 

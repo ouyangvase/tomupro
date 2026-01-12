@@ -466,27 +466,37 @@ export function useVisibleRankings(periodMode: PeriodMode = 'month') {
   const { data: settings } = useLeaderboardSettings();
   const { data: rankingsData, isLoading, isFetching } = useLeaderboardRankings(periodMode, settings?.primary_metric);
   
-  const rankings = rankingsData?.rankings || [];
+  const allRankings = rankingsData?.rankings || [];
   const lastUpdated = rankingsData?.lastUpdated || new Date();
   
-  if (!rankings.length || !profile) {
-    return { rankings: [], lastUpdated, isLoading, isFetching, hasDeliveredOrders: false };
+  if (!allRankings.length || !profile) {
+    return { 
+      rankings: [], 
+      top3Rankings: [],
+      lastUpdated, 
+      isLoading, 
+      isFetching, 
+      hasDeliveredOrders: false 
+    };
   }
   
   const visibilityMode = settings?.visibility_mode || 'all';
   const userRole = profile.role;
   
   // Check if there are any delivered orders
-  const hasDeliveredOrders = rankings.some(r => r.delivered_orders > 0 || r.net_sales > 0);
+  const hasDeliveredOrders = allRankings.some(r => r.delivered_orders > 0 || r.net_sales > 0);
+  
+  // Top 3 is ALWAYS the actual top 3 from all rankings - everyone can see this
+  const top3Rankings = allRankings.slice(0, 3);
   
   // Admin sees all
   if (userRole === 'admin') {
-    return { rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
+    return { rankings: allRankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
   }
   
-  // Manager sees bound salespeople only - for now, managers see all
+  // Manager sees all (bound salespeople - for now all)
   if (userRole === 'manager') {
-    return { rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
+    return { rankings: allRankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
   }
   
   // Salesperson visibility based on settings
@@ -494,11 +504,11 @@ export function useVisibleRankings(periodMode: PeriodMode = 'month') {
     let filteredRankings: LeaderboardRanking[];
     switch (visibilityMode) {
       case 'all':
-        filteredRankings = rankings;
+        filteredRankings = allRankings;
         break;
       case 'top_10_self':
-        const top10 = rankings.slice(0, 10);
-        const selfRanking = rankings.find(r => r.salesperson_id === profile.id);
+        const top10 = allRankings.slice(0, 10);
+        const selfRanking = allRankings.find(r => r.salesperson_id === profile.id);
         if (selfRanking && selfRanking.rank_position > 10) {
           filteredRankings = [...top10, selfRanking];
         } else {
@@ -506,13 +516,14 @@ export function useVisibleRankings(periodMode: PeriodMode = 'month') {
         }
         break;
       case 'self_only':
-        filteredRankings = rankings.filter(r => r.salesperson_id === profile.id);
+        filteredRankings = allRankings.filter(r => r.salesperson_id === profile.id);
         break;
       default:
-        filteredRankings = rankings;
+        filteredRankings = allRankings;
     }
-    return { rankings: filteredRankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
+    // Salesperson ALWAYS gets top3Rankings to display the podium
+    return { rankings: filteredRankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
   }
   
-  return { rankings: [], lastUpdated, isLoading, isFetching, hasDeliveredOrders: false };
+  return { rankings: [], top3Rankings: [], lastUpdated, isLoading, isFetching, hasDeliveredOrders: false };
 }
