@@ -64,24 +64,30 @@ export function TeamViewToggle({
       </div>
       
       {/* Salesperson Filter - only show in team mode */}
-      {viewMode === 'team' && teamMembers.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Label className="text-xs text-muted-foreground whitespace-nowrap">Salesperson:</Label>
-          <Select value={selectedMember} onValueChange={onMemberChange}>
-            <SelectTrigger className="w-[180px] h-8 text-xs">
-              <SelectValue placeholder="All Team" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Team</SelectItem>
-              <SelectItem value={profile?.id || ''}>Me (Manager)</SelectItem>
-              {teamMembers.map((member) => (
-                <SelectItem key={member.id} value={member.id}>
-                  {member.display_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {viewMode === 'team' && (
+        teamMembers.length > 0 ? (
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">Salesperson:</Label>
+            <Select value={selectedMember} onValueChange={onMemberChange}>
+              <SelectTrigger className="w-[180px] h-8 text-xs">
+                <SelectValue placeholder="All Team" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Team</SelectItem>
+                <SelectItem value={profile?.id || ''}>Me (Manager)</SelectItem>
+                {teamMembers.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.display_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground italic">
+            No team members assigned yet
+          </span>
+        )
       )}
     </div>
   );
