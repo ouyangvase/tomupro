@@ -26,11 +26,19 @@ export function useUpdateUser() {
       id: string;
       display_name?: string;
       role?: AppRole;
+      manager_id?: string | null;
     }) => {
-      const { id, role, ...otherChanges } = update;
+      const { id, role, manager_id, ...otherChanges } = update;
       
-      // Update profile
-      const profileUpdate = role ? { ...otherChanges, role } : otherChanges;
+      // Build profile update object
+      const profileUpdate: Record<string, unknown> = { ...otherChanges };
+      if (role !== undefined) {
+        profileUpdate.role = role;
+      }
+      if (manager_id !== undefined) {
+        profileUpdate.manager_id = manager_id;
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .update(profileUpdate)
@@ -56,6 +64,7 @@ export function useUpdateUser() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
       toast.success('User updated');
     },
     onError: (error) => {

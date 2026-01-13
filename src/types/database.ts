@@ -49,6 +49,8 @@ export interface Profile {
   theme_preference: 'dark' | 'light' | null;
   created_at: string;
   updated_at: string | null;
+  manager_id: string | null;
+  manager?: Profile;
 }
 
 export interface Warehouse {

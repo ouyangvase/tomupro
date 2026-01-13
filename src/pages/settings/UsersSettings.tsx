@@ -25,10 +25,12 @@ import {
   ensureWarehouseForRole,
   deactivateWarehousesForUser,
 } from '@/hooks/useUsers';
-import { Users, Pencil, Search, Filter } from 'lucide-react';
+import { useManagers } from '@/hooks/useTeamMembers';
+import { Users, Pencil, Search, Filter, UserCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Profile, AppRole } from '@/types/database';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 
 const roleColors: Record<AppRole, string> = {
   admin: 'bg-destructive text-destructive-foreground',
@@ -44,12 +46,14 @@ export default function UsersSettings() {
   const isAdmin = role === 'admin';
 
   const { data: users, isLoading } = useUsers();
+  const { data: managers = [] } = useManagers();
   const updateUser = useUpdateUser();
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editRole, setEditRole] = useState<AppRole>('salesperson');
+  const [editManagerId, setEditManagerId] = useState<string>('none');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,10 +77,22 @@ export default function UsersSettings() {
     });
   }, [users, searchQuery, roleFilter]);
 
+  // Build a map of user ID to manager name for display
+  const managerMap = useMemo(() => {
+    const map = new Map<string, string>();
+    users?.forEach(u => {
+      if (u.role === 'manager') {
+        map.set(u.id, u.display_name);
+      }
+    });
+    return map;
+  }, [users]);
+
   const handleOpenEdit = (user: Profile) => {
     setEditingUser(user);
     setEditDisplayName(user.display_name);
     setEditRole(user.role);
+    setEditManagerId(user.manager_id || 'none');
     setEditDialogOpen(true);
   };
 
@@ -85,12 +101,14 @@ export default function UsersSettings() {
 
     const previousRole = editingUser.role;
     const newRole = editRole;
+    const newManagerId = editManagerId === 'none' ? null : editManagerId;
 
-    // Update profile
+    // Update profile including manager_id
     await updateUser.mutateAsync({
       id: editingUser.id,
       display_name: editDisplayName.trim(),
       role: newRole,
+      manager_id: newManagerId,
     });
 
     // Handle warehouse automation if role changed
@@ -134,6 +152,30 @@ export default function UsersSettings() {
           {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
         </Badge>
       ),
+    },
+    {
+      key: 'manager_id',
+      header: 'Manager',
+      sortable: true,
+      render: (user) => {
+        if (!user.manager_id) return <span className="text-muted-foreground">—</span>;
+        const managerName = managerMap.get(user.manager_id);
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="gap-1">
+                  <UserCheck className="h-3 w-3" />
+                  {managerName || 'Unknown'}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Reports to: {managerName || 'Unknown'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
     },
     {
       key: 'created_at',
@@ -265,6 +307,35 @@ export default function UsersSettings() {
                 </p>
               )}
             </div>
+            
+            {/* Manager Assignment - Only for salesperson role */}
+            {(editRole === 'salesperson' || editRole === 'manager') && (
+              <div className="space-y-2">
+                <Label htmlFor="manager">Assigned Manager</Label>
+                <Select 
+                  value={editManagerId} 
+                  onValueChange={setEditManagerId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a manager..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Manager</SelectItem>
+                    {managers
+                      .filter(m => m.id !== editingUser?.id) // Cannot assign self as manager
+                      .map(manager => (
+                        <SelectItem key={manager.id} value={manager.id}>
+                          {manager.display_name}
+                        </SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Assigning a manager allows them to view and manage this user's orders and data.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>

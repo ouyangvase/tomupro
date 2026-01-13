@@ -12,11 +12,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -60,15 +61,25 @@ export default function RunnerDeliveredOrders() {
   const { user, profile, role } = useAuth();
   const queryClient = useQueryClient();
   
+  // Fetch team members for managers
+  const { data: teamMembers = [] } = useTeamMembers();
+  const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
+  
+  // Check if user is admin, manager, or salesperson
+  const isAdmin = role === 'admin';
+  const isManager = role === 'manager';
+  const isAdminOrManager = isAdmin || isManager;
+  
   // Fetch orders based on role:
   // - Runner: fetch their own orders (runner_id = user.id)
   // - Salesperson: fetch their own orders (salesperson_id = user.id)
-  // - Admin/Manager: fetch all orders
+  // - Manager: fetch their own + team orders (handled by RLS)
+  // - Admin: fetch all orders
   const ordersFilter = role === 'runner' 
     ? { runnerId: user?.id }
     : role === 'salesperson' 
       ? { salespersonId: user?.id }
-      : {}; // admin/manager see all
+      : {}; // admin/manager - RLS handles filtering for managers
   
   const { data: orders, isLoading } = useOrders(ordersFilter);
   const { data: userDirectory = [] } = useUserDirectory();
@@ -76,9 +87,6 @@ export default function RunnerDeliveredOrders() {
   const { data: products = [] } = useProducts();
   // Only fetch claim batches for runner role (they're the ones who claim)
   const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : undefined);
-  
-  // Check if user is admin or manager (can see additional filters)
-  const isAdminOrManager = role === 'admin' || role === 'manager';
   
   // Determine if current user can claim orders (only runners can claim)
   const canClaim = role === 'runner';
@@ -229,14 +237,26 @@ export default function RunnerDeliveredOrders() {
     return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
   }, [orders]);
 
-  // Salesperson filter options
+  // Salesperson filter options - scoped for managers to show only their team
   const salespersonOptions = useMemo(() => {
-    const salespersons = userDirectory.filter(u => u.role === 'salesperson');
+    if (isManager) {
+      // Manager sees: Me + Team members
+      const options = [
+        { label: `${profile?.display_name} (Me)`, value: user?.id || '' },
+        ...teamMembers.map(tm => ({
+          label: tm.display_name,
+          value: tm.id,
+        }))
+      ];
+      return options;
+    }
+    // Admin sees all salespersons
+    const salespersons = userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
     return salespersons.map(sp => ({
       label: sp.display_name,
       value: sp.id,
     }));
-  }, [userDirectory]);
+  }, [userDirectory, isManager, teamMembers, profile, user?.id]);
 
   // Driver filter options
   const driverOptions = useMemo(() => {

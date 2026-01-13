@@ -1897,6 +1897,7 @@ export type Database = {
           email: string
           id: string
           is_active: boolean
+          manager_id: string | null
           role: Database["public"]["Enums"]["app_role"]
           runner_code: string | null
           theme_preference: string | null
@@ -1910,6 +1911,7 @@ export type Database = {
           email: string
           id: string
           is_active?: boolean
+          manager_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           runner_code?: string | null
           theme_preference?: string | null
@@ -1923,12 +1925,21 @@ export type Database = {
           email?: string
           id?: string
           is_active?: boolean
+          manager_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           runner_code?: string | null
           theme_preference?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reasons: {
         Row: {
@@ -2713,6 +2724,10 @@ export type Database = {
         Args: { p_order_id: string }
         Returns: string
       }
+      get_team_member_ids: {
+        Args: { manager_user_id: string }
+        Returns: string[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -2726,6 +2741,10 @@ export type Database = {
       }
       is_driver_of_runner: {
         Args: { p_driver_id: string; p_runner_id: string }
+        Returns: boolean
+      }
+      is_in_manager_team: {
+        Args: { manager_user_id: string; salesperson_user_id: string }
         Returns: boolean
       }
       is_ranking_visible_for_driver: {
