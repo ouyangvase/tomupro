@@ -3,7 +3,6 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -13,30 +12,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { useInboundShipments, useUpdateInboundShipment, useUpdateInboundItem } from '@/hooks/useInboundShipments';
-import { useProducts, useCreateProduct } from '@/hooks/useProducts';
+import { useInboundShipments, useUpdateInboundShipment } from '@/hooks/useInboundShipments';
+import { useProducts } from '@/hooks/useProducts';
 import { useWarehouses } from '@/hooks/useInventory';
 import { useCreateBulkStockMovements } from '@/hooks/useStockMovements';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
 import type { InboundShipment, InboundItem, InboundStatus } from '@/types/database';
-import { Package, CheckCircle, AlertTriangle, ZoomIn, Check, ChevronsUpDown, Plus, X, Calendar, Image as ImageIcon } from 'lucide-react';
+import { Package, CheckCircle, AlertTriangle, ZoomIn, X, Calendar, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
 
 const statusColors: Record<InboundStatus, string> = {
@@ -94,86 +79,6 @@ function ImageLightbox({ imageUrl, alt, uploadDate, onClose }: LightboxProps) {
   );
 }
 
-interface InboundProductComboboxProps {
-  products: { id: string; sku_code: string | null; sku_name: string }[];
-  value: string;
-  newProductName?: string;
-  defaultNewName: string;
-  onChange: (productId: string, newProductName?: string) => void;
-}
-
-function InboundProductCombobox({ products, value, newProductName, defaultNewName, onChange }: InboundProductComboboxProps) {
-  const [open, setOpen] = useState(false);
-  
-  const selectedProduct = products.find(p => p.id === value);
-  const isCreatingNew = value === '' && newProductName !== undefined;
-  
-  return (
-    <div className="space-y-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="w-full justify-between text-left font-normal"
-          >
-            <span className="truncate">
-              {isCreatingNew
-                ? '+ Create New Product'
-                : selectedProduct
-                ? `${selectedProduct.sku_name}${selectedProduct.sku_code ? ` (${selectedProduct.sku_code})` : ''}`
-                : 'Select product...'}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[300px] p-0" align="start">
-          <Command>
-            <CommandInput placeholder="Search products..." />
-            <CommandList>
-              <CommandEmpty>No product found.</CommandEmpty>
-              <CommandGroup>
-                <CommandItem
-                  value="__create_new__"
-                  onSelect={() => {
-                    onChange('', defaultNewName);
-                    setOpen(false);
-                  }}
-                >
-                  <Plus className={cn("mr-2 h-4 w-4", isCreatingNew ? "opacity-100" : "opacity-50")} />
-                  + Create New Product
-                </CommandItem>
-                {products.map((p) => (
-                  <CommandItem
-                    key={p.id}
-                    value={`${p.sku_code || ''} ${p.sku_name}`}
-                    onSelect={() => {
-                      onChange(p.id, undefined);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
-                    {p.sku_name}{p.sku_code && ` (${p.sku_code})`}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-      
-      {isCreatingNew && (
-        <Input
-          placeholder="New product name"
-          value={newProductName || ''}
-          onChange={(e) => onChange('', e.target.value)}
-        />
-      )}
-    </div>
-  );
-}
-
 export default function InboundPending() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -184,80 +89,89 @@ export default function InboundPending() {
   const { data: products } = useProducts();
   const { data: warehouses } = useWarehouses();
   const updateShipment = useUpdateInboundShipment();
-  const updateItem = useUpdateInboundItem();
-  const createProduct = useCreateProduct();
   const createStockMovements = useCreateBulkStockMovements();
 
   const [selectedShipment, setSelectedShipment] = useState<InboundShipment | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
   const [disputeNotes, setDisputeNotes] = useState('');
-  const [itemAcks, setItemAcks] = useState<Record<string, { qty: number; productId: string; newProductName?: string }>>({});
   const [lightboxImage, setLightboxImage] = useState<{ url: string; alt: string; date?: string } | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Get salesperson's warehouse
   const myWarehouse = warehouses?.find(w => w.owner_user_id === user?.id && w.warehouse_type === 'SALESPERSON');
 
   const handleOpenDetail = (shipment: InboundShipment) => {
     setSelectedShipment(shipment);
-    // Initialize item acknowledgements
-    const acks: Record<string, { qty: number; productId: string }> = {};
-    shipment.inbound_items?.forEach((item) => {
-      acks[item.id] = {
-        qty: item.qty_reported,
-        productId: item.product_id || '',
-      };
-    });
-    setItemAcks(acks);
     setDetailDialogOpen(true);
   };
 
-  const handleAcknowledge = async () => {
-    if (!selectedShipment || !myWarehouse) return;
+  // Helper to get product info from product_id
+  const getProductDisplay = (item: InboundItem) => {
+    if (item.product_id) {
+      const product = products?.find(p => p.id === item.product_id);
+      if (product) {
+        return `${product.sku_code || ''} / ${product.sku_name}`.replace(/^\s*\/\s*/, '');
+      }
+    }
+    // Fallback to temp_sku_label
+    return item.temp_sku_label || 'Unknown SKU';
+  };
 
-    // Validate all items have product mapping
+  // Generate items preview for list display (e.g., "SKU1 x10, SKU2 x10")
+  const getItemsPreview = (shipment: InboundShipment) => {
+    const items = shipment.inbound_items || [];
+    if (items.length === 0) return '-';
+    
+    const previews = items.map(item => {
+      const skuDisplay = getProductDisplay(item);
+      return `${skuDisplay} x${item.qty_reported}`;
+    });
+    
+    if (previews.length <= 2) {
+      return previews.join(', ');
+    }
+    return `${previews.slice(0, 2).join(', ')} +${previews.length - 2}`;
+  };
+
+  const handleAcknowledge = async () => {
+    if (!selectedShipment || !myWarehouse) {
+      toast({ variant: 'destructive', title: 'No warehouse found for your account' });
+      return;
+    }
+
+    // Check if already acknowledged
+    if (selectedShipment.status === 'ACKNOWLEDGED') {
+      toast({ variant: 'destructive', title: 'Already acknowledged' });
+      return;
+    }
+
     const items = selectedShipment.inbound_items || [];
+    
+    // Validate all items have product_id
     for (const item of items) {
-      const ack = itemAcks[item.id];
-      if (!ack?.productId && !ack?.newProductName) {
-        toast({ variant: 'destructive', title: 'All items must have a product selected or created' });
+      if (!item.product_id) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Missing product mapping',
+          description: `Item "${item.temp_sku_label}" has no product linked. Contact runner to resubmit.`
+        });
         return;
       }
     }
 
+    setIsProcessing(true);
+
     try {
-      // Process each item
-      const stockMovements = [];
-
-      for (const item of items) {
-        const ack = itemAcks[item.id];
-        let productId = ack.productId;
-
-        // Create new product if needed
-        if (!productId && ack.newProductName) {
-          const newProduct = await createProduct.mutateAsync({
-            sku_name: ack.newProductName,
-          });
-          productId = newProduct.id;
-        }
-
-        // Update inbound item
-        await updateItem.mutateAsync({
-          id: item.id,
-          qty_acknowledged: ack.qty,
-          product_id: productId,
-        });
-
-        // Prepare stock movement
-        stockMovements.push({
-          warehouse_id: myWarehouse.id,
-          product_id: productId,
-          movement_type: 'INBOUND' as const,
-          qty_change: ack.qty,
-          reference_type: 'INBOUND_ITEM' as const,
-          reference_id: item.id,
-        });
-      }
+      // Create stock movements using EXACT reported_qty per item (no transformation)
+      const stockMovements = items.map(item => ({
+        warehouse_id: myWarehouse.id,
+        product_id: item.product_id!,
+        movement_type: 'INBOUND' as const,
+        qty_change: item.qty_reported, // Use exact reported qty
+        reference_type: 'INBOUND_ITEM' as const,
+        reference_id: item.id,
+      }));
 
       // Create all stock movements
       await createStockMovements.mutateAsync(stockMovements);
@@ -274,7 +188,11 @@ export default function InboundPending() {
         entity_id: selectedShipment.id,
         action: 'INBOUND_ACKNOWLEDGED',
         before_json: { status: 'PENDING_SP_ACK' },
-        after_json: { status: 'ACKNOWLEDGED', items_count: items.length },
+        after_json: { 
+          status: 'ACKNOWLEDGED', 
+          items_count: items.length,
+          stock_added: stockMovements.map(m => ({ product_id: m.product_id, qty: m.qty_change }))
+        },
       });
 
       toast({ title: 'Inbound acknowledged and stock added' });
@@ -282,31 +200,41 @@ export default function InboundPending() {
       setSelectedShipment(null);
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: (error as Error).message });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleDispute = async () => {
     if (!selectedShipment) return;
 
-    await updateShipment.mutateAsync({
-      id: selectedShipment.id,
-      status: 'DISPUTE',
-      notes: disputeNotes,
-    });
+    setIsProcessing(true);
 
-    await logAudit({
-      entity_type: 'inbound_shipment',
-      entity_id: selectedShipment.id,
-      action: 'INBOUND_DISPUTED',
-      before_json: { status: 'PENDING_SP_ACK' },
-      after_json: { status: 'DISPUTE', notes: disputeNotes },
-    });
+    try {
+      await updateShipment.mutateAsync({
+        id: selectedShipment.id,
+        status: 'DISPUTE',
+        notes: disputeNotes,
+      });
 
-    toast({ title: 'Inbound marked as disputed' });
-    setDisputeDialogOpen(false);
-    setDetailDialogOpen(false);
-    setSelectedShipment(null);
-    setDisputeNotes('');
+      await logAudit({
+        entity_type: 'inbound_shipment',
+        entity_id: selectedShipment.id,
+        action: 'INBOUND_DISPUTED',
+        before_json: { status: 'PENDING_SP_ACK' },
+        after_json: { status: 'DISPUTE', notes: disputeNotes },
+      });
+
+      toast({ title: 'Inbound marked as disputed' });
+      setDisputeDialogOpen(false);
+      setDetailDialogOpen(false);
+      setSelectedShipment(null);
+      setDisputeNotes('');
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Error', description: (error as Error).message });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const columns: Column<InboundShipment>[] = [
@@ -327,8 +255,17 @@ export default function InboundPending() {
       render: (s) => s.runner?.display_name || '-',
     },
     {
-      key: 'items_count',
+      key: 'items_preview',
       header: 'Items',
+      render: (s) => (
+        <span className="text-sm text-muted-foreground max-w-[200px] truncate block">
+          {getItemsPreview(s)}
+        </span>
+      ),
+    },
+    {
+      key: 'items_count',
+      header: 'Lines',
       render: (s) => s.inbound_items?.length || 0,
     },
     {
@@ -384,7 +321,7 @@ export default function InboundPending() {
 
           <div className="space-y-6 py-4">
             {/* Shipment info */}
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Runner:</span>
                 <p className="font-medium">{selectedShipment?.runner?.display_name}</p>
@@ -401,18 +338,19 @@ export default function InboundPending() {
               </div>
             </div>
 
-            {/* Items */}
+            {/* Items - Read-only display */}
             <div className="space-y-4">
-              <h3 className="font-semibold">Items</h3>
+              <h3 className="font-semibold">Items ({selectedShipment?.inbound_items?.length || 0} lines)</h3>
               {selectedShipment?.inbound_items?.map((item, index) => (
                 <Card key={item.id}>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">
-                      Item #{index + 1}: {item.temp_sku_label}
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Badge variant="outline">#{index + 1}</Badge>
+                      <span>{getProductDisplay(item)}</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {/* Photo */}
                       <div className="space-y-1">
                         {item.photo_url ? (
@@ -428,7 +366,7 @@ export default function InboundPending() {
                               <img
                                 src={item.photo_url}
                                 alt={item.temp_sku_label || 'Item photo'}
-                                className="h-32 w-full object-cover rounded border group-hover:opacity-80 transition-opacity"
+                                className="h-24 w-full object-cover rounded border group-hover:opacity-80 transition-opacity"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
                                   target.onerror = null;
@@ -447,61 +385,39 @@ export default function InboundPending() {
                             </div>
                           </div>
                         ) : (
-                          <div className="h-32 w-full bg-muted rounded border flex items-center justify-center">
+                          <div className="h-24 w-full bg-muted rounded border flex items-center justify-center">
                             <span className="text-muted-foreground text-sm">No photo</span>
                           </div>
                         )}
                       </div>
 
-                      {/* Reported qty */}
+                      {/* Reported qty - Read only */}
                       <div className="space-y-2">
-                        <Label>Reported Qty</Label>
-                        <p className="text-lg font-bold">{item.qty_reported}</p>
+                        <Label className="text-muted-foreground">Reported Qty</Label>
+                        <p className="text-2xl font-bold">{item.qty_reported}</p>
                       </div>
 
-                      {/* Acknowledged qty */}
+                      {/* Stock will be added - Read only display */}
                       <div className="space-y-2">
-                        <Label>Acknowledged Qty *</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={itemAcks[item.id]?.qty || 0}
-                          onChange={(e) =>
-                            setItemAcks({
-                              ...itemAcks,
-                              [item.id]: {
-                                ...itemAcks[item.id],
-                                qty: parseInt(e.target.value) || 0,
-                              },
-                            })
-                          }
-                        />
-                      </div>
-
-                      {/* Product mapping with searchable combobox */}
-                      <div className="space-y-2">
-                        <Label>Product *</Label>
-                        <InboundProductCombobox
-                          products={products || []}
-                          value={itemAcks[item.id]?.productId || ''}
-                          newProductName={itemAcks[item.id]?.newProductName}
-                          defaultNewName={item.temp_sku_label || ''}
-                          onChange={(productId, newProductName) =>
-                            setItemAcks({
-                              ...itemAcks,
-                              [item.id]: {
-                                ...itemAcks[item.id],
-                                productId,
-                                newProductName,
-                              },
-                            })
-                          }
-                        />
+                        <Label className="text-muted-foreground">Stock to Add</Label>
+                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                          +{item.qty_reported}
+                        </p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               ))}
+            </div>
+
+            {/* Summary */}
+            <div className="bg-muted/50 rounded-lg p-4">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Total items to add to stock:</span>
+                <span className="text-xl font-bold">
+                  {selectedShipment?.inbound_items?.reduce((sum, i) => sum + i.qty_reported, 0) || 0} units
+                </span>
+              </div>
             </div>
           </div>
 
@@ -509,13 +425,14 @@ export default function InboundPending() {
             <Button
               variant="destructive"
               onClick={() => setDisputeDialogOpen(true)}
+              disabled={isProcessing}
             >
               <AlertTriangle className="h-4 w-4 mr-1" />
-              Dispute
+              Reject / Dispute
             </Button>
-            <Button onClick={handleAcknowledge}>
+            <Button onClick={handleAcknowledge} disabled={isProcessing}>
               <CheckCircle className="h-4 w-4 mr-1" />
-              Acknowledge & Add Stock
+              {isProcessing ? 'Processing...' : 'Acknowledge & Add Stock'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -525,22 +442,24 @@ export default function InboundPending() {
       <Dialog open={disputeDialogOpen} onOpenChange={setDisputeDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dispute Inbound</DialogTitle>
+            <DialogTitle>Reject / Dispute Inbound</DialogTitle>
           </DialogHeader>
           <div className="py-4">
+            <Label>Reason for dispute</Label>
             <Textarea
               placeholder="Enter dispute notes..."
               value={disputeNotes}
               onChange={(e) => setDisputeNotes(e.target.value)}
               rows={4}
+              className="mt-2"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDisputeDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setDisputeDialogOpen(false)} disabled={isProcessing}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDispute}>
-              Submit Dispute
+            <Button variant="destructive" onClick={handleDispute} disabled={isProcessing}>
+              {isProcessing ? 'Processing...' : 'Submit Dispute'}
             </Button>
           </DialogFooter>
         </DialogContent>
