@@ -18,7 +18,8 @@ import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone } from 'lucide-react';
+import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
@@ -576,6 +577,7 @@ export default function RunnerDeliveredOrders() {
                     ]}
                     expandedFields={[
                       { label: 'Customer', value: order.customer_name || '-' },
+                      { label: 'Phone', value: <WhatsAppPhoneLink order={order} showIcon={false} /> },
                       { label: 'Address', value: order.address || '-', fullWidth: true },
                       { label: 'Payment', value: order.payment_method },
                       { label: 'Runner', value: order.runner?.display_name || '-' },
@@ -622,6 +624,7 @@ export default function RunnerDeliveredOrders() {
                       <TableHead>Date</TableHead>
                       <TableHead>Order Ref</TableHead>
                       <TableHead>Customer</TableHead>
+                      <TableHead>Phone</TableHead>
                       <TableHead>Area</TableHead>
                       <TableHead>Address</TableHead>
                       <TableHead>Items</TableHead>
@@ -639,13 +642,13 @@ export default function RunnerDeliveredOrders() {
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={canClaim ? 17 : 14} className="text-center py-8">
+                        <TableCell colSpan={canClaim ? 18 : 15} className="text-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canClaim ? 17 : 14} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={canClaim ? 18 : 15} className="text-center py-8 text-muted-foreground">
                           No delivered orders found
                         </TableCell>
                       </TableRow>
@@ -672,6 +675,7 @@ export default function RunnerDeliveredOrders() {
                             <TableCell>{format(new Date(order.order_date), 'dd MMM yyyy')}</TableCell>
                             <TableCell><span className="font-mono text-sm">{order.order_code}</span></TableCell>
                             <TableCell>{order.customer_name || '-'}</TableCell>
+                            <TableCell><WhatsAppPhoneLink order={order} /></TableCell>
                             <TableCell><Badge variant="outline">{order.area || '-'}</Badge></TableCell>
                             <TableCell>
                               <TooltipProvider>
