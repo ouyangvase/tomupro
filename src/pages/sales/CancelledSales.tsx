@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
-import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useTeamOrders } from '@/hooks/useTeamOrders';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useReasons } from '@/hooks/useReasons';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,6 +30,7 @@ import { RotateCcw, Calendar, Filter } from 'lucide-react';
 import { exportToCSV } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
+import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import type { Order, OrderStatus } from '@/types/database';
 import {
   Tooltip,
@@ -48,9 +50,14 @@ export default function CancelledSales() {
   const [filterSalesperson, setFilterSalesperson] = useState<string>('all');
   const [filterArea, setFilterArea] = useState<string>('all');
   
-  const { data: allOrders = [], isLoading } = useOrders({ 
+  // Team view state for managers
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState();
+
+  // Use team-aware orders hook
+  const { data: allOrders = [], isLoading } = useTeamOrders({ 
     status: 'CANCELLED',
-    salespersonId: role === 'salesperson' ? profile?.id : undefined 
+    salespersonIds: isManager ? salespersonIds : undefined,
+    salespersonId: role === 'salesperson' ? profile?.id : undefined,
   });
   
   const { data: userDirectory = [] } = useUserDirectory();
@@ -325,7 +332,7 @@ export default function CancelledSales() {
   return (
     <AppLayout>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold">Cancelled Sales</h1>
             <p className="text-muted-foreground">
@@ -333,6 +340,12 @@ export default function CancelledSales() {
               {hasActiveFilters && ` (filtered from ${allOrders.length} total)`}
             </p>
           </div>
+          <TeamViewToggle
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            selectedMember={selectedMember}
+            onMemberChange={setSelectedMember}
+          />
         </div>
 
         {/* Filter Panel */}

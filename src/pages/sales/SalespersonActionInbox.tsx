@@ -14,6 +14,8 @@ import { useOrders } from '@/hooks/useOrders';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { ActionResolutionDialog } from '@/components/sales/ActionResolutionDialog';
 import { BulkActionResolutionDialog } from '@/components/sales/BulkActionResolutionDialog';
 import { 
@@ -89,24 +91,13 @@ export default function SalespersonActionInbox() {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
-
-  // For manager: Get their group member IDs
-  const { data: groupMembers = [] } = useQuery({
-    queryKey: ['manager-group-members', profile?.id],
-    queryFn: async () => {
-      if (!profile?.id) return [];
-      const { data, error } = await supabase
-        .from('group_members')
-        .select(`
-          member_user_id,
-          manager_groups!inner(manager_user_id)
-        `)
-        .eq('manager_groups.manager_user_id', profile.id);
-      if (error) return [];
-      return data?.map(gm => gm.member_user_id) || [];
-    },
-    enabled: role === 'manager' && !!profile?.id,
-  });
+  
+  // Team view state for managers
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState();
+  
+  // Use team members hook directly
+  const { data: teamMembers = [] } = useTeamMembers();
+  const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
 
   // Fetch salesperson info for filtering (manager/admin)
   const salespersonIds = useMemo(() => {
@@ -114,10 +105,10 @@ export default function SalespersonActionInbox() {
       return [...new Set(allOrders.filter(o => o.salesperson_action_required).map(o => o.salesperson_id))];
     }
     if (role === 'manager') {
-      return groupMembers;
+      return [profile?.id || '', ...teamMemberIds];
     }
     return [];
-  }, [role, allOrders, groupMembers]);
+  }, [role, allOrders, teamMemberIds, profile?.id]);
 
   const { data: salespersons = [] } = useQuery({
     queryKey: ['salespersons-for-filter', salespersonIds],
@@ -137,7 +128,7 @@ export default function SalespersonActionInbox() {
   const canViewAll = role === 'admin';
   const canViewGroup = role === 'manager';
 
-  // Filter orders requiring salesperson action based on role
+  // Filter orders requiring salesperson action based on role and view mode
   const actionRequiredOrders = useMemo(() => {
     let filtered = allOrders.filter(order => needsSalespersonAction(order));
 
@@ -145,15 +136,25 @@ export default function SalespersonActionInbox() {
     if (canViewAll) {
       // Admin sees all - no additional filter
     } else if (canViewGroup) {
-      // Manager sees only their group members
-      filtered = filtered.filter(order => groupMembers.includes(order.salesperson_id));
+      // Manager - apply view mode filtering
+      if (viewMode === 'my') {
+        filtered = filtered.filter(order => order.salesperson_id === profile?.id);
+      } else {
+        // Team mode
+        const teamIds = [profile?.id, ...teamMemberIds];
+        if (selectedMember !== 'all') {
+          filtered = filtered.filter(order => order.salesperson_id === selectedMember);
+        } else {
+          filtered = filtered.filter(order => teamIds.includes(order.salesperson_id));
+        }
+      }
     } else {
       // Salesperson sees only their own
       filtered = filtered.filter(order => order.salesperson_id === profile?.id);
     }
 
-    // Apply salesperson filter (for admin/manager)
-    if (salespersonFilter !== 'all') {
+    // Apply salesperson filter (for admin)
+    if (salespersonFilter !== 'all' && canViewAll) {
       filtered = filtered.filter(o => o.salesperson_id === salespersonFilter);
     }
 
@@ -163,7 +164,7 @@ export default function SalespersonActionInbox() {
     }
 
     return filtered;
-  }, [allOrders, profile?.id, sourceFilter, salespersonFilter, canViewAll, canViewGroup, groupMembers]);
+  }, [allOrders, profile?.id, sourceFilter, salespersonFilter, canViewAll, canViewGroup, teamMemberIds, viewMode, selectedMember]);
 
   // Fetch reasons for failed orders
   const reasonIds = useMemo(() => 

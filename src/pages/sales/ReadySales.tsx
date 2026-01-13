@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
-import { useOrders, useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useTeamOrders } from '@/hooks/useTeamOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useBindings } from '@/hooks/useBindings';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,6 +39,7 @@ import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
+import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
@@ -60,9 +62,14 @@ export default function ReadySales() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   
-  const { data: orders = [], isLoading } = useOrders({ 
+  // Team view state for managers
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState();
+
+  // Use team-aware orders hook
+  const { data: orders = [], isLoading } = useTeamOrders({ 
     status: 'READY',
-    salespersonId: role === 'salesperson' ? profile?.id : undefined 
+    salespersonIds: isManager ? salespersonIds : undefined,
+    salespersonId: role === 'salesperson' ? profile?.id : undefined,
   });
 
   // Apply panel filters to orders
@@ -351,19 +358,27 @@ export default function ReadySales() {
   return (
     <AppLayout>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold">Ready Sales</h1>
             <p className="text-muted-foreground">
               Orders ready for delivery • {unassignedCount} awaiting runner assignment
             </p>
           </div>
-          {isEditable && (
-            <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
-              <Plus className="h-4 w-4 mr-2" />
-              {isMobile ? 'New' : 'New Order'}
-            </Button>
-          )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <TeamViewToggle
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              selectedMember={selectedMember}
+              onMemberChange={setSelectedMember}
+            />
+            {isEditable && (
+              <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
+                <Plus className="h-4 w-4 mr-2" />
+                {isMobile ? 'New' : 'New Order'}
+              </Button>
+            )}
+          </div>
         </div>
 
         <OrderFiltersPanel

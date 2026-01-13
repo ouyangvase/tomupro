@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
-import { useOrders, useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useTeamOrders } from '@/hooks/useTeamOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -18,10 +19,10 @@ import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { RescheduleOrderDialog } from '@/components/sales/RescheduleOrderDialog';
+import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
-import { calculateReminderState, getReminderBadgeProps } from '@/lib/reminders';
 import type { Order } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
 
@@ -36,9 +37,14 @@ export default function BookingSales() {
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [rescheduleOrder, setRescheduleOrder] = useState<Order | null>(null);
 
-  const { data: orders = [], isLoading } = useOrders({ 
+  // Team view state for managers
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState();
+
+  // Use team-aware orders hook
+  const { data: orders = [], isLoading } = useTeamOrders({ 
     status: 'BOOKING',
-    salespersonId: role === 'salesperson' ? profile?.id : undefined 
+    salespersonIds: isManager ? salespersonIds : undefined,
+    salespersonId: role === 'salesperson' ? profile?.id : undefined,
   });
   
   const updateOrder = useUpdateOrder();
@@ -253,17 +259,25 @@ export default function BookingSales() {
   return (
     <AppLayout>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold">Booking Sales</h1>
             <p className="text-muted-foreground">Orders pending pickup confirmation</p>
           </div>
-          {isEditable && (
-            <Button onClick={handleCreateNew}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Order
-            </Button>
-          )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <TeamViewToggle
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              selectedMember={selectedMember}
+              onMemberChange={setSelectedMember}
+            />
+            {isEditable && (
+              <Button onClick={handleCreateNew}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Order
+              </Button>
+            )}
+          </div>
         </div>
 
         <DataGrid
