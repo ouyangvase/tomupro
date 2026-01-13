@@ -28,7 +28,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSalespersons } from '@/hooks/useUserDirectory';
-import { useProducts } from '@/hooks/useProducts';
+import { useProductsBySalesperson } from '@/hooks/useProductsBySalesperson';
 import { useCreateInboundShipment, useCreateInboundItem, uploadInboundPhoto } from '@/hooks/useInboundShipments';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
@@ -47,7 +47,6 @@ export default function RunnerInbound() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { data: salespersons = [] } = useSalespersons();
-  const { data: products = [] } = useProducts();
   const createShipment = useCreateInboundShipment();
   const createItem = useCreateInboundItem();
 
@@ -57,6 +56,18 @@ export default function RunnerInbound() {
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<InboundItemDraft[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Fetch products scoped to selected salesperson
+  const { data: products = [], isLoading: productsLoading } = useProductsBySalesperson(salespersonId || null);
+
+  // Clear items when salesperson changes (products list changes)
+  const handleSalespersonChange = (newSalespersonId: string) => {
+    if (newSalespersonId !== salespersonId) {
+      // Clear items since product list will change
+      setItems([]);
+    }
+    setSalespersonId(newSalespersonId);
+  };
 
   const addItem = () => {
     setItems([
@@ -186,7 +197,7 @@ export default function RunnerInbound() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Salesperson *</Label>
-                <Select value={salespersonId} onValueChange={setSalespersonId}>
+                <Select value={salespersonId} onValueChange={handleSalespersonChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select salesperson..." />
                   </SelectTrigger>
@@ -237,13 +248,19 @@ export default function RunnerInbound() {
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Items ({items.length})</CardTitle>
-              <Button onClick={addItem} size="sm">
+              <Button onClick={addItem} size="sm" disabled={!salespersonId}>
                 <Plus className="h-4 w-4 mr-1" />
                 Add Item
               </Button>
             </CardHeader>
             <CardContent>
-              {items.length === 0 ? (
+              {!salespersonId ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>Select a salesperson first</p>
+                  <p className="text-sm">Product list will be scoped to the selected salesperson</p>
+                </div>
+              ) : items.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
                   <p>No items added yet</p>
@@ -257,6 +274,7 @@ export default function RunnerInbound() {
                       item={item}
                       index={index}
                       products={products}
+                      productsLoading={productsLoading}
                       onUpdate={(updates) => updateItem(item.id, updates)}
                       onRemove={() => removeItem(item.id)}
                       onPhotoChange={(file) => handlePhotoChange(item.id, file)}
@@ -288,12 +306,13 @@ interface InboundItemRowProps {
   item: InboundItemDraft;
   index: number;
   products: Array<{ id: string; sku_code: string | null; sku_name: string }>;
+  productsLoading?: boolean;
   onUpdate: (updates: Partial<InboundItemDraft>) => void;
   onRemove: () => void;
   onPhotoChange: (file: File | null) => void;
 }
 
-function InboundItemRow({ item, index, products, onUpdate, onRemove, onPhotoChange }: InboundItemRowProps) {
+function InboundItemRow({ item, index, products, productsLoading, onUpdate, onRemove, onPhotoChange }: InboundItemRowProps) {
   const [open, setOpen] = useState(false);
 
   const selectedProduct = products.find(p => p.id === item.product_id);
@@ -327,9 +346,11 @@ function InboundItemRow({ item, index, products, onUpdate, onRemove, onPhotoChan
                 )}
               >
                 <span className="truncate">
-                  {selectedProduct
-                    ? `${selectedProduct.sku_code || ''} / ${selectedProduct.sku_name}`.replace(/^\s*\/\s*/, '')
-                    : 'Select product...'}
+                  {productsLoading 
+                    ? 'Loading products...'
+                    : selectedProduct
+                      ? `${selectedProduct.sku_code || ''} / ${selectedProduct.sku_name}`.replace(/^\s*\/\s*/, '')
+                      : 'Select product...'}
                 </span>
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
@@ -338,7 +359,13 @@ function InboundItemRow({ item, index, products, onUpdate, onRemove, onPhotoChan
               <Command>
                 <CommandInput placeholder="Search products..." />
                 <CommandList>
-                  <CommandEmpty>No product found.</CommandEmpty>
+                  <CommandEmpty>
+                    {productsLoading 
+                      ? 'Loading products...' 
+                      : products.length === 0 
+                        ? 'No products found for this salesperson'
+                        : 'No product found.'}
+                  </CommandEmpty>
                   <CommandGroup>
                     {products.map((p) => (
                       <CommandItem
