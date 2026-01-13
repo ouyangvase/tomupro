@@ -15,7 +15,7 @@ import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers, useAssignOrderToDriver } from '@/hooks/useDrivers';
-import { exportSelectedOrderLines } from '@/lib/csv';
+import { exportSelectedRunnerOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { supabase } from '@/integrations/supabase/client';
@@ -184,7 +184,8 @@ export default function RunnerInbox() {
       });
       return;
     }
-    const success = exportSelectedOrderLines(orders || [], selectedRows, 'runner_inbox_selected');
+    // Runner uses simplified export format with one row per item
+    const success = exportSelectedRunnerOrderLines(orders || [], selectedRows, 'runner_delivery_list');
     if (success) {
       toast({ title: 'Export complete', description: `Exported ${selectedRows.length} order(s)` });
     }

@@ -279,3 +279,98 @@ export function exportSelectedOrderLines(
   exportOrderLines(selectedOrders, filename);
   return true;
 }
+
+// Runner simplified export - one row per item with minimal columns
+export interface RunnerOrderLineExport {
+  order_ref: string;
+  customer_name: string;
+  phone: string;
+  address: string;
+  payment_method: string;
+  notes: string;
+  salesperson_name: string;
+  sku_code: string;
+  sku_name: string;
+  qty: number;
+  total_amount: number;
+}
+
+export function exportRunnerOrderLines(
+  orders: any[],
+  filename: string
+) {
+  const lines: RunnerOrderLineExport[] = [];
+  
+  for (const order of orders) {
+    const orderItems = order.order_items || [];
+    
+    if (orderItems.length === 0) {
+      // Export order with empty item line
+      lines.push({
+        order_ref: order.order_code || '',
+        customer_name: order.customer_name || '',
+        phone: order.phone || '',
+        address: order.address || '',
+        payment_method: order.payment_method || '',
+        notes: order.notes || '',
+        salesperson_name: order.salesperson?.display_name || '',
+        sku_code: 'UNKNOWN',
+        sku_name: 'UNKNOWN',
+        qty: 0,
+        total_amount: Number(order.total_amount) || 0,
+      });
+    } else {
+      // Export one line per order item
+      for (const item of orderItems) {
+        // Get SKU code - fallback to sku_label if product not linked
+        const skuCode = item.product?.sku_code || item.sku_label || 'UNKNOWN';
+        // Get SKU name - fallback to sku_label if product not linked
+        const skuName = item.product?.sku_name || item.sku_label || 'UNKNOWN';
+        
+        lines.push({
+          order_ref: order.order_code || '',
+          customer_name: order.customer_name || '',
+          phone: order.phone || '',
+          address: order.address || '',
+          payment_method: order.payment_method || '',
+          notes: order.notes || '',
+          salesperson_name: order.salesperson?.display_name || '',
+          sku_code: skuCode,
+          sku_name: skuName,
+          qty: item.qty || 0,
+          total_amount: Number(order.total_amount) || 0,
+        });
+      }
+    }
+  }
+
+  const columns = [
+    { key: 'order_ref', header: 'order_ref' },
+    { key: 'customer_name', header: 'customer_name' },
+    { key: 'phone', header: 'phone' },
+    { key: 'address', header: 'address' },
+    { key: 'payment_method', header: 'payment_method' },
+    { key: 'notes', header: 'notes' },
+    { key: 'salesperson_name', header: 'salesperson_name' },
+    { key: 'sku_code', header: 'sku_code' },
+    { key: 'sku_name', header: 'sku_name' },
+    { key: 'qty', header: 'qty' },
+    { key: 'total_amount', header: 'total_amount' },
+  ];
+
+  exportToCSV(lines as any, columns, filename);
+}
+
+// Export selected orders for runners (simplified format)
+export function exportSelectedRunnerOrderLines(
+  orders: any[],
+  selectedIds: string[],
+  filename: string
+) {
+  if (selectedIds.length === 0) {
+    return false;
+  }
+  const selectedOrders = orders.filter(o => selectedIds.includes(o.id));
+  exportRunnerOrderLines(selectedOrders, filename);
+  return true;
+}
