@@ -1822,6 +1822,68 @@ export type Database = {
           },
         ]
       }
+      pc_notifications: {
+        Row: {
+          body: string | null
+          created_at: string | null
+          id: string
+          pc_package_id: string | null
+          read_at: string | null
+          title: string
+          user_email: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string | null
+          id?: string
+          pc_package_id?: string | null
+          read_at?: string | null
+          title: string
+          user_email: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string | null
+          id?: string
+          pc_package_id?: string | null
+          read_at?: string | null
+          title?: string
+          user_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pc_notifications_pc_package_id_fkey"
+            columns: ["pc_package_id"]
+            isOneToOne: false
+            referencedRelation: "pc_packages_mirror"
+            referencedColumns: ["pc_package_id"]
+          },
+        ]
+      }
+      pc_owner_access_mirror: {
+        Row: {
+          can_operate: boolean | null
+          created_at: string | null
+          id: string
+          owner_id: string
+          user_email: string
+        }
+        Insert: {
+          can_operate?: boolean | null
+          created_at?: string | null
+          id?: string
+          owner_id: string
+          user_email: string
+        }
+        Update: {
+          can_operate?: boolean | null
+          created_at?: string | null
+          id?: string
+          owner_id?: string
+          user_email?: string
+        }
+        Relationships: []
+      }
       pc_owners: {
         Row: {
           created_at: string
@@ -1837,6 +1899,92 @@ export type Database = {
           created_at?: string
           owner_id?: string
           owner_name?: string
+        }
+        Relationships: []
+      }
+      pc_package_lines_mirror: {
+        Row: {
+          id: string
+          pc_package_id: string
+          product_title: string | null
+          qty: number | null
+          sku_code: string | null
+          sku_ref: string | null
+          unit_price_cny: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          pc_package_id: string
+          product_title?: string | null
+          qty?: number | null
+          sku_code?: string | null
+          sku_ref?: string | null
+          unit_price_cny?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          pc_package_id?: string
+          product_title?: string | null
+          qty?: number | null
+          sku_code?: string | null
+          sku_ref?: string | null
+          unit_price_cny?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pc_package_lines_mirror_pc_package_id_fkey"
+            columns: ["pc_package_id"]
+            isOneToOne: false
+            referencedRelation: "pc_packages_mirror"
+            referencedColumns: ["pc_package_id"]
+          },
+        ]
+      }
+      pc_packages_mirror: {
+        Row: {
+          arrived_destination_at: string | null
+          destination: string | null
+          id: string
+          log_cost_rm: number | null
+          owner_id: string
+          owner_name: string | null
+          pc_package_id: string
+          status: string
+          total_paid_cny: number | null
+          tracking_no_cn: string
+          updated_at: string | null
+          weight_kg: number | null
+        }
+        Insert: {
+          arrived_destination_at?: string | null
+          destination?: string | null
+          id?: string
+          log_cost_rm?: number | null
+          owner_id: string
+          owner_name?: string | null
+          pc_package_id: string
+          status?: string
+          total_paid_cny?: number | null
+          tracking_no_cn: string
+          updated_at?: string | null
+          weight_kg?: number | null
+        }
+        Update: {
+          arrived_destination_at?: string | null
+          destination?: string | null
+          id?: string
+          log_cost_rm?: number | null
+          owner_id?: string
+          owner_name?: string | null
+          pc_package_id?: string
+          status?: string
+          total_paid_cny?: number | null
+          tracking_no_cn?: string
+          updated_at?: string | null
+          weight_kg?: number | null
         }
         Relationships: []
       }
