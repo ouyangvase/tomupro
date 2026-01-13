@@ -93,7 +93,7 @@ export default function SalespersonActionInbox() {
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   
   // Team view state for managers
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState();
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState('my');
   
   // Use team members hook directly
   const { data: teamMembers = [] } = useTeamMembers();
@@ -273,7 +273,7 @@ export default function SalespersonActionInbox() {
     <AppLayout>
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <AlertCircle className="h-6 w-6 md:h-8 md:w-8 text-orange-500" />
             <div>
@@ -281,10 +281,18 @@ export default function SalespersonActionInbox() {
               <p className="text-sm text-muted-foreground">Orders requiring your attention</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 md:mr-2" />
-            <span className="hidden md:inline">Refresh</span>
-          </Button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <TeamViewToggle
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              selectedMember={selectedMember}
+              onMemberChange={setSelectedMember}
+            />
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Refresh</span>
+            </Button>
+          </div>
         </div>
 
         {/* Stats - responsive grid */}

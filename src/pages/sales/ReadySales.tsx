@@ -63,7 +63,7 @@ export default function ReadySales() {
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   
   // Team view state for managers
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState();
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
   // Use team-aware orders hook
   const { data: orders = [], isLoading } = useTeamOrders({ 
