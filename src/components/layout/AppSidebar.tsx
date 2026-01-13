@@ -169,12 +169,12 @@ const reconciliationItems: NavItem[] = [{
   title: "Claims History",
   url: "/claims",
   icon: Receipt,
-  roles: ['admin', 'salesperson']
+  roles: ['admin', 'salesperson', 'manager']
 }, {
   title: "SP Reconciliation",
   url: "/reconciliation/sp",
   icon: FileCheck,
-  roles: ['admin', 'salesperson']
+  roles: ['admin', 'salesperson', 'manager']
 }, {
   title: "Admin Reconciliation",
   url: "/reconciliation/admin",
@@ -221,7 +221,7 @@ const inventoryItems: NavItem[] = [{
   title: "Inbound Pending",
   url: "/inbound/pending",
   icon: Package,
-  roles: ['admin', 'salesperson']
+  roles: ['admin', 'salesperson', 'manager']
 }, {
   title: "Stock Balance",
   url: "/inventory",
@@ -265,7 +265,7 @@ const settingsItems: NavItem[] = [{
   title: "Bindings",
   url: "/settings/bindings",
   icon: Users,
-  roles: ['admin', 'salesperson']
+  roles: ['admin', 'salesperson', 'manager']
 }, {
   title: "Users",
   url: "/settings/users",
