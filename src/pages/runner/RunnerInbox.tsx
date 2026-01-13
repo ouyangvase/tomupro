@@ -185,7 +185,8 @@ export default function RunnerInbox() {
       return;
     }
     // Runner uses simplified export format with one row per item
-    const success = exportSelectedRunnerOrderLines(orders || [], selectedRows, 'runner_delivery_list');
+    // Use filteredOrders to respect current filters/search
+    const success = exportSelectedRunnerOrderLines(filteredOrders || [], selectedRows, 'runner_delivery_list');
     if (success) {
       toast({ title: 'Export complete', description: `Exported ${selectedRows.length} order(s)` });
     }
