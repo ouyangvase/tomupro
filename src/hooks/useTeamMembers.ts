@@ -14,7 +14,35 @@ export function useTeamMembers() {
     queryKey: ['team-members', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      
+
+      // Primary source of truth: manager_groups + group_members
+      const { data: groups, error: groupsError } = await supabase
+        .from('manager_groups')
+        .select('id')
+        .eq('manager_user_id', user.id);
+
+      if (groupsError) throw groupsError;
+
+      const groupIds = (groups ?? []).map((g) => g.id);
+
+      if (groupIds.length > 0) {
+        const { data: memberRows, error: membersError } = await supabase
+          .from('group_members')
+          .select('member:profiles!group_members_member_user_id_fkey(*)')
+          .in('group_id', groupIds);
+
+        if (membersError) throw membersError;
+
+        const members = (
+          ((memberRows ?? []).map((r) => r.member).filter(Boolean) as unknown as Profile[])
+        )
+          .filter((m) => m.is_active)
+          .sort((a, b) => a.display_name.localeCompare(b.display_name));
+
+        return members;
+      }
+
+      // Backward-compatible fallback: profiles.manager_id
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -22,7 +50,7 @@ export function useTeamMembers() {
         .order('display_name', { ascending: true });
 
       if (error) throw error;
-      return data as Profile[];
+      return (data ?? []) as Profile[];
     },
     enabled: !!user?.id && role === 'manager',
   });

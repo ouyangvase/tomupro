@@ -28,7 +28,7 @@ export function TeamViewToggle({
   className = '',
 }: TeamViewToggleProps) {
   const { profile, role } = useAuth();
-  const { data: teamMembers = [] } = useTeamMembers();
+  const { data: teamMembers = [], isLoading: teamLoading } = useTeamMembers();
   
   // Only show for managers
   if (role !== 'manager') return null;
@@ -44,16 +44,16 @@ export function TeamViewToggle({
           onValueChange={(value) => value && onViewModeChange(value as ViewMode)}
           className="bg-muted/50 rounded-lg p-1"
         >
-          <ToggleGroupItem 
-            value="my" 
+          <ToggleGroupItem
+            value="my"
             aria-label="My Data"
             className="data-[state=on]:bg-background data-[state=on]:shadow-sm px-3 h-8 text-xs"
           >
             <User className="h-3 w-3 mr-1" />
             My Data
           </ToggleGroupItem>
-          <ToggleGroupItem 
-            value="team" 
+          <ToggleGroupItem
+            value="team"
             aria-label="Team Data"
             className="data-[state=on]:bg-background data-[state=on]:shadow-sm px-3 h-8 text-xs"
           >
@@ -65,7 +65,9 @@ export function TeamViewToggle({
       
       {/* Salesperson Filter - only show in team mode */}
       {viewMode === 'team' && (
-        teamMembers.length > 0 ? (
+        teamLoading ? (
+          <span className="text-xs text-muted-foreground">Loading team…</span>
+        ) : teamMembers.length > 0 ? (
           <div className="flex items-center gap-2">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">Salesperson:</Label>
             <Select value={selectedMember} onValueChange={onMemberChange}>
@@ -74,7 +76,7 @@ export function TeamViewToggle({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Team</SelectItem>
-                <SelectItem value={profile?.id || ''}>Me (Manager)</SelectItem>
+                {profile?.id && <SelectItem value={profile.id}>Me (Manager)</SelectItem>}
                 {teamMembers.map((member) => (
                   <SelectItem key={member.id} value={member.id}>
                     {member.display_name}
