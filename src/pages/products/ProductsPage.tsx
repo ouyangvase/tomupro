@@ -38,7 +38,7 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({ sku_name: '', sku_code: '' });
 
-  const canEdit = profile?.role === 'admin' || profile?.role === 'salesperson';
+  const canEdit = profile?.role === 'admin' || profile?.role === 'salesperson' || profile?.role === 'manager';
 
   // Filter products by search
   const filteredProducts = products?.filter((p) => {

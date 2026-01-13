@@ -518,7 +518,7 @@ export default function LeaderboardPage() {
             )}
 
             {/* User Rank Banner */}
-            {!isLoading && profile?.role === 'salesperson' && myRanking && (
+            {!isLoading && (profile?.role === 'salesperson' || profile?.role === 'manager') && myRanking && (
               <UserRankBanner 
                 ranking={myRanking} 
                 totalUsers={rankings.length}

@@ -942,17 +942,23 @@ function ManagerDashboard() {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
+            <button onClick={() => navigate('/sales/booking')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-2">
+              ➕ New Order
+            </button>
             <button onClick={() => navigate('/sales/action-required')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-2">
               ⚠️ View Team Action Required
               {(actionStats?.systemTotal ?? 0) > 0 && (
                 <Badge variant="destructive" className="ml-auto">{actionStats?.systemTotal}</Badge>
               )}
             </button>
+            <button onClick={() => navigate('/products')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+              📦 Manage Products
+            </button>
             <button onClick={() => navigate('/manager/oversight')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
               👥 Team Oversight
             </button>
-            <button onClick={() => navigate('/sales/booking')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
-              📋 View Team Orders
+            <button onClick={() => navigate('/inventory')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
+              📊 Stock Balance
             </button>
             <button onClick={() => navigate('/disputes')} className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors">
               ⚠️ Handle Disputes

@@ -58,7 +58,7 @@ export default function CancelledSales() {
   
   const bulkUpdateOrders = useBulkUpdateOrders();
 
-  const isEditable = role === 'admin' || role === 'salesperson';
+  const isEditable = role === 'admin' || role === 'salesperson' || role === 'manager';
 
   // Build users map for display
   const usersMap = useMemo(() => {
@@ -95,7 +95,7 @@ export default function CancelledSales() {
   );
   
   const salespersonOptions = useMemo(() => 
-    userDirectory.filter(u => u.role === 'salesperson'),
+    userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager'),
     [userDirectory]
   );
 

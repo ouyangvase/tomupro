@@ -1,11 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import type { Product } from '@/types/database';
 
 export function useProducts(includeInactive = false) {
+  const { user, role } = useAuth();
+  const { data: teamMembers = [] } = useTeamMembers();
+  
   return useQuery({
-    queryKey: ['products', includeInactive],
+    queryKey: ['products', includeInactive, role, user?.id, teamMembers.map(t => t.id)],
     queryFn: async () => {
       let query = supabase
         .from('products')
@@ -19,10 +24,25 @@ export function useProducts(includeInactive = false) {
         query = query.eq('is_active', true);
       }
       
+      // For salesperson, only show their own products
+      if (role === 'salesperson' && user?.id) {
+        query = query.eq('owner_user_id', user.id);
+      }
+      // For manager, show own products + team products
+      // RLS will handle this, but we can add explicit filter for clarity
+      else if (role === 'manager' && user?.id) {
+        const teamIds = [user.id, ...teamMembers.map(t => t.id)];
+        if (teamIds.length > 0) {
+          query = query.in('owner_user_id', teamIds);
+        }
+      }
+      // Admin sees all (no filter)
+      
       const { data, error } = await query;
       if (error) throw error;
       return data as (Product & { creator?: { id: string; display_name: string } })[];
     },
+    enabled: !!user?.id || role === 'admin',
   });
 }
 

@@ -73,7 +73,7 @@ export function LeaderboardDashboardCard() {
   const myRanking = useMyRanking('month');
   const previousRanking = usePreviousPeriodRanking('month');
   
-  const isSalesperson = profile?.role === 'salesperson';
+  const isSalesperson = profile?.role === 'salesperson' || profile?.role === 'manager';
 
   return (
     <Card>

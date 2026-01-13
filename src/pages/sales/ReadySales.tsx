@@ -78,7 +78,7 @@ export default function ReadySales() {
 
   // Salesperson filter options (for admin/manager)
   const salespersonOptions = useMemo(() => {
-    const salespersons = userDirectory.filter(u => u.role === 'salesperson');
+    const salespersons = userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
     return salespersons.map(sp => ({
       label: sp.display_name,
       value: sp.id,
@@ -112,7 +112,7 @@ export default function ReadySales() {
   const bulkUpdateOrders = useBulkUpdateOrders();
   const cancelOrders = useCancelOrders();
 
-  const isEditable = role === 'admin' || role === 'salesperson';
+  const isEditable = role === 'admin' || role === 'salesperson' || role === 'manager';
 
   const columns: Column<Order>[] = [
     { 
