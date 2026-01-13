@@ -25,6 +25,7 @@ import {
 import type { Order } from '@/types/database';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
+import { WhatsAppPhoneLink, WhatsAppPhoneLinkCompact } from '@/components/orders/WhatsAppPhoneLink';
 
 // Reason types for action required
 type ActionRequiredSource = 'FAILED_DELIVERY' | 'RESCHEDULED' | 'RUNNER_FLAGGED' | 'MANUAL';
@@ -446,7 +447,7 @@ export default function SalespersonActionInbox() {
                     onSelectionChange={() => toggleRow(order.id)}
                     primaryFields={[
                       { label: 'Customer', value: order.customer_name },
-                      { label: 'Phone', value: order.phone },
+                      { label: 'Phone', value: <WhatsAppPhoneLinkCompact order={order} /> },
                       ...(order.next_delivery_date ? [{ label: 'Next Date', value: format(parseISO(order.next_delivery_date), 'dd MMM') }] : []),
                     ]}
                     expandedFields={[
@@ -529,7 +530,7 @@ export default function SalespersonActionInbox() {
                         <TableCell>
                           <div>
                             <div className="font-medium">{order.customer_name}</div>
-                            <div className="text-xs text-muted-foreground">{order.phone}</div>
+                            <WhatsAppPhoneLinkCompact order={order} className="text-xs" />
                           </div>
                         </TableCell>
                         <TableCell>

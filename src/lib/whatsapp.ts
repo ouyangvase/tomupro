@@ -55,7 +55,7 @@ function getTotalQty(orderItems: OrderItem[] | undefined): number {
 }
 
 /**
- * Generate WhatsApp message using the exact template from the formula
+ * Generate WhatsApp message using the exact template
  */
 export function generateWhatsAppMessage(order: Order): string {
   const customerName = order.customer_name || 'Customer';
@@ -65,36 +65,31 @@ export function generateWhatsAppMessage(order: Order): string {
   const productInfo = formatOrderItemsForWhatsApp(order.order_items);
   const amount = Number(order.total_amount || 0).toFixed(0);
 
-  // Exact template as specified
-  const message = `Hi, this is runner Logistic Admin.
+  // Updated template with emojis and new format
+  const message = `Hi ${customerName} 👋
+This is Logistic Admin from Tomu.
 
-${customerName} - +${localPhone}
-
+📦 Delivery Info
+Name: ${customerName}
+Contact: +673${localPhone}
 Address: ${address}
-
 Area: ${area}
 
 Product: ${productInfo}
+Price: BND ${amount}
 
-Price: ${amount} BND
+✅ Delivery will be arranged according to runner route.
+📞 Runner will contact you 1 hour before delivery.
 
-Can I arrange delivery for you TOMORROW?
+💰 Please choose payment:
 
-Runner will deliver between 8am–5pm.
+COD
 
-Before delivery, the runner will call to confirm.
+Bank Transfer (please inform us for drop-off)
 
-Would you like COD or Bank Transfer?
-
-If Transfer:
-
-*BIBD BANK*
-Tomu Enterprise
-Acc: 00-008-01-0051019
-
-*Baiduri Bank*
-Tomu Enterprise
-Acc: 0300117734291`;
+BIBD: 00-008-01-0051019
+Baiduri: 0300117734291
+Tomu Enterprise`;
 
   return message;
 }
