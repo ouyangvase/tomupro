@@ -12,17 +12,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSalespersons } from '@/hooks/useUserDirectory';
+import { useProducts } from '@/hooks/useProducts';
 import { useCreateInboundShipment, useCreateInboundItem, uploadInboundPhoto } from '@/hooks/useInboundShipments';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
-import { Package, Plus, Trash2, Upload, Image } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Package, Plus, Trash2, Upload, Image, Check, ChevronsUpDown } from 'lucide-react';
 
 interface InboundItemDraft {
   id: string;
-  temp_sku_label: string;
+  product_id: string;
   qty_reported: number;
   photo_file: File | null;
   photo_preview: string | null;
@@ -32,6 +47,7 @@ export default function RunnerInbound() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { data: salespersons = [] } = useSalespersons();
+  const { data: products = [] } = useProducts();
   const createShipment = useCreateInboundShipment();
   const createItem = useCreateInboundItem();
 
@@ -47,7 +63,7 @@ export default function RunnerInbound() {
       ...items,
       {
         id: crypto.randomUUID(),
-        temp_sku_label: '',
+        product_id: '',
         qty_reported: 1,
         photo_file: null,
         photo_preview: null,
@@ -76,6 +92,18 @@ export default function RunnerInbound() {
       return;
     }
 
+    // Validate all items have product_id selected and qty > 0
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.product_id) {
+        toast({ variant: 'destructive', title: `Item #${i + 1}: Please select a product` });
+        return;
+      }
+      if (item.qty_reported <= 0) {
+        toast({ variant: 'destructive', title: `Item #${i + 1}: Quantity must be greater than 0` });
+        return;
+      }
+    }
 
     setIsSubmitting(true);
 
@@ -89,16 +117,21 @@ export default function RunnerInbound() {
         notes: notes || undefined,
       });
 
-      // Upload photos and create items
+      // Upload photos and create items - each item independently
       for (const item of items) {
         let photoUrl = '';
         if (item.photo_file) {
           photoUrl = await uploadInboundPhoto(item.photo_file, user.id);
         }
 
+        // Get product info for temp_sku_label (for display purposes)
+        const product = products.find(p => p.id === item.product_id);
+        const tempSkuLabel = product ? `${product.sku_code || ''} ${product.sku_name}`.trim() : '';
+
         await createItem.mutateAsync({
           inbound_id: shipment.id,
-          temp_sku_label: item.temp_sku_label,
+          product_id: item.product_id,
+          temp_sku_label: tempSkuLabel,
           qty_reported: item.qty_reported,
           photo_url: photoUrl,
         });
@@ -126,6 +159,12 @@ export default function RunnerInbound() {
       setIsSubmitting(false);
     }
   };
+
+  // Check if all items are valid for submission
+  const canSubmit = items.length > 0 && 
+    salespersonId && 
+    trackingNo && 
+    items.every(item => item.product_id && item.qty_reported > 0);
 
   return (
     <AppLayout>
@@ -213,70 +252,15 @@ export default function RunnerInbound() {
               ) : (
                 <div className="space-y-4">
                   {items.map((item, index) => (
-                    <div key={item.id} className="border rounded-lg p-4 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <Badge variant="outline">Item #{index + 1}</Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeItem(item.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label>SKU Label *</Label>
-                          <Input
-                            value={item.temp_sku_label}
-                            onChange={(e) => updateItem(item.id, { temp_sku_label: e.target.value })}
-                            placeholder="Product name/code"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Quantity *</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            value={item.qty_reported}
-                            onChange={(e) => updateItem(item.id, { qty_reported: parseInt(e.target.value) || 1 })}
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Photo</Label>
-                          {item.photo_preview ? (
-                            <div className="relative">
-                              <img
-                                src={item.photo_preview}
-                                alt="Preview"
-                                className="h-20 w-full object-cover rounded border"
-                              />
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                className="absolute top-1 right-1"
-                                onClick={() => updateItem(item.id, { photo_file: null, photo_preview: null })}
-                              >
-                                Change
-                              </Button>
-                            </div>
-                          ) : (
-                            <label className="flex items-center justify-center h-20 border-2 border-dashed rounded cursor-pointer hover:bg-accent/50">
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => handlePhotoChange(item.id, e.target.files?.[0] || null)}
-                              />
-                              <Upload className="h-6 w-6 text-muted-foreground" />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    <InboundItemRow
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      products={products}
+                      onUpdate={(updates) => updateItem(item.id, updates)}
+                      onRemove={() => removeItem(item.id)}
+                      onPhotoChange={(file) => handlePhotoChange(item.id, file)}
+                    />
                   ))}
                 </div>
               )}
@@ -289,12 +273,144 @@ export default function RunnerInbound() {
           <Button
             size="lg"
             onClick={handleSubmit}
-            disabled={isSubmitting || items.length === 0 || !salespersonId || !trackingNo}
+            disabled={isSubmitting || !canSubmit}
           >
             {isSubmitting ? 'Submitting...' : 'Submit Inbound'}
           </Button>
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+// Separate component for each item row with product dropdown
+interface InboundItemRowProps {
+  item: InboundItemDraft;
+  index: number;
+  products: Array<{ id: string; sku_code: string | null; sku_name: string }>;
+  onUpdate: (updates: Partial<InboundItemDraft>) => void;
+  onRemove: () => void;
+  onPhotoChange: (file: File | null) => void;
+}
+
+function InboundItemRow({ item, index, products, onUpdate, onRemove, onPhotoChange }: InboundItemRowProps) {
+  const [open, setOpen] = useState(false);
+
+  const selectedProduct = products.find(p => p.id === item.product_id);
+
+  return (
+    <div className="border rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <Badge variant="outline">Item #{index + 1}</Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onRemove}
+        >
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Product Dropdown (Required) */}
+        <div className="space-y-2">
+          <Label>Product (SKU) *</Label>
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={open}
+                className={cn(
+                  "w-full justify-between text-left font-normal",
+                  !item.product_id && "text-muted-foreground"
+                )}
+              >
+                <span className="truncate">
+                  {selectedProduct
+                    ? `${selectedProduct.sku_code || ''} / ${selectedProduct.sku_name}`.replace(/^\s*\/\s*/, '')
+                    : 'Select product...'}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Search products..." />
+                <CommandList>
+                  <CommandEmpty>No product found.</CommandEmpty>
+                  <CommandGroup>
+                    {products.map((p) => (
+                      <CommandItem
+                        key={p.id}
+                        value={`${p.sku_code || ''} ${p.sku_name}`}
+                        onSelect={() => {
+                          onUpdate({ product_id: p.id });
+                          setOpen(false);
+                        }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", item.product_id === p.id ? "opacity-100" : "opacity-0")} />
+                        {p.sku_code && <span className="font-mono mr-1">{p.sku_code}</span>}
+                        {p.sku_code && <span className="text-muted-foreground mr-1">/</span>}
+                        {p.sku_name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          {!item.product_id && (
+            <p className="text-xs text-destructive">Product selection required</p>
+          )}
+        </div>
+
+        {/* Quantity */}
+        <div className="space-y-2">
+          <Label>Quantity *</Label>
+          <Input
+            type="number"
+            min={1}
+            value={item.qty_reported}
+            onChange={(e) => onUpdate({ qty_reported: parseInt(e.target.value) || 1 })}
+          />
+          {item.qty_reported <= 0 && (
+            <p className="text-xs text-destructive">Must be greater than 0</p>
+          )}
+        </div>
+
+        {/* Photo */}
+        <div className="space-y-2">
+          <Label>Photo</Label>
+          {item.photo_preview ? (
+            <div className="relative">
+              <img
+                src={item.photo_preview}
+                alt="Preview"
+                className="h-20 w-full object-cover rounded border"
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                className="absolute top-1 right-1"
+                onClick={() => onUpdate({ photo_file: null, photo_preview: null })}
+              >
+                Change
+              </Button>
+            </div>
+          ) : (
+            <label className="flex items-center justify-center h-20 border-2 border-dashed rounded cursor-pointer hover:bg-accent/50">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => onPhotoChange(e.target.files?.[0] || null)}
+              />
+              <Upload className="h-6 w-6 text-muted-foreground" />
+            </label>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

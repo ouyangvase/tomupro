@@ -143,11 +143,19 @@ export function useCreateInboundItem() {
   return useMutation({
     mutationFn: async (item: {
       inbound_id: string;
-      temp_sku_label: string;
+      product_id: string;  // Required - must be from products table
+      temp_sku_label?: string;  // Optional display label
       qty_reported: number;
       photo_url: string;
-      product_id?: string;
     }) => {
+      // Validate product_id is provided
+      if (!item.product_id) {
+        throw new Error('Product selection is required');
+      }
+      if (item.qty_reported <= 0) {
+        throw new Error('Quantity must be greater than 0');
+      }
+      
       const { data, error } = await supabase
         .from('inbound_items')
         .insert(item)
