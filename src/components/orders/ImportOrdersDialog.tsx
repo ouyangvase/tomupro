@@ -34,10 +34,11 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: allProducts = [] } = useProducts();
-  // Filter products for salespersons - only show their own products
-  const products = role === 'salesperson' 
-    ? allProducts.filter((p: any) => p.owner_user_id === profile?.id)
-    : allProducts;
+  // Products are already filtered by role in useProducts hook
+  // For salesperson: only their own products
+  // For manager: their own + team products
+  // For admin: all products
+  const products = allProducts;
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // State
@@ -229,8 +230,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         return;
       }
 
-      // Validate SKU ownership for salesperson
-      if (role === 'salesperson') {
+      // Validate SKU ownership for salesperson/manager (products already filtered by role)
+      if (role === 'salesperson' || role === 'manager') {
         const skuValidation = validateSkuOwnership(validation.valid, products);
         if (!skuValidation.valid) {
           setErrors(['Import FAILED: Invalid SKUs found. No orders were imported.', '', ...skuValidation.errors]);

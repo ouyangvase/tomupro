@@ -80,12 +80,16 @@ function ImageLightbox({ imageUrl, alt, uploadDate, onClose }: LightboxProps) {
 }
 
 export default function InboundPending() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const { toast } = useToast();
-  const { data: shipments, isLoading } = useInboundShipments({
-    salespersonId: user?.id,
-    status: 'PENDING_SP_ACK',
-  });
+  
+  // For manager, we don't pass salespersonId filter to let RLS handle team visibility
+  // For salesperson, filter to their own shipments
+  const shipmentFilters = role === 'salesperson' 
+    ? { salespersonId: user?.id, status: 'PENDING_SP_ACK' as const }
+    : { status: 'PENDING_SP_ACK' as const }; // Admin/Manager see all their visible shipments via RLS
+  
+  const { data: shipments, isLoading } = useInboundShipments(shipmentFilters);
   const { data: products } = useProducts();
   const { data: warehouses } = useWarehouses();
   const updateShipment = useUpdateInboundShipment();
@@ -98,7 +102,7 @@ export default function InboundPending() {
   const [lightboxImage, setLightboxImage] = useState<{ url: string; alt: string; date?: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Get salesperson's warehouse
+  // Get salesperson's warehouse - for manager, we'll get the warehouse based on the shipment's salesperson
   const myWarehouse = warehouses?.find(w => w.owner_user_id === user?.id && w.warehouse_type === 'SALESPERSON');
 
   const handleOpenDetail = (shipment: InboundShipment) => {
@@ -135,8 +139,18 @@ export default function InboundPending() {
   };
 
   const handleAcknowledge = async () => {
-    if (!selectedShipment || !myWarehouse) {
-      toast({ variant: 'destructive', title: 'No warehouse found for your account' });
+    if (!selectedShipment) {
+      toast({ variant: 'destructive', title: 'No shipment selected' });
+      return;
+    }
+
+    // For manager acknowledging team member's shipment, use the shipment's salesperson's warehouse
+    const targetWarehouse = role === 'manager' 
+      ? warehouses?.find(w => w.owner_user_id === selectedShipment.salesperson_id && w.warehouse_type === 'SALESPERSON')
+      : myWarehouse;
+
+    if (!targetWarehouse) {
+      toast({ variant: 'destructive', title: 'No warehouse found for this salesperson' });
       return;
     }
 
@@ -147,7 +161,6 @@ export default function InboundPending() {
     }
 
     const items = selectedShipment.inbound_items || [];
-    
     // Validate all items have product_id
     for (const item of items) {
       if (!item.product_id) {
@@ -165,7 +178,7 @@ export default function InboundPending() {
     try {
       // Create stock movements using EXACT reported_qty per item (no transformation)
       const stockMovements = items.map(item => ({
-        warehouse_id: myWarehouse.id,
+        warehouse_id: targetWarehouse.id,
         product_id: item.product_id!,
         movement_type: 'INBOUND' as const,
         qty_change: item.qty_reported, // Use exact reported qty

@@ -45,7 +45,7 @@ export default function BookingSales() {
   const bulkUpdateOrders = useBulkUpdateOrders();
   const cancelOrders = useCancelOrders();
 
-  const isEditable = role === 'admin' || role === 'salesperson';
+  const isEditable = role === 'admin' || role === 'salesperson' || role === 'manager';
 
   const columns: Column<Order>[] = [
     { 

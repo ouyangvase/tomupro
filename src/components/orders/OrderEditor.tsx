@@ -170,10 +170,11 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const { data: allProducts = [] } = useProducts();
-  // Filter products for salespersons - only show their own products
-  const products = role === 'salesperson' 
-    ? allProducts.filter((p: any) => p.owner_user_id === profile?.id)
-    : allProducts;
+  // Products are already filtered by role in useProducts hook
+  // For salesperson: only their own products
+  // For manager: their own + team products
+  // For admin: all products
+  const products = allProducts;
   const { data: existingItems = [] } = useOrderItems(order?.id);
   const createOrder = useCreateOrder();
   const updateOrder = useUpdateOrder();
