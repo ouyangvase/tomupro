@@ -90,11 +90,11 @@ export function TeamViewToggle({
 /**
  * Hook to manage team view state for manager role
  */
-export function useTeamViewState(defaultViewMode: ViewMode = 'team') {
+export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
   const { role, profile } = useAuth();
   const { data: teamMembers = [] } = useTeamMembers();
   
-  // Default to 'team' view for managers
+  // Default view mode for managers (defaults to 'my' now)
   const [viewMode, setViewMode] = useState<ViewMode>(role === 'manager' ? defaultViewMode : 'my');
   const [selectedMember, setSelectedMember] = useState<string>('all');
   

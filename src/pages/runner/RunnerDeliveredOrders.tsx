@@ -20,6 +20,7 @@ import type { Order, ReconciliationStatus } from '@/types/database';
 import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
+import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -61,8 +62,8 @@ export default function RunnerDeliveredOrders() {
   const { user, profile, role } = useAuth();
   const queryClient = useQueryClient();
   
-  // Fetch team members for managers
-  const { data: teamMembers = [] } = useTeamMembers();
+  // Team view state for managers
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager: isManagerRole, teamMembers } = useTeamViewState('my');
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
   
   // Check if user is admin, manager, or salesperson
@@ -70,18 +71,26 @@ export default function RunnerDeliveredOrders() {
   const isManager = role === 'manager';
   const isAdminOrManager = isAdmin || isManager;
   
-  // Fetch orders based on role:
+  // Fetch orders based on role and view mode:
   // - Runner: fetch their own orders (runner_id = user.id)
   // - Salesperson: fetch their own orders (salesperson_id = user.id)
-  // - Manager: fetch their own + team orders (handled by RLS)
+  // - Manager: fetch based on view mode (my data vs team data)
   // - Admin: fetch all orders
-  const ordersFilter = role === 'runner' 
-    ? { runnerId: user?.id }
-    : role === 'salesperson' 
-      ? { salespersonId: user?.id }
-      : {}; // admin/manager - RLS handles filtering for managers
+  const ordersFilter = useMemo(() => {
+    if (role === 'runner') {
+      return { runnerId: user?.id };
+    }
+    if (role === 'salesperson') {
+      return { salespersonId: user?.id };
+    }
+    if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
+      // Use filtered salesperson IDs from team view state
+      return { salespersonIds };
+    }
+    return {}; // admin - fetch all
+  }, [role, user?.id, salespersonIds]);
   
-  const { data: orders, isLoading } = useOrders(ordersFilter);
+  const { data: orders, isLoading } = useOrders(ordersFilter as any);
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
   const { data: products = [] } = useProducts();
@@ -338,14 +347,22 @@ export default function RunnerDeliveredOrders() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <CheckCircle className="h-8 w-8 text-green-600" />
-          <div>
-            <h1 className="text-2xl font-bold">Delivered Orders</h1>
-            <p className="text-muted-foreground">
-              View all orders that have been successfully delivered
-            </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <CheckCircle className="h-8 w-8 text-green-600" />
+            <div>
+              <h1 className="text-2xl font-bold">Delivered Orders</h1>
+              <p className="text-muted-foreground">
+                View all orders that have been successfully delivered
+              </p>
+            </div>
           </div>
+          <TeamViewToggle
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            selectedMember={selectedMember}
+            onMemberChange={setSelectedMember}
+          />
         </div>
 
         {/* Stats */}
