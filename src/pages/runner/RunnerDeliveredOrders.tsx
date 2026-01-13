@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useOrders } from '@/hooks/useOrders';
@@ -246,24 +247,26 @@ export default function RunnerDeliveredOrders() {
     return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
   }, [orders]);
 
-  // Salesperson filter options - scoped for managers to show only their team
+  // Salesperson filter options - scoped based on role
   const salespersonOptions = useMemo(() => {
     if (isManager) {
       // Manager sees: Me + Team members
       const options = [
-        { label: `${profile?.display_name} (Me)`, value: user?.id || '' },
+        { label: `${profile?.display_name} (Me)`, value: user?.id || '', searchLabel: profile?.display_name || '' },
         ...teamMembers.map(tm => ({
           label: tm.display_name,
           value: tm.id,
+          searchLabel: tm.display_name,
         }))
       ];
       return options;
     }
-    // Admin sees all salespersons
+    // Admin and Runner see all salespersons
     const salespersons = userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
     return salespersons.map(sp => ({
       label: sp.display_name,
       value: sp.id,
+      searchLabel: sp.display_name,
     }));
   }, [userDirectory, isManager, teamMembers, profile, user?.id]);
 
@@ -275,12 +278,12 @@ export default function RunnerDeliveredOrders() {
     }));
   }, [myDrivers]);
 
-  // SKU filter options (for admin/manager)
+  // SKU filter options (for all roles)
   const skuOptions = useMemo(() => {
     return products.map(p => ({
-      label: `${p.sku_code || p.sku_name}`,
+      label: `${p.sku_code || ''}${p.sku_code ? ' / ' : ''}${p.sku_name}`,
       value: p.id,
-      fullLabel: `${p.sku_code || ''}${p.sku_code ? ' / ' : ''}${p.sku_name}`,
+      searchLabel: `${p.sku_code || ''} ${p.sku_name}`,
     }));
   }, [products]);
 
@@ -435,42 +438,34 @@ export default function RunnerDeliveredOrders() {
                   </SelectContent>
                 </Select>
                 
-                {/* User filter - Admin/Manager only */}
-                {isAdminOrManager && (
-                  <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
-                    <SelectTrigger className="w-full md:w-[180px] h-10">
-                      <SelectValue placeholder="All Users" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Users</SelectItem>
-                      {salespersonOptions.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                {/* User filter - All roles (Admin/Manager/Runner) */}
+                <SearchableSelect
+                  options={salespersonOptions}
+                  value={salespersonFilter}
+                  onValueChange={setSalespersonFilter}
+                  placeholder="All Users"
+                  searchPlaceholder="Search users..."
+                  allOption={{ label: 'All Users', value: 'all' }}
+                  className="w-full md:w-[180px]"
+                />
                 
-                {/* SKU filter - Admin/Manager only */}
-                {isAdminOrManager && (
-                  <Select value={skuFilter} onValueChange={setSkuFilter}>
-                    <SelectTrigger className="w-full md:w-[200px] h-10">
-                      <SelectValue placeholder="All SKUs" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All SKUs</SelectItem>
-                      {skuOptions.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.fullLabel}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                {/* SKU filter - All roles */}
+                <SearchableSelect
+                  options={skuOptions}
+                  value={skuFilter}
+                  onValueChange={setSkuFilter}
+                  placeholder="All SKUs"
+                  searchPlaceholder="Search SKU..."
+                  allOption={{ label: 'All SKUs', value: 'all' }}
+                  className="w-full md:w-[200px]"
+                />
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* SKU Summary Card - Only shown when SKU filter is active */}
-        {isAdminOrManager && skuSummary && (
+        {skuSummary && (
           <Card className="border-primary/30 bg-primary/5">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base font-medium">
