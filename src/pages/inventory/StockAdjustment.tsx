@@ -13,6 +13,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { Check, ChevronsUpDown } from 'lucide-react';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -71,6 +86,7 @@ export default function StockAdjustment() {
 
   const [warehouseId, setWarehouseId] = useState('');
   const [productId, setProductId] = useState('');
+  const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [movementType, setMovementType] = useState<'RETURN' | 'ADJUSTMENT'>('ADJUSTMENT');
   const [qtyChange, setQtyChange] = useState('');
   const [reason, setReason] = useState('');
@@ -232,18 +248,52 @@ export default function StockAdjustment() {
 
               <div className="space-y-2">
                 <Label>Product *</Label>
-                <Select value={productId} onValueChange={setProductId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select product..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products?.filter(p => p.is_active).map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.sku_name} {p.sku_code && `• ${p.sku_code}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={productSearchOpen} onOpenChange={setProductSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={productSearchOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {productId
+                        ? (() => {
+                            const p = products?.find((p) => p.id === productId);
+                            return p ? `${p.sku_name}${p.sku_code ? ` • ${p.sku_code}` : ''}` : 'Select product...';
+                          })()
+                        : 'Select product...'}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search by SKU or name..." />
+                      <CommandList>
+                        <CommandEmpty>No product found.</CommandEmpty>
+                        <CommandGroup>
+                          {products?.filter(p => p.is_active).map((p) => (
+                            <CommandItem
+                              key={p.id}
+                              value={`${p.sku_name} ${p.sku_code || ''}`}
+                              onSelect={() => {
+                                setProductId(p.id);
+                                setProductSearchOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  productId === p.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {p.sku_name} {p.sku_code && `• ${p.sku_code}`}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {warehouseId && productId && (
                   <p className="text-sm text-muted-foreground">
                     Current balance: <strong>{currentBalance}</strong>
