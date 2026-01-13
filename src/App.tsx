@@ -64,6 +64,7 @@ import LeaderboardSettings from "./pages/admin/LeaderboardSettings";
 import LeaderboardPage from "./pages/leaderboard/LeaderboardPage";
 import InviteCodesAdmin from "./pages/admin/InviteCodesAdmin";
 import MyPackagesPage from "./pages/packages/MyPackagesPage";
+import PcNotificationsPage from "./pages/packages/PcNotificationsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -175,6 +176,7 @@ function AppRoutes() {
       <Route path="/admin/invite-codes" element={<ProtectedRoute><InviteCodesAdmin /></ProtectedRoute>} />
       <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/packages" element={<ProtectedRoute><MyPackagesPage /></ProtectedRoute>} />
+      <Route path="/packages/notifications" element={<ProtectedRoute><PcNotificationsPage /></ProtectedRoute>} />
       <Route path="/admin/connection-diagnostic" element={<ProtectedRoute><ConnectionDiagnostic /></ProtectedRoute>} />
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
