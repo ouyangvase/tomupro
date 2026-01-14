@@ -3015,7 +3015,7 @@ export type Database = {
         | "TAKEN"
         | "DELIVERED"
         | "FAILED_DELIVERY"
-      warehouse_type: "SALESPERSON" | "RUNNER"
+      warehouse_type: "SALESPERSON" | "RUNNER" | "MANAGER"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3196,7 +3196,7 @@ export const Constants = {
         "DELIVERED",
         "FAILED_DELIVERY",
       ],
-      warehouse_type: ["SALESPERSON", "RUNNER"],
+      warehouse_type: ["SALESPERSON", "RUNNER", "MANAGER"],
     },
   },
 } as const
