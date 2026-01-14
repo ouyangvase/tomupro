@@ -28,7 +28,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRunnerBoundUsers } from '@/hooks/useRunnerBoundUsers';
-import { useProductsBySalesperson } from '@/hooks/useProductsBySalesperson';
+import { useProductsByOwner } from '@/hooks/useProductsByOwner';
 import { useCreateInboundShipment, useCreateInboundItem, uploadInboundPhoto } from '@/hooks/useInboundShipments';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
@@ -59,7 +59,7 @@ export default function RunnerInbound() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch products scoped to selected target user
-  const { data: products = [], isLoading: productsLoading } = useProductsBySalesperson(targetUserId || null);
+  const { data: products = [], isLoading: productsLoading } = useProductsByOwner(targetUserId || null);
 
   // Clear items when target user changes (products list changes)
   const handleTargetUserChange = (newTargetUserId: string) => {
