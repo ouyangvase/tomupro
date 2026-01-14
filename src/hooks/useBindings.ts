@@ -18,6 +18,7 @@ export function useBindings(filters?: BindingFilters | string) {
 
   return useQuery({
     queryKey: ['bindings', normalizedFilters],
+    enabled: Boolean(normalizedFilters.salespersonId || normalizedFilters.runnerId),
     queryFn: async () => {
       // First, fetch bindings
       let query = supabase
