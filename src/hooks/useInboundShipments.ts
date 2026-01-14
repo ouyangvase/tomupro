@@ -92,23 +92,26 @@ export function useUpdateInboundShipment() {
 
   return useMutation({
     mutationFn: async ({ id, notifyRunner, ...updates }: Partial<InboundShipment> & { id: string; notifyRunner?: boolean }) => {
-      // Fetch original to get runner_id if we need to notify
+      // Fetch original to get runner_id if we need to notify (avoid .single() errors under RLS)
       let runnerId: string | null = null;
       if (notifyRunner || (updates as any).status === 'ACKNOWLEDGED') {
-        const { data: original } = await supabase
+        const { data: original, error: originalError } = await supabase
           .from('inbound_shipments')
           .select('runner_id')
           .eq('id', id)
-          .single();
+          .maybeSingle();
+
+        if (originalError) throw originalError;
         runnerId = original?.runner_id || null;
       }
 
-      const { data, error } = await supabase
+      // Perform update without selecting the updated row.
+      // Managers may lose SELECT visibility after status changes, which breaks `.select().single()`.
+      const { error } = await supabase
         .from('inbound_shipments')
         .update(updates as Record<string, unknown>)
-        .eq('id', id)
-        .select()
-        .single();
+        .eq('id', id);
+
       if (error) throw error;
 
       // Notify runner when acknowledged
@@ -125,7 +128,8 @@ export function useUpdateInboundShipment() {
         });
       }
 
-      return data;
+      // Return a minimal payload; UI relies on query invalidation.
+      return { id, ...updates } as Partial<InboundShipment> & { id: string };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inbound_shipments'] });
