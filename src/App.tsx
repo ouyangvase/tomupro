@@ -1,5 +1,4 @@
 import { Toaster } from "@/components/ui/toaster";
-import ConnectionDiagnostic from "@/pages/admin/ConnectionDiagnostic";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -179,7 +178,7 @@ function AppRoutes() {
       <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/packages" element={<ProtectedRoute><MyPackagesPage /></ProtectedRoute>} />
       <Route path="/packages/notifications" element={<ProtectedRoute><PcNotificationsPage /></ProtectedRoute>} />
-      <Route path="/admin/connection-diagnostic" element={<ProtectedRoute><ConnectionDiagnostic /></ProtectedRoute>} />
+      
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
