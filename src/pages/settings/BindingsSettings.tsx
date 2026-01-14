@@ -51,7 +51,8 @@ export default function BindingsSettings() {
   const isAdmin = role === 'admin';
   const isManager = role === 'manager';
   const isSalesperson = role === 'salesperson';
-  const canManageBindings = isAdmin || isManager;
+  // All three roles can manage bindings - admin/manager for their scope, salesperson for themselves
+  const canManageBindings = isAdmin || isManager || isSalesperson;
 
   const { data: users = [], isLoading: usersLoading } = useUsers();
   const createBindings = useCreateBindings();
@@ -305,15 +306,15 @@ export default function BindingsSettings() {
             </h1>
             <p className="text-muted-foreground">
               {isSalesperson
-                ? 'View runners assigned to your account'
+                ? 'Manage runners assigned to your account'
                 : 'Manage salesperson-runner and manager-salesperson bindings'}
             </p>
           </div>
         </div>
 
-        {canManageBindings ? (
-          isAdmin ? (
-            <Tabs defaultValue="sp-runner">
+        {isAdmin ? (
+          // Admin view - Tabs for both SP-Runner and Manager-SP bindings
+          <Tabs defaultValue="sp-runner">
               <TabsList>
                 <TabsTrigger value="sp-runner" className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
@@ -488,26 +489,25 @@ export default function BindingsSettings() {
               </div>
             </TabsContent>
           </Tabs>
-          ) : (
-            // Manager view - SP-Runner binding only (for their team)
-            <SalespersonRunnerBinding
-              salespersons={salespersons}
-              filteredSalespersons={filteredSalespersons}
-              salespersonSearch={salespersonSearch}
-              setSalespersonSearch={setSelespersonSearch}
-              selectedSalesperson={effectiveSalesperson}
-              handleSelectSalesperson={handleSelectSalesperson}
-              bindings={bindings}
-              bindingsLoading={bindingsLoading}
-              usersLoading={usersLoading}
-              canManageBindings={canManageBindings}
-              handleOpenBindDialog={handleOpenBindDialog}
-              handleToggleBinding={handleToggleBinding}
-              updateBinding={updateBinding}
-            />
-          )
+        ) : isManager ? (
+          // Manager view - SP-Runner binding only (for their team)
+          <SalespersonRunnerBinding
+            salespersons={salespersons}
+            filteredSalespersons={filteredSalespersons}
+            salespersonSearch={salespersonSearch}
+            setSalespersonSearch={setSelespersonSearch}
+            selectedSalesperson={effectiveSalesperson}
+            handleSelectSalesperson={handleSelectSalesperson}
+            bindings={bindings}
+            bindingsLoading={bindingsLoading}
+            usersLoading={usersLoading}
+            canManageBindings={canManageBindings}
+            handleOpenBindDialog={handleOpenBindDialog}
+            handleToggleBinding={handleToggleBinding}
+            updateBinding={updateBinding}
+          />
         ) : (
-          // Non-manager/admin view (salesperson)
+          // Salesperson view - own bindings only
           <SalespersonRunnerBinding
             salespersons={salespersons}
             filteredSalespersons={filteredSalespersons}
