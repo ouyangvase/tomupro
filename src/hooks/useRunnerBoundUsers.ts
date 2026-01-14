@@ -10,63 +10,33 @@ export interface BoundUser {
 }
 
 /**
- * Hook to fetch all users bound to the current runner.
- * This includes both salespersons (from bindings table) and managers (from manager_runner_bindings table).
+ * Hook to fetch all active salespersons and managers that can be inbound targets.
+ * Runner can inbound to ANY active user with role salesperson or manager.
  */
 export function useRunnerBoundUsers() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['runner-bound-users', user?.id],
+    queryKey: ['inbound-target-users', user?.id],
     enabled: Boolean(user?.id),
     queryFn: async () => {
       if (!user?.id) return [] as BoundUser[];
 
-      // Fetch salesperson bindings for this runner
-      const { data: salespersonBindings, error: spError } = await supabase
-        .from('bindings')
-        .select('salesperson_id')
-        .eq('runner_id', user.id)
-        .eq('active', true);
-
-      if (spError) throw spError;
-
-      // Fetch manager bindings for this runner
-      const { data: managerBindings, error: mgrError } = await supabase
-        .from('manager_runner_bindings')
-        .select('manager_id')
-        .eq('runner_id', user.id);
-
-      if (mgrError) throw mgrError;
-
-      // Collect all user IDs
-      const salespersonIds = salespersonBindings?.map(b => b.salesperson_id) || [];
-      const managerIds = managerBindings?.map(b => b.manager_id) || [];
-      const allUserIds = [...new Set([...salespersonIds, ...managerIds])];
-
-      if (allUserIds.length === 0) {
-        return [] as BoundUser[];
-      }
-
-      // Fetch user details from user_directory
-      const { data: users, error: usersError } = await supabase
+      // Fetch all active salespersons and managers from user_directory
+      const { data: users, error } = await supabase
         .from('user_directory')
         .select('id, display_name, email, role')
-        .in('id', allUserIds)
+        .in('role', ['salesperson', 'manager'])
+        .order('role', { ascending: true })
         .order('display_name', { ascending: true });
 
-      if (usersError) throw usersError;
-
-      // Create a map of which role the binding came from
-      const salespersonIdSet = new Set(salespersonIds);
-      const managerIdSet = new Set(managerIds);
+      if (error) throw error;
 
       return (users || []).map(u => ({
         id: u.id,
         display_name: u.display_name,
         email: u.email,
-        // Use the binding type to determine label role
-        role: managerIdSet.has(u.id) ? 'manager' as const : 'salesperson' as const,
+        role: u.role as 'salesperson' | 'manager',
       })) as BoundUser[];
     },
   });
