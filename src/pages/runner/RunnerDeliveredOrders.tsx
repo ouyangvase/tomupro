@@ -18,7 +18,14 @@ import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download } from 'lucide-react';
+import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
@@ -109,6 +116,7 @@ export default function RunnerDeliveredOrders() {
   const [skuFilter, setSkuFilter] = useState('all');
   const [claimStatusFilter, setClaimStatusFilter] = useState<ClaimStatusFilter>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [exportSelectedIds, setExportSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -202,6 +210,48 @@ export default function RunnerDeliveredOrders() {
       setSelectedIds(new Set(claimableOrders.map(o => o.id)));
     }
   }, [claimableOrders, selectedIds.size]);
+
+  // Export selection handlers (for admin/manager)
+  const toggleExportSelection = useCallback((orderId: string) => {
+    setExportSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleExportSelectAll = useCallback(() => {
+    if (exportSelectedIds.size === deliveredOrders.length) {
+      setExportSelectedIds(new Set());
+    } else {
+      setExportSelectedIds(new Set(deliveredOrders.map(o => o.id)));
+    }
+  }, [deliveredOrders, exportSelectedIds.size]);
+
+  // Export handlers
+  const handleExportSelected = useCallback(() => {
+    if (exportSelectedIds.size === 0) {
+      toast.error('No orders selected for export');
+      return;
+    }
+    const success = exportSelectedOrderLines(deliveredOrders, Array.from(exportSelectedIds), 'delivered_orders_selected');
+    if (success) {
+      toast.success(`Exported ${exportSelectedIds.size} order(s)`);
+    }
+  }, [deliveredOrders, exportSelectedIds]);
+
+  const handleExportAll = useCallback(() => {
+    if (deliveredOrders.length === 0) {
+      toast.error('No orders to export');
+      return;
+    }
+    exportOrderLines(deliveredOrders, 'delivered_orders_all');
+    toast.success(`Exported ${deliveredOrders.length} order(s)`);
+  }, [deliveredOrders]);
 
   // Handle bulk claim submission
   const handleBulkClaimSubmit = async (exchangeRate: number, note?: string) => {
@@ -361,12 +411,33 @@ export default function RunnerDeliveredOrders() {
               </p>
             </div>
           </div>
-          <TeamViewToggle
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            selectedMember={selectedMember}
-            onMemberChange={setSelectedMember}
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            {isAdminOrManager && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                    <ChevronDown className="h-4 w-4 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleExportSelected} disabled={exportSelectedIds.size === 0}>
+                    Export Selected ({exportSelectedIds.size})
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportAll}>
+                    Export All ({deliveredOrders.length})
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <TeamViewToggle
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              selectedMember={selectedMember}
+              onMemberChange={setSelectedMember}
+            />
+          </div>
         </div>
 
         {/* Stats */}
@@ -544,6 +615,8 @@ export default function RunnerDeliveredOrders() {
                 const isSelected = selectedIds.has(order.id);
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
                 const batchRef = orderToBatchRef.get(order.id);
+                // Use snapshot name if profile is missing/inactive
+                const salespersonDisplayName = order.salesperson?.display_name || (order as any).created_by_name_snapshot || 'Deleted User';
 
                 return (
                   <MobileOrderCard
@@ -582,7 +655,7 @@ export default function RunnerDeliveredOrders() {
                       { label: 'Payment', value: order.payment_method },
                       { label: 'Runner', value: order.runner?.display_name || '-' },
                       { label: 'Driver', value: order.driver?.display_name || '-' },
-                      { label: 'Salesperson', value: order.salesperson?.display_name || '-' },
+                      { label: 'Salesperson', value: salespersonDisplayName },
                       ...(batchRef ? [{ label: 'Batch Ref', value: batchRef.batchId }] : []),
                     ]}
                     primaryAction={
@@ -612,6 +685,15 @@ export default function RunnerDeliveredOrders() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {isAdminOrManager && (
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={exportSelectedIds.size === deliveredOrders.length && deliveredOrders.length > 0}
+                            onCheckedChange={toggleExportSelectAll}
+                            disabled={deliveredOrders.length === 0}
+                          />
+                        </TableHead>
+                      )}
                       {canClaim && (
                         <TableHead className="w-12">
                           <Checkbox
@@ -642,13 +724,13 @@ export default function RunnerDeliveredOrders() {
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={canClaim ? 18 : 15} className="text-center py-8">
+                        <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0)} className="text-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canClaim ? 18 : 15} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0)} className="text-center py-8 text-muted-foreground">
                           No delivered orders found
                         </TableCell>
                       </TableRow>
@@ -656,10 +738,21 @@ export default function RunnerDeliveredOrders() {
                       deliveredOrders.map((order) => {
                         const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
                         const isSelected = selectedIds.has(order.id);
+                        const isExportSelected = exportSelectedIds.has(order.id);
                         const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+                        // Use snapshot name if profile is missing/inactive
+                        const salespersonDisplayName = order.salesperson?.display_name || (order as any).created_by_name_snapshot || 'Deleted User';
 
                         return (
-                          <TableRow key={order.id} className={isSelected ? 'bg-primary/5' : ''}>
+                          <TableRow key={order.id} className={isSelected || isExportSelected ? 'bg-primary/5' : ''}>
+                            {isAdminOrManager && (
+                              <TableCell>
+                                <Checkbox
+                                  checked={isExportSelected}
+                                  onCheckedChange={() => toggleExportSelection(order.id)}
+                                />
+                              </TableCell>
+                            )}
                             {canClaim && (
                               <TableCell>
                                 {isClaimable ? (
@@ -709,7 +802,7 @@ export default function RunnerDeliveredOrders() {
                             <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>
                             <TableCell>{order.runner?.display_name || '-'}</TableCell>
                             <TableCell>{order.driver?.display_name || '-'}</TableCell>
-                            <TableCell>{order.salesperson?.display_name || '-'}</TableCell>
+                            <TableCell>{salespersonDisplayName}</TableCell>
                             <TableCell>
                               {order.delivered_at 
                                 ? format(new Date(order.delivered_at), 'dd MMM yyyy HH:mm')

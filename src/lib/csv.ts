@@ -164,6 +164,8 @@ export interface OrderLineExport {
   qty: number;
   amount: number;
   total_amount: number;
+  delivered_at: string;
+  driver_name: string;
 }
 
 export function exportOrderLines(
@@ -177,6 +179,8 @@ export function exportOrderLines(
     
     if (orderItems.length === 0) {
       // Export order with empty item line
+      // Use salesperson display name from profile, fall back to snapshot if missing
+      const salespersonName = order.salesperson?.display_name || order.created_by_name_snapshot || 'Deleted User';
       lines.push({
         order_ref: order.order_code || '',
         order_id: order.id,
@@ -189,14 +193,16 @@ export function exportOrderLines(
         payment_method: order.payment_method || '',
         expected_pickup_date: order.expected_pickup_date || '',
         notes: order.notes || '',
-        salesperson_name: order.salesperson?.display_name || '',
+        salesperson_name: salespersonName,
         runner_name: order.runner?.display_name || '',
+        driver_name: order.driver?.display_name || '',
         status: order.status || '',
         runner_status: order.runner_status || '',
         reconciliation_status: order.reconciliation_status || '',
         failed_reason: order.failed_reason || '',
         failed_remark: order.failed_remark || '',
         next_delivery_date: order.next_delivery_date || '',
+        delivered_at: order.delivered_at || order.driver_delivered_at || '',
         sku_code: '',
         sku_name: '',
         qty: 0,
@@ -205,6 +211,7 @@ export function exportOrderLines(
       });
     } else {
       // Export one line per order item
+      const salespersonName = order.salesperson?.display_name || order.created_by_name_snapshot || 'Deleted User';
       for (const item of orderItems) {
         lines.push({
           order_ref: order.order_code || '',
@@ -218,14 +225,16 @@ export function exportOrderLines(
           payment_method: order.payment_method || '',
           expected_pickup_date: order.expected_pickup_date || '',
           notes: order.notes || '',
-          salesperson_name: order.salesperson?.display_name || '',
+          salesperson_name: salespersonName,
           runner_name: order.runner?.display_name || '',
+          driver_name: order.driver?.display_name || '',
           status: order.status || '',
           runner_status: order.runner_status || '',
           reconciliation_status: order.reconciliation_status || '',
           failed_reason: order.failed_reason || '',
           failed_remark: order.failed_remark || '',
           next_delivery_date: order.next_delivery_date || '',
+          delivered_at: order.delivered_at || order.driver_delivered_at || '',
           sku_code: item.product?.sku_code || '',
           sku_name: item.product?.sku_name || item.sku_label || '',
           qty: item.qty || 0,
@@ -250,12 +259,14 @@ export function exportOrderLines(
     { key: 'notes', header: 'notes' },
     { key: 'salesperson_name', header: 'salesperson_name' },
     { key: 'runner_name', header: 'runner_name' },
+    { key: 'driver_name', header: 'driver_name' },
     { key: 'status', header: 'status' },
     { key: 'runner_status', header: 'runner_status' },
     { key: 'reconciliation_status', header: 'reconciliation_status' },
     { key: 'failed_reason', header: 'failed_reason' },
     { key: 'failed_remark', header: 'failed_remark' },
     { key: 'next_delivery_date', header: 'next_delivery_date' },
+    { key: 'delivered_at', header: 'delivered_at' },
     { key: 'sku_code', header: 'sku_code' },
     { key: 'sku_name', header: 'sku_name' },
     { key: 'qty', header: 'qty' },

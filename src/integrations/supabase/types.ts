@@ -1564,6 +1564,8 @@ export type Database = {
           cancelled_by: string | null
           channel: string | null
           created_at: string
+          created_by_name_snapshot: string | null
+          created_by_user_id: string
           customer_name: string
           delivered_at: string | null
           discount_amount: number | null
@@ -1625,6 +1627,8 @@ export type Database = {
           cancelled_by?: string | null
           channel?: string | null
           created_at?: string
+          created_by_name_snapshot?: string | null
+          created_by_user_id?: string
           customer_name: string
           delivered_at?: string | null
           discount_amount?: number | null
@@ -1686,6 +1690,8 @@ export type Database = {
           cancelled_by?: string | null
           channel?: string | null
           created_at?: string
+          created_by_name_snapshot?: string | null
+          created_by_user_id?: string
           customer_name?: string
           delivered_at?: string | null
           discount_amount?: number | null
