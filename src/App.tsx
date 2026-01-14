@@ -38,6 +38,7 @@ import DriverReturns from "./pages/runner/DriverReturns";
 import DriverRanking from "./pages/runner/DriverRanking";
 import DriverLocationsPage from "./pages/runner/DriverLocationsPage";
 import InboundPending from "./pages/inbound/InboundPending";
+import InboundHistory from "./pages/inbound/InboundHistory";
 import ReconciliationSP from "./pages/reconciliation/ReconciliationSP";
 import ReconciliationAdmin from "./pages/reconciliation/ReconciliationAdmin";
 import ClaimBatchesAdmin from "./pages/admin/ClaimBatchesAdmin";
@@ -156,6 +157,7 @@ function AppRoutes() {
       <Route path="/disputes" element={<ProtectedRoute><DisputeCenter /></ProtectedRoute>} />
       <Route path="/claims" element={<ProtectedRoute><ClaimsHistory /></ProtectedRoute>} />
       <Route path="/inbound/pending" element={<ProtectedRoute><InboundPending /></ProtectedRoute>} />
+      <Route path="/inbound/history" element={<ProtectedRoute><InboundHistory /></ProtectedRoute>} />
       <Route path="/inventory" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
       <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
       <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
