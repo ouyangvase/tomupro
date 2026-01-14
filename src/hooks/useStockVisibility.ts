@@ -256,6 +256,73 @@ export function useCreateStockTransfer() {
       items: TransferItemInput[];
       notes?: string;
     }) => {
+      // First, fetch source products to get their details
+      const productIds = data.items.map(item => item.product_id);
+      const { data: sourceProducts, error: sourceProductsError } = await supabase
+        .from('products')
+        .select('*')
+        .in('id', productIds);
+      
+      if (sourceProductsError) throw sourceProductsError;
+      
+      // Check if destination user has matching products (by sku_code or sku_name)
+      // and create them if they don't exist
+      const productIdMap: Record<string, string> = {}; // source product_id -> destination product_id
+      
+      for (const sourceProduct of sourceProducts || []) {
+        // First try to find existing product for destination user by sku_code
+        let destProductId: string | null = null;
+        
+        if (sourceProduct.sku_code) {
+          const { data: existingByCode } = await supabase
+            .from('products')
+            .select('id')
+            .eq('owner_user_id', data.to_owner_id)
+            .eq('sku_code', sourceProduct.sku_code)
+            .eq('is_active', true)
+            .single();
+          
+          if (existingByCode) {
+            destProductId = existingByCode.id;
+          }
+        }
+        
+        // If not found by sku_code, try by sku_name
+        if (!destProductId) {
+          const { data: existingByName } = await supabase
+            .from('products')
+            .select('id')
+            .eq('owner_user_id', data.to_owner_id)
+            .eq('sku_name', sourceProduct.sku_name)
+            .eq('is_active', true)
+            .single();
+          
+          if (existingByName) {
+            destProductId = existingByName.id;
+          }
+        }
+        
+        // If still not found, create new product for destination user
+        if (!destProductId) {
+          const { data: newProduct, error: createError } = await supabase
+            .from('products')
+            .insert({
+              owner_user_id: data.to_owner_id,
+              sku_code: sourceProduct.sku_code,
+              sku_name: sourceProduct.sku_name,
+              is_active: true,
+              created_by: user?.id,
+            })
+            .select()
+            .single();
+          
+          if (createError) throw createError;
+          destProductId = newProduct.id;
+        }
+        
+        productIdMap[sourceProduct.id] = destProductId;
+      }
+      
       // Create transfer record
       const { data: transfer, error: transferError } = await supabase
         .from('stock_transfers')
@@ -288,6 +355,8 @@ export function useCreateStockTransfer() {
       // Create stock movements
       const movements = [];
       for (const item of data.items) {
+        const destProductId = productIdMap[item.product_id];
+        
         // TRANSFER_OUT from source
         movements.push({
           warehouse_id: data.from_warehouse_id,
@@ -299,10 +368,10 @@ export function useCreateStockTransfer() {
           created_by: user?.id,
         });
         
-        // TRANSFER_IN to destination
+        // TRANSFER_IN to destination (using mapped product ID)
         movements.push({
           warehouse_id: data.to_warehouse_id,
-          product_id: item.product_id,
+          product_id: destProductId,
           movement_type: 'TRANSFER_IN' as const,
           qty_change: item.qty,
           reference_type: 'STOCK_TRANSFER' as const,
