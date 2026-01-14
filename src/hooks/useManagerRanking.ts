@@ -25,6 +25,7 @@ export interface ManagerRankingParticipant {
 export interface ManagerRankingData {
   manager_id: string;
   manager_name: string;
+  manager_avatar_url: string | null;
   rank: number;
   leadership_score: number;
   team_realized_gmv: number;
@@ -212,7 +213,8 @@ export function useManagerRankingData(period: RankingPeriod = 'last7', metric: R
           manager_id,
           manager:profiles!manager_ranking_participants_manager_id_fkey (
             id,
-            display_name
+            display_name,
+            avatar_url
           )
         `)
         .eq('is_enabled', true);
@@ -315,6 +317,7 @@ export function useManagerRankingData(period: RankingPeriod = 'last7', metric: R
         return {
           manager_id: p.manager_id,
           manager_name: (p.manager as any)?.display_name || 'Unknown',
+          manager_avatar_url: (p.manager as any)?.avatar_url || null,
           rank: 0,
           leadership_score: kpi?.leadership_score || 0,
           team_realized_gmv: kpi?.team_realized_gmv || 0,
