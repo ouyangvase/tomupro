@@ -7,16 +7,17 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation } from 'lucide-react';
+import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import LocationTracker from '@/components/driver/LocationTracker';
+import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { formatBND } from '@/lib/currency';
+import { cn } from '@/lib/utils';
 
 const driverStatusColors: Record<string, string> = {
   ASSIGNED: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -35,11 +36,13 @@ export default function DriverInbox() {
   const updateOrder = useUpdateOrder();
 
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
+  const [deliveredDialogOpen, setDeliveredDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<any>(null);
   const [failedReason, setFailedReason] = useState('');
   const [failedRemark, setFailedRemark] = useState('');
   const [nextDeliveryDate, setNextDeliveryDate] = useState('');
-
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   // Filter orders assigned to this driver
   const myOrders = useMemo(() => {
     return orders.filter(order => order.driver_id === profile?.id);
@@ -94,8 +97,16 @@ export default function DriverInbox() {
 
   const handleMarkDelivered = async (orderId: string) => {
     await markDelivered.mutateAsync(orderId);
+    setDeliveredDialogOpen(false);
+    setSelectedOrder(null);
+    setSelectedOrderDetails(null);
   };
 
+  const handleOpenDeliveredDialog = (order: any) => {
+    setSelectedOrder(order.id);
+    setSelectedOrderDetails(order);
+    setDeliveredDialogOpen(true);
+  };
   const handleToggleOutForDelivery = async (orderId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'ASSIGNED' ? 'OUT_FOR_DELIVERY' : 'ASSIGNED';
     await updateOrder.mutateAsync({
@@ -104,12 +115,25 @@ export default function DriverInbox() {
     });
   };
 
-  const handleOpenFailedDialog = (orderId: string) => {
-    setSelectedOrder(orderId);
+  const handleOpenFailedDialog = (order: any) => {
+    setSelectedOrder(order.id);
+    setSelectedOrderDetails(order);
     setFailedReason('');
     setFailedRemark('');
     setNextDeliveryDate('');
     setFailedDialogOpen(true);
+  };
+
+  const toggleCardExpanded = (id: string) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const handleSubmitFailed = async () => {
@@ -277,23 +301,23 @@ export default function DriverInbox() {
                         </div>
                       )}
                       
-                      {/* Action Buttons */}
-                      <div className="flex gap-2 pt-3 border-t mt-3">
+                      {/* Action Buttons - Large touch targets */}
+                      <div className="flex gap-3 pt-4 border-t mt-3">
                         <Button 
-                          className="flex-1" 
+                          className="flex-1 h-12 min-h-[44px] text-base" 
                           variant="default"
-                          onClick={() => handleMarkDelivered(order.id)}
+                          onClick={() => handleOpenDeliveredDialog(order)}
                           disabled={markDelivered.isPending}
                         >
-                          <Check className="h-4 w-4 mr-1" />
+                          <Check className="h-5 w-5 mr-2" />
                           Delivered
                         </Button>
                         <Button 
-                          className="flex-1" 
+                          className="flex-1 h-12 min-h-[44px] text-base" 
                           variant="destructive"
-                          onClick={() => handleOpenFailedDialog(order.id)}
+                          onClick={() => handleOpenFailedDialog(order)}
                         >
-                          <X className="h-4 w-4 mr-1" />
+                          <X className="h-5 w-5 mr-2" />
                           Failed
                         </Button>
                       </div>
@@ -427,60 +451,81 @@ export default function DriverInbox() {
           </div>
         )}
 
-        {/* Failed Dialog */}
-        <Dialog open={failedDialogOpen} onOpenChange={setFailedDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Mark Delivery Failed</DialogTitle>
-              <DialogDescription>
-                Please select a reason and provide details about why this delivery failed.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Reason *</Label>
-                <Select value={failedReason} onValueChange={setFailedReason}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select reason" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {failedReasons.map(r => (
-                      <SelectItem key={r.id} value={r.label}>{r.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {/* Delivered Confirmation Sheet */}
+        <MobileActionSheet
+          open={deliveredDialogOpen}
+          onOpenChange={setDeliveredDialogOpen}
+          title="Confirm Delivery"
+          description={selectedOrderDetails ? `Mark ${selectedOrderDetails.order_code} as delivered?` : 'Confirm delivery'}
+          confirmLabel={markDelivered.isPending ? 'Marking...' : 'Confirm Delivered'}
+          confirmVariant="default"
+          onConfirm={() => selectedOrder && handleMarkDelivered(selectedOrder)}
+          isLoading={markDelivered.isPending}
+        >
+          {selectedOrderDetails && (
+            <div className="space-y-3 py-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Customer</span>
+                <span className="font-medium">{selectedOrderDetails.customer_name}</span>
               </div>
-              <div>
-                <Label>Remark *</Label>
-                <Textarea 
-                  value={failedRemark} 
-                  onChange={e => setFailedRemark(e.target.value)}
-                  placeholder="Additional details..."
-                />
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Amount</span>
+                <span className="font-medium">{formatBND(selectedOrderDetails.total_amount)}</span>
               </div>
-              <div>
-                <Label>Next Delivery Date (Optional - for reschedule)</Label>
-                <Input 
-                  type="date" 
-                  value={nextDeliveryDate}
-                  onChange={e => setNextDeliveryDate(e.target.value)}
-                />
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Payment</span>
+                <Badge variant="outline">{selectedOrderDetails.payment_method}</Badge>
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setFailedDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                variant="destructive" 
-                onClick={handleSubmitFailed}
-                disabled={!failedReason || !failedRemark || markFailed.isPending}
-              >
-                {markFailed.isPending ? 'Submitting...' : 'Submit'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          )}
+        </MobileActionSheet>
+
+        {/* Failed Dialog - Bottom Sheet on Mobile */}
+        <MobileActionSheet
+          open={failedDialogOpen}
+          onOpenChange={setFailedDialogOpen}
+          title="Mark Delivery Failed"
+          description="Please select a reason and provide details"
+          confirmLabel={markFailed.isPending ? 'Submitting...' : 'Submit Failed'}
+          confirmVariant="destructive"
+          onConfirm={handleSubmitFailed}
+          isLoading={markFailed.isPending}
+          confirmDisabled={!failedReason || !failedRemark}
+        >
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Reason *</Label>
+              <Select value={failedReason} onValueChange={setFailedReason}>
+                <SelectTrigger className="h-12 min-h-[44px]">
+                  <SelectValue placeholder="Select reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  {failedReasons.map(r => (
+                    <SelectItem key={r.id} value={r.label}>{r.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Remark *</Label>
+              <Textarea 
+                value={failedRemark} 
+                onChange={e => setFailedRemark(e.target.value)}
+                placeholder="Additional details..."
+                className="min-h-[100px]"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Next Delivery Date (Optional)</Label>
+              <Input 
+                type="date" 
+                value={nextDeliveryDate}
+                onChange={e => setNextDeliveryDate(e.target.value)}
+                className="h-12 min-h-[44px]"
+              />
+            </div>
+          </div>
+        </MobileActionSheet>
       </div>
     </AppLayout>
   );

@@ -249,6 +249,25 @@
   .btn-touch {
     @apply min-h-[48px];
   }
+
+  /* Mobile-first input/button sizing to prevent iOS zoom */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea,
+    button {
+      font-size: 16px !important;
+    }
+  }
+}
+
+/* Safe area for mobile devices */
+.safe-area-pb {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.safe-area-pt {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
 }
 
 @layer utilities {
