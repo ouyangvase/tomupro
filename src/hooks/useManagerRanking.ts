@@ -209,20 +209,23 @@ export function useManagerRankingData(period: RankingPeriod = 'last7', metric: R
       // Get enabled participants
       const { data: participants, error: participantsError } = await supabase
         .from('manager_ranking_participants')
-        .select(`
-          manager_id,
-          manager:profiles!manager_ranking_participants_manager_id_fkey (
-            id,
-            display_name,
-            avatar_url
-          )
-        `)
+        .select('manager_id')
         .eq('is_enabled', true);
 
       if (participantsError) throw participantsError;
       if (!participants?.length) return [];
 
       const managerIds = participants.map(p => p.manager_id);
+
+      // Fetch manager profiles separately to avoid RLS issues
+      const { data: managerProfiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, display_name, avatar_url')
+        .in('id', managerIds);
+
+      if (profilesError) throw profilesError;
+
+      const profileMap = new Map(managerProfiles?.map(p => [p.id, p]) || []);
 
       // Calculate date range
       const now = new Date();
@@ -309,6 +312,7 @@ export function useManagerRankingData(period: RankingPeriod = 'last7', metric: R
 
       // Build ranking data
       const rankingData: ManagerRankingData[] = participants.map(p => {
+        const profile = profileMap.get(p.manager_id);
         const kpi = managerKpis.get(p.manager_id);
         const prevGmv = prevGmvMap.get(p.manager_id) || 0;
         const currentGmv = kpi?.team_realized_gmv || 0;
@@ -316,8 +320,8 @@ export function useManagerRankingData(period: RankingPeriod = 'last7', metric: R
 
         return {
           manager_id: p.manager_id,
-          manager_name: (p.manager as any)?.display_name || 'Unknown',
-          manager_avatar_url: (p.manager as any)?.avatar_url || null,
+          manager_name: profile?.display_name || 'Unknown',
+          manager_avatar_url: profile?.avatar_url || null,
           rank: 0,
           leadership_score: kpi?.leadership_score || 0,
           team_realized_gmv: kpi?.team_realized_gmv || 0,
