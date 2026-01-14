@@ -32,10 +32,16 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
   const fromWarehouse = warehouses.find(w => w.owner_user_id === fromOwnerId);
   const toWarehouse = warehouses.find(w => w.owner_user_id === toOwnerId);
   
-  // Get available products for source warehouse
-  const availableStock = stockBalance.filter(
-    s => s.owner_user_id === fromOwnerId && Number(s.balance_qty) > 0
+  // Get available stock for source warehouse (for showing available qty)
+  const sourceStock = stockBalance.filter(
+    s => s.owner_user_id === fromOwnerId
   );
+  
+  // Get available qty for a product from source
+  const getSourceQty = (productId: string) => {
+    const stock = sourceStock.find(s => s.product_id === productId);
+    return stock ? Number(stock.balance_qty) : 0;
+  };
   
   const addItem = () => {
     setItems([...items, { key: crypto.randomUUID(), product_id: '', qty: 1 }]);
@@ -50,8 +56,8 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
   };
   
   const getMaxQty = (productId: string) => {
-    const stock = availableStock.find(s => s.product_id === productId);
-    return stock ? Number(stock.balance_qty) : 0;
+    // No max limit - allow any qty for transfer
+    return getSourceQty(productId);
   };
   
   const handleSubmit = async () => {
@@ -168,9 +174,9 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
                             <SelectValue placeholder="Select product" />
                           </SelectTrigger>
                           <SelectContent>
-                            {availableStock.map(s => (
-                              <SelectItem key={s.product_id} value={s.product_id}>
-                                {s.sku_code ? `${s.sku_code} - ` : ''}{s.sku_name}
+                            {products.filter(p => p.is_active).map(p => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.sku_code ? `${p.sku_code} - ` : ''}{p.sku_name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -180,13 +186,12 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
                         <Input
                           type="number"
                           min={1}
-                          max={getMaxQty(item.product_id)}
                           value={item.qty}
                           onChange={e => updateItem(item.key, 'qty', parseInt(e.target.value) || 1)}
                         />
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {getMaxQty(item.product_id)}
+                        {getSourceQty(item.product_id)}
                       </TableCell>
                       <TableCell>
                         <Button 
