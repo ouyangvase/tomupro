@@ -6,12 +6,12 @@ export interface BoundUser {
   id: string;
   display_name: string;
   email: string | null;
-  role: 'salesperson' | 'manager';
+  role: string;
 }
 
 /**
- * Hook to fetch all active salespersons and managers that can be inbound targets.
- * Runner can inbound to ANY active user with role salesperson or manager.
+ * Hook to fetch all active users that can be inbound targets.
+ * Runner can inbound to ANY active user.
  */
 export function useRunnerBoundUsers() {
   const { user } = useAuth();
@@ -22,11 +22,10 @@ export function useRunnerBoundUsers() {
     queryFn: async () => {
       if (!user?.id) return [] as BoundUser[];
 
-      // Fetch all active salespersons and managers from user_directory
+      // Fetch all active users from user_directory
       const { data: users, error } = await supabase
         .from('user_directory')
         .select('id, display_name, email, role')
-        .in('role', ['salesperson', 'manager'])
         .order('role', { ascending: true })
         .order('display_name', { ascending: true });
 
@@ -36,7 +35,7 @@ export function useRunnerBoundUsers() {
         id: u.id,
         display_name: u.display_name,
         email: u.email,
-        role: u.role as 'salesperson' | 'manager',
+        role: u.role,
       })) as BoundUser[];
     },
   });
