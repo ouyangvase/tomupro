@@ -1042,11 +1042,13 @@ function SalespersonRunnerBinding({
                   >
                     <div>
                       <p className="font-medium">
-                        {binding.runner?.display_name || 'Unknown'}
+                        {binding.runner?.display_name || binding.runner?.email || 'Unknown Runner'}
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        {binding.runner?.email}
-                      </p>
+                      {binding.runner?.email && binding.runner?.display_name && (
+                        <p className="text-sm text-muted-foreground">
+                          {binding.runner.email}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         Bound {format(new Date(binding.created_at), 'MMM d, yyyy')}
                       </p>
@@ -1227,11 +1229,13 @@ function ManagerRunnerBindingPanel({
                   >
                     <div>
                       <p className="font-medium">
-                        {binding.runner?.display_name || 'Unknown'}
+                        {binding.runner?.display_name || binding.runner?.email || 'Unknown Runner'}
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        {binding.runner?.email}
-                      </p>
+                      {binding.runner?.email && binding.runner?.display_name && (
+                        <p className="text-sm text-muted-foreground">
+                          {binding.runner.email}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         Bound {format(new Date(binding.created_at), 'MMM d, yyyy')}
                       </p>

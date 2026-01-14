@@ -215,7 +215,7 @@ export default function ReadySales() {
       key: 'runner_id', 
       header: 'Runner', 
       filterable: true,
-      filterOptions: bindings.map(b => ({ label: b.runner?.display_name || 'Unknown', value: b.runner_id })),
+      filterOptions: bindings.map(b => ({ label: b.runner?.display_name || b.runner?.email || 'Unknown', value: b.runner_id })),
       render: (o) => {
         if (!o.runner) return <span className="text-muted-foreground">Unassigned</span>;
         return (
@@ -667,7 +667,7 @@ export default function ReadySales() {
                 ) : (
                   bindings.map((binding) => (
                     <SelectItem key={binding.runner_id} value={binding.runner_id}>
-                      {binding.runner?.display_name || 'Unknown Runner'}
+                      {binding.runner?.display_name || binding.runner?.email || 'Unknown Runner'}
                     </SelectItem>
                   ))
                 )}
