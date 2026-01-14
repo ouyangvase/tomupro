@@ -164,16 +164,18 @@ export default function BindingsSettings() {
   const boundSalespersonIds = new Set(allGroupMembers.map(m => m.member_user_id));
 
   // Available salespersons for manager (not already bound to any manager)
+  // Admins can see all salespersons, managers only see their team
   const availableSalespersonsForManager = useMemo(() => {
     const searchLower = spSearchForManager.toLowerCase();
-    return salespersons.filter(
+    const sourceSalespersons = isAdmin ? allSalespersons : salespersons;
+    return sourceSalespersons.filter(
       (sp) =>
         !boundSalespersonIds.has(sp.id) &&
         (!spSearchForManager ||
           sp.display_name.toLowerCase().includes(searchLower) ||
           sp.email.toLowerCase().includes(searchLower))
     );
-  }, [salespersons, boundSalespersonIds, spSearchForManager]);
+  }, [isAdmin, allSalespersons, salespersons, boundSalespersonIds, spSearchForManager]);
 
   // Get member count per manager
   const getManagerMemberCount = (managerId: string) => {
