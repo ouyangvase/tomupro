@@ -176,6 +176,11 @@ const managerItems: NavItem[] = [{
   icon: Award,
   roles: ['manager', 'admin']
 }, {
+  title: "Ranking Board",
+  url: "/manager/ranking-board",
+  icon: Trophy,
+  roles: ['manager', 'admin']
+}, {
   title: "Team Oversight",
   url: "/manager/oversight",
   icon: Users,

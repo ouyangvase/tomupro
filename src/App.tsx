@@ -55,6 +55,7 @@ import NotificationCenter from "./pages/notifications/NotificationCenter";
 import ManagerOversight from "./pages/manager/ManagerOversight";
 import ManagerDashboard from "./pages/manager/ManagerDashboard";
 import ManagerImpactBoard from "./pages/manager/ManagerImpactBoard";
+import ManagerRankingBoard from "./pages/manager/ManagerRankingBoard";
 import AdminOverview from "./pages/admin/AdminOverview";
 import RunnerDeliveryCharges from "./pages/runner/RunnerDeliveryCharges";
 import RunnerDeliveredOrders from "./pages/runner/RunnerDeliveredOrders";
@@ -169,6 +170,7 @@ function AppRoutes() {
       <Route path="/notifications" element={<ProtectedRoute><NotificationCenter /></ProtectedRoute>} />
       <Route path="/manager/dashboard" element={<ProtectedRoute><ManagerDashboard /></ProtectedRoute>} />
       <Route path="/manager/impact-board" element={<ProtectedRoute><ManagerImpactBoard /></ProtectedRoute>} />
+      <Route path="/manager/ranking-board" element={<ProtectedRoute><ManagerRankingBoard /></ProtectedRoute>} />
       <Route path="/manager/oversight" element={<ProtectedRoute><ManagerOversight /></ProtectedRoute>} />
       <Route path="/admin/overview" element={<ProtectedRoute><AdminOverview /></ProtectedRoute>} />
       <Route path="/runner/delivery-charges" element={<ProtectedRoute><RunnerDeliveryCharges /></ProtectedRoute>} />
