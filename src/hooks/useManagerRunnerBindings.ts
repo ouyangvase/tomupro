@@ -27,6 +27,7 @@ interface ManagerRunnerBindingFilters {
 export function useManagerRunnerBindings(filters?: ManagerRunnerBindingFilters) {
   return useQuery({
     queryKey: ['manager-runner-bindings', filters],
+    enabled: Boolean(filters?.managerId),
     queryFn: async () => {
       let query = supabase
         .from('manager_runner_bindings')

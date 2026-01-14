@@ -6,6 +6,7 @@ import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useTeamOrders } from '@/hooks/useTeamOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useBindings } from '@/hooks/useBindings';
+import { useManagerRunnerBindings } from '@/hooks/useManagerRunnerBindings';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { Button } from '@/components/ui/button';
@@ -131,11 +132,38 @@ export default function ReadySales() {
   };
   
   const bindingSalespersonId = getBindingSalespersonId();
-  
-  // Fetch bindings - always fetch for salesperson, or when admin has selected orders
+
+  const bindingOwner = useMemo(() => {
+    if (!bindingSalespersonId) return undefined;
+    return userDirectory.find(u => u.id === bindingSalespersonId);
+  }, [bindingSalespersonId, userDirectory]);
+
+  const bindingOwnerIsManager = bindingOwner?.role === 'manager';
+
+  // Fetch bindings for salesperson-owned orders
   const { data: bindings = [], isLoading: bindingsLoading } = useBindings(
-    bindingSalespersonId ? { salespersonId: bindingSalespersonId, active: true } : undefined
+    bindingSalespersonId && !bindingOwnerIsManager
+      ? { salespersonId: bindingSalespersonId, active: true }
+      : undefined
   );
+
+  // Fetch bindings for manager-owned orders
+  const { data: managerRunnerBindings = [], isLoading: managerRunnerBindingsLoading } = useManagerRunnerBindings(
+    bindingSalespersonId && bindingOwnerIsManager
+      ? { managerId: bindingSalespersonId }
+      : undefined
+  );
+
+  const runnerOptions = useMemo(() => {
+    const source = bindingOwnerIsManager ? managerRunnerBindings : bindings;
+    return source.map((b: any) => ({
+      id: b.runner_id as string,
+      label: b.runner?.display_name || b.runner?.email || 'Unknown Runner',
+    }));
+  }, [bindingOwnerIsManager, managerRunnerBindings, bindings]);
+
+  const runnersLoading = bindingOwnerIsManager ? managerRunnerBindingsLoading : bindingsLoading;
+
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
   const cancelOrders = useCancelOrders();
@@ -215,7 +243,7 @@ export default function ReadySales() {
       key: 'runner_id', 
       header: 'Runner', 
       filterable: true,
-      filterOptions: bindings.map(b => ({ label: b.runner?.display_name || b.runner?.email || 'Unknown', value: b.runner_id })),
+      filterOptions: runnerOptions.map(o => ({ label: o.label, value: o.id })),
       render: (o) => {
         if (!o.runner) return <span className="text-muted-foreground">Unassigned</span>;
         return (
@@ -648,26 +676,28 @@ export default function ReadySales() {
                   <SelectValue placeholder="Select a runner..." />
                 </SelectTrigger>
                 <SelectContent>
-                {bindingsLoading ? (
+                {runnersLoading ? (
                   <div className="p-2 text-sm text-muted-foreground">
                     Loading runners...
                   </div>
                 ) : !bindingSalespersonId ? (
                   <div className="p-2 text-sm text-muted-foreground">
-                    {hasMixedSalespersons 
+                    {hasMixedSalespersons
                       ? 'Select a salesperson first to see available runners.'
                       : 'Select orders first to see available runners.'}
                   </div>
-                ) : bindings.length === 0 ? (
+                ) : runnerOptions.length === 0 ? (
                   <div className="p-2 text-sm text-muted-foreground">
-                    {role === 'salesperson' 
+                    {role === 'salesperson'
                       ? 'No runners bound to your account. Contact admin to set up bindings.'
-                      : 'No runners bound to this salesperson. Set up bindings in Settings > Bindings.'}
+                      : bindingOwnerIsManager
+                        ? 'No runners bound to this manager. Set up bindings in Settings > Bindings > My Runners.'
+                        : 'No runners bound to this salesperson. Set up bindings in Settings > Bindings.'}
                   </div>
                 ) : (
-                  bindings.map((binding) => (
-                    <SelectItem key={binding.runner_id} value={binding.runner_id}>
-                      {binding.runner?.display_name || binding.runner?.email || 'Unknown Runner'}
+                  runnerOptions.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.label}
                     </SelectItem>
                   ))
                 )}
