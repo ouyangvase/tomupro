@@ -2803,6 +2803,17 @@ export type Database = {
           },
         ]
       }
+      v_runner_target_users: {
+        Row: {
+          email: string | null
+          name: string | null
+          role: Database["public"]["Enums"]["app_role"] | null
+          runner_id: string | null
+          user_id: string | null
+          warehouse_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       ack_inbound_and_add_stock: {
