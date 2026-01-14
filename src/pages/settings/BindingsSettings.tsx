@@ -39,6 +39,7 @@ import {
   useAddGroupMember,
   useRemoveGroupMember,
 } from '@/hooks/useStockVisibility';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { Link2, Link2Off, Search, Users, UserCheck, RefreshCw, UserPlus, Trash2, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Profile } from '@/types/database';
@@ -48,7 +49,9 @@ import { toast } from 'sonner';
 export default function BindingsSettings() {
   const { profile, role } = useAuth();
   const isAdmin = role === 'admin';
+  const isManager = role === 'manager';
   const isSalesperson = role === 'salesperson';
+  const canManageBindings = isAdmin || isManager;
 
   const { data: users = [], isLoading: usersLoading } = useUsers();
   const createBindings = useCreateBindings();
@@ -60,6 +63,9 @@ export default function BindingsSettings() {
   const createGroup = useCreateManagerGroup();
   const addMember = useAddGroupMember();
   const removeMember = useRemoveGroupMember();
+  
+  // Team members for managers
+  const { data: teamMembers = [] } = useTeamMembers();
 
   // Salesperson or selected salesperson (for SP-Runner binding)
   const [selectedSalesperson, setSelectedSalesperson] = useState<Profile | null>(null);
@@ -84,10 +90,20 @@ export default function BindingsSettings() {
   const [memberToRemove, setMemberToRemove] = useState<{ id: string; name: string } | null>(null);
 
   // Filter users by role
-  const salespersons = useMemo(
+  const allSalespersons = useMemo(
     () => users.filter((u) => u.role === 'salesperson'),
     [users]
   );
+  
+  // For managers, only show their team's salespersons; for admins, show all
+  const salespersons = useMemo(() => {
+    if (isManager && teamMembers.length > 0) {
+      const teamMemberIds = new Set(teamMembers.map(m => m.id));
+      return allSalespersons.filter((s) => teamMemberIds.has(s.id));
+    }
+    return allSalespersons;
+  }, [allSalespersons, isManager, teamMembers]);
+  
   const runners = useMemo(() => users.filter((u) => u.role === 'runner'), [users]);
   const managers = useMemo(() => users.filter((u) => u.role === 'manager'), [users]);
 
@@ -293,35 +309,36 @@ export default function BindingsSettings() {
           </div>
         </div>
 
-        {isAdmin ? (
-          <Tabs defaultValue="sp-runner">
-            <TabsList>
-              <TabsTrigger value="sp-runner" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Salesperson ↔ Runner
-              </TabsTrigger>
-              <TabsTrigger value="manager-sp" className="flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                Manager ↔ Salesperson
-              </TabsTrigger>
-            </TabsList>
+        {canManageBindings ? (
+          isAdmin ? (
+            <Tabs defaultValue="sp-runner">
+              <TabsList>
+                <TabsTrigger value="sp-runner" className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Salesperson ↔ Runner
+                </TabsTrigger>
+                <TabsTrigger value="manager-sp" className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Manager ↔ Salesperson
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="sp-runner" className="mt-6">
-              <SalespersonRunnerBinding
-                salespersons={salespersons}
-                filteredSalespersons={filteredSalespersons}
-                salespersonSearch={salespersonSearch}
-                setSalespersonSearch={setSelespersonSearch}
-                selectedSalesperson={effectiveSalesperson}
-                handleSelectSalesperson={handleSelectSalesperson}
-                bindings={bindings}
-                bindingsLoading={bindingsLoading}
-                usersLoading={usersLoading}
-                isAdmin={isAdmin}
-                handleOpenBindDialog={handleOpenBindDialog}
-                handleToggleBinding={handleToggleBinding}
-                updateBinding={updateBinding}
-              />
+              <TabsContent value="sp-runner" className="mt-6">
+                <SalespersonRunnerBinding
+                  salespersons={salespersons}
+                  filteredSalespersons={filteredSalespersons}
+                  salespersonSearch={salespersonSearch}
+                  setSalespersonSearch={setSelespersonSearch}
+                  selectedSalesperson={effectiveSalesperson}
+                  handleSelectSalesperson={handleSelectSalesperson}
+                  bindings={bindings}
+                  bindingsLoading={bindingsLoading}
+                  usersLoading={usersLoading}
+                  canManageBindings={canManageBindings}
+                  handleOpenBindDialog={handleOpenBindDialog}
+                  handleToggleBinding={handleToggleBinding}
+                  updateBinding={updateBinding}
+                />
             </TabsContent>
 
             <TabsContent value="manager-sp" className="mt-6">
@@ -469,8 +486,26 @@ export default function BindingsSettings() {
               </div>
             </TabsContent>
           </Tabs>
+          ) : (
+            // Manager view - SP-Runner binding only (for their team)
+            <SalespersonRunnerBinding
+              salespersons={salespersons}
+              filteredSalespersons={filteredSalespersons}
+              salespersonSearch={salespersonSearch}
+              setSalespersonSearch={setSelespersonSearch}
+              selectedSalesperson={effectiveSalesperson}
+              handleSelectSalesperson={handleSelectSalesperson}
+              bindings={bindings}
+              bindingsLoading={bindingsLoading}
+              usersLoading={usersLoading}
+              canManageBindings={canManageBindings}
+              handleOpenBindDialog={handleOpenBindDialog}
+              handleToggleBinding={handleToggleBinding}
+              updateBinding={updateBinding}
+            />
+          )
         ) : (
-          // Non-admin view (salesperson)
+          // Non-manager/admin view (salesperson)
           <SalespersonRunnerBinding
             salespersons={salespersons}
             filteredSalespersons={filteredSalespersons}
@@ -481,7 +516,7 @@ export default function BindingsSettings() {
             bindings={bindings}
             bindingsLoading={bindingsLoading}
             usersLoading={usersLoading}
-            isAdmin={isAdmin}
+            canManageBindings={canManageBindings}
             handleOpenBindDialog={handleOpenBindDialog}
             handleToggleBinding={handleToggleBinding}
             updateBinding={updateBinding}
@@ -655,7 +690,7 @@ interface SalespersonRunnerBindingProps {
   bindings: any[];
   bindingsLoading: boolean;
   usersLoading: boolean;
-  isAdmin: boolean;
+  canManageBindings: boolean;
   handleOpenBindDialog: () => void;
   handleToggleBinding: (id: string, active: boolean) => void;
   updateBinding: any;
@@ -671,7 +706,7 @@ function SalespersonRunnerBinding({
   bindings,
   bindingsLoading,
   usersLoading,
-  isAdmin,
+  canManageBindings,
   handleOpenBindDialog,
   handleToggleBinding,
   updateBinding,
@@ -746,7 +781,7 @@ function SalespersonRunnerBinding({
                 ? `Runners for ${selectedSalesperson.display_name}`
                 : 'Select a Salesperson'}
             </CardTitle>
-            {isAdmin && selectedSalesperson && (
+            {canManageBindings && selectedSalesperson && (
               <Button size="sm" onClick={handleOpenBindDialog}>
                 <Link2 className="h-4 w-4 mr-2" />
                 Bind Runners
@@ -793,7 +828,7 @@ function SalespersonRunnerBinding({
                       <Badge variant={binding.active ? 'default' : 'secondary'}>
                         {binding.active ? 'Active' : 'Inactive'}
                       </Badge>
-                      {isAdmin && (
+                      {canManageBindings && (
                         <Button
                           size="sm"
                           variant={binding.active ? 'destructive' : 'outline'}
