@@ -226,7 +226,7 @@ const inventoryItems: NavItem[] = [{
   title: "Inbound History",
   url: "/inbound/history",
   icon: History,
-  roles: ['admin', 'salesperson', 'manager']
+  roles: ['admin']
 }, {
   title: "Stock Balance",
   url: "/inventory",

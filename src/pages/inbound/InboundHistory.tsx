@@ -84,7 +84,20 @@ function ImageLightbox({ imageUrl, alt, uploadDate, onClose }: LightboxProps) {
 }
 
 export default function InboundHistory() {
-  const { user, role } = useAuth();
+  const { user, profile } = useAuth();
+  const role = profile?.role;
+  
+  // Admin-only access
+  if (role !== 'admin') {
+    return (
+      <AppLayout>
+        <div className="p-6">
+          <h1 className="text-2xl font-bold text-destructive">Access Denied</h1>
+          <p className="text-muted-foreground mt-2">This page is only accessible to administrators.</p>
+        </div>
+      </AppLayout>
+    );
+  }
   
   // Fetch all shipments (RLS handles visibility)
   const { data: allShipments, isLoading } = useInboundShipments();
