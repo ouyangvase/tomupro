@@ -45,6 +45,14 @@ export function useWarehouseStats() {
 
       if (runnerError) throw runnerError;
 
+      // Get all managers
+      const { data: managers, error: managerError } = await supabase
+        .from('profiles')
+        .select('id, display_name, email')
+        .eq('role', 'manager');
+
+      if (managerError) throw managerError;
+
       // Get all warehouses
       const { data: warehouses, error: whError } = await supabase
         .from('warehouses')
@@ -68,6 +76,14 @@ export function useWarehouseStats() {
       );
       const runnersMissing = runners?.filter(r => !runnerWithWarehouse.has(r.id)) || [];
 
+      // Find managers without warehouses
+      const managerWithWarehouse = new Set(
+        warehouses
+          .filter(w => w.warehouse_type === 'MANAGER')
+          .map(w => w.owner_user_id)
+      );
+      const managersMissing = managers?.filter(m => !managerWithWarehouse.has(m.id)) || [];
+
       return {
         totalSalespersons: salespersons?.length || 0,
         salespersonsWithWarehouse: spWithWarehouse.size,
@@ -75,6 +91,9 @@ export function useWarehouseStats() {
         totalRunners: runners?.length || 0,
         runnersWithWarehouse: runnerWithWarehouse.size,
         runnersMissing,
+        totalManagers: managers?.length || 0,
+        managersWithWarehouse: managerWithWarehouse.size,
+        managersMissing,
         totalWarehouses: warehouses?.length || 0,
       };
     },
@@ -204,6 +223,20 @@ export function useBackfillWarehouses() {
       const existingRunnerSet = new Set(existingRunner?.map(w => w.owner_user_id) || []);
       const missingRunners = runners?.filter(r => !existingRunnerSet.has(r.id)) || [];
 
+      // Get missing managers
+      const { data: managers } = await supabase
+        .from('profiles')
+        .select('id, display_name')
+        .eq('role', 'manager');
+
+      const { data: existingManager } = await supabase
+        .from('warehouses')
+        .select('owner_user_id')
+        .eq('warehouse_type', 'MANAGER');
+
+      const existingManagerSet = new Set(existingManager?.map(w => w.owner_user_id) || []);
+      const missingManagers = managers?.filter(m => !existingManagerSet.has(m.id)) || [];
+
       // Create warehouses for missing salespersons
       const spCreations = missingSP.map(sp => ({
         warehouse_type: 'SALESPERSON' as WarehouseType,
@@ -220,7 +253,15 @@ export function useBackfillWarehouses() {
         is_active: true,
       }));
 
-      const allCreations = [...spCreations, ...runnerCreations];
+      // Create warehouses for missing managers
+      const managerCreations = missingManagers.map(m => ({
+        warehouse_type: 'MANAGER' as WarehouseType,
+        owner_user_id: m.id,
+        name: `${m.display_name || 'User'}'s Warehouse`,
+        is_active: true,
+      }));
+
+      const allCreations = [...spCreations, ...runnerCreations, ...managerCreations];
 
       if (allCreations.length === 0) {
         return { created: 0 };

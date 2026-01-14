@@ -78,12 +78,12 @@ export async function ensureWarehouseForRole(
   role: AppRole,
   displayName: string
 ): Promise<void> {
-  // Only create warehouse for salesperson or runner
-  if (role !== 'salesperson' && role !== 'runner') {
+  // Only create warehouse for salesperson, runner, or manager
+  if (role !== 'salesperson' && role !== 'runner' && role !== 'manager') {
     return;
   }
 
-  const warehouseType = role === 'salesperson' ? 'SALESPERSON' : 'RUNNER';
+  const warehouseType = role === 'salesperson' ? 'SALESPERSON' : role === 'runner' ? 'RUNNER' : 'MANAGER';
 
   // Check if warehouse already exists
   const { data: existingWarehouses, error: fetchError } = await supabase
@@ -125,12 +125,12 @@ export async function deactivateWarehousesForUser(
   userId: string,
   previousRole: AppRole
 ): Promise<void> {
-  // Only deactivate if changing away from salesperson/runner
-  if (previousRole !== 'salesperson' && previousRole !== 'runner') {
+  // Only deactivate if changing away from salesperson/runner/manager
+  if (previousRole !== 'salesperson' && previousRole !== 'runner' && previousRole !== 'manager') {
     return;
   }
 
-  const warehouseType = previousRole === 'salesperson' ? 'SALESPERSON' : 'RUNNER';
+  const warehouseType = previousRole === 'salesperson' ? 'SALESPERSON' : previousRole === 'runner' ? 'RUNNER' : 'MANAGER';
 
   await supabase
     .from('warehouses')
