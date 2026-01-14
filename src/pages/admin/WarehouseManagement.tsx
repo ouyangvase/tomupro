@@ -37,7 +37,7 @@ export default function WarehouseManagement() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'SALESPERSON' | 'RUNNER'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'SALESPERSON' | 'RUNNER' | 'MANAGER'>('all');
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<WarehouseWithOwner | null>(null);
@@ -124,13 +124,15 @@ export default function WarehouseManagement() {
       // When editing, allow changing to any user of matching role
       return users.filter(u => 
         (formType === 'SALESPERSON' && u.role === 'salesperson') ||
-        (formType === 'RUNNER' && u.role === 'runner')
+        (formType === 'RUNNER' && u.role === 'runner') ||
+        (formType === 'MANAGER' && u.role === 'manager')
       );
     }
     // For new warehouses, filter by type
     return users.filter(u => 
       (formType === 'SALESPERSON' && u.role === 'salesperson') ||
-      (formType === 'RUNNER' && u.role === 'runner')
+      (formType === 'RUNNER' && u.role === 'runner') ||
+      (formType === 'MANAGER' && u.role === 'manager')
     );
   }, [users, formType, editingWarehouse]);
 
@@ -199,7 +201,7 @@ export default function WarehouseManagement() {
     },
   ];
 
-  const totalMissing = (stats?.salespersonsMissing.length || 0) + (stats?.runnersMissing.length || 0);
+  const totalMissing = (stats?.salespersonsMissing.length || 0) + (stats?.runnersMissing.length || 0) + (stats?.managersMissing?.length || 0);
 
   return (
     <AppLayout>
@@ -216,7 +218,7 @@ export default function WarehouseManagement() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -271,6 +273,30 @@ export default function WarehouseManagement() {
                     {stats?.runnersWithWarehouse} / {stats?.totalRunners}
                   </span>
                   {stats?.runnersMissing.length === 0 ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Managers
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {statsLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold">
+                    {stats?.managersWithWarehouse || 0} / {stats?.totalManagers || 0}
+                  </span>
+                  {(stats?.managersMissing?.length || 0) === 0 ? (
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
                   ) : (
                     <AlertTriangle className="h-5 w-5 text-yellow-500" />
@@ -349,6 +375,18 @@ export default function WarehouseManagement() {
                   </div>
                 </div>
               )}
+              {stats?.managersMissing && stats.managersMissing.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-sm mb-2">Managers ({stats.managersMissing.length})</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {stats.managersMissing.map(m => (
+                      <Badge key={m.id} variant="outline" className="text-xs">
+                        {m.display_name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -372,6 +410,7 @@ export default function WarehouseManagement() {
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="SALESPERSON">Salesperson</SelectItem>
               <SelectItem value="RUNNER">Runner</SelectItem>
+              <SelectItem value="MANAGER">Manager</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
@@ -423,6 +462,7 @@ export default function WarehouseManagement() {
                     <SelectContent>
                       <SelectItem value="SALESPERSON">Salesperson</SelectItem>
                       <SelectItem value="RUNNER">Runner</SelectItem>
+                      <SelectItem value="MANAGER">Manager</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

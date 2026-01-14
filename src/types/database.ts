@@ -1,6 +1,6 @@
 // Custom types for the application
 export type AppRole = 'admin' | 'manager' | 'salesperson' | 'runner' | 'driver' | 'user';
-export type WarehouseType = 'SALESPERSON' | 'RUNNER';
+export type WarehouseType = 'SALESPERSON' | 'RUNNER' | 'MANAGER';
 export type PaymentMethod = 'COD' | 'TRANSFER';
 export type OrderStatus = 'BOOKING' | 'READY' | 'CANCELLED';
 export type RunnerStatus = 'UNASSIGNED' | 'ASSIGNED' | 'TAKEN' | 'DELIVERED' | 'FAILED_DELIVERY';
