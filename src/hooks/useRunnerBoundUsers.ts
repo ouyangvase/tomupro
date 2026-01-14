@@ -12,7 +12,7 @@ export interface BoundUser {
 
 /**
  * Hook to fetch all users bound to the current runner.
- * This includes both salespersons (from bindings table) and managers (from manager_runner_bindings table).
+ * Uses the v_runner_target_users view which unifies salesperson and manager bindings.
  * Only returns users who have an ACTIVE warehouse.
  */
 export function useRunnerBoundUsers() {
@@ -26,77 +26,36 @@ export function useRunnerBoundUsers() {
 
       console.log('[useRunnerBoundUsers] Fetching bound users for runner ID:', user.id);
 
-      // Fetch salesperson bindings for this runner (from bindings table)
-      const { data: salespersonBindings, error: spError } = await supabase
-        .from('bindings')
-        .select('salesperson_id')
+      // Use the unified view that combines salesperson and manager bindings
+      const { data, error } = await supabase
+        .from('v_runner_target_users')
+        .select('*')
         .eq('runner_id', user.id)
-        .eq('active', true);
+        .order('name', { ascending: true });
 
-      if (spError) throw spError;
-
-      // Fetch manager bindings for this runner
-      const { data: managerBindings, error: mgrError } = await supabase
-        .from('manager_runner_bindings')
-        .select('manager_id')
-        .eq('runner_id', user.id);
-
-      if (mgrError) throw mgrError;
-
-      // Collect all user IDs from both binding types
-      const salespersonIds = salespersonBindings?.map(b => b.salesperson_id) || [];
-      const managerIds = managerBindings?.map(b => b.manager_id) || [];
-      const allUserIds = [...new Set([...salespersonIds, ...managerIds])];
-
-      console.log('[useRunnerBoundUsers] Salesperson IDs from bindings:', salespersonIds.length);
-      console.log('[useRunnerBoundUsers] Manager IDs from manager_runner_bindings:', managerIds.length);
-      console.log('[useRunnerBoundUsers] Total unique user IDs:', allUserIds.length);
-
-      if (allUserIds.length === 0) {
-        console.log('[useRunnerBoundUsers] No bound users found');
-        return [] as BoundUser[];
+      if (error) {
+        console.error('[useRunnerBoundUsers] Error fetching from view:', error);
+        throw error;
       }
 
-      // Fetch profiles with their roles (user_directory has role from profiles)
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, display_name, email, role, is_active')
-        .in('id', allUserIds)
-        .eq('is_active', true)
-        .in('role', ['salesperson', 'manager'])
-        .order('display_name', { ascending: true });
+      console.log('[useRunnerBoundUsers] Raw results from view:', data?.length);
 
-      if (profilesError) throw profilesError;
-
-      // Fetch active warehouses for these users
-      const { data: warehouses, error: warehousesError } = await supabase
-        .from('warehouses')
-        .select('id, owner_user_id')
-        .in('owner_user_id', allUserIds)
-        .eq('is_active', true);
-
-      if (warehousesError) throw warehousesError;
-
-      // Create warehouse lookup map
-      const warehouseMap = new Map<string, string>();
-      (warehouses || []).forEach(w => {
-        warehouseMap.set(w.owner_user_id, w.id);
+      // Filter to only users with warehouses and deduplicate by user_id
+      const userMap = new Map<string, BoundUser>();
+      
+      (data || []).forEach(row => {
+        if (row.user_id && row.warehouse_id && !userMap.has(row.user_id)) {
+          userMap.set(row.user_id, {
+            id: row.user_id,
+            display_name: row.name || 'Unknown',
+            email: row.email,
+            role: (row.role as 'salesperson' | 'manager') || 'salesperson',
+            warehouse_id: row.warehouse_id,
+          });
+        }
       });
 
-      console.log('[useRunnerBoundUsers] Profiles found:', profiles?.length);
-      console.log('[useRunnerBoundUsers] Active warehouses found:', warehouses?.length);
-
-      // Filter to only users with active warehouses and map to result
-      const result = (profiles || [])
-        .filter(p => warehouseMap.has(p.id))
-        .map(p => ({
-          id: p.id,
-          display_name: p.display_name,
-          email: p.email,
-          // Use actual role from profile, not binding type
-          role: p.role as 'salesperson' | 'manager',
-          warehouse_id: warehouseMap.get(p.id) || null,
-        }));
+      const result = Array.from(userMap.values());
 
       console.log('[useRunnerBoundUsers] Final users with warehouses:', result.length);
       console.log('[useRunnerBoundUsers] Roles breakdown:', {
@@ -104,7 +63,7 @@ export function useRunnerBoundUsers() {
         managers: result.filter(u => u.role === 'manager').length,
       });
 
-      return result as BoundUser[];
+      return result;
     },
   });
 }
