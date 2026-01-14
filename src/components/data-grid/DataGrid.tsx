@@ -279,7 +279,7 @@ export function DataGrid<T extends object>({
 
   return (
     <div className="space-y-4 md:space-y-6">
-      {/* Toolbar - Responsive */}
+      {/* Toolbar - Mobile First */}
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-4">
         {/* Search - full width on mobile */}
         <div className="relative flex-1 min-w-0 md:max-w-md">
@@ -288,7 +288,7 @@ export function DataGrid<T extends object>({
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 md:pl-10 h-11 md:h-10"
+            className="pl-9 md:pl-10 h-11 min-h-[44px] text-base md:text-sm"
           />
         </div>
 
@@ -299,7 +299,11 @@ export function DataGrid<T extends object>({
             isMobile ? (
               <Sheet>
                 <SheetTrigger asChild>
-                  <Button variant={hasActiveFilters ? "default" : "outline"} size="sm" className="h-10 px-3">
+                  <Button 
+                    variant={hasActiveFilters ? "default" : "outline"} 
+                    size="sm" 
+                    className="h-11 min-h-[44px] px-4"
+                  >
                     <Filter className="h-4 w-4 mr-2" />
                     Filters
                     {hasActiveFilters && (
@@ -309,13 +313,25 @@ export function DataGrid<T extends object>({
                     )}
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="bottom" className="h-[80vh] rounded-t-2xl">
+                <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl flex flex-col">
                   <SheetHeader>
                     <SheetTitle>Filters</SheetTitle>
                   </SheetHeader>
-                  <ScrollArea className="h-full py-4">
+                  <ScrollArea className="flex-1 py-4">
                     {filterContent}
                   </ScrollArea>
+                  <div className="shrink-0 sticky bottom-0 bg-background border-t pt-4 pb-6 flex gap-3">
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 h-12 min-h-[44px]"
+                      onClick={() => setColumnFilters({})}
+                    >
+                      Reset
+                    </Button>
+                    <Button className="flex-1 h-12 min-h-[44px]">
+                      Apply
+                    </Button>
+                  </div>
                 </SheetContent>
               </Sheet>
             ) : (
@@ -340,14 +356,14 @@ export function DataGrid<T extends object>({
 
           <div className="flex items-center gap-2 ml-auto">
             {onImport && (
-              <Button variant="outline" size="sm" onClick={onImport} className="h-10 md:h-9">
+              <Button variant="outline" size="sm" onClick={onImport} className="h-11 min-h-[44px] md:h-9">
                 <Upload className="h-4 w-4 md:mr-2" />
                 <span className="hidden md:inline">Import</span>
               </Button>
             )}
             
             {onExport && (
-              <Button variant="outline" size="sm" onClick={onExport} className="h-10 md:h-9">
+              <Button variant="outline" size="sm" onClick={onExport} className="h-11 min-h-[44px] md:h-9">
                 <Download className="h-4 w-4 md:mr-2" />
                 <span className="hidden md:inline">Export</span>
               </Button>
@@ -356,9 +372,9 @@ export function DataGrid<T extends object>({
         </div>
       </div>
 
-      {/* Bulk actions row - responsive */}
-      {selectedRows.length > 0 && (
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-3 px-3 md:px-4 py-3 bg-primary/10 border border-primary/20 rounded-xl">
+      {/* Bulk actions - Desktop only (mobile uses sticky bar) */}
+      {!isMobile && selectedRows.length > 0 && (
+        <div className="flex flex-row items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/20 rounded-xl">
           <span className="text-sm font-medium text-primary">
             {selectedRows.length} row{selectedRows.length !== 1 ? 's' : ''} selected
           </span>
@@ -378,17 +394,17 @@ export function DataGrid<T extends object>({
 
       {/* Content - Cards on mobile, Table on desktop */}
       {isMobile ? (
-        // Mobile Card View
-        <div className="space-y-3">
+        // Mobile Card View - Enhanced
+        <div className="space-y-3 pb-24">
           {/* Select all on mobile */}
           {selectable && filteredData.length > 0 && (
-            <div className="flex items-center gap-3 px-3 py-2 bg-secondary/30 rounded-lg">
+            <div className="flex items-center gap-3 px-4 py-3 bg-secondary/30 rounded-xl">
               <Checkbox
                 checked={isAllSelected}
                 onCheckedChange={handleSelectAll}
                 className="h-5 w-5"
               />
-              <span className="text-sm font-medium">Select all</span>
+              <span className="text-sm font-medium">Select all ({filteredData.length})</span>
             </div>
           )}
 
@@ -411,15 +427,15 @@ export function DataGrid<T extends object>({
                 <Card
                   key={id}
                   className={cn(
-                    'p-3 transition-colors',
-                    isSelected && 'bg-primary/5 border-primary/30',
+                    'p-4 transition-all active:scale-[0.99]',
+                    isSelected && 'bg-primary/5 border-primary/30 ring-1 ring-primary/20',
                     onRowClick && 'active:bg-secondary/50'
                   )}
                 >
-                  {/* Card header with checkbox and primary columns */}
+                  {/* Card header with checkbox */}
                   <div className="flex items-start gap-3">
                     {selectable && (
-                      <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                      <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={isSelected}
                           onCheckedChange={(checked) => handleSelectRow(id, checked as boolean)}
@@ -428,16 +444,22 @@ export function DataGrid<T extends object>({
                       </div>
                     )}
                     <div 
-                      className="flex-1 min-w-0 space-y-2"
+                      className="flex-1 min-w-0 space-y-2.5"
                       onClick={() => onRowClick?.(item)}
                     >
-                      {mobileVisibleColumns.map((col) => (
-                        <div key={col.key} className="flex items-start justify-between gap-2">
-                          <span className="text-xs text-muted-foreground font-medium shrink-0">
+                      {mobileVisibleColumns.map((col, idx) => (
+                        <div key={col.key} className={cn(
+                          "flex items-start justify-between gap-3",
+                          idx === 0 && "pb-1"
+                        )}>
+                          <span className="text-xs text-muted-foreground font-medium shrink-0 pt-0.5">
                             {col.header}
                           </span>
-                          <div className="text-sm font-medium text-right min-w-0 max-w-[65%]">
-                            <div className="truncate">
+                          <div className={cn(
+                            "text-sm text-right min-w-0 max-w-[70%]",
+                            idx === 0 && "font-semibold text-base"
+                          )}>
+                            <div className="break-words">
                               {col.render ? col.render(item) : String(item[col.key] ?? '-')}
                             </div>
                           </div>
@@ -452,8 +474,11 @@ export function DataGrid<T extends object>({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toggleCardExpanded(id)}
-                        className="w-full mt-2 h-8 text-xs text-muted-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCardExpanded(id);
+                        }}
+                        className="w-full mt-3 h-9 text-xs text-muted-foreground hover:text-foreground"
                       >
                         {isExpanded ? (
                           <>
@@ -463,7 +488,7 @@ export function DataGrid<T extends object>({
                         ) : (
                           <>
                             <ChevronDown className="h-3 w-3 mr-1" />
-                            Show {mobileExpandedColumns.length} more fields
+                            Show {mobileExpandedColumns.length} more
                           </>
                         )}
                       </Button>
