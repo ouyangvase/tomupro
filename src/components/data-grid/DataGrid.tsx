@@ -492,9 +492,9 @@ export function DataGrid<T extends object>({
       ) : (
         // Desktop Fixed Table View
         <div className="space-y-3">
-          <div className="border rounded-lg overflow-hidden">
-            <div className="overflow-x-hidden">
-              <Table className="table-fixed w-full">
+          <div className="border rounded-lg overflow-hidden w-full">
+            <div className="overflow-x-hidden overflow-y-auto w-full">
+              <Table className="table-fixed w-full" style={{ tableLayout: 'fixed' }}>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
                     {selectable && (
