@@ -24,7 +24,9 @@ export function useRunnerBoundUsers() {
     queryFn: async () => {
       if (!user?.id) return [] as BoundUser[];
 
-      // Fetch salesperson bindings for this runner
+      console.log('[useRunnerBoundUsers] Fetching bound users for runner ID:', user.id);
+
+      // Fetch salesperson bindings for this runner (from bindings table)
       const { data: salespersonBindings, error: spError } = await supabase
         .from('bindings')
         .select('salesperson_id')
