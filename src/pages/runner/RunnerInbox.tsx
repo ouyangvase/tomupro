@@ -26,6 +26,7 @@ import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2, User } from 
 import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 const runnerStatusColors: Record<RunnerStatus, string> = {
   UNASSIGNED: 'bg-muted text-muted-foreground',
@@ -276,23 +277,53 @@ export default function RunnerInbox() {
       key: 'order_date',
       header: 'Date',
       sortable: true,
-      render: (order) => new Date(order.order_date).toLocaleDateString(),
+      minWidth: '70px',
+      maxWidth: '90px',
+      preferredWidth: '5vw',
+      render: (order) => (
+        <span className="text-xs whitespace-nowrap">
+          {new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+        </span>
+      ),
     },
     {
       key: 'order_code',
-      header: 'Order Ref',
+      header: 'Ref',
       sortable: true,
-      render: (order) => <span className="font-mono text-sm">{order.order_code}</span>,
+      minWidth: '70px',
+      maxWidth: '100px',
+      preferredWidth: '6vw',
+      render: (order) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="font-mono text-xs truncate block">{order.order_code}</span>
+          </TooltipTrigger>
+          <TooltipContent>{order.order_code}</TooltipContent>
+        </Tooltip>
+      ),
     },
     {
       key: 'customer_name',
       header: 'Customer',
       sortable: true,
-      render: (order) => order.customer_name || '-',
+      minWidth: '80px',
+      maxWidth: '140px',
+      preferredWidth: '8vw',
+      render: (order) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-xs truncate block">{order.customer_name || '-'}</span>
+          </TooltipTrigger>
+          <TooltipContent>{order.customer_name || 'No name'}</TooltipContent>
+        </Tooltip>
+      ),
     },
     {
       key: 'phone',
       header: 'Phone',
+      minWidth: '80px',
+      maxWidth: '110px',
+      preferredWidth: '7vw',
       render: (order) => <WhatsAppPhoneLink order={order} />,
     },
     {
@@ -301,14 +332,28 @@ export default function RunnerInbox() {
       sortable: true,
       filterable: true,
       filterOptions: areaOptions,
+      minWidth: '60px',
+      maxWidth: '100px',
+      preferredWidth: '5vw',
+      render: (order) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-xs truncate block">{order.area || '-'}</span>
+          </TooltipTrigger>
+          <TooltipContent>{order.area || 'No area'}</TooltipContent>
+        </Tooltip>
+      ),
     },
     {
       key: 'address',
       header: 'Address',
+      minWidth: '100px',
+      maxWidth: '180px',
+      preferredWidth: '10vw',
       render: (order) => (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-sm truncate max-w-[200px] block cursor-help">
+            <span className="text-xs truncate block cursor-help">
               {order.address || '-'}
             </span>
           </TooltipTrigger>
@@ -321,12 +366,15 @@ export default function RunnerInbox() {
     {
       key: 'items_summary',
       header: 'Items',
+      minWidth: '80px',
+      maxWidth: '150px',
+      preferredWidth: '8vw',
       render: (order) => {
         const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
+              <span className={`text-xs font-medium cursor-help truncate block ${hasError ? 'text-destructive' : ''}`}>
                 {displayText}
               </span>
             </TooltipTrigger>
@@ -339,15 +387,25 @@ export default function RunnerInbox() {
     },
     {
       key: 'total_amount',
-      header: 'Amount (BND)',
+      header: 'Amt',
       sortable: true,
-      render: (order) => <span className="font-medium">{formatBND(order.total_amount)}</span>,
+      minWidth: '60px',
+      maxWidth: '90px',
+      preferredWidth: '5vw',
+      render: (order) => <span className="text-xs font-medium whitespace-nowrap">{formatBND(order.total_amount)}</span>,
     },
     {
       key: 'payment_method',
-      header: 'Payment',
+      header: 'Pay',
       filterable: true,
-      render: (order) => <Badge variant="outline">{order.payment_method}</Badge>,
+      minWidth: '50px',
+      maxWidth: '70px',
+      preferredWidth: '4vw',
+      render: (order) => (
+        <Badge variant="outline" className="text-[10px] px-1 py-0">
+          {String(order.payment_method) === 'CASH' ? 'Cash' : String(order.payment_method) === 'TRANSFER' ? 'TF' : order.payment_method}
+        </Badge>
+      ),
     },
     {
       key: 'runner_status',
@@ -355,29 +413,20 @@ export default function RunnerInbox() {
       sortable: true,
       filterable: true,
       filterOptions: runnerStatusOptions,
+      minWidth: '80px',
+      maxWidth: '130px',
+      preferredWidth: '7vw',
       render: (order) => (
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Badge className={runnerStatusColors[order.runner_status]}>
-              {order.runner_status.replace('_', ' ')}
-            </Badge>
-            {order.runner_status === 'FAILED_DELIVERY' && (
-              <FailedDeliveryInfo order={order} compact />
-            )}
-          </div>
-          {/* Show runner remark and next delivery date */}
-          {(order.runner_comment || order.next_delivery_date) && (
-            <div className="text-xs space-y-0.5">
-              {order.runner_comment && (
-                <div className="text-primary font-medium truncate max-w-[200px]" title={order.runner_comment}>
-                  Note: {order.runner_comment}
-                </div>
-              )}
-              {order.next_delivery_date && (
-                <div className="text-muted-foreground">
-                  Next: {new Date(order.next_delivery_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-                </div>
-              )}
+        <div className="space-y-0.5">
+          <Badge className={cn(runnerStatusColors[order.runner_status], 'text-[10px] px-1 py-0')}>
+            {order.runner_status.replace('_', ' ')}
+          </Badge>
+          {order.runner_status === 'FAILED_DELIVERY' && (
+            <FailedDeliveryInfo order={order} compact />
+          )}
+          {order.next_delivery_date && (
+            <div className="text-[10px] text-muted-foreground">
+              Next: {new Date(order.next_delivery_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
             </div>
           )}
         </div>
@@ -388,6 +437,9 @@ export default function RunnerInbox() {
       header: 'Driver',
       filterable: true,
       filterOptions: driverOptions,
+      minWidth: '90px',
+      maxWidth: '130px',
+      preferredWidth: '7vw',
       render: (order) => (
         <div onClick={(e) => e.stopPropagation()}>
           <Select
@@ -395,15 +447,15 @@ export default function RunnerInbox() {
             onValueChange={(value) => handleAssignDriver(order.id, value)}
             disabled={order.runner_status === 'DELIVERED'}
           >
-            <SelectTrigger className="w-[140px] h-8">
-              <SelectValue placeholder="Assign driver">
+            <SelectTrigger className="w-full h-7 text-xs px-2">
+              <SelectValue placeholder="Assign">
                 {order.driver?.display_name ? (
-                  <span className="flex items-center gap-1.5">
-                    <User className="h-3 w-3" />
-                    {order.driver.display_name}
+                  <span className="flex items-center gap-1 truncate">
+                    <User className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{order.driver.display_name}</span>
                   </span>
                 ) : (
-                  <span className="text-muted-foreground">Unassigned</span>
+                  <span className="text-muted-foreground text-xs">-</span>
                 )}
               </SelectValue>
             </SelectTrigger>
@@ -420,21 +472,37 @@ export default function RunnerInbox() {
     },
     {
       key: 'reconciliation_status',
-      header: 'Reconciliation',
+      header: 'Recon',
       filterable: true,
       filterOptions: reconciliationStatusOptions,
+      minWidth: '70px',
+      maxWidth: '100px',
+      preferredWidth: '5vw',
       render: (order) => (
-        <Badge className={reconciliationColors[order.reconciliation_status]}>
-          {order.reconciliation_status.replace(/_/g, ' ')}
+        <Badge className={cn(reconciliationColors[order.reconciliation_status], 'text-[10px] px-1 py-0 whitespace-nowrap')}>
+          {order.reconciliation_status === 'NOT_CLAIMED' ? 'Not Claimed' : 
+           order.reconciliation_status === 'ADMIN_ACK_PENDING' ? 'Admin Pend' :
+           order.reconciliation_status === 'SP_ACK_PENDING' ? 'SP Pend' :
+           order.reconciliation_status.replace(/_/g, ' ')}
         </Badge>
       ),
     },
     {
       key: 'salesperson_id',
-      header: 'Salesperson',
+      header: 'SP',
       filterable: true,
       filterOptions: salespersonOptions,
-      render: (order) => order.salesperson?.display_name || '-',
+      minWidth: '70px',
+      maxWidth: '110px',
+      preferredWidth: '6vw',
+      render: (order) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-xs truncate block">{order.salesperson?.display_name || '-'}</span>
+          </TooltipTrigger>
+          <TooltipContent>{order.salesperson?.display_name || 'Unknown'}</TooltipContent>
+        </Tooltip>
+      ),
     },
     {
       key: 'actions',
