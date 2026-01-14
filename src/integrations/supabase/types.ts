@@ -1441,6 +1441,52 @@ export type Database = {
           },
         ]
       }
+      manager_runner_bindings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          manager_id: string
+          runner_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          manager_id: string
+          runner_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          manager_id?: string
+          runner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_runner_bindings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_runner_bindings_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_runner_bindings_runner_id_fkey"
+            columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           body: string | null

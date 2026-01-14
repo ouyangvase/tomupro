@@ -40,7 +40,12 @@ import {
   useRemoveGroupMember,
 } from '@/hooks/useStockVisibility';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
-import { Link2, Link2Off, Search, Users, UserCheck, RefreshCw, UserPlus, Trash2, Shield } from 'lucide-react';
+import {
+  useManagerRunnerBindings,
+  useCreateManagerRunnerBindings,
+  useDeleteManagerRunnerBinding,
+} from '@/hooks/useManagerRunnerBindings';
+import { Link2, Link2Off, Search, Users, UserCheck, RefreshCw, UserPlus, Trash2, Shield, Truck } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Profile } from '@/types/database';
 import { cn } from '@/lib/utils';
@@ -89,6 +94,22 @@ export default function BindingsSettings() {
   // Confirm dialogs
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<{ id: string; name: string } | null>(null);
+
+  // Manager-Runner binding state
+  const [managerRunnerSearch, setManagerRunnerSearch] = useState('');
+  const [selectedRunnersForManager, setSelectedRunnersForManager] = useState<string[]>([]);
+  const [managerRunnerBindDialogOpen, setManagerRunnerBindDialogOpen] = useState(false);
+  const [confirmRemoveRunnerOpen, setConfirmRemoveRunnerOpen] = useState(false);
+  const [runnerBindingToRemove, setRunnerBindingToRemove] = useState<{ id: string; name: string } | null>(null);
+
+  // Manager-Runner binding hooks
+  // For managers, use their own ID; for admins viewing a selected manager, use that manager's ID
+  const effectiveManagerForRunnerBinding = isManager ? profile?.id : selectedManager?.id;
+  const { data: managerRunnerBindings = [], isLoading: managerRunnerBindingsLoading } = useManagerRunnerBindings(
+    effectiveManagerForRunnerBinding ? { managerId: effectiveManagerForRunnerBinding } : undefined
+  );
+  const createManagerRunnerBindings = useCreateManagerRunnerBindings();
+  const deleteManagerRunnerBinding = useDeleteManagerRunnerBinding();
 
   // Filter users by role
   const allSalespersons = useMemo(
@@ -177,6 +198,23 @@ export default function BindingsSettings() {
           sp.email.toLowerCase().includes(searchLower))
     );
   }, [isAdmin, allSalespersons, salespersons, boundSalespersonIds, spSearchForManager]);
+
+  // Manager-Runner: Available runners (not already bound to this manager)
+  const boundManagerRunnerIds = useMemo(
+    () => new Set(managerRunnerBindings.map((b) => b.runner_id)),
+    [managerRunnerBindings]
+  );
+
+  const availableRunnersForManager = useMemo(() => {
+    const searchLower = managerRunnerSearch.toLowerCase();
+    return runners.filter(
+      (r) =>
+        !boundManagerRunnerIds.has(r.id) &&
+        (!managerRunnerSearch ||
+          r.display_name.toLowerCase().includes(searchLower) ||
+          r.email.toLowerCase().includes(searchLower))
+    );
+  }, [runners, boundManagerRunnerIds, managerRunnerSearch]);
 
   // Get member count per manager
   const getManagerMemberCount = (managerId: string) => {
@@ -295,6 +333,50 @@ export default function BindingsSettings() {
     );
   };
 
+  // Manager-Runner binding handlers
+  const handleOpenManagerRunnerBindDialog = () => {
+    setSelectedRunnersForManager([]);
+    setManagerRunnerSearch('');
+    setManagerRunnerBindDialogOpen(true);
+  };
+
+  const handleBindRunnersToManager = async () => {
+    const managerId = isManager ? profile?.id : selectedManager?.id;
+    if (!managerId || selectedRunnersForManager.length === 0) return;
+
+    await createManagerRunnerBindings.mutateAsync({
+      manager_id: managerId,
+      runner_ids: selectedRunnersForManager,
+    });
+
+    setManagerRunnerBindDialogOpen(false);
+    setSelectedRunnersForManager([]);
+  };
+
+  const toggleRunnerForManagerSelection = (runnerId: string) => {
+    setSelectedRunnersForManager((prev) =>
+      prev.includes(runnerId)
+        ? prev.filter((id) => id !== runnerId)
+        : [...prev, runnerId]
+    );
+  };
+
+  const handleConfirmRemoveRunnerBinding = (bindingId: string, runnerName: string) => {
+    setRunnerBindingToRemove({ id: bindingId, name: runnerName });
+    setConfirmRemoveRunnerOpen(true);
+  };
+
+  const handleRemoveRunnerBinding = async () => {
+    if (!runnerBindingToRemove) return;
+    await deleteManagerRunnerBinding.mutateAsync(runnerBindingToRemove.id);
+    setConfirmRemoveRunnerOpen(false);
+    setRunnerBindingToRemove(null);
+  };
+
+  const currentManagerName = isManager
+    ? profile?.display_name
+    : selectedManager?.display_name;
+
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
@@ -323,6 +405,10 @@ export default function BindingsSettings() {
                 <TabsTrigger value="manager-sp" className="flex items-center gap-2">
                   <Shield className="h-4 w-4" />
                   Manager ↔ Salesperson
+                </TabsTrigger>
+                <TabsTrigger value="manager-runner" className="flex items-center gap-2">
+                  <Truck className="h-4 w-4" />
+                  Manager ↔ Runner
                 </TabsTrigger>
               </TabsList>
 
@@ -488,24 +574,76 @@ export default function BindingsSettings() {
                 </Card>
               </div>
             </TabsContent>
+
+            <TabsContent value="manager-runner" className="mt-6">
+              <ManagerRunnerBindingPanel
+                isAdmin={isAdmin}
+                managers={filteredManagers}
+                managersLoading={usersLoading}
+                managerSearch={managerSearch}
+                setManagerSearch={setManagerSearch}
+                selectedManager={selectedManager}
+                handleSelectManager={handleSelectManager}
+                managerRunnerBindings={managerRunnerBindings}
+                managerRunnerBindingsLoading={managerRunnerBindingsLoading}
+                availableRunnersForManager={availableRunnersForManager}
+                handleOpenManagerRunnerBindDialog={handleOpenManagerRunnerBindDialog}
+                handleConfirmRemoveRunnerBinding={handleConfirmRemoveRunnerBinding}
+                currentManagerName={currentManagerName}
+              />
+            </TabsContent>
           </Tabs>
         ) : isManager ? (
-          // Manager view - SP-Runner binding only (for their team)
-          <SalespersonRunnerBinding
-            salespersons={salespersons}
-            filteredSalespersons={filteredSalespersons}
-            salespersonSearch={salespersonSearch}
-            setSalespersonSearch={setSelespersonSearch}
-            selectedSalesperson={effectiveSalesperson}
-            handleSelectSalesperson={handleSelectSalesperson}
-            bindings={bindings}
-            bindingsLoading={bindingsLoading}
-            usersLoading={usersLoading}
-            canManageBindings={canManageBindings}
-            handleOpenBindDialog={handleOpenBindDialog}
-            handleToggleBinding={handleToggleBinding}
-            updateBinding={updateBinding}
-          />
+          // Manager view - Tabs for SP-Runner and Manager-Runner bindings
+          <Tabs defaultValue="sp-runner">
+            <TabsList>
+              <TabsTrigger value="sp-runner" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Salesperson ↔ Runner
+              </TabsTrigger>
+              <TabsTrigger value="manager-runner" className="flex items-center gap-2">
+                <Truck className="h-4 w-4" />
+                My Runners
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="sp-runner" className="mt-6">
+              <SalespersonRunnerBinding
+                salespersons={salespersons}
+                filteredSalespersons={filteredSalespersons}
+                salespersonSearch={salespersonSearch}
+                setSalespersonSearch={setSelespersonSearch}
+                selectedSalesperson={effectiveSalesperson}
+                handleSelectSalesperson={handleSelectSalesperson}
+                bindings={bindings}
+                bindingsLoading={bindingsLoading}
+                usersLoading={usersLoading}
+                canManageBindings={canManageBindings}
+                handleOpenBindDialog={handleOpenBindDialog}
+                handleToggleBinding={handleToggleBinding}
+                updateBinding={updateBinding}
+              />
+            </TabsContent>
+
+            <TabsContent value="manager-runner" className="mt-6">
+              <ManagerRunnerBindingPanel
+                isAdmin={false}
+                managers={[]}
+                managersLoading={false}
+                managerSearch=""
+                setManagerSearch={() => {}}
+                selectedManager={null}
+                handleSelectManager={() => {}}
+                managerRunnerBindings={managerRunnerBindings}
+                managerRunnerBindingsLoading={managerRunnerBindingsLoading}
+                availableRunnersForManager={availableRunnersForManager}
+                handleOpenManagerRunnerBindDialog={handleOpenManagerRunnerBindDialog}
+                handleConfirmRemoveRunnerBinding={handleConfirmRemoveRunnerBinding}
+                currentManagerName={currentManagerName}
+                isManagerView={true}
+              />
+            </TabsContent>
+          </Tabs>
         ) : (
           // Salesperson view - own bindings only
           <SalespersonRunnerBinding
@@ -670,6 +808,93 @@ export default function BindingsSettings() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemoveMember}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bind Runners to Manager Dialog */}
+      <Dialog open={managerRunnerBindDialogOpen} onOpenChange={setManagerRunnerBindDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bind Runners to {currentManagerName}</DialogTitle>
+            <DialogDescription>
+              Select runners to bind to {isManager ? 'yourself' : 'this manager'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search runners..."
+                value={managerRunnerSearch}
+                onChange={(e) => setManagerRunnerSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <ScrollArea className="h-[300px] border rounded-md">
+              {availableRunnersForManager.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground">
+                  No available runners to bind
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {availableRunnersForManager.map((runner) => (
+                    <label
+                      key={runner.id}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={selectedRunnersForManager.includes(runner.id)}
+                        onCheckedChange={() => toggleRunnerForManagerSelection(runner.id)}
+                      />
+                      <div>
+                        <p className="font-medium">{runner.display_name}</p>
+                        <p className="text-sm text-muted-foreground">{runner.email}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+            {selectedRunnersForManager.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {selectedRunnersForManager.length} runner{selectedRunnersForManager.length !== 1 ? 's' : ''} selected
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManagerRunnerBindDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBindRunnersToManager}
+              disabled={selectedRunnersForManager.length === 0 || createManagerRunnerBindings.isPending}
+            >
+              {createManagerRunnerBindings.isPending
+                ? 'Binding...'
+                : `Bind ${selectedRunnersForManager.length} Runner${selectedRunnersForManager.length !== 1 ? 's' : ''}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Remove Runner Binding Dialog */}
+      <AlertDialog open={confirmRemoveRunnerOpen} onOpenChange={setConfirmRemoveRunnerOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Runner Binding?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the binding with <strong>{runnerBindingToRemove?.name}</strong>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveRunnerBinding}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Remove
@@ -853,6 +1078,175 @@ function SalespersonRunnerBinding({
                         </Button>
                       )}
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Extracted component for Manager-Runner binding
+interface ManagerRunnerBindingPanelProps {
+  isAdmin: boolean;
+  managers: Profile[];
+  managersLoading: boolean;
+  managerSearch: string;
+  setManagerSearch: (value: string) => void;
+  selectedManager: Profile | null;
+  handleSelectManager: (manager: Profile) => void;
+  managerRunnerBindings: any[];
+  managerRunnerBindingsLoading: boolean;
+  availableRunnersForManager: Profile[];
+  handleOpenManagerRunnerBindDialog: () => void;
+  handleConfirmRemoveRunnerBinding: (bindingId: string, runnerName: string) => void;
+  currentManagerName?: string;
+  isManagerView?: boolean;
+}
+
+function ManagerRunnerBindingPanel({
+  isAdmin,
+  managers,
+  managersLoading,
+  managerSearch,
+  setManagerSearch,
+  selectedManager,
+  handleSelectManager,
+  managerRunnerBindings,
+  managerRunnerBindingsLoading,
+  handleOpenManagerRunnerBindDialog,
+  handleConfirmRemoveRunnerBinding,
+  currentManagerName,
+  isManagerView = false,
+}: ManagerRunnerBindingPanelProps) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Left Panel: Manager List (Admin only) */}
+      {isAdmin && !isManagerView && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Managers
+            </CardTitle>
+            <CardDescription>
+              Select a manager to view and manage their runner bindings
+            </CardDescription>
+            <div className="relative mt-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search managers..."
+                value={managerSearch}
+                onChange={(e) => setManagerSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ScrollArea className="h-[400px]">
+              {managersLoading ? (
+                <div className="p-4 text-center text-muted-foreground">
+                  Loading...
+                </div>
+              ) : managers.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground">
+                  No managers found
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {managers.map((manager) => {
+                    const isSelected = selectedManager?.id === manager.id;
+                    return (
+                      <button
+                        key={manager.id}
+                        onClick={() => handleSelectManager(manager)}
+                        className={cn(
+                          'w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors flex items-center justify-between',
+                          isSelected && 'bg-primary/10'
+                        )}
+                      >
+                        <div>
+                          <p className="font-medium">{manager.display_name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {manager.email}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Right Panel: Bound Runners */}
+      <Card className={isManagerView ? 'lg:col-span-2' : ''}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              {currentManagerName
+                ? `Runners for ${currentManagerName}`
+                : 'Select a Manager'}
+            </CardTitle>
+            {(isManagerView || selectedManager) && (
+              <Button size="sm" onClick={handleOpenManagerRunnerBindDialog}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Bind Runners
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <ScrollArea className="h-[400px]">
+            {!isManagerView && !selectedManager ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Select a manager to view their runner bindings
+              </div>
+            ) : managerRunnerBindingsLoading ? (
+              <div className="p-4 text-center text-muted-foreground">
+                Loading...
+              </div>
+            ) : managerRunnerBindings.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <Truck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No runners bound to {isManagerView ? 'you' : 'this manager'}</p>
+                <p className="text-sm mt-2">Click "Bind Runners" to add runners</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {managerRunnerBindings.map((binding) => (
+                  <div
+                    key={binding.id}
+                    className="px-4 py-3 flex items-center justify-between"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {binding.runner?.display_name || 'Unknown'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {binding.runner?.email}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Bound {format(new Date(binding.created_at), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleConfirmRemoveRunnerBinding(
+                        binding.id,
+                        binding.runner?.display_name || 'Unknown'
+                      )}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Remove
+                    </Button>
                   </div>
                 ))}
               </div>
