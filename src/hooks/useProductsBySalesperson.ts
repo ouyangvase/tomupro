@@ -20,3 +20,27 @@ export function useProductsBySalesperson(salespersonId: string | null) {
     enabled: !!salespersonId,
   });
 }
+
+/**
+ * Find a product by SKU code for a given salesperson.
+ * SKU code is normalized (trimmed + uppercased) for matching.
+ */
+export async function findProductBySkuCode(
+  salespersonId: string,
+  skuCode: string
+): Promise<{ id: string; sku_code: string | null; sku_name: string } | null> {
+  const normalizedSku = skuCode.trim().toUpperCase();
+  if (!normalizedSku) return null;
+  
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, sku_code, sku_name')
+    .eq('owner_user_id', salespersonId)
+    .eq('is_active', true)
+    .ilike('sku_code', normalizedSku)
+    .limit(1)
+    .maybeSingle();
+  
+  if (error) throw error;
+  return data;
+}

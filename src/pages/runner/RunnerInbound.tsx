@@ -248,7 +248,7 @@ export default function RunnerInbound() {
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Items ({items.length})</CardTitle>
-              <Button onClick={addItem} size="sm" disabled={!salespersonId}>
+              <Button onClick={addItem} size="sm" disabled={!salespersonId || products.length === 0}>
                 <Plus className="h-4 w-4 mr-1" />
                 Add Item
               </Button>
@@ -259,6 +259,16 @@ export default function RunnerInbound() {
                   <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
                   <p>Select a salesperson first</p>
                   <p className="text-sm">Product list will be scoped to the selected salesperson</p>
+                </div>
+              ) : productsLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>Loading products...</p>
+                </div>
+              ) : products.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p className="font-medium text-destructive">No products found for this salesperson</p>
+                  <p className="text-sm">The salesperson needs to create products first before you can submit inbound.</p>
                 </div>
               ) : items.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">

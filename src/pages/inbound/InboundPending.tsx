@@ -15,11 +15,13 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInboundShipments, useUpdateInboundShipment } from '@/hooks/useInboundShipments';
+import { supabase } from '@/integrations/supabase/client';
 import { useProducts } from '@/hooks/useProducts';
 import { useWarehouses } from '@/hooks/useInventory';
 import { useCreateBulkStockMovements } from '@/hooks/useStockMovements';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
+import { findProductBySkuCode } from '@/hooks/useProductsBySalesperson';
 import type { InboundShipment, InboundItem, InboundStatus } from '@/types/database';
 import { Package, CheckCircle, AlertTriangle, ZoomIn, X, Calendar, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
@@ -161,25 +163,68 @@ export default function InboundPending() {
     }
 
     const items = selectedShipment.inbound_items || [];
-    // Validate all items have product_id
-    for (const item of items) {
-      if (!item.product_id) {
-        toast({ 
-          variant: 'destructive', 
-          title: 'Missing product mapping',
-          description: `Item "${item.temp_sku_label}" has no product linked. Contact runner to resubmit.`
-        });
-        return;
-      }
-    }
-
+    
     setIsProcessing(true);
 
     try {
+      // Resolve product_id for items that don't have it (using SKU code matching)
+      const resolvedItems: Array<{ id: string; product_id: string; qty_reported: number; temp_sku_label: string | null }> = [];
+      const unresolvedSkus: string[] = [];
+      
+      for (const item of items) {
+        if (item.product_id) {
+          // Already has product_id
+          resolvedItems.push({
+            id: item.id,
+            product_id: item.product_id,
+            qty_reported: item.qty_reported,
+            temp_sku_label: item.temp_sku_label,
+          });
+        } else if (item.temp_sku_label) {
+          // Try to resolve by SKU code
+          const product = await findProductBySkuCode(
+            selectedShipment.salesperson_id,
+            item.temp_sku_label
+          );
+          
+          if (product) {
+            // Update the item with the resolved product_id
+            const { error } = await supabase
+              .from('inbound_items')
+              .update({ product_id: product.id })
+              .eq('id', item.id);
+            
+            if (error) throw error;
+            
+            resolvedItems.push({
+              id: item.id,
+              product_id: product.id,
+              qty_reported: item.qty_reported,
+              temp_sku_label: item.temp_sku_label,
+            });
+          } else {
+            unresolvedSkus.push(item.temp_sku_label);
+          }
+        } else {
+          unresolvedSkus.push(`Item #${items.indexOf(item) + 1} (no SKU)`);
+        }
+      }
+      
+      // If any items couldn't be resolved, show error
+      if (unresolvedSkus.length > 0) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Missing product mapping',
+          description: `SKU(s) not found for this salesperson: ${unresolvedSkus.join(', ')}. Create products first or contact runner to resubmit.`
+        });
+        setIsProcessing(false);
+        return;
+      }
+
       // Create stock movements using EXACT reported_qty per item (no transformation)
-      const stockMovements = items.map(item => ({
+      const stockMovements = resolvedItems.map(item => ({
         warehouse_id: targetWarehouse.id,
-        product_id: item.product_id!,
+        product_id: item.product_id,
         movement_type: 'INBOUND' as const,
         qty_change: item.qty_reported, // Use exact reported qty
         reference_type: 'INBOUND_ITEM' as const,
