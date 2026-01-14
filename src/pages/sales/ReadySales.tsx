@@ -62,6 +62,9 @@ export default function ReadySales() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   
+  // For manager assign dialog: manually selected salesperson
+  const [managerSelectedSalesperson, setManagerSelectedSalesperson] = useState<string>('');
+  
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
@@ -93,18 +96,36 @@ export default function ReadySales() {
   }, [userDirectory]);
   
   // Determine which salesperson to use for bindings lookup
-  // For admin/manager, use the first selected order's salesperson
-  // For salesperson, use their own id
   const selectedOrdersData = orders.filter((o) => selectedRows.includes(o.id));
+  
+  // Check if all selected orders belong to the same salesperson
+  const uniqueSalespersonIds = useMemo(() => {
+    return [...new Set(selectedOrdersData.map(o => o.salesperson_id))];
+  }, [selectedOrdersData]);
+  
+  const hasMixedSalespersons = uniqueSalespersonIds.length > 1;
+  const autoDetectedSalespersonId = uniqueSalespersonIds.length === 1 ? uniqueSalespersonIds[0] : undefined;
+  
+  // Get team salespersons for manager's dropdown
+  const teamSalespersons = useMemo(() => {
+    if (role !== 'manager' && role !== 'admin') return [];
+    // Get unique salespersons from current orders
+    const spIds = [...new Set(orders.map(o => o.salesperson_id))];
+    return userDirectory.filter(u => spIds.includes(u.id));
+  }, [orders, userDirectory, role]);
   
   // Get the salesperson ID for binding lookup
   const getBindingSalespersonId = () => {
     if (role === 'salesperson') {
       return profile?.id;
     }
-    // For admin/manager, use the selected order's salesperson
-    if (selectedOrdersData.length > 0) {
-      return selectedOrdersData[0]?.salesperson_id;
+    // For admin/manager with dialog open and manual selection
+    if (managerSelectedSalesperson) {
+      return managerSelectedSalesperson;
+    }
+    // Auto-detect if all selected orders are from same salesperson
+    if (autoDetectedSalespersonId) {
+      return autoDetectedSalespersonId;
     }
     return undefined;
   };
@@ -571,7 +592,13 @@ export default function ReadySales() {
       />
 
       {/* Assign Runner Dialog */}
-      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+      <Dialog open={assignDialogOpen} onOpenChange={(open) => {
+        setAssignDialogOpen(open);
+        if (!open) {
+          setManagerSelectedSalesperson('');
+          setSelectedRunner('');
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Assign Runner</DialogTitle>
@@ -580,33 +607,73 @@ export default function ReadySales() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="py-4">
-            <Select value={selectedRunner} onValueChange={setSelectedRunner}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a runner..." />
-              </SelectTrigger>
-              <SelectContent>
-              {bindingsLoading ? (
-                <div className="p-2 text-sm text-muted-foreground">
-                  Loading runners...
-                </div>
-              ) : bindings.length === 0 ? (
-                <div className="p-2 text-sm text-muted-foreground">
-                  {role === 'salesperson' 
-                    ? 'No runners bound to your account. Contact admin to set up bindings.'
-                    : !bindingSalespersonId
-                      ? 'Select orders first to see available runners.'
+          <div className="py-4 space-y-4">
+            {/* For manager/admin: Show salesperson selector when orders are from mixed salespersons */}
+            {(role === 'manager' || role === 'admin') && hasMixedSalespersons && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-destructive">
+                  Selected orders belong to different salespersons. Please select a salesperson to filter runners:
+                </label>
+                <Select value={managerSelectedSalesperson} onValueChange={(value) => {
+                  setManagerSelectedSalesperson(value);
+                  setSelectedRunner(''); // Reset runner when salesperson changes
+                }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select salesperson..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teamSalespersons.map((sp) => (
+                      <SelectItem key={sp.id} value={sp.id}>
+                        {sp.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
+            {/* Show detected salesperson for manager/admin when all orders are from same salesperson */}
+            {(role === 'manager' || role === 'admin') && !hasMixedSalespersons && autoDetectedSalespersonId && (
+              <div className="text-sm text-muted-foreground">
+                Showing runners bound to: <span className="font-medium text-foreground">
+                  {userDirectory.find(u => u.id === autoDetectedSalespersonId)?.display_name || 'Unknown'}
+                </span>
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Runner</label>
+              <Select value={selectedRunner} onValueChange={setSelectedRunner}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a runner..." />
+                </SelectTrigger>
+                <SelectContent>
+                {bindingsLoading ? (
+                  <div className="p-2 text-sm text-muted-foreground">
+                    Loading runners...
+                  </div>
+                ) : !bindingSalespersonId ? (
+                  <div className="p-2 text-sm text-muted-foreground">
+                    {hasMixedSalespersons 
+                      ? 'Select a salesperson first to see available runners.'
+                      : 'Select orders first to see available runners.'}
+                  </div>
+                ) : bindings.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground">
+                    {role === 'salesperson' 
+                      ? 'No runners bound to your account. Contact admin to set up bindings.'
                       : 'No runners bound to this salesperson. Set up bindings in Settings > Bindings.'}
-                </div>
-              ) : (
-                bindings.map((binding) => (
-                  <SelectItem key={binding.runner_id} value={binding.runner_id}>
-                    {binding.runner?.display_name || 'Unknown Runner'}
-                  </SelectItem>
-                ))
-              )}
-              </SelectContent>
-            </Select>
+                  </div>
+                ) : (
+                  bindings.map((binding) => (
+                    <SelectItem key={binding.runner_id} value={binding.runner_id}>
+                      {binding.runner?.display_name || 'Unknown Runner'}
+                    </SelectItem>
+                  ))
+                )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <DialogFooter>
