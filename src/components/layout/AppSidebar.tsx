@@ -165,6 +165,23 @@ const driverItems: NavItem[] = [{
   roles: ['driver']
 }];
 
+const managerItems: NavItem[] = [{
+  title: "Manager Dashboard",
+  url: "/manager/dashboard",
+  icon: LayoutDashboard,
+  roles: ['manager']
+}, {
+  title: "Impact Board",
+  url: "/manager/impact-board",
+  icon: Award,
+  roles: ['manager', 'admin']
+}, {
+  title: "Team Oversight",
+  url: "/manager/oversight",
+  icon: Users,
+  roles: ['manager', 'admin']
+}];
+
 const reconciliationItems: NavItem[] = [{
   title: "Claims History",
   url: "/claims",
@@ -205,11 +222,6 @@ const reconciliationItems: NavItem[] = [{
   url: "/disputes",
   icon: AlertTriangle,
   roles: ['admin', 'manager']
-}, {
-  title: "Manager Oversight",
-  url: "/manager/oversight",
-  icon: BarChart3,
-  roles: ['manager', 'admin']
 }, {
   title: "Admin Overview",
   url: "/admin/overview",
@@ -415,6 +427,19 @@ export function AppSidebar() {
             )}
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">{renderMenuItems(driverItems)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {filterItems(managerItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Manager
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu className="space-y-1">{renderMenuItems(managerItems)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         )}
