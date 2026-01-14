@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSalespersons } from '@/hooks/useUserDirectory';
+import { useRunnerBoundUsers } from '@/hooks/useRunnerBoundUsers';
 import { useProductsBySalesperson } from '@/hooks/useProductsBySalesperson';
 import { useCreateInboundShipment, useCreateInboundItem, uploadInboundPhoto } from '@/hooks/useInboundShipments';
 import { logAudit } from '@/hooks/useAuditLogs';
@@ -46,27 +46,28 @@ interface InboundItemDraft {
 export default function RunnerInbound() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { data: salespersons = [] } = useSalespersons();
+  // Fetch all users bound to this runner (salespersons + managers)
+  const { data: boundUsers = [], isLoading: boundUsersLoading } = useRunnerBoundUsers();
   const createShipment = useCreateInboundShipment();
   const createItem = useCreateInboundItem();
 
-  const [salespersonId, setSalespersonId] = useState('');
+  const [targetUserId, setTargetUserId] = useState('');
   const [trackingNo, setTrackingNo] = useState('');
   const [arrivalDate, setArrivalDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<InboundItemDraft[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch products scoped to selected salesperson
-  const { data: products = [], isLoading: productsLoading } = useProductsBySalesperson(salespersonId || null);
+  // Fetch products scoped to selected target user
+  const { data: products = [], isLoading: productsLoading } = useProductsBySalesperson(targetUserId || null);
 
-  // Clear items when salesperson changes (products list changes)
-  const handleSalespersonChange = (newSalespersonId: string) => {
-    if (newSalespersonId !== salespersonId) {
+  // Clear items when target user changes (products list changes)
+  const handleTargetUserChange = (newTargetUserId: string) => {
+    if (newTargetUserId !== targetUserId) {
       // Clear items since product list will change
       setItems([]);
     }
-    setSalespersonId(newSalespersonId);
+    setTargetUserId(newTargetUserId);
   };
 
   const addItem = () => {
@@ -98,7 +99,7 @@ export default function RunnerInbound() {
   };
 
   const handleSubmit = async () => {
-    if (!user || !salespersonId || !trackingNo || items.length === 0) {
+    if (!user || !targetUserId || !trackingNo || items.length === 0) {
       toast({ variant: 'destructive', title: 'Please fill all required fields and add at least one item' });
       return;
     }
@@ -119,10 +120,10 @@ export default function RunnerInbound() {
     setIsSubmitting(true);
 
     try {
-      // Create shipment
+      // Create shipment - salesperson_id field stores the target user (can be salesperson or manager)
       const shipment = await createShipment.mutateAsync({
         runner_id: user.id,
-        salesperson_id: salespersonId,
+        salesperson_id: targetUserId,
         tracking_no: trackingNo,
         arrival_date: arrivalDate,
         notes: notes || undefined,
@@ -159,7 +160,7 @@ export default function RunnerInbound() {
       toast({ title: 'Inbound shipment submitted successfully' });
 
       // Reset form
-      setSalespersonId('');
+      setTargetUserId('');
       setTrackingNo('');
       setArrivalDate(new Date().toISOString().split('T')[0]);
       setNotes('');
@@ -173,7 +174,7 @@ export default function RunnerInbound() {
 
   // Check if all items are valid for submission
   const canSubmit = items.length > 0 && 
-    salespersonId && 
+    targetUserId && 
     trackingNo && 
     items.every(item => item.product_id && item.qty_reported > 0);
 
@@ -196,21 +197,26 @@ export default function RunnerInbound() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Salesperson *</Label>
-                <Select value={salespersonId} onValueChange={handleSalespersonChange}>
+                <Label>Target User *</Label>
+                <Select value={targetUserId} onValueChange={handleTargetUserChange} disabled={boundUsersLoading}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select salesperson..." />
+                    <SelectValue placeholder={boundUsersLoading ? "Loading..." : "Select target user..."} />
                   </SelectTrigger>
                   <SelectContent>
-                    {salespersons.map((sp) => (
-                      <SelectItem key={sp.id} value={sp.id}>
-                        {sp.display_name} {sp.email ? `(${sp.email})` : ''}
+                    {boundUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{u.display_name} {u.email ? `(${u.email})` : ''}</span>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {u.role}
+                          </Badge>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {!salespersonId && (
-                  <p className="text-xs text-destructive">Salesperson is required</p>
+                {!targetUserId && (
+                  <p className="text-xs text-destructive">Target user is required</p>
                 )}
               </div>
 
@@ -248,17 +254,17 @@ export default function RunnerInbound() {
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Items ({items.length})</CardTitle>
-              <Button onClick={addItem} size="sm" disabled={!salespersonId || products.length === 0}>
+              <Button onClick={addItem} size="sm" disabled={!targetUserId || products.length === 0}>
                 <Plus className="h-4 w-4 mr-1" />
                 Add Item
               </Button>
             </CardHeader>
             <CardContent>
-              {!salespersonId ? (
+              {!targetUserId ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>Select a salesperson first</p>
-                  <p className="text-sm">Product list will be scoped to the selected salesperson</p>
+                  <p>Select a target user first</p>
+                  <p className="text-sm">Product list will be scoped to the selected user</p>
                 </div>
               ) : productsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">
@@ -267,8 +273,8 @@ export default function RunnerInbound() {
               ) : products.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p className="font-medium text-destructive">No products found for this salesperson</p>
-                  <p className="text-sm">The salesperson needs to create products first before you can submit inbound.</p>
+                  <p className="font-medium text-destructive">No products found for this user</p>
+                  <p className="text-sm">The user needs to create products first before you can submit inbound.</p>
                 </div>
               ) : items.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
