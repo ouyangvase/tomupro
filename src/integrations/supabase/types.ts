@@ -1441,6 +1441,104 @@ export type Database = {
           },
         ]
       }
+      manager_kpi_daily: {
+        Row: {
+          bottom30_improve_pct: number | null
+          created_at: string
+          dependency_ratio: number | null
+          dispute_resolved_count: number | null
+          id: string
+          inbound_ack_count: number | null
+          kpi_date: string
+          leadership_score: number | null
+          manager_id: string
+          orders_rescued_count: number | null
+          period_type: string
+          personal_delivered_orders: number | null
+          personal_pipeline_gmv_bnd: number | null
+          personal_realized_gmv_bnd: number | null
+          runner_reassigned_count: number | null
+          score_breakdown_json: Json | null
+          team_action_required_count: number | null
+          team_active_salespersons: number | null
+          team_booking_orders: number | null
+          team_delivered_orders: number | null
+          team_members_with_orders: number | null
+          team_pipeline_gmv_bnd: number | null
+          team_ready_orders: number | null
+          team_realized_gmv_bnd: number | null
+          team_total_orders: number | null
+          top_bottom_gap_ratio: number | null
+          updated_at: string
+        }
+        Insert: {
+          bottom30_improve_pct?: number | null
+          created_at?: string
+          dependency_ratio?: number | null
+          dispute_resolved_count?: number | null
+          id?: string
+          inbound_ack_count?: number | null
+          kpi_date: string
+          leadership_score?: number | null
+          manager_id: string
+          orders_rescued_count?: number | null
+          period_type?: string
+          personal_delivered_orders?: number | null
+          personal_pipeline_gmv_bnd?: number | null
+          personal_realized_gmv_bnd?: number | null
+          runner_reassigned_count?: number | null
+          score_breakdown_json?: Json | null
+          team_action_required_count?: number | null
+          team_active_salespersons?: number | null
+          team_booking_orders?: number | null
+          team_delivered_orders?: number | null
+          team_members_with_orders?: number | null
+          team_pipeline_gmv_bnd?: number | null
+          team_ready_orders?: number | null
+          team_realized_gmv_bnd?: number | null
+          team_total_orders?: number | null
+          top_bottom_gap_ratio?: number | null
+          updated_at?: string
+        }
+        Update: {
+          bottom30_improve_pct?: number | null
+          created_at?: string
+          dependency_ratio?: number | null
+          dispute_resolved_count?: number | null
+          id?: string
+          inbound_ack_count?: number | null
+          kpi_date?: string
+          leadership_score?: number | null
+          manager_id?: string
+          orders_rescued_count?: number | null
+          period_type?: string
+          personal_delivered_orders?: number | null
+          personal_pipeline_gmv_bnd?: number | null
+          personal_realized_gmv_bnd?: number | null
+          runner_reassigned_count?: number | null
+          score_breakdown_json?: Json | null
+          team_action_required_count?: number | null
+          team_active_salespersons?: number | null
+          team_booking_orders?: number | null
+          team_delivered_orders?: number | null
+          team_members_with_orders?: number | null
+          team_pipeline_gmv_bnd?: number | null
+          team_ready_orders?: number | null
+          team_realized_gmv_bnd?: number | null
+          team_total_orders?: number | null
+          top_bottom_gap_ratio?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_kpi_daily_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manager_runner_bindings: {
         Row: {
           created_at: string
@@ -1481,6 +1579,58 @@ export type Database = {
           {
             foreignKeyName: "manager_runner_bindings_runner_id_fkey"
             columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manager_salesperson_bindings: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          ended_at: string | null
+          id: string
+          manager_id: string
+          salesperson_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          manager_id: string
+          salesperson_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          manager_id?: string
+          salesperson_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_salesperson_bindings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_salesperson_bindings_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_salesperson_bindings_salesperson_id_fkey"
+            columns: ["salesperson_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1638,6 +1788,10 @@ export type Database = {
           operational_status: string
           order_code: string
           order_date: string
+          owner_manager_display_name_snapshot: string | null
+          owner_manager_id_snapshot: string | null
+          owner_salesperson_display_name_snapshot: string | null
+          owner_salesperson_id_snapshot: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
           phone: string
           reconciliation_status: Database["public"]["Enums"]["reconciliation_status"]
@@ -1701,6 +1855,10 @@ export type Database = {
           operational_status?: string
           order_code: string
           order_date?: string
+          owner_manager_display_name_snapshot?: string | null
+          owner_manager_id_snapshot?: string | null
+          owner_salesperson_display_name_snapshot?: string | null
+          owner_salesperson_id_snapshot?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone: string
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
@@ -1764,6 +1922,10 @@ export type Database = {
           operational_status?: string
           order_code?: string
           order_date?: string
+          owner_manager_display_name_snapshot?: string | null
+          owner_manager_id_snapshot?: string | null
+          owner_salesperson_display_name_snapshot?: string | null
+          owner_salesperson_id_snapshot?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone?: string
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
