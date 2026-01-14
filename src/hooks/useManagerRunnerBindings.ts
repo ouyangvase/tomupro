@@ -63,8 +63,8 @@ export function useManagerRunnerBindings(filters?: ManagerRunnerBindingFilters) 
 
       return bindingsData.map(binding => ({
         ...binding,
-        manager: userMap.get(binding.manager_id),
-        runner: userMap.get(binding.runner_id),
+        manager: userMap.get(binding.manager_id) || { id: binding.manager_id, display_name: null, email: null },
+        runner: userMap.get(binding.runner_id) || { id: binding.runner_id, display_name: null, email: null },
       })) as ManagerRunnerBinding[];
     },
   });

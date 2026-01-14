@@ -61,11 +61,11 @@ export function useBindings(filters?: BindingFilters | string) {
 
       const userMap = new Map(users?.map(u => [u.id, u]) || []);
 
-      // Merge user data into bindings
+      // Merge user data into bindings with fallback for missing users
       return bindingsData.map(binding => ({
         ...binding,
-        runner: userMap.get(binding.runner_id) as Binding['runner'],
-        salesperson: userMap.get(binding.salesperson_id) as Binding['salesperson'],
+        runner: userMap.get(binding.runner_id) || { id: binding.runner_id, display_name: null, email: null } as Binding['runner'],
+        salesperson: userMap.get(binding.salesperson_id) || { id: binding.salesperson_id, display_name: null, email: null } as Binding['salesperson'],
       })) as Binding[];
     },
   });
@@ -103,11 +103,11 @@ export function useAllBindings() {
 
       const userMap = new Map(users?.map(u => [u.id, u]) || []);
 
-      // Merge user data into bindings
+      // Merge user data into bindings with fallback for missing users
       return bindingsData.map(binding => ({
         ...binding,
-        runner: userMap.get(binding.runner_id) as Binding['runner'],
-        salesperson: userMap.get(binding.salesperson_id) as Binding['salesperson'],
+        runner: userMap.get(binding.runner_id) || { id: binding.runner_id, display_name: null, email: null } as Binding['runner'],
+        salesperson: userMap.get(binding.salesperson_id) || { id: binding.salesperson_id, display_name: null, email: null } as Binding['salesperson'],
       })) as Binding[];
     },
   });
