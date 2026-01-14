@@ -38,6 +38,7 @@ export default function InventoryBalance() {
   
   const salespersons = users.filter(u => u.role === 'salesperson');
   const managers = users.filter(u => u.role === 'manager');
+  const transferEligibleUsers = users.filter(u => u.role === 'salesperson' || u.role === 'manager');
   
   // Get unique owners from visible stock
   const visibleOwners = [...new Set(stockBalance.map(s => s.owner_user_id))];
@@ -160,7 +161,7 @@ export default function InventoryBalance() {
           <StockTransferDialog 
             open={transferOpen} 
             onOpenChange={setTransferOpen}
-            salespersons={salespersons}
+            users={transferEligibleUsers}
           />
           <VisibilityManagementDialog
             open={visibilityOpen}

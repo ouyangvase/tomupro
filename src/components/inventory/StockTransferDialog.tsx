@@ -15,10 +15,10 @@ import type { TransferItemInput } from '@/types/stock-visibility';
 interface StockTransferDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  salespersons: { id: string; display_name: string }[];
+  users: { id: string; display_name: string; role?: string }[];
 }
 
-export function StockTransferDialog({ open, onOpenChange, salespersons }: StockTransferDialogProps) {
+export function StockTransferDialog({ open, onOpenChange, users }: StockTransferDialogProps) {
   const [fromOwnerId, setFromOwnerId] = useState('');
   const [toOwnerId, setToOwnerId] = useState('');
   const [notes, setNotes] = useState('');
@@ -98,14 +98,17 @@ export function StockTransferDialog({ open, onOpenChange, salespersons }: StockT
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>From Salesperson</Label>
+              <Label>From User</Label>
               <Select value={fromOwnerId} onValueChange={setFromOwnerId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select source" />
                 </SelectTrigger>
                 <SelectContent>
-                  {salespersons.map(sp => (
-                    <SelectItem key={sp.id} value={sp.id}>{sp.display_name}</SelectItem>
+                  {users.map(u => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.display_name}
+                      {u.role && <span className="ml-2 text-xs text-muted-foreground capitalize">({u.role})</span>}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -115,14 +118,17 @@ export function StockTransferDialog({ open, onOpenChange, salespersons }: StockT
             </div>
             
             <div className="space-y-2">
-              <Label>To Salesperson</Label>
+              <Label>To User</Label>
               <Select value={toOwnerId} onValueChange={setToOwnerId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select destination" />
                 </SelectTrigger>
                 <SelectContent>
-                  {salespersons.filter(sp => sp.id !== fromOwnerId).map(sp => (
-                    <SelectItem key={sp.id} value={sp.id}>{sp.display_name}</SelectItem>
+                  {users.filter(u => u.id !== fromOwnerId).map(u => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.display_name}
+                      {u.role && <span className="ml-2 text-xs text-muted-foreground capitalize">({u.role})</span>}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
