@@ -197,10 +197,10 @@ export default function RunnerInbound() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Target User *</Label>
+                <Label>User *</Label>
                 <Select value={targetUserId} onValueChange={handleTargetUserChange} disabled={boundUsersLoading}>
                   <SelectTrigger>
-                    <SelectValue placeholder={boundUsersLoading ? "Loading..." : "Select target user..."} />
+                    <SelectValue placeholder={boundUsersLoading ? "Loading..." : "Select user..."} />
                   </SelectTrigger>
                   <SelectContent>
                     {boundUsers.map((u) => (
@@ -216,7 +216,7 @@ export default function RunnerInbound() {
                   </SelectContent>
                 </Select>
                 {!targetUserId && (
-                  <p className="text-xs text-destructive">Target user is required</p>
+                  <p className="text-xs text-destructive">User is required</p>
                 )}
               </div>
 
@@ -263,7 +263,7 @@ export default function RunnerInbound() {
               {!targetUserId ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>Select a target user first</p>
+                  <p>Select a user first</p>
                   <p className="text-sm">Product list will be scoped to the selected user</p>
                 </div>
               ) : productsLoading ? (
@@ -379,7 +379,7 @@ function InboundItemRow({ item, index, products, productsLoading, onUpdate, onRe
                     {productsLoading 
                       ? 'Loading products...' 
                       : products.length === 0 
-                        ? 'No products found for this salesperson'
+                        ? 'No products found for this user'
                         : 'No product found.'}
                   </CommandEmpty>
                   <CommandGroup>
