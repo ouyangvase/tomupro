@@ -2805,6 +2805,10 @@ export type Database = {
       }
     }
     Functions: {
+      ack_inbound_and_add_stock: {
+        Args: { p_shipment_id: string }
+        Returns: Json
+      }
       can_view_stock: {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean

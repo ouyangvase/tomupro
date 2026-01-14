@@ -17,11 +17,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useInboundShipments, useUpdateInboundShipment } from '@/hooks/useInboundShipments';
 import { supabase } from '@/integrations/supabase/client';
 import { useProducts } from '@/hooks/useProducts';
-import { useWarehouses } from '@/hooks/useInventory';
-import { useCreateBulkStockMovements } from '@/hooks/useStockMovements';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
-import { findProductBySkuCode } from '@/hooks/useProductsBySalesperson';
+import { useQueryClient } from '@tanstack/react-query';
 import type { InboundShipment, InboundItem, InboundStatus } from '@/types/database';
 import { Package, CheckCircle, AlertTriangle, ZoomIn, X, Calendar, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
@@ -93,9 +91,8 @@ export default function InboundPending() {
   
   const { data: shipments, isLoading } = useInboundShipments(shipmentFilters);
   const { data: products } = useProducts();
-  const { data: warehouses } = useWarehouses();
   const updateShipment = useUpdateInboundShipment();
-  const createStockMovements = useCreateBulkStockMovements();
+  const queryClient = useQueryClient();
 
   const [selectedShipment, setSelectedShipment] = useState<InboundShipment | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -103,10 +100,6 @@ export default function InboundPending() {
   const [disputeNotes, setDisputeNotes] = useState('');
   const [lightboxImage, setLightboxImage] = useState<{ url: string; alt: string; date?: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-
-  // Get salesperson's warehouse - for manager, we'll get the warehouse based on the shipment's salesperson
-  const myWarehouse = warehouses?.find(w => w.owner_user_id === user?.id && w.warehouse_type === 'SALESPERSON');
-
   const handleOpenDetail = (shipment: InboundShipment) => {
     setSelectedShipment(shipment);
     setDetailDialogOpen(true);
@@ -146,99 +139,21 @@ export default function InboundPending() {
       return;
     }
 
-    // For manager acknowledging team member's shipment, use the shipment's salesperson's warehouse
-    const targetWarehouse = role === 'manager' 
-      ? warehouses?.find(w => w.owner_user_id === selectedShipment.salesperson_id && w.warehouse_type === 'SALESPERSON')
-      : myWarehouse;
-
-    if (!targetWarehouse) {
-      toast({ variant: 'destructive', title: 'No warehouse found for this salesperson' });
-      return;
-    }
-
     // Check if already acknowledged
     if (selectedShipment.status === 'ACKNOWLEDGED') {
       toast({ variant: 'destructive', title: 'Already acknowledged' });
       return;
     }
 
-    const items = selectedShipment.inbound_items || [];
-    
     setIsProcessing(true);
 
     try {
-      // Resolve product_id for items that don't have it (using SKU code matching)
-      const resolvedItems: Array<{ id: string; product_id: string; qty_reported: number; temp_sku_label: string | null }> = [];
-      const unresolvedSkus: string[] = [];
-      
-      for (const item of items) {
-        if (item.product_id) {
-          // Already has product_id
-          resolvedItems.push({
-            id: item.id,
-            product_id: item.product_id,
-            qty_reported: item.qty_reported,
-            temp_sku_label: item.temp_sku_label,
-          });
-        } else if (item.temp_sku_label) {
-          // Try to resolve by SKU code
-          const product = await findProductBySkuCode(
-            selectedShipment.salesperson_id,
-            item.temp_sku_label
-          );
-          
-          if (product) {
-            // Update the item with the resolved product_id
-            const { error } = await supabase
-              .from('inbound_items')
-              .update({ product_id: product.id })
-              .eq('id', item.id);
-            
-            if (error) throw error;
-            
-            resolvedItems.push({
-              id: item.id,
-              product_id: product.id,
-              qty_reported: item.qty_reported,
-              temp_sku_label: item.temp_sku_label,
-            });
-          } else {
-            unresolvedSkus.push(item.temp_sku_label);
-          }
-        } else {
-          unresolvedSkus.push(`Item #${items.indexOf(item) + 1} (no SKU)`);
-        }
-      }
-      
-      // If any items couldn't be resolved, show error
-      if (unresolvedSkus.length > 0) {
-        toast({ 
-          variant: 'destructive', 
-          title: 'Missing product mapping',
-          description: `SKU(s) not found for this salesperson: ${unresolvedSkus.join(', ')}. Create products first or contact runner to resubmit.`
-        });
-        setIsProcessing(false);
-        return;
-      }
-
-      // Create stock movements using EXACT reported_qty per item (no transformation)
-      const stockMovements = resolvedItems.map(item => ({
-        warehouse_id: targetWarehouse.id,
-        product_id: item.product_id,
-        movement_type: 'INBOUND' as const,
-        qty_change: item.qty_reported, // Use exact reported qty
-        reference_type: 'INBOUND_ITEM' as const,
-        reference_id: item.id,
-      }));
-
-      // Create all stock movements
-      await createStockMovements.mutateAsync(stockMovements);
-
-      // Update shipment status
-      await updateShipment.mutateAsync({
-        id: selectedShipment.id,
-        status: 'ACKNOWLEDGED',
+      // Call the atomic RPC that handles authorization, stock movements, and status update
+      const { data, error } = await supabase.rpc('ack_inbound_and_add_stock', {
+        p_shipment_id: selectedShipment.id,
       });
+
+      if (error) throw error;
 
       // Log audit
       await logAudit({
@@ -248,12 +163,18 @@ export default function InboundPending() {
         before_json: { status: 'PENDING_SP_ACK' },
         after_json: { 
           status: 'ACKNOWLEDGED', 
-          items_count: items.length,
-          stock_added: stockMovements.map(m => ({ product_id: m.product_id, qty: m.qty_change }))
+          ...(data as object),
         },
       });
 
-      toast({ title: 'Inbound acknowledged and stock added' });
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['inbound_shipments'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+      
+      toast({ 
+        title: 'Inbound acknowledged and stock added',
+        description: `${(data as any)?.lines_count || 0} items, ${(data as any)?.total_qty || 0} total units`
+      });
       setDetailDialogOpen(false);
       setSelectedShipment(null);
     } catch (error) {
@@ -308,9 +229,14 @@ export default function InboundPending() {
       sortable: true,
     },
     {
+      key: 'target_user',
+      header: 'Target User',
+      render: (s) => s.salesperson?.display_name || s.salesperson?.email || '-',
+    },
+    {
       key: 'runner',
       header: 'Runner',
-      render: (s) => s.runner?.display_name || '-',
+      render: (s) => s.runner?.display_name || s.runner?.email || '-',
     },
     {
       key: 'items_preview',
@@ -379,10 +305,14 @@ export default function InboundPending() {
 
           <div className="space-y-6 py-4">
             {/* Shipment info */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Target User:</span>
+                <p className="font-medium">{selectedShipment?.salesperson?.display_name || selectedShipment?.salesperson?.email || '-'}</p>
+              </div>
               <div>
                 <span className="text-muted-foreground">Runner:</span>
-                <p className="font-medium">{selectedShipment?.runner?.display_name}</p>
+                <p className="font-medium">{selectedShipment?.runner?.display_name || selectedShipment?.runner?.email || '-'}</p>
               </div>
               <div>
                 <span className="text-muted-foreground">Arrival:</span>
