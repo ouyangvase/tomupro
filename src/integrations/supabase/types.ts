@@ -719,6 +719,44 @@ export type Database = {
           },
         ]
       }
+      delivery_queue: {
+        Row: {
+          error_message: string | null
+          id: string
+          order_id: string
+          processed_at: string | null
+          queued_at: string
+          retry_count: number | null
+          status: string
+        }
+        Insert: {
+          error_message?: string | null
+          id?: string
+          order_id: string
+          processed_at?: string | null
+          queued_at?: string
+          retry_count?: number | null
+          status?: string
+        }
+        Update: {
+          error_message?: string | null
+          id?: string
+          order_id?: string
+          processed_at?: string | null
+          queued_at?: string
+          retry_count?: number | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       driver_locations: {
         Row: {
           accuracy: number | null
@@ -3070,6 +3108,50 @@ export type Database = {
         Returns: boolean
       }
       generate_driver_code: { Args: { p_driver_id: string }; Returns: Json }
+      get_delivered_orders_fast: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_runner_id?: string
+          p_salesperson_id?: string
+          p_salesperson_ids?: string[]
+        }
+        Returns: {
+          address: string
+          area: string
+          customer_name: string
+          delivered_at: string
+          driver_id: string
+          driver_name: string
+          id: string
+          items_json: Json
+          items_summary: string
+          order_code: string
+          order_date: string
+          payment_method: string
+          phone: string
+          reconciliation_status: string
+          runner_id: string
+          runner_name: string
+          runner_status: string
+          salesperson_id: string
+          salesperson_name: string
+          total_amount: number
+          total_qty: number
+        }[]
+      }
+      get_delivered_summary: {
+        Args: {
+          p_runner_id?: string
+          p_salesperson_id?: string
+          p_salesperson_ids?: string[]
+        }
+        Returns: {
+          pending_claim: number
+          total_amount: number
+          total_delivered: number
+        }[]
+      }
       get_delivery_charge: {
         Args: { p_area: string; p_runner_id: string }
         Returns: number
@@ -3177,6 +3259,10 @@ export type Database = {
         Returns: boolean
       }
       link_driver_to_runner_by_code: { Args: { p_code: string }; Returns: Json }
+      mark_order_delivered_fast: {
+        Args: { p_actor_id: string; p_order_id: string }
+        Returns: Json
+      }
       reopen_rescheduled_orders: { Args: never; Returns: Json }
       validate_invite_code: { Args: { code_text: string }; Returns: string }
     }

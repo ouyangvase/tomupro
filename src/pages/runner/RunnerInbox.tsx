@@ -27,6 +27,7 @@ import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useMarkDeliveredFast } from '@/hooks/useDeliveredOrders';
 
 const runnerStatusColors: Record<RunnerStatus, string> = {
   UNASSIGNED: 'bg-muted text-muted-foreground',
@@ -73,11 +74,11 @@ export default function RunnerInbox() {
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
   const [bulkClaimDialogOpen, setBulkClaimDialogOpen] = useState(false);
-  const [processingDelivery, setProcessingDelivery] = useState<string | null>(null);
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   
   const bulkUpdateOrders = useBulkUpdateOrders();
   const submitBulkClaim = useSubmitBulkClaim();
+  const markDeliveredFast = useMarkDeliveredFast();
 
   // Apply panel filters to orders
   // Runner Inbox should ONLY show orders that:
@@ -218,48 +219,9 @@ export default function RunnerInbox() {
     }
   };
 
-  const handleMarkDelivered = async (order: Order) => {
-    if (processingDelivery) return;
-    
-    setProcessingDelivery(order.id);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('process-delivery', {
-        body: { orderId: order.id, runnerId: user?.id },
-      });
-
-      if (error) {
-        toast({ 
-          variant: 'destructive', 
-          title: 'Delivery Error', 
-          description: 'Failed to process delivery' 
-        });
-        return;
-      }
-
-      if (data.success) {
-        toast({ 
-          title: data.alreadyProcessed ? 'Already Processed' : 'Delivered',
-          description: data.message,
-        });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      } else {
-        toast({ 
-          variant: 'destructive', 
-          title: 'Delivery Blocked', 
-          description: data.error || 'Could not complete delivery',
-        });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      }
-    } catch {
-      toast({ 
-        variant: 'destructive', 
-        title: 'Error', 
-        description: 'Failed to process delivery' 
-      });
-    } finally {
-      setProcessingDelivery(null);
-    }
+  // Use optimistic mutation for instant UI feedback
+  const handleMarkDelivered = (order: Order) => {
+    markDeliveredFast.mutate(order.id);
   };
 
   const handleOpenFailedDialog = (order: Order) => {
@@ -527,13 +489,13 @@ export default function RunnerInbox() {
               <Button
                 size="sm"
                 variant="default"
-                disabled={processingDelivery === order.id}
+                disabled={markDeliveredFast.isPending}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleMarkDelivered(order);
                 }}
               >
-                {processingDelivery === order.id ? (
+                {markDeliveredFast.isPending ? (
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                 ) : (
                   <CheckCircle className="h-4 w-4 mr-1" />
