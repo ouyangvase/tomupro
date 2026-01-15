@@ -13,7 +13,7 @@ export interface BoundUser {
 /**
  * Hook to fetch all users bound to the current runner.
  * Uses the v_runner_target_users view which unifies salesperson and manager bindings.
- * Only returns users who have an ACTIVE warehouse.
+ * Returns BOTH salespersons and managers with proper warehouse resolution.
  */
 export function useRunnerBoundUsers() {
   const { user } = useAuth();
@@ -40,24 +40,28 @@ export function useRunnerBoundUsers() {
 
       console.log('[useRunnerBoundUsers] Raw results from view:', data?.length);
 
-      // Filter to only users with warehouses and deduplicate by user_id
+      // Deduplicate by user_id, keep users with warehouses preferred
       const userMap = new Map<string, BoundUser>();
       
       (data || []).forEach(row => {
-        if (row.user_id && row.warehouse_id && !userMap.has(row.user_id)) {
-          userMap.set(row.user_id, {
-            id: row.user_id,
-            display_name: row.name || 'Unknown',
-            email: row.email,
-            role: (row.role as 'salesperson' | 'manager') || 'salesperson',
-            warehouse_id: row.warehouse_id,
-          });
+        if (row.user_id) {
+          const existing = userMap.get(row.user_id);
+          // Prefer entries with warehouse_id
+          if (!existing || (!existing.warehouse_id && row.warehouse_id)) {
+            userMap.set(row.user_id, {
+              id: row.user_id,
+              display_name: row.name || 'Unknown',
+              email: row.email,
+              role: (row.role as 'salesperson' | 'manager') || 'salesperson',
+              warehouse_id: row.warehouse_id,
+            });
+          }
         }
       });
 
       const result = Array.from(userMap.values());
 
-      console.log('[useRunnerBoundUsers] Final users with warehouses:', result.length);
+      console.log('[useRunnerBoundUsers] Final bound users:', result.length);
       console.log('[useRunnerBoundUsers] Roles breakdown:', {
         salespersons: result.filter(u => u.role === 'salesperson').length,
         managers: result.filter(u => u.role === 'manager').length,
