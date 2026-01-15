@@ -1,0 +1,271 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+
+export interface DeliveredOrder {
+  id: string;
+  order_code: string;
+  order_date: string;
+  customer_name: string;
+  phone: string;
+  area: string | null;
+  address: string;
+  total_amount: number;
+  total_qty: number;
+  payment_method: string;
+  runner_status: string;
+  reconciliation_status: string;
+  delivered_at: string | null;
+  salesperson_id: string;
+  salesperson_name: string | null;
+  runner_id: string | null;
+  runner_name: string | null;
+  driver_id: string | null;
+  driver_name: string | null;
+  items_summary: string;
+  items_json: Array<{
+    id: string;
+    product_id: string | null;
+    sku_code: string | null;
+    sku_name: string | null;
+    sku_label: string | null;
+    qty: number;
+    price: number;
+    line_total: number;
+  }>;
+}
+
+export interface DeliveredSummary {
+  total_delivered: number;
+  pending_claim: number;
+  total_amount: number;
+}
+
+interface UseDeliveredOrdersParams {
+  runnerId?: string;
+  salespersonId?: string;
+  salespersonIds?: string[];
+  limit?: number;
+  offset?: number;
+  enabled?: boolean;
+}
+
+/**
+ * Optimized hook for fetching delivered orders using a single RPC call
+ * Eliminates N+1 queries by returning denormalized data
+ */
+export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
+  const { runnerId, salespersonId, salespersonIds, limit = 100, offset = 0, enabled = true } = params;
+
+  return useQuery({
+    queryKey: ['delivered-orders-fast', runnerId, salespersonId, salespersonIds, limit, offset],
+    queryFn: async () => {
+      const startTime = performance.now();
+      
+      const { data, error } = await supabase.rpc('get_delivered_orders_fast', {
+        p_runner_id: runnerId || null,
+        p_salesperson_id: salespersonId || null,
+        p_salesperson_ids: salespersonIds || null,
+        p_limit: limit,
+        p_offset: offset,
+      });
+
+      const duration = performance.now() - startTime;
+      if (duration > 2000) {
+        console.warn(`[PERF] get_delivered_orders_fast took ${duration.toFixed(0)}ms`, {
+          runnerId,
+          salespersonId,
+          salespersonIds,
+          rowCount: data?.length,
+        });
+      }
+
+      if (error) throw error;
+      return (data || []) as DeliveredOrder[];
+    },
+    enabled,
+    staleTime: 30000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+/**
+ * Optimized hook for fetching delivered orders summary stats
+ * Single query for all counters instead of multiple queries
+ */
+export function useDeliveredSummary(params: Omit<UseDeliveredOrdersParams, 'limit' | 'offset'> = {}) {
+  const { runnerId, salespersonId, salespersonIds, enabled = true } = params;
+
+  return useQuery({
+    queryKey: ['delivered-summary', runnerId, salespersonId, salespersonIds],
+    queryFn: async () => {
+      const startTime = performance.now();
+      
+      const { data, error } = await supabase.rpc('get_delivered_summary', {
+        p_runner_id: runnerId || null,
+        p_salesperson_id: salespersonId || null,
+        p_salesperson_ids: salespersonIds || null,
+      });
+
+      const duration = performance.now() - startTime;
+      if (duration > 2000) {
+        console.warn(`[PERF] get_delivered_summary took ${duration.toFixed(0)}ms`);
+      }
+
+      if (error) throw error;
+      
+      // RPC returns an array, we need the first row
+      const summary = data?.[0] || { total_delivered: 0, pending_claim: 0, total_amount: 0 };
+      return summary as DeliveredSummary;
+    },
+    enabled,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Optimistic mutation for marking an order as delivered
+ * Updates UI immediately, queues background processing
+ */
+export function useMarkDeliveredFast() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const startTime = performance.now();
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.rpc('mark_order_delivered_fast', {
+        p_order_id: orderId,
+        p_actor_id: user.id,
+      });
+
+      const duration = performance.now() - startTime;
+      if (duration > 300) {
+        console.warn(`[PERF] mark_order_delivered_fast took ${duration.toFixed(0)}ms`);
+      }
+
+      if (error) throw error;
+      
+      const result = data as { success: boolean; error?: string; already_delivered?: boolean };
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to mark as delivered');
+      }
+      
+      return { orderId, ...result };
+    },
+    // Optimistic update - immediately update UI before server confirms
+    onMutate: async (orderId) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      await queryClient.cancelQueries({ queryKey: ['delivered-orders-fast'] });
+      
+      // Snapshot current data
+      const previousOrders = queryClient.getQueryData(['orders']);
+      
+      // Optimistically update orders cache
+      queryClient.setQueriesData({ queryKey: ['orders'] }, (old: any) => {
+        if (!old) return old;
+        return old.map((order: any) =>
+          order.id === orderId
+            ? { ...order, runner_status: 'DELIVERED', delivered_at: new Date().toISOString() }
+            : order
+        );
+      });
+
+      return { previousOrders };
+    },
+    onError: (err, orderId, context) => {
+      // Rollback on error
+      if (context?.previousOrders) {
+        queryClient.setQueryData(['orders'], context.previousOrders);
+      }
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: err.message || 'Failed to mark as delivered',
+      });
+    },
+    onSuccess: (result) => {
+      if (result.already_delivered) {
+        toast({ title: 'Already delivered' });
+      } else {
+        toast({ title: 'Marked as delivered' });
+      }
+    },
+    onSettled: () => {
+      // Debounced refetch after 1.5s to pick up background processing results
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+        queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast'] });
+        queryClient.invalidateQueries({ queryKey: ['delivered-summary'] });
+      }, 1500);
+    },
+  });
+}
+
+/**
+ * Fallback hook that uses the edge function (process-delivery) for delivery
+ * Used when fast RPC isn't available or for backward compatibility
+ */
+export function useMarkDeliveredEdge() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const startTime = performance.now();
+      
+      const { data, error } = await supabase.functions.invoke('process-delivery', {
+        body: { orderId },
+      });
+
+      const duration = performance.now() - startTime;
+      console.log(`[PERF] process-delivery edge function took ${duration.toFixed(0)}ms`);
+
+      if (error) throw error;
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to process delivery');
+      }
+      
+      return { orderId, ...data };
+    },
+    onMutate: async (orderId) => {
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      
+      const previousOrders = queryClient.getQueryData(['orders']);
+      
+      queryClient.setQueriesData({ queryKey: ['orders'] }, (old: any) => {
+        if (!old) return old;
+        return old.map((order: any) =>
+          order.id === orderId
+            ? { ...order, runner_status: 'DELIVERED', delivered_at: new Date().toISOString() }
+            : order
+        );
+      });
+
+      return { previousOrders };
+    },
+    onError: (err, orderId, context) => {
+      if (context?.previousOrders) {
+        queryClient.setQueryData(['orders'], context.previousOrders);
+      }
+      toast({
+        variant: 'destructive',
+        title: 'Delivery failed',
+        description: err.message,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: 'Delivered successfully' });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+    },
+  });
+}
