@@ -6,6 +6,7 @@ import { useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useTeamOrders } from '@/hooks/useTeamOrders';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useReasons } from '@/hooks/useReasons';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,7 +52,7 @@ export default function CancelledSales() {
   const [filterArea, setFilterArea] = useState<string>('all');
   
   // Team view state for managers
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('my');
 
   // Use team-aware orders hook
   const { data: allOrders = [], isLoading } = useTeamOrders({ 
@@ -101,10 +102,24 @@ export default function CancelledSales() {
     [allOrders]
   );
   
-  const salespersonOptions = useMemo(() => 
-    userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager'),
-    [userDirectory]
-  );
+  // Team salesperson IDs for filtering
+  const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
+  
+  // Team-scoped salesperson options for filter dropdown
+  const salespersonOptions = useMemo(() => {
+    if (role === 'manager') {
+      // Manager: only show self + team members
+      const teamIds = [profile?.id, ...teamMemberIds];
+      return userDirectory
+        .filter(u => teamIds.includes(u.id))
+        .map(u => ({
+          ...u,
+          display_name: u.id === profile?.id ? `${u.display_name} (Me)` : u.display_name,
+        }));
+    }
+    // Admin sees all salespersons/managers
+    return userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
+  }, [userDirectory, role, profile?.id, teamMemberIds]);
 
   // Apply filters
   const filteredOrders = useMemo(() => {

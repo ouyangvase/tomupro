@@ -2,15 +2,23 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useVisibleUserIds } from '@/hooks/useTeamVisibility';
 import type { Product } from '@/types/database';
 
+/**
+ * Hook to fetch products with strict team visibility.
+ * 
+ * VISIBILITY RULES:
+ * - Salesperson: Only sees products they own (owner_user_id = auth.uid)
+ * - Manager: Sees own products + bound team members' products (ISOLATED)
+ * - Admin: Sees all products
+ */
 export function useProducts(includeInactive = false) {
   const { user, role } = useAuth();
-  const { data: teamMembers = [] } = useTeamMembers();
+  const { visibleUserIds } = useVisibleUserIds();
   
   return useQuery({
-    queryKey: ['products', includeInactive, role, user?.id, teamMembers.map(t => t.id)],
+    queryKey: ['products', includeInactive, role, user?.id, visibleUserIds],
     queryFn: async () => {
       let query = supabase
         .from('products')
@@ -24,19 +32,11 @@ export function useProducts(includeInactive = false) {
         query = query.eq('is_active', true);
       }
       
-      // For salesperson, only show their own products
-      if (role === 'salesperson' && user?.id) {
-        query = query.eq('owner_user_id', user.id);
+      // Apply strict visibility filter based on role
+      if (visibleUserIds && visibleUserIds.length > 0) {
+        query = query.in('owner_user_id', visibleUserIds);
       }
-      // For manager, show own products + team products
-      // RLS will handle this, but we can add explicit filter for clarity
-      else if (role === 'manager' && user?.id) {
-        const teamIds = [user.id, ...teamMembers.map(t => t.id)];
-        if (teamIds.length > 0) {
-          query = query.in('owner_user_id', teamIds);
-        }
-      }
-      // Admin sees all (no filter)
+      // Admin: visibleUserIds is undefined, no filter applied
       
       const { data, error } = await query;
       if (error) throw error;
