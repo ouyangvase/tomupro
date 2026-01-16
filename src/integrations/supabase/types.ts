@@ -3068,6 +3068,7 @@ export type Database = {
         Args: { p_shipment_id: string }
         Returns: Json
       }
+      can_view_owner_data: { Args: { p_owner_id: string }; Returns: boolean }
       can_view_stock: {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
@@ -3107,6 +3108,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      debug_team_visibility: { Args: never; Returns: Json }
       generate_driver_code: { Args: { p_driver_id: string }; Returns: Json }
       get_delivered_orders_fast: {
         Args: {
@@ -3235,10 +3237,75 @@ export type Database = {
         Args: { manager_user_id: string }
         Returns: string[]
       }
+      get_team_orders: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_reconciliation_status?: string
+          p_runner_status?: string
+          p_status?: string
+        }
+        Returns: {
+          address: string
+          area: string
+          cancel_notes: string
+          cancel_reason: string
+          channel: string
+          created_at: string
+          customer_name: string
+          delivered_at: string
+          discount_amount: number
+          driver_id: string
+          driver_name: string
+          failed_next_step: string
+          failed_reason: string
+          id: string
+          items_summary: string
+          next_delivery_date: string
+          notes: string
+          operational_status: string
+          order_code: string
+          order_date: string
+          payment_method: string
+          phone: string
+          reconciliation_status: string
+          reschedule_flag: boolean
+          runner_comment: string
+          runner_final_outcome: string
+          runner_id: string
+          runner_name: string
+          runner_status: string
+          salesperson_action_required: boolean
+          salesperson_action_type: string
+          salesperson_id: string
+          salesperson_name: string
+          status: string
+          total_amount: number
+          total_qty: number
+          updated_at: string
+        }[]
+      }
+      get_team_products: {
+        Args: { p_include_inactive?: boolean }
+        Returns: {
+          category: string
+          cost: number
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          owner_name: string
+          price: number
+          sku_code: string
+          sku_name: string
+          updated_at: string
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
       }
+      get_visible_owner_ids: { Args: never; Returns: string[] }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
