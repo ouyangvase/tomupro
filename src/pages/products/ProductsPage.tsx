@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
@@ -21,33 +21,83 @@ import {
 } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProducts, useCreateProduct, useUpdateProduct, useBulkUpdateProducts } from '@/hooks/useProducts';
+import { useUserDirectory } from '@/hooks/useUserDirectory';
+import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
+import { useVisibleUserIds } from '@/hooks/useTeamVisibility';
 import { Package, Plus, Edit, CheckCircle, XCircle } from 'lucide-react';
 import type { Product } from '@/types/database';
 
 export default function ProductsPage() {
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
+  const { data: userDirectory = [] } = useUserDirectory();
   const [includeInactive, setIncludeInactive] = useState(false);
   const { data: products, isLoading } = useProducts(includeInactive);
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const bulkUpdateProducts = useBulkUpdateProducts();
+  
+  // Team view state for managers
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState('my');
+  const { visibleUserIds } = useVisibleUserIds();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({ sku_name: '', sku_code: '' });
 
-  const canEdit = profile?.role === 'admin' || profile?.role === 'salesperson' || profile?.role === 'manager';
+  const canEdit = role === 'admin' || role === 'salesperson' || role === 'manager';
 
-  // Filter products by search
-  const filteredProducts = products?.filter((p) => {
+  // Build owner filter options based on role
+  const ownerOptions = useMemo(() => {
+    if (role === 'admin') {
+      // Admin: show all users who have products
+      const ownerIds = new Set(products?.map(p => p.owner_user_id).filter(Boolean) || []);
+      return userDirectory
+        .filter(u => ownerIds.has(u.id))
+        .map(u => ({ id: u.id, name: u.display_name, role: u.role }));
+    }
+    if (role === 'manager' && visibleUserIds) {
+      // Manager: only show self + team members
+      return userDirectory
+        .filter(u => visibleUserIds.includes(u.id))
+        .map(u => ({
+          id: u.id,
+          name: u.id === profile?.id ? `${u.display_name} (Me)` : u.display_name,
+          role: u.role,
+        }));
+    }
+    return [];
+  }, [role, products, userDirectory, visibleUserIds, profile?.id]);
+
+  // Filter products by search, owner, and team view mode
+  const filteredProducts = useMemo(() => {
+    let filtered = products || [];
+    
+    // Apply team view mode filtering for managers
+    if (isManager && viewMode === 'my') {
+      filtered = filtered.filter(p => p.owner_user_id === profile?.id);
+    } else if (isManager && viewMode === 'team' && selectedMember !== 'all') {
+      filtered = filtered.filter(p => p.owner_user_id === selectedMember);
+    }
+    
+    // Apply owner filter
+    if (ownerFilter !== 'all') {
+      filtered = filtered.filter(p => p.owner_user_id === ownerFilter);
+    }
+    
+    // Apply search filter
     const q = searchQuery.toLowerCase();
-    return (
-      p.sku_name.toLowerCase().includes(q) ||
-      (p.sku_code || '').toLowerCase().includes(q)
-    );
-  }) || [];
+    if (q) {
+      filtered = filtered.filter(p =>
+        p.sku_name.toLowerCase().includes(q) ||
+        (p.sku_code || '').toLowerCase().includes(q)
+      );
+    }
+    
+    return filtered;
+  }, [products, searchQuery, ownerFilter, isManager, viewMode, selectedMember, profile?.id]);
 
   const handleOpenCreate = () => {
     setEditingProduct(null);
@@ -168,7 +218,7 @@ export default function ProductsPage() {
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <Package className="h-8 w-8 text-primary" />
             <div>
@@ -176,12 +226,20 @@ export default function ProductsPage() {
               <p className="text-muted-foreground">Manage your product catalog</p>
             </div>
           </div>
-          {canEdit && (
-            <Button onClick={handleOpenCreate}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Button>
-          )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <TeamViewToggle
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              selectedMember={selectedMember}
+              onMemberChange={setSelectedMember}
+            />
+            {canEdit && (
+              <Button onClick={handleOpenCreate}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Product
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-4">
@@ -203,6 +261,24 @@ export default function ProductsPage() {
               <SelectItem value="all">All Products</SelectItem>
             </SelectContent>
           </Select>
+          
+          {/* Owner filter - for admin/manager */}
+          {(role === 'admin' || role === 'manager') && ownerOptions.length > 0 && (
+            <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="All Owners" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Owners</SelectItem>
+                {ownerOptions.map(opt => (
+                  <SelectItem key={opt.id} value={opt.id}>
+                    {opt.name}
+                    {opt.role === 'manager' && <Badge variant="secondary" className="ml-2 text-xs">Manager</Badge>}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           
           {canEdit && selectedRows.length > 0 && (
             <div className="flex gap-2 ml-auto">

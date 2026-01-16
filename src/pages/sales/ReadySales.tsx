@@ -7,6 +7,7 @@ import { useTeamOrders } from '@/hooks/useTeamOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useBindings } from '@/hooks/useBindings';
 import { useManagerRunnerBindings } from '@/hooks/useManagerRunnerBindings';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { Button } from '@/components/ui/button';
@@ -87,14 +88,29 @@ export default function ReadySales() {
     return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
   }, [orders]);
 
-  // Salesperson filter options (for admin/manager)
+  // Team member IDs for manager visibility
+  const { data: teamMembers = [] } = useTeamMembers();
+  const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
+
+  // Salesperson filter options - TEAM SCOPED for managers
   const salespersonOptions = useMemo(() => {
+    if (role === 'manager') {
+      // Manager: only show self + team members
+      const teamIds = [profile?.id, ...teamMemberIds];
+      return userDirectory
+        .filter(u => teamIds.includes(u.id))
+        .map(sp => ({
+          label: sp.id === profile?.id ? `${sp.display_name} (Me)` : sp.display_name,
+          value: sp.id,
+        }));
+    }
+    // Admin sees all salespersons/managers
     const salespersons = userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
     return salespersons.map(sp => ({
       label: sp.display_name,
       value: sp.id,
     }));
-  }, [userDirectory]);
+  }, [userDirectory, role, profile?.id, teamMemberIds]);
   
   // Determine which salesperson to use for bindings lookup
   const selectedOrdersData = orders.filter((o) => selectedRows.includes(o.id));
