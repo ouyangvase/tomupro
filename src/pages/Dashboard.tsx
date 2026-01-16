@@ -54,6 +54,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { LeaderboardDashboardCard } from '@/components/leaderboard/LeaderboardDashboardCard';
+import { VisibilityDebugPanel } from '@/components/admin/VisibilityDebugPanel';
 
 interface StatCardProps {
   label: string;
@@ -992,6 +993,9 @@ function AdminDashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Admin Debug Panel */}
+      <VisibilityDebugPanel />
+      
       {/* Action Required Overview - Priority Display */}
       <ActionRequiredCard
         total={actionStats?.systemTotal ?? 0}
