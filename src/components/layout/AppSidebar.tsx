@@ -191,12 +191,12 @@ const reconciliationItems: NavItem[] = [{
   title: "Claims History",
   url: "/claims",
   icon: Receipt,
-  roles: ['admin', 'salesperson', 'manager']
+  roles: ['admin']
 }, {
   title: "SP Reconciliation",
   url: "/reconciliation/sp",
   icon: FileCheck,
-  roles: ['admin', 'salesperson', 'manager']
+  roles: ['admin']
 }, {
   title: "Admin Reconciliation",
   url: "/reconciliation/admin",
@@ -282,7 +282,7 @@ const settingsItems: NavItem[] = [{
   title: "Bindings",
   url: "/settings/bindings",
   icon: Users,
-  roles: ['admin', 'salesperson', 'manager']
+  roles: ['admin']
 }, {
   title: "Users",
   url: "/settings/users",

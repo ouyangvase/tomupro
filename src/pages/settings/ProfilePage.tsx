@@ -335,37 +335,39 @@ const ProfilePage = () => {
           </CardContent>
         </Card>
 
-        {/* Danger Zone */}
-        <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive">Danger Zone</CardTitle>
-            <CardDescription>Irreversible actions for your account</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive">
-                  <UserX className="h-4 w-4 mr-2" />
-                  Deactivate Account
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will deactivate your account. You will be signed out immediately and will no longer be able to access the application. Contact an administrator to reactivate your account.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDeactivateAccount} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Deactivate
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </CardContent>
-        </Card>
+        {/* Danger Zone - only for admin, runner, driver */}
+        {profile.role !== 'salesperson' && profile.role !== 'manager' && (
+          <Card className="border-destructive">
+            <CardHeader>
+              <CardTitle className="text-destructive">Danger Zone</CardTitle>
+              <CardDescription>Irreversible actions for your account</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive">
+                    <UserX className="h-4 w-4 mr-2" />
+                    Deactivate Account
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will deactivate your account. You will be signed out immediately and will no longer be able to access the application. Contact an administrator to reactivate your account.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeactivateAccount} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Deactivate
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </AppLayout>
   );
