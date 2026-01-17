@@ -3301,6 +3301,10 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_team_salesperson_ids: {
+        Args: { p_manager_id: string }
+        Returns: string[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
