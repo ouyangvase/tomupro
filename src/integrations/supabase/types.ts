@@ -3322,7 +3322,7 @@ export type Database = {
         Returns: boolean
       }
       is_in_manager_team: {
-        Args: { manager_user_id: string; salesperson_user_id: string }
+        Args: { p_manager_id: string; p_salesperson_id: string }
         Returns: boolean
       }
       is_ranking_visible_for_driver: {
