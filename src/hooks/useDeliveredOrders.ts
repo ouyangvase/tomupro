@@ -153,6 +153,10 @@ export function useMarkDeliveredFast() {
       
       const result = data as { success: boolean; error?: string; already_delivered?: boolean };
       if (!result.success) {
+        // Don't throw for "already delivered" - treat as success
+        if (result.error?.toLowerCase().includes('already delivered')) {
+          return { orderId, success: true, already_delivered: true };
+        }
         throw new Error(result.error || 'Failed to mark as delivered');
       }
       
