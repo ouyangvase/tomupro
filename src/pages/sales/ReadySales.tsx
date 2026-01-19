@@ -30,7 +30,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck, Lock, Plus, AlertTriangle, ChevronDown, ChevronUp, Send } from 'lucide-react';
+import { Truck, UserCheck, Lock, Plus, AlertTriangle, ChevronDown, ChevronUp, Send, Search, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import {
   Tooltip,
   TooltipContent,
@@ -63,6 +64,7 @@ export default function ReadySales() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
+  const [mobileSearch, setMobileSearch] = useState('');
   
   // For manager assign dialog: manually selected salesperson
   const [managerSelectedSalesperson, setManagerSelectedSalesperson] = useState<string>('');
@@ -77,10 +79,25 @@ export default function ReadySales() {
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
   });
 
-  // Apply panel filters to orders
+  // Apply panel filters and mobile search to orders
   const filteredOrders = useMemo(() => {
-    return applyOrderFilters(orders, panelFilters);
-  }, [orders, panelFilters]);
+    let result = applyOrderFilters(orders, panelFilters);
+    
+    // Apply mobile search filter
+    if (mobileSearch.trim()) {
+      const searchLower = mobileSearch.toLowerCase().trim();
+      result = result.filter(order => 
+        order.order_code?.toLowerCase().includes(searchLower) ||
+        order.customer_name?.toLowerCase().includes(searchLower) ||
+        order.phone?.toLowerCase().includes(searchLower) ||
+        order.address?.toLowerCase().includes(searchLower) ||
+        order.area?.toLowerCase().includes(searchLower) ||
+        order.runner?.display_name?.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    return result;
+  }, [orders, panelFilters, mobileSearch]);
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {
@@ -486,6 +503,25 @@ export default function ReadySales() {
         {/* Mobile Card View */}
         {isMobile ? (
           <div className="space-y-3">
+            {/* Mobile Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search order, customer, phone, area..."
+                value={mobileSearch}
+                onChange={(e) => setMobileSearch(e.target.value)}
+                className="pl-9 pr-9"
+              />
+              {mobileSearch && (
+                <button
+                  onClick={() => setMobileSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
             {isEditable && filteredOrders.length > 0 && (
               <MobileSelectAllCard
                 isAllSelected={isAllSelected}
