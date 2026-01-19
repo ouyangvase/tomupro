@@ -117,12 +117,12 @@ export default function RunnerInbox() {
     return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
   }, [orders]);
 
-  // Salesperson filter options
+  // User filter options (salesperson + manager)
   const salespersonOptions = useMemo(() => {
-    const salespersons = userDirectory.filter(u => u.role === 'salesperson');
-    return salespersons.map(sp => ({
-      label: `${sp.display_name} (${sp.email})`,
-      value: sp.id,
+    const users = userDirectory.filter((u) => u.role === 'salesperson' || u.role === 'manager');
+    return users.map((u) => ({
+      label: `${u.display_name || u.email || 'Unknown'}${u.email ? ` (${u.email})` : ''}`,
+      value: u.id,
     }));
   }, [userDirectory]);
 
@@ -460,9 +460,9 @@ export default function RunnerInbox() {
       render: (order) => (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-xs truncate block">{order.salesperson?.display_name || '-'}</span>
+            <span className="text-xs truncate block">{order.salesperson?.display_name || 'Unknown User'}</span>
           </TooltipTrigger>
-          <TooltipContent>{order.salesperson?.display_name || 'Unknown'}</TooltipContent>
+          <TooltipContent>{order.salesperson?.display_name || order.salesperson?.email || 'Unknown User'}</TooltipContent>
         </Tooltip>
       ),
     },
