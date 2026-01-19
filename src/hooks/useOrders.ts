@@ -63,24 +63,57 @@ export function useOrders(filters?: OrderFilters) {
       });
 
       // Fetch user directory for these IDs (accessible to all authenticated users)
-      let usersMap: Record<string, { id: string; display_name: string; email: string | null }> = {};
+      type DirectoryUser = { id: string; display_name: string | null; email: string | null };
+      let usersMap: Record<string, DirectoryUser> = {};
+
+      const normalizeName = (u: DirectoryUser): string => {
+        const name = u.display_name?.trim();
+        if (name) return name;
+        if (u.email) return u.email.split('@')[0];
+        return 'Unknown User';
+      };
+
+      const resolveUser = (id: string | null, fallbackName?: string | null): DirectoryUser | null => {
+        if (!id) return null;
+        const u = usersMap[id];
+        if (u) return { ...u, display_name: normalizeName(u) };
+
+        const fb = fallbackName?.trim();
+        return {
+          id,
+          display_name: fb && fb.length > 0 ? fb : 'Unknown User',
+          email: null,
+        };
+      };
+
       if (userIds.size > 0) {
-        const { data: usersData } = await supabase
+        const { data: usersData, error: usersError } = await supabase
           .from('user_directory')
           .select('id, display_name, email')
           .in('id', Array.from(userIds));
-        
-        usersData?.forEach(user => {
-          usersMap[user.id] = user;
-        });
+
+        if (usersError) {
+          // Don't fail the whole page; we'll fall back to snapshot fields where possible.
+          console.warn('Failed to fetch user directory:', usersError);
+        } else {
+          usersData?.forEach((u) => {
+            usersMap[u.id] = u as DirectoryUser;
+          });
+        }
       }
 
       // Combine orders with user data
-      const orders = ordersData?.map(order => ({
+      const orders = ordersData?.map((order) => ({
         ...order,
-        salesperson: order.salesperson_id ? usersMap[order.salesperson_id] : null,
-        runner: order.runner_id ? usersMap[order.runner_id] : null,
-        driver: order.driver_id ? usersMap[order.driver_id] : null,
+        // Prefer live directory name, else fall back to snapshot names on the order.
+        salesperson: resolveUser(
+          order.salesperson_id,
+          (order as any).owner_manager_display_name_snapshot ||
+            (order as any).owner_salesperson_display_name_snapshot ||
+            (order as any).created_by_name_snapshot
+        ),
+        runner: resolveUser(order.runner_id),
+        driver: resolveUser(order.driver_id),
       }));
 
       return orders as unknown as Order[];
