@@ -110,31 +110,6 @@ export default function SalespersonActionInbox() {
   const { data: teamMembers = [] } = useTeamMembers();
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
 
-  // Fetch salesperson info for filtering (manager/admin)
-  const salespersonIds = useMemo(() => {
-    if (role === 'admin') {
-      return [...new Set(allOrders.filter(o => o.salesperson_action_required).map(o => o.salesperson_id))];
-    }
-    if (role === 'manager') {
-      return [profile?.id || '', ...teamMemberIds];
-    }
-    return [];
-  }, [role, allOrders, teamMemberIds, profile?.id]);
-
-  const { data: salespersons = [] } = useQuery({
-    queryKey: ['salespersons-for-filter', salespersonIds],
-    queryFn: async () => {
-      if (salespersonIds.length === 0) return [];
-      const { data, error } = await supabase
-        .from('user_directory')
-        .select('id, display_name')
-        .in('id', salespersonIds);
-      if (error) return [];
-      return data;
-    },
-    enabled: (role === 'admin' || role === 'manager') && salespersonIds.length > 0,
-  });
-
   // Determine if user can view all (admin), group members (manager), or just own (salesperson)
   const canViewAll = role === 'admin';
   const canViewGroup = role === 'manager';
@@ -176,6 +151,27 @@ export default function SalespersonActionInbox() {
 
     return filtered;
   }, [allOrders, profile?.id, sourceFilter, salespersonFilter, canViewAll, canViewGroup, teamMemberIds, viewMode, selectedMember]);
+
+  // Fetch salesperson info for ALL orders in the filtered list (not just team members)
+  const salespersonIds = useMemo(() => {
+    // Get ALL unique salesperson IDs from the filtered action required orders
+    const idsFromOrders = [...new Set(allOrders.filter(o => needsSalespersonAction(o)).map(o => o.salesperson_id))];
+    return idsFromOrders;
+  }, [allOrders]);
+
+  const { data: salespersons = [] } = useQuery({
+    queryKey: ['salespersons-for-filter', salespersonIds],
+    queryFn: async () => {
+      if (salespersonIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('user_directory')
+        .select('id, display_name')
+        .in('id', salespersonIds);
+      if (error) return [];
+      return data;
+    },
+    enabled: (role === 'admin' || role === 'manager') && salespersonIds.length > 0,
+  });
 
   // Fetch reasons for failed orders
   const reasonIds = useMemo(() => 
