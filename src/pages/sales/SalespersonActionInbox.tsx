@@ -75,10 +75,20 @@ function getActionSource(order: Order): ActionRequiredSource | null {
 }
 
 // SINGLE SOURCE OF TRUTH: Check if order needs salesperson action
-// Only orders with salesperson_action_required = true are shown
+// Orders are shown if explicitly marked OR if runner_status is FAILED_DELIVERY
 function needsSalespersonAction(order: Order): boolean {
-  // Primary filter: only show if explicitly marked as action required
-  return order.salesperson_action_required === true;
+  // Show if explicitly marked as action required
+  if (order.salesperson_action_required === true) return true;
+  
+  // Also show if runner marked as failed delivery (even if flag not set)
+  // Exclude cancelled orders
+  const runnerStatus = order.runner_status as string;
+  const orderStatus = order.status as string;
+  if (runnerStatus === 'FAILED_DELIVERY' && orderStatus !== 'CANCELLED') {
+    return true;
+  }
+  
+  return false;
 }
 
 export default function SalespersonActionInbox() {

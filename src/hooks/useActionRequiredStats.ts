@@ -28,21 +28,27 @@ export function useSalespersonActionRequiredStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // SINGLE SOURCE OF TRUTH: Only fetch orders where action is explicitly required
+      // Fetch orders that require action: either flagged OR runner_status = FAILED_DELIVERY
       const { data: orders, error } = await supabase
         .from('orders')
-        .select('id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment')
+        .select('id, status, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required')
         .eq('salesperson_id', user.id)
-        .eq('salesperson_action_required', true);
+        .neq('status', 'CANCELLED');
 
       if (error) throw error;
+
+      // Filter: salesperson_action_required = true OR runner_status = FAILED_DELIVERY
+      const actionRequired = orders?.filter(order => 
+        order.salesperson_action_required === true || 
+        (order.runner_status as string) === 'FAILED_DELIVERY'
+      ) || [];
 
       // Calculate stats for display breakdown
       let failedDelivery = 0;
       let rescheduled = 0;
       let runnerFlagged = 0;
 
-      orders?.forEach(order => {
+      actionRequired.forEach(order => {
         const runnerStatus = order.runner_status as string;
 
         // Categorize for display
@@ -58,7 +64,7 @@ export function useSalespersonActionRequiredStats() {
       });
 
       return {
-        total: orders?.length || 0,
+        total: actionRequired.length,
         failedDelivery,
         rescheduled,
         runnerFlagged,
@@ -143,14 +149,20 @@ export function useManagerActionRequiredStats() {
       const groupMemberIds = groupMembersRes.data?.map(gm => gm.member_user_id) || [];
       const allMemberIds = [...new Set([user.id, ...bindingMemberIds, ...groupMemberIds])];
 
-      // Fetch orders requiring action for manager + team
+      // Fetch orders for manager + team (either flagged OR failed delivery)
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment')
-        .eq('salesperson_action_required', true)
-        .in('salesperson_id', allMemberIds);
+        .select('id, status, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required')
+        .in('salesperson_id', allMemberIds)
+        .neq('status', 'CANCELLED');
 
       if (ordersError) throw ordersError;
+
+      // Filter: salesperson_action_required = true OR runner_status = FAILED_DELIVERY
+      const actionRequired = orders?.filter(order => 
+        order.salesperson_action_required === true || 
+        (order.runner_status as string) === 'FAILED_DELIVERY'
+      ) || [];
 
       // Fetch salesperson info
       const { data: salespersons, error: usersError } = await supabase
@@ -180,7 +192,7 @@ export function useManagerActionRequiredStats() {
       let totalRescheduled = 0;
       let totalRunnerFlagged = 0;
 
-      orders?.forEach(order => {
+      actionRequired.forEach(order => {
         const runnerStatus = order.runner_status as string;
         const spId = order.salesperson_id;
 
@@ -208,7 +220,7 @@ export function useManagerActionRequiredStats() {
         .sort((a, b) => b.total - a.total);
 
       return {
-        systemTotal: orders?.length || 0,
+        systemTotal: actionRequired.length,
         failedDelivery: totalFailed,
         rescheduled: totalRescheduled,
         runnerFlagged: totalRunnerFlagged,
@@ -229,13 +241,19 @@ export function useAdminActionRequiredStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // SINGLE SOURCE OF TRUTH: Only fetch orders where action is explicitly required
+      // Fetch orders (either flagged OR failed delivery)
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment')
-        .eq('salesperson_action_required', true);
+        .select('id, status, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required')
+        .neq('status', 'CANCELLED');
 
       if (ordersError) throw ordersError;
+
+      // Filter: salesperson_action_required = true OR runner_status = FAILED_DELIVERY
+      const actionRequired = orders?.filter(order => 
+        order.salesperson_action_required === true || 
+        (order.runner_status as string) === 'FAILED_DELIVERY'
+      ) || [];
 
       // Fetch salesperson directory
       const { data: salespersons, error: usersError } = await supabase
@@ -265,7 +283,7 @@ export function useAdminActionRequiredStats() {
       let totalRescheduled = 0;
       let totalRunnerFlagged = 0;
 
-      orders?.forEach(order => {
+      actionRequired.forEach(order => {
         const runnerStatus = order.runner_status as string;
         const spId = order.salesperson_id;
 
@@ -294,7 +312,7 @@ export function useAdminActionRequiredStats() {
         .sort((a, b) => b.total - a.total);
 
       return {
-        systemTotal: orders?.length || 0,
+        systemTotal: actionRequired.length,
         failedDelivery: totalFailed,
         rescheduled: totalRescheduled,
         runnerFlagged: totalRunnerFlagged,
