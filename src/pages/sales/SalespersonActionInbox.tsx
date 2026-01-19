@@ -459,8 +459,8 @@ export default function SalespersonActionInbox() {
                     ]}
                     expandedFields={[
                       { label: 'Address', value: order.address || '-', fullWidth: true },
-                      ...(order.runner_failed_reason_id ? [{ label: 'Reason', value: reasonsMap[order.runner_failed_reason_id] || '-' }] : []),
-                      ...(order.runner_comment ? [{ label: 'Runner Comment', value: order.runner_comment, fullWidth: true }] : []),
+                      ...(order.failed_reason ? [{ label: 'Reason', value: order.failed_reason }] : []),
+                      ...(order.failed_remark || order.runner_comment ? [{ label: 'Runner Comment', value: order.failed_remark || order.runner_comment || '-', fullWidth: true }] : []),
                       { label: 'Order Status', value: order.status },
                       { label: 'Runner Status', value: order.runner_status || '-' },
                     ]}
@@ -573,16 +573,28 @@ export default function SalespersonActionInbox() {
                           )}
                         </TableCell>
                         <TableCell className="text-sm text-red-600 max-w-[120px]">
-                          {order.runner_failed_reason_id ? (
-                            <span className="truncate block">{reasonsMap[order.runner_failed_reason_id] || '-'}</span>
+                          {order.failed_reason ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="truncate block cursor-help">{order.failed_reason}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>{order.failed_reason}</TooltipContent>
+                            </Tooltip>
                           ) : '-'}
                         </TableCell>
                         <TableCell className="max-w-[180px]">
-                          {order.runner_comment ? (
-                            <div className="flex items-start gap-1">
-                              <MessageSquare className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                              <span className="text-sm truncate">{order.runner_comment}</span>
-                            </div>
+                          {order.failed_remark || order.runner_comment ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-start gap-1 cursor-help">
+                                  <MessageSquare className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                                  <span className="text-sm truncate">{order.failed_remark || order.runner_comment}</span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[300px]">
+                                <p className="whitespace-pre-wrap">{order.failed_remark || order.runner_comment}</p>
+                              </TooltipContent>
+                            </Tooltip>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
