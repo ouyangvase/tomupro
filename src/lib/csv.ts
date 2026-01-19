@@ -297,6 +297,7 @@ export interface RunnerOrderLineExport {
   customer_name: string;
   phone: string;
   address: string;
+  area: string;
   payment_method: string;
   notes: string;
   salesperson_name: string;
@@ -322,6 +323,7 @@ export function exportRunnerOrderLines(
         customer_name: order.customer_name || '',
         phone: order.phone || '',
         address: order.address || '',
+        area: order.area || '',
         payment_method: order.payment_method || '',
         notes: order.notes || '',
         salesperson_name: order.salesperson?.display_name || '',
@@ -343,6 +345,7 @@ export function exportRunnerOrderLines(
           customer_name: order.customer_name || '',
           phone: order.phone || '',
           address: order.address || '',
+          area: order.area || '',
           payment_method: order.payment_method || '',
           notes: order.notes || '',
           salesperson_name: order.salesperson?.display_name || '',
@@ -360,6 +363,7 @@ export function exportRunnerOrderLines(
     { key: 'customer_name', header: 'customer_name' },
     { key: 'phone', header: 'phone' },
     { key: 'address', header: 'address' },
+    { key: 'area', header: 'area' },
     { key: 'payment_method', header: 'payment_method' },
     { key: 'notes', header: 'notes' },
     { key: 'salesperson_name', header: 'salesperson_name' },
