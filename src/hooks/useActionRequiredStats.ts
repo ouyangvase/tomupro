@@ -108,7 +108,7 @@ export function useRunnerActionRequiredStats() {
   });
 }
 
-// For manager: Get action required stats for their assigned salespersons
+// For manager: Get action required stats for their assigned salespersons + their own orders
 export function useManagerActionRequiredStats() {
   const { user } = useAuth();
 
@@ -117,35 +117,38 @@ export function useManagerActionRequiredStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // First get the manager's group members (salespersons)
-      const { data: groupMembers, error: membersError } = await supabase
-        .from('group_members')
-        .select(`
-          member_user_id,
-          manager_groups!inner(manager_user_id)
-        `)
-        .eq('manager_groups.manager_user_id', user.id);
+      // Get team members from multiple sources:
+      // 1. manager_salesperson_bindings (primary)
+      // 2. group_members (legacy fallback)
+      const [bindingsRes, groupMembersRes] = await Promise.all([
+        supabase
+          .from('manager_salesperson_bindings')
+          .select('salesperson_id')
+          .eq('manager_id', user.id)
+          .eq('active', true),
+        supabase
+          .from('group_members')
+          .select(`
+            member_user_id,
+            manager_groups!inner(manager_user_id)
+          `)
+          .eq('manager_groups.manager_user_id', user.id)
+      ]);
 
-      if (membersError) throw membersError;
+      if (bindingsRes.error) throw bindingsRes.error;
+      if (groupMembersRes.error) throw groupMembersRes.error;
 
-      const memberIds = groupMembers?.map(gm => gm.member_user_id) || [];
+      // Combine all member IDs + manager's own ID
+      const bindingMemberIds = bindingsRes.data?.map(b => b.salesperson_id) || [];
+      const groupMemberIds = groupMembersRes.data?.map(gm => gm.member_user_id) || [];
+      const allMemberIds = [...new Set([user.id, ...bindingMemberIds, ...groupMemberIds])];
 
-      if (memberIds.length === 0) {
-        return {
-          systemTotal: 0,
-          failedDelivery: 0,
-          rescheduled: 0,
-          runnerFlagged: 0,
-          bySalesperson: [],
-        };
-      }
-
-      // Fetch orders requiring action for those salespersons
+      // Fetch orders requiring action for manager + team
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
         .select('id, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment')
         .eq('salesperson_action_required', true)
-        .in('salesperson_id', memberIds);
+        .in('salesperson_id', allMemberIds);
 
       if (ordersError) throw ordersError;
 
@@ -153,7 +156,7 @@ export function useManagerActionRequiredStats() {
       const { data: salespersons, error: usersError } = await supabase
         .from('user_directory')
         .select('id, display_name, email')
-        .in('id', memberIds);
+        .in('id', allMemberIds);
 
       if (usersError) throw usersError;
 
@@ -201,6 +204,7 @@ export function useManagerActionRequiredStats() {
       });
 
       const bySalesperson = Object.values(spStatsMap)
+        .filter(sp => sp.total > 0)
         .sort((a, b) => b.total - a.total);
 
       return {
