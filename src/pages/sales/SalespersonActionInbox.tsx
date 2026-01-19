@@ -456,6 +456,7 @@ export default function SalespersonActionInbox() {
                     isSelected={isSelected}
                     onSelectionChange={() => toggleRow(order.id)}
                     primaryFields={[
+                      ...((canViewAll || canViewGroup) ? [{ label: 'Agent', value: salespersons.find(sp => sp.id === order.salesperson_id)?.display_name || '-' }] : []),
                       { label: 'Customer', value: order.customer_name },
                       { label: 'Phone', value: <WhatsAppPhoneLinkCompact order={order} /> },
                       ...(order.next_delivery_date ? [{ label: 'Next Date', value: format(parseISO(order.next_delivery_date), 'dd MMM') }] : []),
@@ -466,7 +467,6 @@ export default function SalespersonActionInbox() {
                       ...(order.runner_comment ? [{ label: 'Runner Comment', value: order.runner_comment, fullWidth: true }] : []),
                       { label: 'Order Status', value: order.status },
                       { label: 'Runner Status', value: order.runner_status || '-' },
-                      ...((canViewAll || canViewGroup) ? [{ label: 'Agent', value: salespersons.find(sp => sp.id === order.salesperson_id)?.display_name || '-' }] : []),
                     ]}
                     primaryAction={
                       <Button
