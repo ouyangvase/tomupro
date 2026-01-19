@@ -50,6 +50,8 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
       failed_remark: failedRemark.trim(),
       failed_next_step: failedNextStep,
       next_delivery_date: failedNextStep === 'RESCHEDULE' ? nextDeliveryDate : null,
+      salesperson_action_required: true,
+      salesperson_action_type: 'FAILED_DELIVERY',
     });
 
     // Log audit
