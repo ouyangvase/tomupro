@@ -359,13 +359,13 @@ export default function SalespersonActionInbox() {
                 {/* Salesperson Filter - only for admin/manager */}
                 {(canViewAll || canViewGroup) && salespersons.length > 0 && (
                   <div className="flex-1 md:flex-none">
-                    <Label className="text-xs">Agent</Label>
+                    <Label className="text-xs">User</Label>
                     <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
                       <SelectTrigger className="w-full md:w-[180px] h-10">
-                        <SelectValue placeholder="All Agents" />
+                        <SelectValue placeholder="All Users" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Agents</SelectItem>
+                        <SelectItem value="all">All Users</SelectItem>
                         {salespersons.map(sp => (
                           <SelectItem key={sp.id} value={sp.id}>
                             {sp.display_name}
@@ -456,7 +456,7 @@ export default function SalespersonActionInbox() {
                     isSelected={isSelected}
                     onSelectionChange={() => toggleRow(order.id)}
                     primaryFields={[
-                      ...((canViewAll || canViewGroup) ? [{ label: 'Agent', value: salespersons.find(sp => sp.id === order.salesperson_id)?.display_name || '-' }] : []),
+                      ...((canViewAll || canViewGroup) ? [{ label: 'User', value: salespersons.find(sp => sp.id === order.salesperson_id)?.display_name || '-' }] : []),
                       { label: 'Customer', value: order.customer_name },
                       { label: 'Phone', value: <WhatsAppPhoneLinkCompact order={order} /> },
                       ...(order.next_delivery_date ? [{ label: 'Next Date', value: format(parseISO(order.next_delivery_date), 'dd MMM') }] : []),
@@ -501,7 +501,7 @@ export default function SalespersonActionInbox() {
                       />
                     </TableHead>
                     <TableHead>Order Ref</TableHead>
-                    {(canViewAll || canViewGroup) && <TableHead>Agent</TableHead>}
+                    {(canViewAll || canViewGroup) && <TableHead>User</TableHead>}
                     <TableHead>Customer</TableHead>
                     <TableHead>Address</TableHead>
                     <TableHead>Source</TableHead>

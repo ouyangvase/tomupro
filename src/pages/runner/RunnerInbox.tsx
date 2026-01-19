@@ -451,7 +451,7 @@ export default function RunnerInbox() {
     },
     {
       key: 'salesperson_id',
-      header: 'SP',
+      header: 'User',
       filterable: true,
       filterOptions: salespersonOptions,
       minWidth: '70px',
