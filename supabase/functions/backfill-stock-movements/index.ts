@@ -13,6 +13,10 @@ const corsHeaders = {
  * 4. Report results
  * 
  * This is an ADMIN-only function for data repair.
+ * 
+ * UPDATED: Now uses role-aware warehouse selection:
+ * - Managers use MANAGER warehouse
+ * - Salespersons use SALESPERSON warehouse
  */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -72,9 +76,33 @@ Deno.serve(async (req) => {
       failedOrdersScanned: 0,
       missingReturnsCreated: 0,
       duplicateReturnsReversed: 0,
+      warehouseTypeMismatches: 0,
       errors: [] as string[],
       fixedOrders: [] as string[],
     };
+
+    // Helper function to get correct warehouse for an order based on salesperson's role
+    async function getCorrectWarehouse(salespersonId: string): Promise<{ id: string; type: string } | null> {
+      // Get the salesperson's role
+      const { data: spProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', salespersonId)
+        .single();
+      
+      const expectedType = spProfile?.role === 'manager' ? 'MANAGER' : 'SALESPERSON';
+      
+      // Get the active warehouse of the correct type
+      const { data: warehouse } = await supabase
+        .from('warehouses')
+        .select('id, warehouse_type')
+        .eq('owner_user_id', salespersonId)
+        .eq('warehouse_type', expectedType)
+        .eq('is_active', true)
+        .single();
+      
+      return warehouse ? { id: warehouse.id, type: warehouse.warehouse_type } : null;
+    }
 
     // PART 1: Process ALL DELIVERED orders (including those with stock_deducted = false)
     console.log('Scanning delivered orders...');
@@ -98,22 +126,27 @@ Deno.serve(async (req) => {
       for (const order of deliveredOrders || []) {
         results.deliveredOrdersScanned++;
         
-        // Get warehouse
-        let warehouseId = order.fulfillment_warehouse_id;
-        if (!warehouseId) {
-          const { data: spWarehouse } = await supabase
-            .from('warehouses')
-            .select('id')
-            .eq('owner_user_id', order.salesperson_id)
-            .eq('warehouse_type', 'SALESPERSON')
-            .eq('is_active', true)
-            .single();
-          warehouseId = spWarehouse?.id;
+        // Get correct warehouse based on salesperson's role
+        const warehouseInfo = await getCorrectWarehouse(order.salesperson_id);
+        
+        if (!warehouseInfo) {
+          results.errors.push(`Order ${order.id} (${order.order_code}): No warehouse found for salesperson`);
+          continue;
         }
         
-        if (!warehouseId) {
-          results.errors.push(`Order ${order.id}: No warehouse found`);
-          continue;
+        const warehouseId = warehouseInfo.id;
+        
+        // Check if fulfillment_warehouse_id needs updating
+        if (order.fulfillment_warehouse_id !== warehouseId) {
+          console.log(`Order ${order.order_code}: Updating fulfillment_warehouse_id from ${order.fulfillment_warehouse_id} to ${warehouseId}`);
+          results.warehouseTypeMismatches++;
+          
+          if (!dryRun) {
+            await supabase
+              .from('orders')
+              .update({ fulfillment_warehouse_id: warehouseId })
+              .eq('id', order.id);
+          }
         }
 
         for (const item of order.order_items || []) {
@@ -122,7 +155,7 @@ Deno.serve(async (req) => {
           // Find all DELIVER_DEDUCT and SALE_DEDUCT movements for this order+product
           const { data: deductions } = await supabase
             .from('stock_movements')
-            .select('id, movement_type, qty_change, created_at')
+            .select('id, movement_type, qty_change, warehouse_id, created_at')
             .or(`order_id.eq.${order.id},reference_id.eq.${item.id}`)
             .eq('product_id', item.product_id)
             .in('movement_type', ['DELIVER_DEDUCT', 'SALE_DEDUCT'])
@@ -140,7 +173,7 @@ Deno.serve(async (req) => {
                   product_id: item.product_id,
                   movement_type: 'DELIVER_DEDUCT',
                   qty_change: -item.qty,
-                  reference_type: 'ORDER',
+                  reference_type: 'ORDER_ITEM',
                   reference_id: item.id,
                   order_id: order.id,
                   created_by: user.id,
@@ -183,7 +216,7 @@ Deno.serve(async (req) => {
                 const { error: reversalError } = await supabase
                   .from('stock_movements')
                   .insert({
-                    warehouse_id: warehouseId,
+                    warehouse_id: dup.warehouse_id || warehouseId,
                     product_id: item.product_id,
                     movement_type: 'REVERSAL',
                     qty_change: Math.abs(dup.qty_change), // Add back
@@ -202,13 +235,50 @@ Deno.serve(async (req) => {
               }
             }
           }
+          
+          // Check if first deduction is in wrong warehouse (e.g., SALESPERSON for a manager)
+          if (deductions && deductions.length > 0 && deductions[0].warehouse_id !== warehouseId) {
+            console.log(`Order ${order.order_code}: Deduction in wrong warehouse ${deductions[0].warehouse_id}, should be ${warehouseId}`);
+            results.warehouseTypeMismatches++;
+            
+            if (!dryRun) {
+              // Create a reversal for the wrong warehouse
+              await supabase
+                .from('stock_movements')
+                .insert({
+                  warehouse_id: deductions[0].warehouse_id,
+                  product_id: item.product_id,
+                  movement_type: 'REVERSAL',
+                  qty_change: Math.abs(deductions[0].qty_change),
+                  reference_type: 'MANUAL',
+                  order_id: order.id,
+                  created_by: user.id,
+                });
+              
+              // Create correct deduction in the right warehouse
+              await supabase
+                .from('stock_movements')
+                .insert({
+                  warehouse_id: warehouseId,
+                  product_id: item.product_id,
+                  movement_type: 'DELIVER_DEDUCT',
+                  qty_change: deductions[0].qty_change,
+                  reference_type: 'ORDER_ITEM',
+                  reference_id: item.id,
+                  order_id: order.id,
+                  created_by: user.id,
+                });
+            }
+          }
+          
           // Exactly 1 deduction is correct - but ensure order flag is set
           if (!order.stock_deducted && !dryRun) {
             await supabase
               .from('orders')
               .update({ 
                 stock_deducted: true, 
-                inventory_deducted_at: new Date().toISOString() 
+                inventory_deducted_at: new Date().toISOString(),
+                fulfillment_warehouse_id: warehouseId,
               })
               .eq('id', order.id);
             
@@ -229,6 +299,7 @@ Deno.serve(async (req) => {
       .from('orders')
       .select(`
         id,
+        order_code,
         salesperson_id,
         fulfillment_warehouse_id,
         stock_deducted,
@@ -244,23 +315,15 @@ Deno.serve(async (req) => {
       for (const order of failedOrders || []) {
         results.failedOrdersScanned++;
         
-        // Get warehouse
-        let warehouseId = order.fulfillment_warehouse_id;
-        if (!warehouseId) {
-          const { data: spWarehouse } = await supabase
-            .from('warehouses')
-            .select('id')
-            .eq('owner_user_id', order.salesperson_id)
-            .eq('warehouse_type', 'SALESPERSON')
-            .eq('is_active', true)
-            .single();
-          warehouseId = spWarehouse?.id;
-        }
+        // Get correct warehouse
+        const warehouseInfo = await getCorrectWarehouse(order.salesperson_id);
         
-        if (!warehouseId) {
+        if (!warehouseInfo) {
           results.errors.push(`Order ${order.id}: No warehouse found for return`);
           continue;
         }
+        
+        const warehouseId = warehouseInfo.id;
 
         for (const item of order.order_items || []) {
           if (!item.product_id) continue;
@@ -288,7 +351,7 @@ Deno.serve(async (req) => {
           
           if (!returns || returns.length === 0) {
             // Missing return - create one
-            console.log(`Creating missing return for order ${order.id}, product ${item.product_id}`);
+            console.log(`Creating missing return for order ${order.id} (${order.order_code}), product ${item.product_id}`);
             
             if (!dryRun) {
               // Return to the same warehouse where it was deducted
@@ -301,7 +364,7 @@ Deno.serve(async (req) => {
                   product_id: item.product_id,
                   movement_type: 'RETURN_TO_OWNER',
                   qty_change: Math.abs(deductions[0].qty_change), // Add back
-                  reference_type: 'ORDER',
+                  reference_type: 'ORDER_ITEM',
                   order_id: order.id,
                   created_by: user.id,
                 });

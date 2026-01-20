@@ -103,34 +103,55 @@ Deno.serve(async (req) => {
       );
     }
 
-    // CRITICAL: Stock belongs to salesperson/manager ONLY
-    // Get the owner's warehouse - this is the SINGLE SOURCE OF TRUTH
+    // CRITICAL: Use the database function get_stock_owner_warehouse to get the correct warehouse
+    // This function is role-aware: managers get MANAGER warehouse, others get SALESPERSON warehouse
     let warehouseId = order.fulfillment_warehouse_id;
     
-    // Find owner's warehouse - try SALESPERSON type first, then MANAGER type
     if (!warehouseId) {
-      // First try SALESPERSON warehouse
-      const { data: spWarehouse } = await supabase
-        .from('warehouses')
-        .select('id')
-        .eq('owner_user_id', order.salesperson_id)
-        .eq('warehouse_type', 'SALESPERSON')
-        .eq('is_active', true)
+      // Use the centralized database function for role-aware warehouse selection
+      const { data: warehouseResult, error: warehouseError } = await supabase
+        .rpc('get_stock_owner_warehouse', { p_order_id: orderId });
+      
+      if (warehouseError) {
+        console.error('Error getting stock owner warehouse:', warehouseError);
+      }
+      
+      warehouseId = warehouseResult;
+    }
+    
+    // Validate warehouse exists and is correct type for the user's role
+    if (warehouseId) {
+      // Get the salesperson's role to validate warehouse type
+      const { data: salespersonProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', order.salesperson_id)
         .single();
       
-      warehouseId = spWarehouse?.id;
+      const { data: warehouseData } = await supabase
+        .from('warehouses')
+        .select('id, warehouse_type, is_active')
+        .eq('id', warehouseId)
+        .single();
       
-      // If no SALESPERSON warehouse, try MANAGER warehouse (managers can also own stock)
-      if (!warehouseId) {
-        const { data: mgrWarehouse } = await supabase
-          .from('warehouses')
-          .select('id')
-          .eq('owner_user_id', order.salesperson_id)
-          .eq('warehouse_type', 'MANAGER')
-          .eq('is_active', true)
-          .single();
+      // Validate warehouse is active and correct type for role
+      if (warehouseData) {
+        const expectedType = salespersonProfile?.role === 'manager' ? 'MANAGER' : 'SALESPERSON';
         
-        warehouseId = mgrWarehouse?.id;
+        if (!warehouseData.is_active || warehouseData.warehouse_type !== expectedType) {
+          console.log(`Warehouse ${warehouseId} is wrong type or inactive. Expected ${expectedType}, got ${warehouseData.warehouse_type}. Re-fetching correct warehouse.`);
+          
+          // Re-fetch the correct warehouse
+          const { data: correctWarehouse } = await supabase
+            .from('warehouses')
+            .select('id')
+            .eq('owner_user_id', order.salesperson_id)
+            .eq('warehouse_type', expectedType)
+            .eq('is_active', true)
+            .single();
+          
+          warehouseId = correctWarehouse?.id || null;
+        }
       }
     }
 
@@ -297,6 +318,7 @@ Deno.serve(async (req) => {
         stock_deducted: true,
         deductions_created: deductionsCreated,
         deductions_skipped: deductionsSkipped,
+        warehouse_id: warehouseId,
       },
     });
 
@@ -318,6 +340,7 @@ Deno.serve(async (req) => {
         message: 'Delivered. Stock deducted.',
         deductionsCreated,
         deductionsSkipped,
+        warehouseId,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
