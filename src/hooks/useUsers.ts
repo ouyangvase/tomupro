@@ -27,8 +27,9 @@ export function useUpdateUser() {
       display_name?: string;
       role?: AppRole;
       manager_id?: string | null;
+      previousRole?: AppRole;
     }) => {
-      const { id, role, manager_id, ...otherChanges } = update;
+      const { id, role, manager_id, previousRole, ...otherChanges } = update;
       
       // Build profile update object
       const profileUpdate: Record<string, unknown> = { ...otherChanges };
@@ -58,6 +59,15 @@ export function useUpdateUser() {
         if (roleError) {
           throw roleError;
         }
+        
+        // Handle warehouse changes when role changes
+        if (previousRole && previousRole !== role) {
+          // Deactivate warehouses for previous role
+          await deactivateWarehousesForUser(id, previousRole);
+          
+          // Ensure correct warehouse for new role
+          await ensureWarehouseForRole(id, role, data.display_name || 'User');
+        }
       }
 
       return data;
@@ -65,6 +75,7 @@ export function useUpdateUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       toast.success('User updated');
     },
     onError: (error) => {
@@ -73,6 +84,15 @@ export function useUpdateUser() {
   });
 }
 
+/**
+ * Ensures the correct warehouse exists and is active for a user's role.
+ * 
+ * RULES:
+ * - Managers must have an active MANAGER warehouse (not SALESPERSON)
+ * - Salespersons must have an active SALESPERSON warehouse (not MANAGER)
+ * - Runners have RUNNER warehouses
+ * - Only ONE active warehouse per user (enforced by database trigger)
+ */
 export async function ensureWarehouseForRole(
   userId: string,
   role: AppRole,
@@ -83,44 +103,60 @@ export async function ensureWarehouseForRole(
     return;
   }
 
-  const warehouseType = role === 'salesperson' ? 'SALESPERSON' : role === 'runner' ? 'RUNNER' : 'MANAGER';
+  // Determine correct warehouse type for role
+  const warehouseType = role === 'manager' ? 'MANAGER' : 
+                        role === 'runner' ? 'RUNNER' : 
+                        'SALESPERSON';
 
-  // Check if warehouse already exists
+  // Check if a warehouse of the correct type already exists for this user
   const { data: existingWarehouses, error: fetchError } = await supabase
     .from('warehouses')
-    .select('id, is_active')
+    .select('id, is_active, warehouse_type')
     .eq('owner_user_id', userId)
     .eq('warehouse_type', warehouseType);
 
   if (fetchError) {
-    // Silently return - warehouse check is non-critical
+    console.error('Error checking warehouses:', fetchError);
     return;
   }
 
   if (existingWarehouses && existingWarehouses.length > 0) {
-    // Warehouse exists - ensure it's active
+    // Warehouse of correct type exists - ensure it's active
+    // The database trigger will auto-deactivate any other active warehouses
     const warehouse = existingWarehouses[0];
     if (!warehouse.is_active) {
-      await supabase
+      const { error: updateError } = await supabase
         .from('warehouses')
         .update({ is_active: true })
         .eq('id', warehouse.id);
+      
+      if (updateError) {
+        console.error('Error activating warehouse:', updateError);
+      }
     }
     return;
   }
 
-  // Create new warehouse
+  // No warehouse of correct type exists - create one
+  // The database trigger will auto-deactivate any other active warehouses
   const { error: createError } = await supabase
     .from('warehouses')
     .insert({
       warehouse_type: warehouseType,
       owner_user_id: userId,
-      name: `${displayName}'s Warehouse`,
+      name: `${displayName}'s ${warehouseType.charAt(0) + warehouseType.slice(1).toLowerCase()} Warehouse`,
+      is_active: true,
     });
 
-  // Warehouse creation failure is non-critical - admin can create manually
+  if (createError) {
+    console.error('Error creating warehouse:', createError);
+  }
 }
 
+/**
+ * Deactivates warehouses when a user changes away from a role.
+ * This is called when the user's role changes.
+ */
 export async function deactivateWarehousesForUser(
   userId: string,
   previousRole: AppRole
@@ -130,11 +166,17 @@ export async function deactivateWarehousesForUser(
     return;
   }
 
-  const warehouseType = previousRole === 'salesperson' ? 'SALESPERSON' : previousRole === 'runner' ? 'RUNNER' : 'MANAGER';
+  const warehouseType = previousRole === 'manager' ? 'MANAGER' : 
+                        previousRole === 'runner' ? 'RUNNER' : 
+                        'SALESPERSON';
 
-  await supabase
+  const { error } = await supabase
     .from('warehouses')
     .update({ is_active: false })
     .eq('owner_user_id', userId)
     .eq('warehouse_type', warehouseType);
+
+  if (error) {
+    console.error('Error deactivating warehouse:', error);
+  }
 }
