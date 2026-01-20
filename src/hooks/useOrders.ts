@@ -137,7 +137,13 @@ export function useCreateOrder() {
         .insert({ ...order, order_code: orderCode.trim() } as any)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        // Handle duplicate order code error with user-friendly message
+        if (error.code === '23505' && error.message.includes('idx_orders_order_code')) {
+          throw new Error(`Order Reference "${orderCode.trim()}" already exists. Please use a different order reference.`);
+        }
+        throw error;
+      }
       return data;
     },
     onSuccess: () => {
