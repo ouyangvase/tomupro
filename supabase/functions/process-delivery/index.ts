@@ -103,12 +103,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // CRITICAL: Stock belongs to salesperson ONLY
-    // Get the salesperson's warehouse - this is the SINGLE SOURCE OF TRUTH
+    // CRITICAL: Stock belongs to salesperson/manager ONLY
+    // Get the owner's warehouse - this is the SINGLE SOURCE OF TRUTH
     let warehouseId = order.fulfillment_warehouse_id;
     
-    // Always use salesperson's warehouse - never runner's
+    // Find owner's warehouse - try SALESPERSON type first, then MANAGER type
     if (!warehouseId) {
+      // First try SALESPERSON warehouse
       const { data: spWarehouse } = await supabase
         .from('warehouses')
         .select('id')
@@ -118,15 +119,28 @@ Deno.serve(async (req) => {
         .single();
       
       warehouseId = spWarehouse?.id;
+      
+      // If no SALESPERSON warehouse, try MANAGER warehouse (managers can also own stock)
+      if (!warehouseId) {
+        const { data: mgrWarehouse } = await supabase
+          .from('warehouses')
+          .select('id')
+          .eq('owner_user_id', order.salesperson_id)
+          .eq('warehouse_type', 'MANAGER')
+          .eq('is_active', true)
+          .single();
+        
+        warehouseId = mgrWarehouse?.id;
+      }
     }
 
-    // NO FALLBACK TO RUNNER - stock only belongs to salesperson
+    // NO FALLBACK TO RUNNER - stock only belongs to salesperson/manager
     if (!warehouseId) {
-      console.error('No salesperson warehouse found for order', orderId);
+      console.error('No salesperson/manager warehouse found for order', orderId);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'No salesperson warehouse found. Stock can only be deducted from salesperson inventory.' 
+          error: 'No warehouse found. Stock can only be deducted from salesperson/manager inventory.' 
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
