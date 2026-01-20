@@ -469,8 +469,11 @@ export default function RunnerInbox() {
     {
       key: 'actions',
       header: 'Actions',
+      minWidth: '180px',
+      maxWidth: '220px',
+      preferredWidth: '12vw',
       render: (order) => (
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-nowrap">
           {order.runner_status === 'ASSIGNED' && (
             <Button
               size="sm"
