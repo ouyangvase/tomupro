@@ -3435,7 +3435,11 @@ export type Database = {
         | "ADMIN_ACK_PENDING"
         | "SETTLED"
         | "DISPUTE"
-      reference_type: "INBOUND_ITEM" | "ORDER_ITEM" | "MANUAL"
+      reference_type:
+        | "INBOUND_ITEM"
+        | "ORDER_ITEM"
+        | "MANUAL"
+        | "STOCK_TRANSFER"
       runner_status:
         | "UNASSIGNED"
         | "ASSIGNED"
@@ -3623,7 +3627,12 @@ export const Constants = {
         "SETTLED",
         "DISPUTE",
       ],
-      reference_type: ["INBOUND_ITEM", "ORDER_ITEM", "MANUAL"],
+      reference_type: [
+        "INBOUND_ITEM",
+        "ORDER_ITEM",
+        "MANUAL",
+        "STOCK_TRANSFER",
+      ],
       runner_status: [
         "UNASSIGNED",
         "ASSIGNED",
