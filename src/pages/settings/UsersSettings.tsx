@@ -12,13 +12,29 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SearchableSelect } from '@/components/ui/searchable-select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   useUsers,
@@ -26,12 +42,27 @@ import {
   ensureWarehouseForRole,
   deactivateWarehousesForUser,
 } from '@/hooks/useUsers';
+import { useReenableUser, ExtendedProfile } from '@/hooks/useOffboarding';
 import { useManagers } from '@/hooks/useTeamMembers';
-import { Users, Pencil, Search, Filter, UserCheck } from 'lucide-react';
+import { 
+  Users, 
+  Pencil, 
+  Search, 
+  Filter, 
+  UserCheck, 
+  MoreHorizontal,
+  Ban,
+  Package,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle
+} from 'lucide-react';
 import { format } from 'date-fns';
 import type { Profile, AppRole } from '@/types/database';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { DisableUserDialog } from '@/components/admin/DisableUserDialog';
+import { OffboardingStockTransferDialog } from '@/components/admin/OffboardingStockTransferDialog';
 
 const roleColors: Record<AppRole, string> = {
   admin: 'bg-destructive text-destructive-foreground',
@@ -42,6 +73,12 @@ const roleColors: Record<AppRole, string> = {
   user: 'bg-muted text-muted-foreground',
 };
 
+const statusColors: Record<string, string> = {
+  active: 'bg-green-500/10 text-green-600 border-green-500/30',
+  disabled: 'bg-red-500/10 text-red-600 border-red-500/30',
+  resigned: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+};
+
 export default function UsersSettings() {
   const { role } = useAuth();
   const isAdmin = role === 'admin';
@@ -49,6 +86,7 @@ export default function UsersSettings() {
   const { data: users, isLoading } = useUsers();
   const { data: managers = [] } = useManagers();
   const updateUser = useUpdateUser();
+  const reenableUser = useReenableUser();
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
@@ -56,14 +94,22 @@ export default function UsersSettings() {
   const [editRole, setEditRole] = useState<AppRole>('salesperson');
   const [editManagerId, setEditManagerId] = useState<string>('none');
 
+  // Offboarding dialogs
+  const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [reenableDialogOpen, setReenableDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<ExtendedProfile | null>(null);
+
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const filteredUsers = useMemo(() => {
     if (!users) return [];
 
     return users.filter((user) => {
+      const extendedUser = user as ExtendedProfile;
       // Search filter
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch =
@@ -74,9 +120,13 @@ export default function UsersSettings() {
       // Role filter
       const matchesRole = roleFilter === 'all' || user.role === roleFilter;
 
-      return matchesSearch && matchesRole;
+      // Status filter
+      const userStatus = extendedUser.status || 'active';
+      const matchesStatus = statusFilter === 'all' || userStatus === statusFilter;
+
+      return matchesSearch && matchesRole && matchesStatus;
     });
-  }, [users, searchQuery, roleFilter]);
+  }, [users, searchQuery, roleFilter, statusFilter]);
 
   // Build a map of user ID to manager name for display
   const managerMap = useMemo(() => {
@@ -133,6 +183,28 @@ export default function UsersSettings() {
     setEditingUser(null);
   };
 
+  const handleOpenDisable = (user: Profile) => {
+    setSelectedUser(user as ExtendedProfile);
+    setDisableDialogOpen(true);
+  };
+
+  const handleOpenTransfer = (user: Profile) => {
+    setSelectedUser(user as ExtendedProfile);
+    setTransferDialogOpen(true);
+  };
+
+  const handleOpenReenable = (user: Profile) => {
+    setSelectedUser(user as ExtendedProfile);
+    setReenableDialogOpen(true);
+  };
+
+  const handleReenable = async () => {
+    if (!selectedUser) return;
+    await reenableUser.mutateAsync(selectedUser.id);
+    setReenableDialogOpen(false);
+    setSelectedUser(null);
+  };
+
   const columns: Column<Profile>[] = [
     {
       key: 'display_name',
@@ -153,6 +225,39 @@ export default function UsersSettings() {
           {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
         </Badge>
       ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      render: (user) => {
+        const extendedUser = user as ExtendedProfile;
+        const status = extendedUser.status || 'active';
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className={statusColors[status]}>
+                  {status === 'active' && <CheckCircle className="h-3 w-3 mr-1" />}
+                  {status === 'disabled' && <Ban className="h-3 w-3 mr-1" />}
+                  {status === 'resigned' && <AlertTriangle className="h-3 w-3 mr-1" />}
+                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                </Badge>
+              </TooltipTrigger>
+              {extendedUser.disabled_reason && (
+                <TooltipContent>
+                  <p>Reason: {extendedUser.disabled_reason}</p>
+                  {extendedUser.disabled_at && (
+                    <p className="text-xs text-muted-foreground">
+                      Since: {format(new Date(extendedUser.disabled_at), 'MMM d, yyyy')}
+                    </p>
+                  )}
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
     },
     {
       key: 'manager_id',
@@ -191,18 +296,50 @@ export default function UsersSettings() {
     columns.push({
       key: 'actions',
       header: 'Actions',
-      render: (user) => (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleOpenEdit(user);
-          }}
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
-      ),
+      render: (user) => {
+        const extendedUser = user as ExtendedProfile;
+        const isActive = !extendedUser.status || extendedUser.status === 'active';
+        const isDisabledOrResigned = extendedUser.status === 'disabled' || extendedUser.status === 'resigned';
+        
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleOpenEdit(user)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit User
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              
+              {isActive ? (
+                <DropdownMenuItem 
+                  onClick={() => handleOpenDisable(user)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Ban className="h-4 w-4 mr-2" />
+                  Disable Login
+                </DropdownMenuItem>
+              ) : (
+                <>
+                  <DropdownMenuItem onClick={() => handleOpenReenable(user)}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Re-enable Account
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleOpenTransfer(user)}>
+                    <Package className="h-4 w-4 mr-2" />
+                    Transfer Stock to Manager
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
     });
   }
 
@@ -215,7 +352,7 @@ export default function UsersSettings() {
             <div>
               <h1 className="text-2xl font-bold">User Management</h1>
               <p className="text-muted-foreground">
-                {isAdmin ? 'Manage users and their roles' : 'View system users'}
+                {isAdmin ? 'Manage users, roles, and offboarding' : 'View system users'}
               </p>
             </div>
           </div>
@@ -234,7 +371,7 @@ export default function UsersSettings() {
               />
             </div>
           </div>
-          <div className="w-full sm:w-48">
+          <div className="w-full sm:w-40">
             <Select value={roleFilter} onValueChange={setRoleFilter}>
               <SelectTrigger>
                 <Filter className="h-4 w-4 mr-2" />
@@ -248,6 +385,19 @@ export default function UsersSettings() {
                 <SelectItem value="runner">Runner</SelectItem>
                 <SelectItem value="driver">Driver</SelectItem>
                 <SelectItem value="user">User</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-full sm:w-40">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="disabled">Disabled</SelectItem>
+                <SelectItem value="resigned">Resigned</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -351,6 +501,39 @@ export default function UsersSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Disable User Dialog */}
+      <DisableUserDialog
+        open={disableDialogOpen}
+        onOpenChange={setDisableDialogOpen}
+        user={selectedUser}
+      />
+
+      {/* Stock Transfer Dialog */}
+      <OffboardingStockTransferDialog
+        open={transferDialogOpen}
+        onOpenChange={setTransferDialogOpen}
+        user={selectedUser}
+      />
+
+      {/* Re-enable Confirmation Dialog */}
+      <AlertDialog open={reenableDialogOpen} onOpenChange={setReenableDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Re-enable User Account</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to re-enable <strong>{selectedUser?.display_name}</strong>'s account?
+              They will be able to log in again immediately.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReenable} disabled={reenableUser.isPending}>
+              {reenableUser.isPending ? 'Re-enabling...' : 'Re-enable Account'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }

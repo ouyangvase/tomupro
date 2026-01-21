@@ -44,6 +44,8 @@ export interface StockVisibilityOverride {
   };
 }
 
+export type TransferStatus = 'draft' | 'pending_manager_approval' | 'approved' | 'rejected' | 'applied' | 'cancelled';
+
 export interface StockTransfer {
   id: string;
   from_owner_id: string;
@@ -53,6 +55,12 @@ export interface StockTransfer {
   notes: string | null;
   created_by: string;
   created_at: string;
+  // New approval workflow fields
+  status: TransferStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  offboarding_transfer: boolean;
   from_owner?: {
     id: string;
     display_name: string;
@@ -74,10 +82,10 @@ export interface StockTransfer {
 
 export interface StockTransferItem {
   id: string;
-  transfer_id: string;
+  transfer_id?: string;
   product_id: string;
   qty: number;
-  created_at: string;
+  created_at?: string;
   product?: {
     id: string;
     sku_code: string | null;

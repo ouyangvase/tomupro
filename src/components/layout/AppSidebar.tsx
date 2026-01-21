@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award, Ticket, History } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award, Ticket, History, ClipboardCheck } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -170,6 +170,11 @@ const managerItems: NavItem[] = [{
   url: "/manager/dashboard",
   icon: LayoutDashboard,
   roles: ['manager']
+}, {
+  title: "Pending Approvals",
+  url: "/manager/pending-approvals",
+  icon: ClipboardCheck,
+  roles: ['manager', 'admin']
 }, {
   title: "Impact Board",
   url: "/manager/impact-board",

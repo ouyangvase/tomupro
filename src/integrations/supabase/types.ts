@@ -2340,6 +2340,9 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string
+          disabled_at: string | null
+          disabled_by: string | null
+          disabled_reason: string | null
           display_name: string
           driver_code: string | null
           email: string
@@ -2348,12 +2351,16 @@ export type Database = {
           manager_id: string | null
           role: Database["public"]["Enums"]["app_role"]
           runner_code: string | null
+          status: Database["public"]["Enums"]["user_status"]
           theme_preference: string | null
           updated_at: string | null
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
+          disabled_at?: string | null
+          disabled_by?: string | null
+          disabled_reason?: string | null
           display_name: string
           driver_code?: string | null
           email: string
@@ -2362,12 +2369,16 @@ export type Database = {
           manager_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           runner_code?: string | null
+          status?: Database["public"]["Enums"]["user_status"]
           theme_preference?: string | null
           updated_at?: string | null
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
+          disabled_at?: string | null
+          disabled_by?: string | null
+          disabled_reason?: string | null
           display_name?: string
           driver_code?: string | null
           email?: string
@@ -2376,10 +2387,18 @@ export type Database = {
           manager_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           runner_code?: string | null
+          status?: Database["public"]["Enums"]["user_status"]
           theme_preference?: string | null
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_disabled_by_fkey"
+            columns: ["disabled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_manager_id_fkey"
             columns: ["manager_id"]
@@ -2687,36 +2706,58 @@ export type Database = {
       }
       stock_transfers: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           created_at: string
           created_by: string
           from_owner_id: string
           from_warehouse_id: string
           id: string
           notes: string | null
+          offboarding_transfer: boolean
+          rejection_reason: string | null
+          status: Database["public"]["Enums"]["transfer_status"]
           to_owner_id: string
           to_warehouse_id: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           created_by: string
           from_owner_id: string
           from_warehouse_id: string
           id?: string
           notes?: string | null
+          offboarding_transfer?: boolean
+          rejection_reason?: string | null
+          status?: Database["public"]["Enums"]["transfer_status"]
           to_owner_id: string
           to_warehouse_id: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           created_by?: string
           from_owner_id?: string
           from_warehouse_id?: string
           id?: string
           notes?: string | null
+          offboarding_transfer?: boolean
+          rejection_reason?: string | null
+          status?: Database["public"]["Enums"]["transfer_status"]
           to_owner_id?: string
           to_warehouse_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "stock_transfers_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stock_transfers_created_by_fkey"
             columns: ["created_by"]
@@ -3068,6 +3109,10 @@ export type Database = {
         Args: { p_shipment_id: string }
         Returns: Json
       }
+      apply_stock_transfer: {
+        Args: { p_approver_id: string; p_transfer_id: string }
+        Returns: Json
+      }
       can_view_owner_data: { Args: { p_owner_id: string }; Returns: boolean }
       can_view_stock: {
         Args: { owner_id: string; viewer_id: string }
@@ -3334,6 +3379,10 @@ export type Database = {
         Args: { p_actor_id: string; p_order_id: string }
         Returns: Json
       }
+      reject_stock_transfer: {
+        Args: { p_reason: string; p_rejector_id: string; p_transfer_id: string }
+        Returns: Json
+      }
       reopen_rescheduled_orders: { Args: never; Returns: Json }
       validate_invite_code: { Args: { code_text: string }; Returns: string }
     }
@@ -3393,6 +3442,14 @@ export type Database = {
         | "TAKEN"
         | "DELIVERED"
         | "FAILED_DELIVERY"
+      transfer_status:
+        | "draft"
+        | "pending_manager_approval"
+        | "approved"
+        | "rejected"
+        | "applied"
+        | "cancelled"
+      user_status: "active" | "disabled" | "resigned"
       warehouse_type: "SALESPERSON" | "RUNNER" | "MANAGER"
     }
     CompositeTypes: {
@@ -3574,6 +3631,15 @@ export const Constants = {
         "DELIVERED",
         "FAILED_DELIVERY",
       ],
+      transfer_status: [
+        "draft",
+        "pending_manager_approval",
+        "approved",
+        "rejected",
+        "applied",
+        "cancelled",
+      ],
+      user_status: ["active", "disabled", "resigned"],
       warehouse_type: ["SALESPERSON", "RUNNER", "MANAGER"],
     },
   },
