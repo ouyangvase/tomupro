@@ -162,6 +162,8 @@ function AppRoutes() {
       <Route path="/inbound/pending" element={<ProtectedRoute><InboundPending /></ProtectedRoute>} />
       <Route path="/inbound/history" element={<ProtectedRoute><InboundHistory /></ProtectedRoute>} />
       <Route path="/inventory" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
+      <Route path="/inventory-balance" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
+      <Route path="/inventory/balance" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
       <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
       <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
       <Route path="/settings/reasons" element={<ProtectedRoute><ReasonsSettings /></ProtectedRoute>} />
