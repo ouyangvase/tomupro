@@ -4,44 +4,44 @@
 @tailwind utilities;
 
 /* 
-  Responsive Theme System
-  - Desktop: Original purple/blue accent
-  - Mobile: Banking-style gold accent
+  Mobile-First Banking Style Theme
+  Clean white base with warm gold accent
+  Based on modern fintech/banking apps
 */
 
 @layer base {
-  /* Desktop Theme (default) - Original Purple/Blue */
+  /* Light Theme - Clean White Banking Style */
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 224 12% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 224 12% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 224 12% 12%;
 
-    /* Original Purple Accent */
-    --primary: 262.1 83.3% 57.8%;
-    --primary-foreground: 210 20% 98%;
+    /* Warm Gold/Yellow Accent - Banking Style */
+    --primary: 43 96% 56%;
+    --primary-foreground: 224 12% 12%;
 
-    --secondary: 220 14.3% 95.9%;
-    --secondary-foreground: 220.9 39.3% 11%;
+    --secondary: 43 30% 96%;
+    --secondary-foreground: 224 12% 25%;
 
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 224 12% 45%;
 
-    --accent: 220 14.3% 95.9%;
-    --accent-foreground: 220.9 39.3% 11%;
+    --accent: 43 96% 56%;
+    --accent-foreground: 224 12% 12%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 20% 98%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 262.1 83.3% 57.8%;
+    --border: 220 14% 90%;
+    --input: 220 14% 90%;
+    --ring: 43 96% 56%;
 
-    --radius: 0.5rem;
+    --radius: 1rem;
 
     /* Status Colors */
     --status-success: 142 69% 45%;
@@ -50,29 +50,29 @@
     --status-neutral: 218 11% 55%;
     --status-warning: 24 94% 50%;
 
-    /* Sidebar - Desktop */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 262.1 83.3% 57.8%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 262.1 83.3% 57.8%;
-    --sidebar: 0 0% 98%;
+    /* Sidebar - Light */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 224 12% 25%;
+    --sidebar-primary: 43 96% 56%;
+    --sidebar-primary-foreground: 224 12% 12%;
+    --sidebar-accent: 43 96% 56%;
+    --sidebar-accent-foreground: 224 12% 12%;
+    --sidebar-border: 220 14% 92%;
+    --sidebar-ring: 43 96% 56%;
+    --sidebar: 0 0% 100%;
 
     /* Chart colors */
-    --chart-1: 262.1 83.3% 57.8%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 43 96% 56%;
+    --chart-2: 43 80% 45%;
+    --chart-3: 43 60% 35%;
+    --chart-4: 142 69% 45%;
+    --chart-5: 0 0% 45%;
 
     /* Typography */
     --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
 
-    /* Shadows */
+    /* Shadows - Clean subtle shadows */
     --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.03);
     --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.04);
     --shadow-sm: 0 2px 8px -2px hsl(0 0% 0% / 0.06);
@@ -81,41 +81,41 @@
     --shadow-lg: 0 12px 24px -6px hsl(0 0% 0% / 0.1);
     --shadow-xl: 0 20px 40px -8px hsl(0 0% 0% / 0.12);
     --shadow-2xl: 0 32px 64px -12px hsl(0 0% 0% / 0.15);
-    --shadow-glow: 0 0 24px hsl(262.1 83.3% 57.8% / 0.25);
+    --shadow-glow: 0 0 24px hsl(43 96% 56% / 0.25);
 
     --tracking-normal: 0em;
     --spacing: 0.25rem;
   }
 
-  /* Desktop Dark Theme */
+  /* Dark Theme */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 20% 98%;
+    --background: 224 12% 8%;
+    --foreground: 0 0% 98%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 20% 98%;
+    --card: 224 10% 12%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 20% 98%;
+    --popover: 224 10% 14%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 263.4 70% 50.4%;
-    --primary-foreground: 210 20% 98%;
+    --primary: 43 96% 60%;
+    --primary-foreground: 224 12% 8%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 20% 98%;
+    --secondary: 224 10% 18%;
+    --secondary-foreground: 0 0% 88%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 224 10% 22%;
+    --muted-foreground: 0 0% 65%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 20% 98%;
+    --accent: 43 96% 60%;
+    --accent-foreground: 224 12% 8%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 20% 98%;
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 263.4 70% 50.4%;
+    --border: 224 10% 20%;
+    --input: 224 10% 20%;
+    --ring: 43 96% 60%;
 
     /* Status Colors - Dark theme */
     --status-success: 142 69% 55%;
@@ -124,21 +124,21 @@
     --status-neutral: 218 11% 65%;
     --status-warning: 24 94% 60%;
 
-    --sidebar-background: 222.2 84% 4.9%;
-    --sidebar-foreground: 210 20% 98%;
-    --sidebar-primary: 263.4 70% 50.4%;
-    --sidebar-primary-foreground: 210 20% 98%;
-    --sidebar-accent: 217.2 32.6% 17.5%;
-    --sidebar-accent-foreground: 210 20% 98%;
-    --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 263.4 70% 50.4%;
-    --sidebar: 222.2 84% 4.9%;
+    --sidebar-background: 224 12% 8%;
+    --sidebar-foreground: 0 0% 88%;
+    --sidebar-primary: 43 96% 60%;
+    --sidebar-primary-foreground: 224 12% 8%;
+    --sidebar-accent: 43 96% 60%;
+    --sidebar-accent-foreground: 224 12% 8%;
+    --sidebar-border: 224 10% 18%;
+    --sidebar-ring: 43 96% 60%;
+    --sidebar: 224 12% 8%;
 
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-1: 43 96% 60%;
+    --chart-2: 43 80% 50%;
+    --chart-3: 43 60% 40%;
+    --chart-4: 142 69% 55%;
+    --chart-5: 0 0% 50%;
 
     --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
     --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.4);
@@ -148,65 +148,6 @@
     --shadow-lg: 0 12px 24px -6px hsl(0 0% 0% / 0.5);
     --shadow-xl: 0 20px 40px -8px hsl(0 0% 0% / 0.6);
     --shadow-2xl: 0 32px 64px -12px hsl(0 0% 0% / 0.7);
-    --shadow-glow: 0 0 24px hsl(263.4 70% 50.4% / 0.2);
-  }
-}
-
-/* ===========================================
-   MOBILE-ONLY BANKING THEME (< 768px)
-   =========================================== */
-@media (max-width: 767px) {
-  :root {
-    /* Mobile Gold Accent Theme */
-    --primary: 43 96% 56%;
-    --primary-foreground: 224 12% 12%;
-
-    --secondary: 43 30% 96%;
-    --secondary-foreground: 224 12% 25%;
-
-    --accent: 43 96% 56%;
-    --accent-foreground: 224 12% 12%;
-
-    --ring: 43 96% 56%;
-    --radius: 1rem;
-
-    /* Mobile Sidebar */
-    --sidebar-primary: 43 96% 56%;
-    --sidebar-primary-foreground: 224 12% 12%;
-    --sidebar-accent: 43 96% 56%;
-    --sidebar-accent-foreground: 224 12% 12%;
-    --sidebar-ring: 43 96% 56%;
-
-    /* Mobile Chart colors */
-    --chart-1: 43 96% 56%;
-    --chart-2: 43 80% 45%;
-    --chart-3: 43 60% 35%;
-
-    --shadow-glow: 0 0 24px hsl(43 96% 56% / 0.25);
-  }
-
-  .dark {
-    --primary: 43 96% 60%;
-    --primary-foreground: 224 12% 8%;
-
-    --secondary: 224 10% 18%;
-    --secondary-foreground: 0 0% 88%;
-
-    --accent: 43 96% 60%;
-    --accent-foreground: 224 12% 8%;
-
-    --ring: 43 96% 60%;
-
-    --sidebar-primary: 43 96% 60%;
-    --sidebar-primary-foreground: 224 12% 8%;
-    --sidebar-accent: 43 96% 60%;
-    --sidebar-accent-foreground: 224 12% 8%;
-    --sidebar-ring: 43 96% 60%;
-
-    --chart-1: 43 96% 60%;
-    --chart-2: 43 80% 50%;
-    --chart-3: 43 60% 40%;
-
     --shadow-glow: 0 0 24px hsl(43 96% 60% / 0.2);
   }
 }
@@ -227,32 +168,6 @@
 }
 
 @layer components {
-  /* Status Badge Styles - Used on all screen sizes */
-  .status-success {
-    @apply bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))] border-transparent;
-  }
-
-  .status-error {
-    @apply bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))] border-transparent;
-  }
-
-  .status-pending {
-    @apply bg-[hsl(var(--status-pending)/0.12)] text-[hsl(var(--status-pending))] border-transparent;
-  }
-
-  .status-neutral {
-    @apply bg-[hsl(var(--status-neutral)/0.12)] text-[hsl(var(--status-neutral))] border-transparent;
-  }
-
-  .status-warning {
-    @apply bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))] border-transparent;
-  }
-}
-
-/* ===========================================
-   MOBILE-ONLY COMPONENT STYLES (< 768px)
-   =========================================== */
-@media (max-width: 767px) {
   /* Mobile Card - Banking Style */
   .mobile-card {
     @apply bg-card rounded-2xl shadow-sm border-0;
@@ -346,6 +261,27 @@
     @apply w-6 h-6 text-primary-foreground;
   }
 
+  /* Status Badge Styles */
+  .status-success {
+    @apply bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))] border-transparent;
+  }
+
+  .status-error {
+    @apply bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))] border-transparent;
+  }
+
+  .status-pending {
+    @apply bg-[hsl(var(--status-pending)/0.12)] text-[hsl(var(--status-pending))] border-transparent;
+  }
+
+  .status-neutral {
+    @apply bg-[hsl(var(--status-neutral)/0.12)] text-[hsl(var(--status-neutral))] border-transparent;
+  }
+
+  .status-warning {
+    @apply bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))] border-transparent;
+  }
+
   /* Mobile List Card Row */
   .list-card-row {
     @apply bg-card rounded-2xl p-4 shadow-sm;
@@ -356,12 +292,14 @@
     @apply border border-border;
   }
 
-  /* Mobile input/button sizing to prevent iOS zoom */
-  input,
-  select,
-  textarea,
-  button {
-    font-size: 16px !important;
+  /* Mobile-first input/button sizing to prevent iOS zoom */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea,
+    button {
+      font-size: 16px !important;
+    }
   }
 }
 
