@@ -12,7 +12,6 @@ import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
 
 // Pages
 import Auth from "./pages/Auth";
-import HomePage from "./pages/HomePage";
 import Dashboard from "./pages/Dashboard";
 import BookingSales from "./pages/sales/BookingSales";
 import ReadySales from "./pages/sales/ReadySales";
@@ -131,8 +130,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={<Auth />} />
-      <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/sales/booking" element={<ProtectedRoute><BookingSales /></ProtectedRoute>} />
       <Route path="/sales/ready" element={<ProtectedRoute><ReadySales /></ProtectedRoute>} />
       <Route path="/sales/cancelled" element={<ProtectedRoute><CancelledSales /></ProtectedRoute>} />
