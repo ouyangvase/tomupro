@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -8,8 +8,9 @@ import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { Plus, AlertTriangle, Clock } from 'lucide-react';
+import { Plus, AlertTriangle, Clock, Search, ShoppingBag } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -20,15 +21,19 @@ import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { RescheduleOrderDialog } from '@/components/sales/RescheduleOrderDialog';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
+import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
+import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { Order } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
 
 export default function BookingSales() {
   const { profile, role } = useAuth();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -36,6 +41,7 @@ export default function BookingSales() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [rescheduleOrder, setRescheduleOrder] = useState<Order | null>(null);
+  const [mobileSearch, setMobileSearch] = useState('');
 
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
@@ -46,6 +52,18 @@ export default function BookingSales() {
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
   });
+
+  // Apply mobile search filter
+  const filteredOrders = useMemo(() => {
+    if (!mobileSearch.trim()) return orders;
+    const query = mobileSearch.toLowerCase();
+    return orders.filter(order =>
+      order.order_code?.toLowerCase().includes(query) ||
+      order.customer_name?.toLowerCase().includes(query) ||
+      order.phone?.toLowerCase().includes(query) ||
+      order.area?.toLowerCase().includes(query)
+    );
+  }, [orders, mobileSearch]);
   
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
@@ -256,6 +274,161 @@ export default function BookingSales() {
     setEditorOpen(true);
   };
 
+  const toggleSelection = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedRows(prev => [...prev, id]);
+    } else {
+      setSelectedRows(prev => prev.filter(r => r !== id));
+    }
+  };
+
+  const isAllSelected = filteredOrders.length > 0 && selectedRows.length === filteredOrders.length;
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedRows(filteredOrders.map(o => o.id));
+    } else {
+      setSelectedRows([]);
+    }
+  };
+
+  // Mobile view
+  if (isMobile) {
+    return (
+      <AppLayout>
+        <div className="space-y-4 pb-20">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShoppingBag className="h-5 w-5 text-primary" />
+              <div>
+                <h1 className="text-xl font-bold">Booking Sales</h1>
+                <p className="text-xs text-muted-foreground">{filteredOrders.length} orders</p>
+              </div>
+            </div>
+            {isEditable && (
+              <Button size="sm" onClick={handleCreateNew}>
+                <Plus className="h-4 w-4 mr-1" />
+                New
+              </Button>
+            )}
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search orders..."
+              value={mobileSearch}
+              onChange={(e) => setMobileSearch(e.target.value)}
+              className="pl-9 h-11"
+            />
+          </div>
+
+          {/* Select all */}
+          {isEditable && filteredOrders.length > 0 && (
+            <MobileSelectAllCard
+              isAllSelected={isAllSelected}
+              onSelectAll={handleSelectAll}
+              selectedCount={selectedRows.length}
+              totalCount={filteredOrders.length}
+            />
+          )}
+
+          {/* Order cards */}
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-3 py-12">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <span className="text-muted-foreground">Loading...</span>
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              {mobileSearch ? "No orders match your search" : "No booking orders"}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredOrders.map((order) => {
+                const { displayText } = formatOrderItemsDisplay(order.order_items);
+                return (
+                  <MobileOrderCard
+                    key={order.id}
+                    id={order.id}
+                    orderRef={order.order_code}
+                    areaBadge={order.area && <Badge variant="outline">{order.area}</Badge>}
+                    statusBadge={<StatusBadge status={order.runner_status} type="runner" />}
+                    primaryFields={[
+                      { label: 'Customer', value: order.customer_name || '-' },
+                      { label: 'Amount', value: formatBND(order.total_amount) },
+                      { label: 'Date', value: format(new Date(order.order_date), 'MMM dd') },
+                      { label: 'Items', value: displayText },
+                    ]}
+                    expandedFields={[
+                      { label: 'Address', value: order.address || '-', fullWidth: true },
+                      { label: 'Phone', value: order.phone || '-' },
+                      { label: 'Payment', value: order.payment_method },
+                      { label: 'Next Delivery', value: order.next_delivery_date ? format(new Date(order.next_delivery_date), 'MMM dd') : 'Not scheduled' },
+                    ]}
+                    selectable={isEditable}
+                    isSelected={selectedRows.includes(order.id)}
+                    onSelectionChange={(checked) => toggleSelection(order.id, checked)}
+                    onClick={() => handleRowClick(order)}
+                    primaryAction={
+                      <Button size="sm" onClick={(e) => { e.stopPropagation(); handleRowClick(order); }}>
+                        View Details
+                      </Button>
+                    }
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Bulk actions bar */}
+          {isEditable && (
+            <MobileBulkActionsBar
+              selectedCount={selectedRows.length}
+              onClearSelection={() => setSelectedRows([])}
+            >
+              <Button size="sm" onClick={handleConvertToReady}>
+                Convert to Ready
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => setCancelDialogOpen(true)}>
+                Cancel
+              </Button>
+            </MobileBulkActionsBar>
+          )}
+        </div>
+
+        <OrderEditor
+          open={editorOpen}
+          onOpenChange={setEditorOpen}
+          order={editingOrder}
+          mode={editingOrder ? 'edit' : 'create'}
+        />
+
+        <CancelOrderDialog
+          open={cancelDialogOpen}
+          onOpenChange={setCancelDialogOpen}
+          orderCount={selectedRows.length}
+          onConfirm={handleCancelConfirm}
+          loading={cancelOrders.isPending}
+        />
+
+        <ImportOrdersDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+        />
+
+        <RescheduleOrderDialog
+          open={rescheduleDialogOpen}
+          onOpenChange={setRescheduleDialogOpen}
+          order={rescheduleOrder}
+        />
+      </AppLayout>
+    );
+  }
+
+  // Desktop view
   return (
     <AppLayout>
       <div className="space-y-4">
