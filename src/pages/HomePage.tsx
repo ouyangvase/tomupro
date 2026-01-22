@@ -415,48 +415,169 @@ function AdminHome() {
   );
 }
 
+// Desktop Dashboard Content (original style)
+function DesktopDashboardContent({ role }: { role: string | null }) {
+  const navigate = useNavigate();
+  const { data: spData, isLoading: spLoading } = useSalespersonDashboard();
+  const { data: runnerData, isLoading: runnerLoading } = useRunnerDashboardStats();
+  const { data: adminData, isLoading: adminLoading } = useAdminStats();
+
+  const getQuickLinks = () => {
+    switch (role) {
+      case 'salesperson':
+        return [
+          { label: 'Booking Sales', href: '/sales/booking' },
+          { label: 'Ready Sales', href: '/sales/ready' },
+          { label: 'Delivered Orders', href: '/reconciliation/sp' },
+          { label: 'Stock Balance', href: '/inventory' },
+        ];
+      case 'manager':
+        return [
+          { label: 'Team Oversight', href: '/manager/oversight' },
+          { label: 'Team Orders', href: '/sales/ready' },
+          { label: 'Pending Approvals', href: '/manager/pending-approvals' },
+          { label: 'Dispute Center', href: '/disputes' },
+        ];
+      case 'runner':
+        return [
+          { label: 'Runner Inbox', href: '/runner/inbox' },
+          { label: 'Delivered Orders', href: '/runner/delivered-orders' },
+          { label: 'My Claims', href: '/runner/claims' },
+          { label: 'Drivers', href: '/runner/drivers' },
+        ];
+      case 'driver':
+        return [
+          { label: 'My Inbox', href: '/driver/inbox' },
+          { label: 'My Route', href: '/driver/route' },
+          { label: 'Pickups', href: '/driver/pickups' },
+          { label: 'Returns', href: '/driver/returns' },
+        ];
+      case 'admin':
+        return [
+          { label: 'Users Management', href: '/settings/users' },
+          { label: 'All Orders', href: '/admin/runner-inbox' },
+          { label: 'Claim Batches', href: '/admin/claim-batches' },
+          { label: 'Warehouses', href: '/admin/warehouses' },
+        ];
+      default:
+        return [];
+    }
+  };
+
+  const getStats = () => {
+    switch (role) {
+      case 'salesperson':
+      case 'manager':
+        return [
+          { label: 'MTD Sales', value: formatBND(spData?.mtdSalesAmount ?? 0), loading: spLoading },
+          { label: 'Today Delivered', value: spData?.todayDeliveredCount ?? 0, loading: spLoading },
+          { label: 'Pending Delivery', value: spData?.pendingDeliveryCount ?? 0, loading: spLoading },
+          { label: 'Failed Orders', value: spData?.failedOrdersCount ?? 0, loading: spLoading, highlight: (spData?.failedOrdersCount ?? 0) > 0 },
+        ];
+      case 'runner':
+        return [
+          { label: 'In Progress', value: runnerData?.todayStats?.inProgress ?? 0, loading: runnerLoading },
+          { label: 'Delivered Today', value: runnerData?.todayStats?.deliveredToday ?? 0, loading: runnerLoading },
+          { label: 'Failed Today', value: runnerData?.todayStats?.failedToday ?? 0, loading: runnerLoading },
+          { label: 'Pending Claims', value: runnerData?.earningsStats?.pendingClaimCount ?? 0, loading: runnerLoading },
+        ];
+      case 'admin':
+        const totalOrders = (adminData?.bookingOrders ?? 0) + (adminData?.readyOrders ?? 0) + (adminData?.deliveredOrders ?? 0);
+        return [
+          { label: 'Total Orders', value: totalOrders, loading: adminLoading },
+          { label: 'Total Claims', value: adminData?.totalClaims ?? 0, loading: adminLoading },
+          { label: 'Active Disputes', value: adminData?.disputes ?? 0, loading: adminLoading, highlight: (adminData?.disputes ?? 0) > 0 },
+        ];
+      default:
+        return [];
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {getStats().map((stat, idx) => (
+          <Card key={idx}>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground">{stat.label}</p>
+              {stat.loading ? (
+                <Skeleton className="h-8 w-20 mt-1" />
+              ) : (
+                <p className={`text-2xl font-bold ${stat.highlight ? 'text-destructive' : ''}`}>
+                  {stat.value}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Quick Links */}
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="font-semibold mb-3">Quick Access</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {getQuickLinks().map((link, idx) => (
+              <Button
+                key={idx}
+                variant="outline"
+                className="justify-start"
+                onClick={() => navigate(link.href)}
+              >
+                <ArrowRight className="h-4 w-4 mr-2" />
+                {link.label}
+              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // Main Home Page Component
 export default function HomePage() {
   const { role, profile } = useAuth();
   const isMobile = useIsMobile();
 
-  const renderContent = () => {
-    switch (role) {
-      case 'salesperson':
-        return <SalespersonHome />;
-      case 'manager':
-        return <ManagerHome />;
-      case 'runner':
-        return <RunnerHome />;
-      case 'driver':
-        return <DriverHome />;
-      case 'admin':
-        return <AdminHome />;
-      default:
-        return <SalespersonHome />;
-    }
-  };
-
-  // Use mobile layout on mobile, desktop layout otherwise
+  // Mobile: Use new banking-style layout with role-specific content
   if (isMobile) {
+    const renderMobileContent = () => {
+      switch (role) {
+        case 'salesperson':
+          return <SalespersonHome />;
+        case 'manager':
+          return <ManagerHome />;
+        case 'runner':
+          return <RunnerHome />;
+        case 'driver':
+          return <DriverHome />;
+        case 'admin':
+          return <AdminHome />;
+        default:
+          return <SalespersonHome />;
+      }
+    };
+
     return (
       <MobileAppLayout>
-        {renderContent()}
+        {renderMobileContent()}
       </MobileAppLayout>
     );
   }
 
-  // Desktop: Use existing AppLayout with the same content
+  // Desktop: Use original AppLayout with simple dashboard
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-bold">
             Welcome back, {profile?.display_name}
           </h1>
           <p className="text-muted-foreground">Here's your dashboard overview</p>
         </div>
-        {renderContent()}
+        <DesktopDashboardContent role={role} />
       </div>
     </AppLayout>
   );
