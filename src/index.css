@@ -1,18 +1,18 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* 
-  Dark Frosted Ops Theme + Light Theme
-  Premium fintech / banking style with glassmorphism
-  Single accent: Warm Gold (#E1A94E)
+  Mobile-First Banking Style Theme
+  Clean white base with warm gold accent
+  Based on modern fintech/banking apps
 */
 
 @layer base {
-  /* Light Theme (default in :root, applied when no .dark class) */
+  /* Light Theme - Clean White Banking Style */
   :root {
-    --background: 220 14% 96%;
+    --background: 0 0% 100%;
     --foreground: 224 12% 12%;
 
     --card: 0 0% 100%;
@@ -21,69 +21,67 @@
     --popover: 0 0% 100%;
     --popover-foreground: 224 12% 12%;
 
-    /* Warm Gold Accent - same as dark */
-    --primary: 38 70% 50%;
-    --primary-foreground: 0 0% 100%;
+    /* Warm Gold/Yellow Accent - Banking Style */
+    --primary: 43 96% 56%;
+    --primary-foreground: 224 12% 12%;
 
-    --secondary: 220 14% 92%;
+    --secondary: 43 30% 96%;
     --secondary-foreground: 224 12% 25%;
 
-    --muted: 220 14% 90%;
+    --muted: 220 14% 96%;
     --muted-foreground: 224 12% 45%;
 
-    --accent: 38 70% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 43 96% 56%;
+    --accent-foreground: 224 12% 12%;
 
     --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 14% 85%;
-    --input: 220 14% 85%;
-    --ring: 38 70% 50%;
+    --border: 220 14% 90%;
+    --input: 220 14% 90%;
+    --ring: 43 96% 56%;
 
     --radius: 1rem;
 
-    /* Status Colors - HSL equivalents (same semantic meaning) */
+    /* Status Colors */
     --status-success: 142 69% 45%;
     --status-error: 0 72% 50%;
-    --status-pending: 45 93% 47%;
+    --status-pending: 43 96% 50%;
     --status-neutral: 218 11% 55%;
     --status-warning: 24 94% 50%;
 
     /* Sidebar - Light */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 224 12% 25%;
-    --sidebar-primary: 38 70% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 38 70% 50%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 220 14% 90%;
-    --sidebar-ring: 38 70% 50%;
+    --sidebar-primary: 43 96% 56%;
+    --sidebar-primary-foreground: 224 12% 12%;
+    --sidebar-accent: 43 96% 56%;
+    --sidebar-accent-foreground: 224 12% 12%;
+    --sidebar-border: 220 14% 92%;
+    --sidebar-ring: 43 96% 56%;
     --sidebar: 0 0% 100%;
 
     /* Chart colors */
-    --chart-1: 38 70% 50%;
-    --chart-2: 38 70% 40%;
-    --chart-3: 38 70% 30%;
+    --chart-1: 43 96% 56%;
+    --chart-2: 43 80% 45%;
+    --chart-3: 43 60% 35%;
     --chart-4: 142 69% 45%;
     --chart-5: 0 0% 45%;
 
     /* Typography */
-    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
 
-    /* Shadows - light theme */
-    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.04);
-    --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.06);
-    --shadow-sm: 0 2px 4px 0 hsl(0 0% 0% / 0.06);
-    --shadow: 0 4px 6px -1px hsl(0 0% 0% / 0.08);
-    --shadow-md: 0 6px 10px -1px hsl(0 0% 0% / 0.08);
-    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.12);
-    --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.15);
-
-    /* Glow effect for primary accent */
-    --shadow-glow: 0 0 20px hsl(38 70% 50% / 0.2);
+    /* Shadows - Clean subtle shadows */
+    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.03);
+    --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.04);
+    --shadow-sm: 0 2px 8px -2px hsl(0 0% 0% / 0.06);
+    --shadow: 0 4px 12px -2px hsl(0 0% 0% / 0.08);
+    --shadow-md: 0 8px 16px -4px hsl(0 0% 0% / 0.08);
+    --shadow-lg: 0 12px 24px -6px hsl(0 0% 0% / 0.1);
+    --shadow-xl: 0 20px 40px -8px hsl(0 0% 0% / 0.12);
+    --shadow-2xl: 0 32px 64px -12px hsl(0 0% 0% / 0.15);
+    --shadow-glow: 0 0 24px hsl(43 96% 56% / 0.25);
 
     --tracking-normal: 0em;
     --spacing: 0.25rem;
@@ -91,66 +89,66 @@
 
   /* Dark Theme */
   .dark {
-    --background: 228 12% 7%;
-    --foreground: 0 0% 95%;
+    --background: 224 12% 8%;
+    --foreground: 0 0% 98%;
 
-    --card: 225 10% 10%;
-    --card-foreground: 0 0% 95%;
+    --card: 224 10% 12%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 225 10% 12%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 224 10% 14%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 38 70% 59%;
-    --primary-foreground: 228 12% 7%;
+    --primary: 43 96% 60%;
+    --primary-foreground: 224 12% 8%;
 
-    --secondary: 225 10% 16%;
-    --secondary-foreground: 0 0% 85%;
+    --secondary: 224 10% 18%;
+    --secondary-foreground: 0 0% 88%;
 
-    --muted: 225 10% 20%;
-    --muted-foreground: 0 0% 60%;
+    --muted: 224 10% 22%;
+    --muted-foreground: 0 0% 65%;
 
-    --accent: 38 70% 59%;
-    --accent-foreground: 228 12% 7%;
+    --accent: 43 96% 60%;
+    --accent-foreground: 224 12% 8%;
 
-    --destructive: 0 72% 63%;
+    --destructive: 0 72% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 100% / 0.08;
-    --input: 0 0% 100% / 0.08;
-    --ring: 38 70% 59%;
+    --border: 224 10% 20%;
+    --input: 224 10% 20%;
+    --ring: 43 96% 60%;
 
     /* Status Colors - Dark theme */
-    --status-success: 142 69% 58%;
-    --status-error: 0 91% 71%;
-    --status-pending: 45 93% 67%;
+    --status-success: 142 69% 55%;
+    --status-error: 0 85% 65%;
+    --status-pending: 43 96% 60%;
     --status-neutral: 218 11% 65%;
-    --status-warning: 24 94% 64%;
+    --status-warning: 24 94% 60%;
 
-    --sidebar-background: 228 12% 7%;
-    --sidebar-foreground: 0 0% 85%;
-    --sidebar-primary: 38 70% 59%;
-    --sidebar-primary-foreground: 228 12% 7%;
-    --sidebar-accent: 38 70% 59%;
-    --sidebar-accent-foreground: 228 12% 7%;
-    --sidebar-border: 0 0% 100% / 0.08;
-    --sidebar-ring: 38 70% 59%;
-    --sidebar: 228 12% 7%;
+    --sidebar-background: 224 12% 8%;
+    --sidebar-foreground: 0 0% 88%;
+    --sidebar-primary: 43 96% 60%;
+    --sidebar-primary-foreground: 224 12% 8%;
+    --sidebar-accent: 43 96% 60%;
+    --sidebar-accent-foreground: 224 12% 8%;
+    --sidebar-border: 224 10% 18%;
+    --sidebar-ring: 43 96% 60%;
+    --sidebar: 224 12% 8%;
 
-    --chart-1: 38 70% 59%;
-    --chart-2: 38 70% 50%;
-    --chart-3: 38 70% 40%;
-    --chart-4: 142 69% 58%;
-    --chart-5: 0 0% 45%;
+    --chart-1: 43 96% 60%;
+    --chart-2: 43 80% 50%;
+    --chart-3: 43 60% 40%;
+    --chart-4: 142 69% 55%;
+    --chart-5: 0 0% 50%;
 
-    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
-    --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.3);
-    --shadow-sm: 0 2px 4px 0 hsl(0 0% 0% / 0.3);
-    --shadow: 0 4px 6px -1px hsl(0 0% 0% / 0.3);
-    --shadow-md: 0 6px 10px -1px hsl(0 0% 0% / 0.3);
-    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.3);
-    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.4);
-    --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.5);
-    --shadow-glow: 0 0 20px hsl(38 70% 59% / 0.15);
+    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.4);
+    --shadow-sm: 0 2px 8px -2px hsl(0 0% 0% / 0.5);
+    --shadow: 0 4px 12px -2px hsl(0 0% 0% / 0.5);
+    --shadow-md: 0 8px 16px -4px hsl(0 0% 0% / 0.5);
+    --shadow-lg: 0 12px 24px -6px hsl(0 0% 0% / 0.5);
+    --shadow-xl: 0 20px 40px -8px hsl(0 0% 0% / 0.6);
+    --shadow-2xl: 0 32px 64px -12px hsl(0 0% 0% / 0.7);
+    --shadow-glow: 0 0 24px hsl(43 96% 60% / 0.2);
   }
 }
 
@@ -164,90 +162,134 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  /* Improve number readability */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
 }
 
 @layer components {
-  /* Glassmorphism Card - adapts to theme */
-  .glass-card {
-    @apply rounded-2xl border shadow-sm;
-  }
-  
-  .dark .glass-card {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border-color: rgba(255, 255, 255, 0.08);
-  }
-  
-  :not(.dark) .glass-card {
-    background: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border-color: hsl(220 14% 90%);
-    box-shadow: 0 4px 6px -1px hsl(0 0% 0% / 0.06);
+  /* Mobile Card - Banking Style */
+  .mobile-card {
+    @apply bg-card rounded-2xl shadow-sm border-0;
+    box-shadow: 0 2px 12px -2px hsl(0 0% 0% / 0.06);
   }
 
-  .glass-card-strong {
-    @apply rounded-2xl border shadow-md;
-  }
-  
-  .dark .glass-card-strong {
-    background: rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-color: rgba(255, 255, 255, 0.1);
-  }
-  
-  :not(.dark) .glass-card-strong {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-color: hsl(220 14% 88%);
-    box-shadow: 0 6px 10px -1px hsl(0 0% 0% / 0.08);
+  .dark .mobile-card {
+    @apply bg-card border border-border;
+    box-shadow: 0 2px 12px -2px hsl(0 0% 0% / 0.3);
   }
 
-  /* Status Badge Styles - use CSS variables for theme adaptation */
+  /* Hero Card with Gradient */
+  .hero-card {
+    @apply relative overflow-hidden rounded-3xl;
+    background: linear-gradient(135deg, hsl(43 96% 56%) 0%, hsl(43 90% 48%) 50%, hsl(38 85% 45%) 100%);
+  }
+
+  .dark .hero-card {
+    background: linear-gradient(135deg, hsl(43 96% 50%) 0%, hsl(43 85% 42%) 50%, hsl(38 80% 38%) 100%);
+  }
+
+  /* Hero Card Decorative Element */
+  .hero-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 60%;
+    height: 150%;
+    background: radial-gradient(ellipse, hsl(0 0% 100% / 0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* Quick Action Button */
+  .quick-action-btn {
+    @apply flex flex-col items-center justify-center gap-2 p-4 rounded-2xl transition-all duration-200;
+    @apply bg-secondary/50 hover:bg-secondary active:scale-95;
+  }
+
+  .quick-action-btn .icon-wrapper {
+    @apply w-12 h-12 rounded-xl flex items-center justify-center;
+    background: hsl(43 50% 95%);
+  }
+
+  .dark .quick-action-btn .icon-wrapper {
+    background: hsl(43 40% 20%);
+  }
+
+  .quick-action-btn .icon-wrapper svg {
+    @apply w-6 h-6 text-primary;
+  }
+
+  .quick-action-btn span {
+    @apply text-xs font-medium text-center text-foreground/80 leading-tight;
+  }
+
+  /* Bottom Navigation */
+  .bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+
+  .bottom-nav-item {
+    @apply flex flex-col items-center justify-center gap-1 py-2 px-3 flex-1;
+    @apply text-muted-foreground transition-colors;
+  }
+
+  .bottom-nav-item.active {
+    @apply text-primary;
+  }
+
+  .bottom-nav-item svg {
+    @apply w-6 h-6;
+  }
+
+  .bottom-nav-item span {
+    @apply text-[10px] font-medium;
+  }
+
+  /* Center action button in bottom nav */
+  .bottom-nav-center {
+    @apply relative -mt-6;
+  }
+
+  .bottom-nav-center-btn {
+    @apply w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg;
+    box-shadow: 0 4px 16px hsl(43 96% 56% / 0.4);
+  }
+
+  .bottom-nav-center-btn svg {
+    @apply w-6 h-6 text-primary-foreground;
+  }
+
+  /* Status Badge Styles */
   .status-success {
-    @apply bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))] border-[hsl(var(--status-success)/0.3)];
+    @apply bg-[hsl(var(--status-success)/0.12)] text-[hsl(var(--status-success))] border-transparent;
   }
 
   .status-error {
-    @apply bg-[hsl(var(--status-error)/0.15)] text-[hsl(var(--status-error))] border-[hsl(var(--status-error)/0.3)];
+    @apply bg-[hsl(var(--status-error)/0.12)] text-[hsl(var(--status-error))] border-transparent;
   }
 
   .status-pending {
-    @apply bg-[hsl(var(--status-pending)/0.15)] text-[hsl(var(--status-pending))] border-[hsl(var(--status-pending)/0.3)];
+    @apply bg-[hsl(var(--status-pending)/0.12)] text-[hsl(var(--status-pending))] border-transparent;
   }
 
   .status-neutral {
-    @apply bg-[hsl(var(--status-neutral)/0.15)] text-[hsl(var(--status-neutral))] border-[hsl(var(--status-neutral)/0.3)];
+    @apply bg-[hsl(var(--status-neutral)/0.12)] text-[hsl(var(--status-neutral))] border-transparent;
   }
 
   .status-warning {
-    @apply bg-[hsl(var(--status-warning)/0.15)] text-[hsl(var(--status-warning))] border-[hsl(var(--status-warning)/0.3)];
+    @apply bg-[hsl(var(--status-warning)/0.12)] text-[hsl(var(--status-warning))] border-transparent;
   }
 
-  /* KPI Widget Styling */
-  .kpi-value {
-    @apply text-4xl font-bold tracking-tight tabular-nums;
+  /* Mobile List Card Row */
+  .list-card-row {
+    @apply bg-card rounded-2xl p-4 shadow-sm;
+    box-shadow: 0 1px 8px -2px hsl(0 0% 0% / 0.05);
   }
 
-  .kpi-label {
-    @apply text-sm text-muted-foreground font-medium;
-  }
-
-  /* Table row styling */
-  .table-row-hover {
-    @apply transition-colors hover:bg-muted/30;
-  }
-
-  /* Button minimum sizing for touch */
-  .btn-touch {
-    @apply min-h-[48px];
+  .dark .list-card-row {
+    @apply border border-border;
   }
 
   /* Mobile-first input/button sizing to prevent iOS zoom */
@@ -270,35 +312,34 @@
   padding-top: max(0.5rem, env(safe-area-inset-top));
 }
 
+/* Mobile content with bottom nav */
+.has-bottom-nav {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
 @layer utilities {
-  /* Subtle glow effect */
   .glow-primary {
     box-shadow: var(--shadow-glow);
   }
 
-  /* Large typography for numbers */
   .text-display {
-    @apply text-5xl font-bold tracking-tight;
+    @apply text-5xl font-extrabold tracking-tight;
   }
 
   .text-display-sm {
     @apply text-3xl font-bold tracking-tight;
   }
 
-  /* Calm spacing utilities */
-  .space-calm {
-    @apply space-y-6;
+  /* KPI value styling */
+  .kpi-value {
+    @apply text-4xl font-extrabold tracking-tight tabular-nums;
   }
 
-  .p-calm {
-    @apply p-6;
+  .kpi-value-lg {
+    @apply text-5xl font-extrabold tracking-tight tabular-nums;
   }
 
-  .px-calm {
-    @apply px-6;
-  }
-
-  .py-calm {
-    @apply py-6;
+  .kpi-label {
+    @apply text-sm text-muted-foreground font-medium;
   }
 }
