@@ -99,7 +99,7 @@ function SalespersonMobileDashboard() {
     { id: 'ready', label: 'Ready', icon: <Truck className="h-5 w-5" />, href: '/sales/ready' },
     { id: 'delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/sales/delivered' },
     { id: 'action', label: 'Actions', icon: <AlertTriangle className="h-5 w-5" />, href: '/sales/action-required', badge: actionStats?.total, badgeColor: 'warning' },
-    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory/balance' },
+    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
     { id: 'products', label: 'Products', icon: <PackageCheck className="h-5 w-5" />, href: '/products' },
     { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/claims/history' },
   ];
@@ -203,7 +203,7 @@ function ManagerMobileDashboard() {
     { id: 'team-delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/sales/delivered' },
     { id: 'oversight', label: 'Oversight', icon: <Users className="h-5 w-5" />, href: '/manager/oversight' },
     { id: 'action', label: 'Actions', icon: <AlertTriangle className="h-5 w-5" />, href: '/sales/action-required', badge: actionStats?.systemTotal, badgeColor: 'warning' },
-    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory/balance' },
+    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
     { id: 'approvals', label: 'Approvals', icon: <FileCheck className="h-5 w-5" />, href: '/manager/pending-approvals' },
     { id: 'ranking', label: 'Ranking', icon: <BarChart3 className="h-5 w-5" />, href: '/manager/ranking-board' },
   ];
@@ -377,7 +377,7 @@ function AdminMobileDashboard() {
   const quickActions: QuickAction[] = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart className="h-5 w-5" />, href: '/sales/booking' },
     { id: 'users', label: 'Users', icon: <Users className="h-5 w-5" />, href: '/settings/users' },
-    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory/balance' },
+    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
     { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/products' },
     { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/admin/claim-batches' },
     { id: 'disputes', label: 'Disputes', icon: <AlertTriangle className="h-5 w-5" />, href: '/disputes', badge: stats?.disputes, badgeColor: 'warning' },
