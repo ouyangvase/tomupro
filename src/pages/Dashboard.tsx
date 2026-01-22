@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDevice } from '@/hooks/use-device';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { MobileDashboard } from '@/pages/dashboard/MobileDashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +57,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { LeaderboardDashboardCard } from '@/components/leaderboard/LeaderboardDashboardCard';
 import { VisibilityDebugPanel } from '@/components/admin/VisibilityDebugPanel';
+import { KPIStrip, KPIItem } from '@/components/desktop/KPIStrip';
 
 interface StatCardProps {
   label: string;
@@ -1319,10 +1322,17 @@ function DriverDashboard() {
 
 export default function Dashboard() {
   const { profile, role } = useAuth();
+  const { isDesktop } = useDevice();
   
   // Enable real-time updates for all authenticated users
   useRealtimeUpdates();
 
+  // Mobile: Use Maybank-style MobileDashboard
+  if (!isDesktop) {
+    return <MobileDashboard />;
+  }
+
+  // Desktop: Use console-style layout
   const renderDashboard = () => {
     switch (role) {
       case 'driver':
