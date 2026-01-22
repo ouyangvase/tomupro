@@ -24,12 +24,16 @@ import { useProducts, useCreateProduct, useUpdateProduct, useBulkUpdateProducts 
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { useVisibleUserIds } from '@/hooks/useTeamVisibility';
-import { Package, Plus, Edit, CheckCircle, XCircle } from 'lucide-react';
+import { MobileProductCard } from '@/components/mobile/MobileProductCard';
+import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Package, Plus, Edit, CheckCircle, XCircle, Search } from 'lucide-react';
 import type { Product } from '@/types/database';
 
 export default function ProductsPage() {
   const { profile, role } = useAuth();
   const { data: userDirectory = [] } = useUserDirectory();
+  const isMobile = useIsMobile();
   const [includeInactive, setIncludeInactive] = useState(false);
   const { data: products, isLoading } = useProducts(includeInactive);
   const createProduct = useCreateProduct();
@@ -154,6 +158,14 @@ export default function ProductsPage() {
     setSelectedRows([]);
   };
 
+  const toggleSelection = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedRows(prev => [...prev, id]);
+    } else {
+      setSelectedRows(prev => prev.filter(r => r !== id));
+    }
+  };
+
   const columns: Column<Product & { creator?: { display_name: string } }>[] = [
     {
       key: 'sku_name',
@@ -215,6 +227,162 @@ export default function ProductsPage() {
       : []),
   ];
 
+  // Mobile view
+  if (isMobile) {
+    return (
+      <AppLayout>
+        <div className="space-y-4 pb-20">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-primary" />
+              <h1 className="text-xl font-bold">Products</h1>
+            </div>
+            {canEdit && (
+              <Button size="sm" onClick={handleOpenCreate}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            )}
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-11"
+            />
+          </div>
+
+          {/* Filters */}
+          <div className="flex gap-2">
+            <Select
+              value={includeInactive ? 'all' : 'active'}
+              onValueChange={(v) => setIncludeInactive(v === 'all')}
+            >
+              <SelectTrigger className="h-10 flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active Only</SelectItem>
+                <SelectItem value="all">All Products</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {(role === 'admin' || role === 'manager') && ownerOptions.length > 0 && (
+              <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                <SelectTrigger className="h-10 flex-1">
+                  <SelectValue placeholder="All Owners" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Owners</SelectItem>
+                  {ownerOptions.map(opt => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Product cards */}
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-3 py-12">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <span className="text-muted-foreground">Loading...</span>
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              {searchQuery ? "No products match your search" : "No products available"}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredProducts.map((product) => (
+                <MobileProductCard
+                  key={product.id}
+                  id={product.id}
+                  productName={product.sku_name}
+                  skuCode={product.sku_code || undefined}
+                  isActive={product.is_active}
+                  creatorName={(product as any).creator?.display_name}
+                  createdAt={product.created_at}
+                  selectable={canEdit}
+                  isSelected={selectedRows.includes(product.id)}
+                  onSelectionChange={(checked) => toggleSelection(product.id, checked)}
+                  onEdit={() => handleOpenEdit(product)}
+                  onToggleActive={() => handleToggleActive(product)}
+                  canEdit={canEdit}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Bulk actions bar */}
+          {canEdit && (
+            <MobileBulkActionsBar
+              selectedCount={selectedRows.length}
+              onClearSelection={() => setSelectedRows([])}
+            >
+              <Button size="sm" onClick={handleBulkActivate}>
+                <CheckCircle className="h-4 w-4 mr-1" />
+                Activate
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleBulkDeactivate}>
+                <XCircle className="h-4 w-4 mr-1" />
+                Deactivate
+              </Button>
+            </MobileBulkActionsBar>
+          )}
+        </div>
+
+        {/* Create/Edit Dialog */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editingProduct ? 'Edit Product' : 'Add Product'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Product Name *</Label>
+                <Input
+                  value={formData.sku_name}
+                  onChange={(e) => setFormData({ ...formData, sku_name: e.target.value })}
+                  placeholder="e.g., Widget Pro"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>SKU Code</Label>
+                <Input
+                  value={formData.sku_code}
+                  onChange={(e) => setFormData({ ...formData, sku_code: e.target.value })}
+                  placeholder="e.g., WGT-001"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={!formData.sku_name.trim() || createProduct.isPending || updateProduct.isPending}
+              >
+                {createProduct.isPending || updateProduct.isPending ? 'Saving...' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </AppLayout>
+    );
+  }
+
+  // Desktop view
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
