@@ -103,57 +103,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    // CRITICAL: Use the database function get_stock_owner_warehouse to get the correct warehouse
+    // CRITICAL: ALWAYS recalculate the correct warehouse using the database function
+    // Never trust cached fulfillment_warehouse_id - it may be stale from role changes
     // This function is role-aware: managers get MANAGER warehouse, others get SALESPERSON warehouse
-    let warehouseId = order.fulfillment_warehouse_id;
+    console.log('[DELIVERY] Calculating correct warehouse for order:', orderId);
     
-    if (!warehouseId) {
-      // Use the centralized database function for role-aware warehouse selection
-      const { data: warehouseResult, error: warehouseError } = await supabase
-        .rpc('get_stock_owner_warehouse', { p_order_id: orderId });
-      
-      if (warehouseError) {
-        console.error('Error getting stock owner warehouse:', warehouseError);
-      }
-      
-      warehouseId = warehouseResult;
+    const { data: warehouseResult, error: warehouseError } = await supabase
+      .rpc('get_stock_owner_warehouse', { p_order_id: orderId });
+    
+    if (warehouseError) {
+      console.error('[DELIVERY] Error getting stock owner warehouse:', warehouseError);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Failed to determine correct warehouse for stock deduction' 
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     
-    // Validate warehouse exists and is correct type for the user's role
-    if (warehouseId) {
-      // Get the salesperson's role to validate warehouse type
-      const { data: salespersonProfile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', order.salesperson_id)
-        .single();
-      
-      const { data: warehouseData } = await supabase
-        .from('warehouses')
-        .select('id, warehouse_type, is_active')
-        .eq('id', warehouseId)
-        .single();
-      
-      // Validate warehouse is active and correct type for role
-      if (warehouseData) {
-        const expectedType = salespersonProfile?.role === 'manager' ? 'MANAGER' : 'SALESPERSON';
-        
-        if (!warehouseData.is_active || warehouseData.warehouse_type !== expectedType) {
-          console.log(`Warehouse ${warehouseId} is wrong type or inactive. Expected ${expectedType}, got ${warehouseData.warehouse_type}. Re-fetching correct warehouse.`);
-          
-          // Re-fetch the correct warehouse
-          const { data: correctWarehouse } = await supabase
-            .from('warehouses')
-            .select('id')
-            .eq('owner_user_id', order.salesperson_id)
-            .eq('warehouse_type', expectedType)
-            .eq('is_active', true)
-            .single();
-          
-          warehouseId = correctWarehouse?.id || null;
-        }
-      }
-    }
+    const warehouseId = warehouseResult;
+    console.log('[DELIVERY] Using warehouse:', warehouseId);
 
     // NO FALLBACK TO RUNNER - stock only belongs to salesperson/manager
     if (!warehouseId) {
