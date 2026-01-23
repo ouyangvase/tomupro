@@ -66,7 +66,7 @@ export function useRevertDelivery() {
           for (const item of order.order_items) {
             if (!item.product_id) continue;
             
-            // Check if return already exists
+            // Check if return already exists (idempotency check)
             const { data: existing } = await supabase
               .from('stock_movements')
               .select('id')
@@ -75,20 +75,36 @@ export function useRevertDelivery() {
               .eq('movement_type', 'RETURN_TO_OWNER')
               .maybeSingle();
             
-            if (existing) continue; // Already returned
+            if (existing) {
+              console.log('[REVERT] Stock already returned for product:', item.product_id);
+              continue;
+            }
             
-            await supabase
+            console.log('[REVERT] Creating RETURN_TO_OWNER movement:', {
+              orderId,
+              productId: item.product_id,
+              qty: item.qty,
+              warehouseId: order.fulfillment_warehouse_id,
+            });
+
+            const { error: insertError } = await supabase
               .from('stock_movements')
               .insert({
                 warehouse_id: order.fulfillment_warehouse_id,
                 product_id: item.product_id,
                 movement_type: 'RETURN_TO_OWNER' as MovementType,
                 qty_change: item.qty, // Positive to add back
-                reference_type: 'ORDER' as ReferenceType,
+                reference_type: 'ORDER_ITEM' as ReferenceType,
                 order_id: orderId,
                 created_by: user.id,
               });
             
+            if (insertError) {
+              console.error('[REVERT] Stock return failed:', insertError);
+              throw new Error(`Failed to restore stock for product ${item.product_id}: ${insertError.message}`);
+            }
+            
+            console.log('[REVERT] Stock return successful for product:', item.product_id);
             itemsRestored.push(item.product_id);
           }
         }
