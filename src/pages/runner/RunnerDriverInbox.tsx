@@ -25,6 +25,7 @@ import {
   Loader2, RefreshCw, User, ExternalLink, ArrowRight, ClipboardCheck, RotateCcw, History, Undo2
 } from 'lucide-react';
 import { RunnerReviewModal } from '@/components/runner/RunnerReviewModal';
+import { RevertDeliveryDialog } from '@/components/admin/RevertDeliveryDialog';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { toast } from 'sonner';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
@@ -68,6 +69,10 @@ export default function RunnerDriverInbox() {
   // Runner Review Modal state
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewOrder, setReviewOrder] = useState<any>(null);
+  
+  // Revert Delivery Dialog state (Admin only)
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [revertOrderData, setRevertOrderData] = useState<any>(null);
   
   // Filters for Driver Updates tab
   const [driverFilter, setDriverFilter] = useState<string>('all');
@@ -224,6 +229,25 @@ export default function RunnerDriverInbox() {
         toast.error(`Failed to reopen order: ${error.message}`);
       }
     });
+  };
+
+  // Handle revert delivery (Admin only)
+  const handleOpenRevertDialog = (order: any) => {
+    setRevertOrderData(order);
+    setRevertDialogOpen(true);
+  };
+
+  const handleRevertConfirm = (reason: string) => {
+    if (!revertOrderData) return;
+    revertDelivery.mutate(
+      { orderId: revertOrderData.id, reason },
+      {
+        onSuccess: () => {
+          setRevertDialogOpen(false);
+          setRevertOrderData(null);
+        },
+      }
+    );
   };
 
   if (isLoading) {
@@ -671,7 +695,7 @@ export default function RunnerDriverInbox() {
                                         variant="outline"
                                         size="sm"
                                         className="h-7 px-2 border-orange-300 text-orange-600 hover:bg-orange-50"
-                                        onClick={() => revertDelivery.mutate(order.id)}
+                                        onClick={() => handleOpenRevertDialog(order)}
                                         disabled={revertDelivery.isPending}
                                       >
                                         <Undo2 className="h-3.5 w-3.5" />
@@ -819,6 +843,15 @@ export default function RunnerDriverInbox() {
           open={reviewModalOpen}
           onOpenChange={setReviewModalOpen}
           order={reviewOrder}
+        />
+
+        {/* Revert Delivery Dialog (Admin only) */}
+        <RevertDeliveryDialog
+          open={revertDialogOpen}
+          onOpenChange={setRevertDialogOpen}
+          order={revertOrderData}
+          onConfirm={handleRevertConfirm}
+          isPending={revertDelivery.isPending}
         />
       </div>
     </AppLayout>

@@ -14,11 +14,12 @@ import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useRevertDelivery } from '@/hooks/useRevertDelivery';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2 } from 'lucide-react';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ import {
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
+import { RevertDeliveryDialog } from '@/components/admin/RevertDeliveryDialog';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -119,6 +121,11 @@ export default function RunnerDeliveredOrders() {
   const [exportSelectedIds, setExportSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Revert delivery state for admin
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [revertOrder, setRevertOrder] = useState<Order | null>(null);
+  const revertDelivery = useRevertDelivery();
 
   // Helper function to check if order matches claim status filter
   const matchesClaimStatusFilter = (status: ReconciliationStatus, filter: ClaimStatusFilter): boolean => {
@@ -289,6 +296,25 @@ export default function RunnerDeliveredOrders() {
   const handleSingleClaim = (order: Order) => {
     setSelectedIds(new Set([order.id]));
     setBulkClaimOpen(true);
+  };
+
+  // Handle revert delivery (admin only)
+  const handleOpenRevertDialog = (order: Order) => {
+    setRevertOrder(order);
+    setRevertDialogOpen(true);
+  };
+
+  const handleRevertConfirm = (reason: string) => {
+    if (!revertOrder) return;
+    revertDelivery.mutate(
+      { orderId: revertOrder.id, reason },
+      {
+        onSuccess: () => {
+          setRevertDialogOpen(false);
+          setRevertOrder(null);
+        },
+      }
+    );
   };
 
   // Extract unique areas for filter
@@ -672,6 +698,23 @@ export default function RunnerDeliveredOrders() {
                         </Button>
                       ) : undefined
                     }
+                    secondaryActions={
+                      isAdmin ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-orange-300 text-orange-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenRevertDialog(order);
+                          }}
+                          disabled={revertDelivery.isPending}
+                        >
+                          <Undo2 className="h-4 w-4 mr-1" />
+                          Reverse
+                        </Button>
+                      ) : undefined
+                    }
                   />
                 );
               })
@@ -719,18 +762,19 @@ export default function RunnerDeliveredOrders() {
                       <TableHead>Claim Status</TableHead>
                       {canClaim && <TableHead>Claim Batch Ref</TableHead>}
                       {canClaim && <TableHead>Action</TableHead>}
+                      {isAdmin && <TableHead>Admin</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0)} className="text-center py-8">
+                        <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0)} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8 text-muted-foreground">
                           No delivered orders found
                         </TableCell>
                       </TableRow>
@@ -846,6 +890,26 @@ export default function RunnerDeliveredOrders() {
                                 )}
                               </TableCell>
                             )}
+                            {isAdmin && (
+                              <TableCell>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="border-orange-300 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                        onClick={() => handleOpenRevertDialog(order)}
+                                        disabled={revertDelivery.isPending}
+                                      >
+                                        <Undo2 className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Reverse Delivered</TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </TableCell>
+                            )}
                           </TableRow>
                         );
                       })
@@ -864,6 +928,15 @@ export default function RunnerDeliveredOrders() {
           orders={selectedClaimableOrders}
           onSubmit={handleBulkClaimSubmit}
           isSubmitting={isSubmitting}
+        />
+
+        {/* Revert Delivery Dialog (Admin only) */}
+        <RevertDeliveryDialog
+          open={revertDialogOpen}
+          onOpenChange={setRevertDialogOpen}
+          order={revertOrder}
+          onConfirm={handleRevertConfirm}
+          isPending={revertDelivery.isPending}
         />
       </div>
     </AppLayout>

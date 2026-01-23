@@ -3,6 +3,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { MovementType, ReferenceType } from '@/types/database';
 
+interface RevertDeliveryParams {
+  orderId: string;
+  reason?: string;
+}
+
 /**
  * Hook for admin to revert a delivered order back to ASSIGNED status
  * and reverse any stock deductions made for that order
@@ -11,7 +16,7 @@ export function useRevertDelivery() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (orderId: string) => {
+    mutationFn: async ({ orderId, reason }: RevertDeliveryParams) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -43,18 +48,20 @@ export function useRevertDelivery() {
         throw new Error('Order is not in delivered status');
       }
 
+      const itemsRestored: string[] = [];
+
       // If stock was deducted, use idempotent RETURN_TO_OWNER movements
       // Stock returns to salesperson's warehouse (the ONLY stock owner)
       if (order.stock_deducted && order.fulfillment_warehouse_id) {
-        // Verify the warehouse belongs to salesperson (not runner)
+        // Verify the warehouse belongs to salesperson or manager
         const { data: warehouse } = await supabase
           .from('warehouses')
           .select('owner_user_id, warehouse_type')
           .eq('id', order.fulfillment_warehouse_id)
           .single();
 
-        // Only process returns to salesperson warehouses
-        if (warehouse?.warehouse_type === 'SALESPERSON') {
+        // Process returns to salesperson or manager warehouses
+        if (warehouse?.warehouse_type === 'SALESPERSON' || warehouse?.warehouse_type === 'MANAGER') {
           // Create RETURN_TO_OWNER movements for each item (idempotent)
           for (const item of order.order_items) {
             if (!item.product_id) continue;
@@ -81,6 +88,8 @@ export function useRevertDelivery() {
                 order_id: orderId,
                 created_by: user.id,
               });
+            
+            itemsRestored.push(item.product_id);
           }
         }
       }
@@ -105,7 +114,7 @@ export function useRevertDelivery() {
 
       if (updateError) throw updateError;
 
-      // Log audit
+      // Log audit with reason
       await supabase.from('audit_logs').insert({
         entity_type: 'order',
         entity_id: orderId,
@@ -120,17 +129,32 @@ export function useRevertDelivery() {
           runner_status: 'TAKEN',
           stock_deducted: false,
           stock_reversed: order.stock_deducted,
+          revert_reason: reason || 'No reason provided',
+          items_restored: itemsRestored,
         } as unknown as undefined,
         actor_id: user.id,
       });
 
-      return { success: true, stockReversed: order.stock_deducted };
+      // Notify runner about reverted delivery if there's a runner assigned
+      if (order.runner_id) {
+        await supabase.from('notifications').insert({
+          user_id: order.runner_id,
+          type: 'ORDER_UPDATE',
+          title: 'Delivery Reverted',
+          message: `Order ${order.order_code} has been reverted by admin. Reason: ${reason || 'Not specified'}`,
+          reference_type: 'order',
+          reference_id: orderId,
+        });
+      }
+
+      return { success: true, stockReversed: order.stock_deducted, reason };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
       queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
       queryClient.invalidateQueries({ queryKey: ['stock_movements'] });
+      queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast'] });
       
       const message = result.stockReversed
         ? 'Delivery reverted and stock added back'
