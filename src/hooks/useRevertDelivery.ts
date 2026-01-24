@@ -51,62 +51,69 @@ export function useRevertDelivery() {
       const itemsRestored: string[] = [];
 
       // If stock was deducted, use idempotent RETURN_TO_OWNER movements
-      // Stock returns to salesperson's warehouse (the ONLY stock owner)
-      if (order.stock_deducted && order.fulfillment_warehouse_id) {
-        // Verify the warehouse belongs to salesperson or manager
-        const { data: warehouse } = await supabase
-          .from('warehouses')
-          .select('owner_user_id, warehouse_type')
-          .eq('id', order.fulfillment_warehouse_id)
-          .single();
+      // CRITICAL: Always recalculate the correct active warehouse using RPC
+      // Never trust order.fulfillment_warehouse_id - it may be stale after role changes
+      if (order.stock_deducted) {
+        // Get the correct active warehouse for this order's salesperson
+        const { data: activeWarehouseId, error: warehouseError } = await supabase
+          .rpc('get_stock_owner_warehouse', { p_order_id: orderId });
 
-        // Process returns to salesperson or manager warehouses
-        if (warehouse?.warehouse_type === 'SALESPERSON' || warehouse?.warehouse_type === 'MANAGER') {
-          // Create RETURN_TO_OWNER movements for each item (idempotent)
-          for (const item of order.order_items) {
-            if (!item.product_id) continue;
-            
-            // Check if return already exists (idempotency check)
-            const { data: existing } = await supabase
-              .from('stock_movements')
-              .select('id')
-              .eq('order_id', orderId)
-              .eq('product_id', item.product_id)
-              .eq('movement_type', 'RETURN_TO_OWNER')
-              .maybeSingle();
-            
-            if (existing) {
-              console.log('[REVERT] Stock already returned for product:', item.product_id);
-              continue;
-            }
-            
-            console.log('[REVERT] Creating RETURN_TO_OWNER movement:', {
-              orderId,
-              productId: item.product_id,
-              qty: item.qty,
-              warehouseId: order.fulfillment_warehouse_id,
-            });
+        if (warehouseError) {
+          console.error('[REVERT] Failed to get active warehouse:', warehouseError);
+          throw new Error('Failed to determine active warehouse for stock restoration');
+        }
 
-            const { error: insertError } = await supabase
-              .from('stock_movements')
-              .insert({
-                warehouse_id: order.fulfillment_warehouse_id,
-                product_id: item.product_id,
-                movement_type: 'RETURN_TO_OWNER' as MovementType,
-                qty_change: item.qty, // Positive to add back
-                reference_type: 'ORDER_ITEM' as ReferenceType,
-                order_id: orderId,
-                created_by: user.id,
-              });
-            
-            if (insertError) {
-              console.error('[REVERT] Stock return failed:', insertError);
-              throw new Error(`Failed to restore stock for product ${item.product_id}: ${insertError.message}`);
-            }
-            
-            console.log('[REVERT] Stock return successful for product:', item.product_id);
-            itemsRestored.push(item.product_id);
+        if (!activeWarehouseId) {
+          console.error('[REVERT] No active warehouse found for order:', orderId);
+          throw new Error('No active warehouse found for stock restoration. The salesperson may not have an active warehouse.');
+        }
+
+        console.log('[REVERT] Using active warehouse:', activeWarehouseId, 'for order:', orderId);
+
+        // Create RETURN_TO_OWNER movements for each item (idempotent)
+        for (const item of order.order_items) {
+          if (!item.product_id) continue;
+          
+          // Check if return already exists (idempotency check)
+          const { data: existing } = await supabase
+            .from('stock_movements')
+            .select('id')
+            .eq('order_id', orderId)
+            .eq('product_id', item.product_id)
+            .eq('movement_type', 'RETURN_TO_OWNER')
+            .maybeSingle();
+          
+          if (existing) {
+            console.log('[REVERT] Stock already returned for product:', item.product_id);
+            continue;
           }
+          
+          console.log('[REVERT] Creating RETURN_TO_OWNER movement:', {
+            orderId,
+            productId: item.product_id,
+            qty: item.qty,
+            warehouseId: activeWarehouseId,
+          });
+
+          const { error: insertError } = await supabase
+            .from('stock_movements')
+            .insert({
+              warehouse_id: activeWarehouseId,
+              product_id: item.product_id,
+              movement_type: 'RETURN_TO_OWNER' as MovementType,
+              qty_change: item.qty, // Positive to add back
+              reference_type: 'ORDER_ITEM' as ReferenceType,
+              order_id: orderId,
+              created_by: user.id,
+            });
+          
+          if (insertError) {
+            console.error('[REVERT] Stock return failed:', insertError);
+            throw new Error(`Failed to restore stock for product ${item.product_id}: ${insertError.message}`);
+          }
+          
+          console.log('[REVERT] Stock return successful for product:', item.product_id);
+          itemsRestored.push(item.product_id);
         }
       }
 
