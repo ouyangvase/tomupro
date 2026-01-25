@@ -1874,6 +1874,7 @@ export type Database = {
           operational_status: string
           order_code: string
           order_date: string
+          order_owner_id: string
           owner_manager_display_name_snapshot: string | null
           owner_manager_id_snapshot: string | null
           owner_salesperson_display_name_snapshot: string | null
@@ -1941,6 +1942,7 @@ export type Database = {
           operational_status?: string
           order_code: string
           order_date?: string
+          order_owner_id: string
           owner_manager_display_name_snapshot?: string | null
           owner_manager_id_snapshot?: string | null
           owner_salesperson_display_name_snapshot?: string | null
@@ -2008,6 +2010,7 @@ export type Database = {
           operational_status?: string
           order_code?: string
           order_date?: string
+          order_owner_id?: string
           owner_manager_display_name_snapshot?: string | null
           owner_manager_id_snapshot?: string | null
           owner_salesperson_display_name_snapshot?: string | null
@@ -2058,6 +2061,13 @@ export type Database = {
             columns: ["fulfillment_warehouse_id"]
             isOneToOne: false
             referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_order_owner_id_fkey"
+            columns: ["order_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {

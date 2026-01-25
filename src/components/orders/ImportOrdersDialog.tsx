@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,14 +11,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users } from 'lucide-react';
 import { parseCSVRaw, downloadTemplate, HEADER_ALIASES } from '@/lib/csv';
 import { validateOrderLines, type ValidatedOrderLine } from '@/lib/csvValidation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProducts } from '@/hooks/useProducts';
+import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { ColumnMappingStep, areRequiredFieldsMapped, applyColumnMapping } from './ColumnMappingStep';
 
 interface ImportOrdersDialogProps {
@@ -33,13 +41,30 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: allProducts = [] } = useProducts();
-  // Products are already filtered by role in useProducts hook
-  // For salesperson: only their own products
-  // For manager: their own + team products
-  // For admin: all products
-  const products = allProducts;
+  const { data: teamMembers = [] } = useTeamMembers();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Order owner selection for managers/admins
+  const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
+  
+  // Products filtered to selected order owner
+  const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
+  
+  // Owner options for selection
+  const ownerOptions = useMemo(() => {
+    if (role === 'salesperson') return []; // No selection needed
+    if (role === 'manager' && profile) {
+      return [
+        { id: profile.id, display_name: `${profile.display_name} (My Orders)` },
+        ...teamMembers.map(m => ({ id: m.id, display_name: m.display_name })),
+      ];
+    }
+    // Admin would need to fetch all users - for now use profile
+    if (role === 'admin' && profile) {
+      return [{ id: profile.id, display_name: `${profile.display_name} (Me)` }];
+    }
+    return [];
+  }, [role, profile, teamMembers]);
   
   // State
   const [file, setFile] = useState<File | null>(null);
@@ -49,6 +74,13 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const [importing, setImporting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [successCount, setSuccessCount] = useState(0);
+  
+  // Reset orderOwnerId when dialog opens
+  useEffect(() => {
+    if (open && profile?.id) {
+      setOrderOwnerId(profile.id);
+    }
+  }, [open, profile?.id]);
 
   // Auto-suggest mappings based on header aliases
   const suggestMappings = (headers: string[]): Record<string, string> => {
@@ -156,11 +188,11 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   }, [rawData, columnMapping]);
 
   /**
-   * Validates SKU ownership for a salesperson - ALL-OR-NOTHING approach
+   * Validates SKU ownership for the selected order owner - ALL-OR-NOTHING approach
    */
   const validateSkuOwnership = (
     validatedRows: ValidatedOrderLine[],
-    salespersonProducts: typeof products
+    ownerProductsList: typeof ownerProducts
   ): { valid: boolean; errors: string[] } => {
     const skuErrors: string[] = [];
 
@@ -171,7 +203,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
       if (!skuValue) continue;
 
-      const codeMatches = salespersonProducts.filter(
+      const codeMatches = ownerProductsList.filter(
         (p: any) => p.sku_code?.toLowerCase() === skuValue.toLowerCase()
       );
 
@@ -182,12 +214,12 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         continue;
       }
 
-      const nameMatches = salespersonProducts.filter(
+      const nameMatches = ownerProductsList.filter(
         (p: any) => p.sku_name.toLowerCase() === skuValue.toLowerCase()
       );
 
       if (nameMatches.length === 0) {
-        skuErrors.push(`Row ${csvRowNum}: SKU not found in your product list (sku_name_or_code="${skuValue}")`);
+        skuErrors.push(`Row ${csvRowNum}: SKU not found in the selected owner's product list (sku_name_or_code="${skuValue}")`);
       } else if (nameMatches.length > 1) {
         skuErrors.push(`Row ${csvRowNum}: SKU name is ambiguous (${nameMatches.length} matches); please use sku_code (sku_name="${skuValue}")`);
       }
@@ -198,9 +230,9 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
   const findProductId = (skuNameOrCode: string): string | null => {
     if (!skuNameOrCode.trim()) return null;
-    let product = products.find((p: any) => p.sku_code?.toLowerCase() === skuNameOrCode.toLowerCase());
+    let product = ownerProducts.find((p: any) => p.sku_code?.toLowerCase() === skuNameOrCode.toLowerCase());
     if (!product) {
-      product = products.find((p: any) => p.sku_name.toLowerCase() === skuNameOrCode.toLowerCase());
+      product = ownerProducts.find((p: any) => p.sku_name.toLowerCase() === skuNameOrCode.toLowerCase());
     }
     return product?.id || null;
   };
@@ -230,14 +262,12 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         return;
       }
 
-      // Validate SKU ownership for salesperson/manager (products already filtered by role)
-      if (role === 'salesperson' || role === 'manager') {
-        const skuValidation = validateSkuOwnership(validation.valid, products);
-        if (!skuValidation.valid) {
-          setErrors(['Import FAILED: Invalid SKUs found. No orders were imported.', '', ...skuValidation.errors]);
-          setImporting(false);
-          return;
-        }
+      // Always validate SKU ownership against the selected order owner's products
+      const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
+      if (!skuValidation.valid) {
+        setErrors(['Import FAILED: Invalid SKUs found. No orders were imported.', '', ...skuValidation.errors]);
+        setImporting(false);
+        return;
       }
 
       // Group by order_ref and validate for duplicate SKUs
@@ -333,6 +363,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
               salesperson_id: profile.id,
+              order_owner_id: orderOwnerId, // Use selected order owner for SKU validation
               status: defaultStatus,
               total_qty: totalQty,
               total_amount: totalAmount,
@@ -415,57 +446,84 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
         {/* Step: Upload */}
         {step === 'upload' && (
-          <Tabs defaultValue="upload" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 h-8 sm:h-9">
-              <TabsTrigger value="upload" className="text-xs sm:text-sm">Upload CSV</TabsTrigger>
-              <TabsTrigger value="templates" className="text-xs sm:text-sm">Templates</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="upload" className="space-y-3 mt-3">
-              <div className="border-2 border-dashed rounded-lg p-4 sm:p-6 text-center">
-                <Input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <FileSpreadsheet className="h-6 w-6 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-2 sm:mb-3" />
-                <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 break-all px-2">
-                  {file ? file.name : 'Select a CSV file to import'}
+          <div className="space-y-4">
+            {/* Order Owner Selection for managers/admins */}
+            {(role === 'manager' || role === 'admin') && ownerOptions.length > 0 && (
+              <div className="p-4 border rounded-lg bg-muted/30">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="h-4 w-4 text-primary" />
+                  <Label className="text-sm font-medium">Order Owner</Label>
+                </div>
+                <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select who owns these orders" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ownerOptions.map(opt => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Only SKUs belonging to this user will be matched during import
                 </p>
-                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-8">
-                  <Upload className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5" />
-                  <span className="text-xs sm:text-sm">Select File</span>
-                </Button>
               </div>
-            </TabsContent>
+            )}
+            
+            <Tabs defaultValue="upload" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 h-8 sm:h-9">
+                <TabsTrigger value="upload" className="text-xs sm:text-sm">Upload CSV</TabsTrigger>
+                <TabsTrigger value="templates" className="text-xs sm:text-sm">Templates</TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="templates" className="space-y-3 mt-3">
-              <div className="grid gap-2.5">
-                <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-xs sm:text-sm">Order Lines Template</h4>
-                    <p className="text-xs text-muted-foreground truncate">Multi-SKU per order</p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => downloadTemplate('order_lines')} className="shrink-0 h-7 sm:h-8">
-                    <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                    <span className="text-xs">Download</span>
+              <TabsContent value="upload" className="space-y-3 mt-3">
+                <div className="border-2 border-dashed rounded-lg p-4 sm:p-6 text-center">
+                  <Input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <FileSpreadsheet className="h-6 w-6 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-2 sm:mb-3" />
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 break-all px-2">
+                    {file ? file.name : 'Select a CSV file to import'}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-8">
+                    <Upload className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5" />
+                    <span className="text-xs sm:text-sm">Select File</span>
                   </Button>
                 </div>
-                <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-xs sm:text-sm">Simple Orders Template</h4>
-                    <p className="text-xs text-muted-foreground truncate">Basic orders</p>
+              </TabsContent>
+
+              <TabsContent value="templates" className="space-y-3 mt-3">
+                <div className="grid gap-2.5">
+                  <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-xs sm:text-sm">Order Lines Template</h4>
+                      <p className="text-xs text-muted-foreground truncate">Multi-SKU per order</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => downloadTemplate('order_lines')} className="shrink-0 h-7 sm:h-8">
+                      <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      <span className="text-xs">Download</span>
+                    </Button>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => downloadTemplate('orders')} className="shrink-0 h-7 sm:h-8">
-                    <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                    <span className="text-xs">Download</span>
-                  </Button>
+                  <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-xs sm:text-sm">Simple Orders Template</h4>
+                      <p className="text-xs text-muted-foreground truncate">Basic orders</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => downloadTemplate('orders')} className="shrink-0 h-7 sm:h-8">
+                      <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      <span className="text-xs">Download</span>
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </TabsContent>
-          </Tabs>
+              </TabsContent>
+            </Tabs>
+          </div>
         )}
 
         {/* Step: Column Mapping */}
