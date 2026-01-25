@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle } from 'lucide-react';
+import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { RunnerReviewInfo } from '@/components/orders/RunnerReviewInfo';
@@ -67,7 +67,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useProducts } from '@/hooks/useProducts';
+import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useOrderItems, useCreateOrderItem, useUpdateOrderItem, useDeleteOrderItem, calculateOrderTotals } from '@/hooks/useOrderItems';
 import { useUpdateOrder, useCreateOrder } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
@@ -169,12 +170,46 @@ function ProductCombobox({ products, value, onSelect }: ProductComboboxProps) {
 export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = 'BOOKING' }: OrderEditorProps) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
-  const { data: allProducts = [] } = useProducts();
-  // Products are already filtered by role in useProducts hook
-  // For salesperson: only their own products
-  // For manager: their own + team products
-  // For admin: all products
-  const products = allProducts;
+  const { data: teamMembers = [] } = useTeamMembers();
+  
+  // Order owner selection for managers/admins
+  const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
+  
+  // Reset orderOwnerId when dialog opens or order changes
+  useEffect(() => {
+    if (open) {
+      // Use any cast since order_owner_id was just added
+      const orderOwner = (order as any)?.order_owner_id;
+      if (mode === 'edit' && orderOwner) {
+        setOrderOwnerId(orderOwner);
+      } else if (profile?.id) {
+        setOrderOwnerId(profile.id);
+      }
+    }
+  }, [open, mode, (order as any)?.order_owner_id, profile?.id]);
+  
+  // Owner options for selection
+  const ownerOptions = useMemo(() => {
+    if (role === 'salesperson') return []; // No selection needed
+    if (role === 'manager' && profile) {
+      return [
+        { id: profile.id, display_name: `${profile.display_name} (My Order)` },
+        ...teamMembers.map(m => ({ id: m.id, display_name: m.display_name })),
+      ];
+    }
+    // Admin would need to fetch all users - for now use profile
+    if (role === 'admin' && profile) {
+      return [{ id: profile.id, display_name: `${profile.display_name} (Me)` }];
+    }
+    return [];
+  }, [role, profile, teamMembers]);
+  
+  // Products filtered to selected order owner
+  const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
+  
+  // Use owner products for the product picker
+  const products = ownerProducts;
+  
   const { data: existingItems = [] } = useOrderItems(order?.id);
   const createOrder = useCreateOrder();
   const updateOrder = useUpdateOrder();
@@ -191,6 +226,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   // Check if order is delivered and user is not admin
   const isDelivered = order?.runner_status === 'DELIVERED';
   const isAdmin = role === 'admin';
+  const isManager = role === 'manager';
   const isLocked = isDelivered && !isAdmin;
 
   const form = useForm<OrderFormValues>({
@@ -357,6 +393,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         const result = await createOrder.mutateAsync({
           ...orderData,
           salesperson_id: profile!.id,
+          order_owner_id: orderOwnerId, // Use selected order owner for SKU validation
           status: defaultStatus,
         } as any);
         orderId = result.id;
@@ -463,6 +500,31 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmitWithWarning)} className="space-y-6 mt-6">
+            {/* Order Owner Selection for managers/admins */}
+            {(isManager || isAdmin) && mode === 'create' && ownerOptions.length > 0 && (
+              <div className="p-4 border rounded-lg bg-muted/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="h-4 w-4 text-primary" />
+                  <FormLabel className="text-sm font-medium">Order Owner *</FormLabel>
+                </div>
+                <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select order owner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ownerOptions.map(opt => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Products will be filtered to this owner's catalog
+                </p>
+              </div>
+            )}
+            
             {/* Order Ref + Customer Info */}
             <FormField
               control={form.control}

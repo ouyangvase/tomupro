@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { startOfDay, endOfDay } from 'date-fns';
+import { useServerVisibleIds } from '@/hooks/useTeamVisibility';
+import { startOfDay, endOfDay, startOfMonth } from 'date-fns';
 
 export interface DashboardStats {
   bookingOrders: number;
@@ -92,6 +93,167 @@ export function useSalespersonStats() {
     },
     enabled: !!user,
     refetchInterval: 30000, // Refresh every 30 seconds
+  });
+}
+
+/**
+ * Manager dashboard stats - uses team visibility to aggregate data across team members
+ */
+export function useManagerStats() {
+  const { user } = useAuth();
+  const { data: serverVisibleIds } = useServerVisibleIds();
+
+  return useQuery({
+    queryKey: ['dashboard-stats', 'manager', user?.id, serverVisibleIds],
+    queryFn: async () => {
+      if (!user) throw new Error('Not authenticated');
+
+      // Get visible owner IDs from server RPC
+      const { data: visibleIds, error: visibleError } = await supabase.rpc('get_visible_owner_ids');
+      
+      if (visibleError) {
+        console.error('Failed to fetch visible owner IDs:', visibleError);
+        throw visibleError;
+      }
+
+      // If no visible IDs, return zeros
+      if (!visibleIds || visibleIds.length === 0) {
+        return {
+          bookingOrders: 0,
+          readyOrders: 0,
+          pendingDelivery: 0,
+          pendingReconciliation: 0,
+          disputes: 0,
+          productsCount: 0,
+          deliveredOrders: 0,
+          cancelledOrders: 0,
+          actionRequired: 0,
+          teamRealizedGmv: 0,
+          teamPipelineGmv: 0,
+        };
+      }
+
+      const monthStart = startOfMonth(new Date()).toISOString();
+
+      const [
+        bookingRes,
+        readyRes,
+        pendingDeliveryRes,
+        pendingReconRes,
+        disputesRes,
+        productsRes,
+        deliveredRes,
+        cancelledRes,
+        actionRequiredRes,
+        deliveredAmountRes,
+        pipelineAmountRes,
+      ] = await Promise.all([
+        // Booking orders count
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .eq('status', 'BOOKING'),
+        
+        // Ready orders count (excluding delivered)
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .eq('status', 'READY')
+          .neq('runner_status', 'DELIVERED'),
+        
+        // Pending delivery (ASSIGNED or TAKEN, READY status)
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .eq('status', 'READY')
+          .in('runner_status', ['ASSIGNED', 'TAKEN']),
+        
+        // Pending reconciliation
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .in('reconciliation_status', ['SP_ACK_PENDING', 'ADMIN_ACK_PENDING']),
+        
+        // Disputes
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .eq('reconciliation_status', 'DISPUTE'),
+        
+        // Active products count for team
+        supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .in('owner_user_id', visibleIds)
+          .eq('is_active', true),
+        
+        // Delivered this month
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .eq('runner_status', 'DELIVERED')
+          .gte('delivered_at', monthStart),
+        
+        // Cancelled orders
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .eq('status', 'CANCELLED'),
+        
+        // Action required (failed delivery)
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .eq('runner_status', 'FAILED_DELIVERY'),
+        
+        // Delivered amount (MTD GMV)
+        supabase
+          .from('orders')
+          .select('total_amount')
+          .in('salesperson_id', visibleIds)
+          .eq('runner_status', 'DELIVERED')
+          .gte('delivered_at', monthStart),
+        
+        // Pipeline GMV (booking + ready)
+        supabase
+          .from('orders')
+          .select('total_amount')
+          .in('salesperson_id', visibleIds)
+          .in('status', ['BOOKING', 'READY'])
+          .neq('runner_status', 'DELIVERED'),
+      ]);
+
+      const teamRealizedGmv = (deliveredAmountRes.data || []).reduce(
+        (sum, o) => sum + (Number(o.total_amount) || 0), 0
+      );
+      const teamPipelineGmv = (pipelineAmountRes.data || []).reduce(
+        (sum, o) => sum + (Number(o.total_amount) || 0), 0
+      );
+
+      return {
+        bookingOrders: bookingRes.count || 0,
+        readyOrders: readyRes.count || 0,
+        pendingDelivery: pendingDeliveryRes.count || 0,
+        pendingReconciliation: pendingReconRes.count || 0,
+        disputes: disputesRes.count || 0,
+        productsCount: productsRes.count || 0,
+        deliveredOrders: deliveredRes.count || 0,
+        cancelledOrders: cancelledRes.count || 0,
+        actionRequired: actionRequiredRes.count || 0,
+        teamRealizedGmv,
+        teamPipelineGmv,
+      };
+    },
+    enabled: !!user,
+    refetchInterval: 30000,
   });
 }
 

@@ -26,6 +26,14 @@ export function useProductsByOwner(ownerUserId: string | null) {
 }
 
 /**
+ * Alias for useProductsByOwner - used in order context
+ * to make intent clearer.
+ */
+export function useOrderOwnerProducts(ownerUserId: string | null) {
+  return useProductsByOwner(ownerUserId);
+}
+
+/**
  * Find a product by SKU code for a given owner user.
  * SKU code is normalized (trimmed + uppercased) for matching.
  */
