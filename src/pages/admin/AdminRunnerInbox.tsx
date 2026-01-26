@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
@@ -58,7 +59,7 @@ const reconciliationStatusOptions = [
 
 export default function AdminRunnerInbox() {
   const { toast } = useToast();
-  const { data: allOrders, isLoading } = useOrders(); // Admin gets all orders
+  const { data: allOrders, isLoading } = useOrders({ limit: 1000000 }); // Admin gets all orders
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: runners = [] } = useRunners();
   const bulkUpdateOrders = useBulkUpdateOrders();
@@ -89,6 +90,21 @@ export default function AdminRunnerInbox() {
   const filteredOrders = useMemo(() => {
     return applyOrderFilters(runnerFilteredOrders, panelFilters);
   }, [runnerFilteredOrders, panelFilters]);
+
+  // Add pagination for large datasets
+  const {
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    paginatedData,
+    pageSize,
+  } = useResponsivePagination({
+    totalItems: filteredOrders.length,
+    headerHeight: 350,
+    footerHeight: 80,
+  });
+
+  const paginatedOrders = paginatedData(filteredOrders);
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {
@@ -353,7 +369,7 @@ export default function AdminRunnerInbox() {
         />
 
         <DataGrid
-          data={filteredOrders}
+          data={paginatedOrders}
           columns={columns}
           loading={isLoading}
           keyField="id"
@@ -363,6 +379,35 @@ export default function AdminRunnerInbox() {
           onExport={handleExport}
           emptyMessage="No orders found"
         />
+
+        {filteredOrders.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30 rounded-b-lg">
+            <div className="text-sm text-muted-foreground">
+              Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </AppLayout>
   );

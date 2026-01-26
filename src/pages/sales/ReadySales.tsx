@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -72,11 +73,12 @@ export default function ReadySales() {
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
-  // Use team-aware orders hook
+  // Use team-aware orders hook with high limit
   const { data: orders = [], isLoading } = useTeamOrders({ 
     status: 'READY',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
+    limit: 1000000,
   });
 
   // Apply panel filters and mobile search to orders
@@ -98,6 +100,21 @@ export default function ReadySales() {
     
     return result;
   }, [orders, panelFilters, mobileSearch]);
+
+  // Add pagination for large datasets
+  const {
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    paginatedData,
+    pageSize,
+  } = useResponsivePagination({
+    totalItems: filteredOrders.length,
+    headerHeight: 350,
+    footerHeight: 80,
+  });
+
+  const paginatedOrders = paginatedData(filteredOrders);
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {
@@ -574,78 +591,109 @@ export default function ReadySales() {
           </div>
         ) : (
           /* Desktop Table View */
-          <DataGrid
-            data={filteredOrders}
-            columns={columns}
-            keyField="id"
-            selectable={isEditable}
-            selectedRows={selectedRows}
-            onSelectionChange={setSelectedRows}
-            onRowClick={handleRowClick}
-            loading={isLoading}
-            emptyMessage="No ready orders"
-            onExport={handleExport}
-            onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
-            bulkActions={
-              isEditable && selectedRows.length > 0 ? (
-                (() => {
-                  const selectedOrdersInfo = orders.filter(o => selectedRows.includes(o.id));
-                  const hasDeliveredOrders = selectedOrdersInfo.some(o => o.runner_status === 'DELIVERED');
-                  const isAdmin = role === 'admin';
-                  const canCancel = isAdmin || !hasDeliveredOrders;
-                  
-                  return (
-                    <div className="flex gap-2 items-center">
-                      <Button 
-                        size="sm" 
-                        onClick={() => setAssignDialogOpen(true)}
-                      >
-                        <UserCheck className="h-4 w-4 mr-2" />
-                        Assign Runner
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={handleExportSelected}>
-                        Export Selected
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={handleDispute}>
-                        Mark Dispute
-                      </Button>
-                      {canCancel ? (
+          <>
+            <DataGrid
+              data={paginatedOrders}
+              columns={columns}
+              keyField="id"
+              selectable={isEditable}
+              selectedRows={selectedRows}
+              onSelectionChange={setSelectedRows}
+              onRowClick={handleRowClick}
+              loading={isLoading}
+              emptyMessage="No ready orders"
+              onExport={handleExport}
+              onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
+              bulkActions={
+                isEditable && selectedRows.length > 0 ? (
+                  (() => {
+                    const selectedOrdersInfo = orders.filter(o => selectedRows.includes(o.id));
+                    const hasDeliveredOrders = selectedOrdersInfo.some(o => o.runner_status === 'DELIVERED');
+                    const isAdmin = role === 'admin';
+                    const canCancel = isAdmin || !hasDeliveredOrders;
+                    
+                    return (
+                      <div className="flex gap-2 items-center">
                         <Button 
                           size="sm" 
-                          variant="destructive" 
-                          onClick={() => setCancelDialogOpen(true)}
+                          onClick={() => setAssignDialogOpen(true)}
                         >
-                          Cancel
+                          <UserCheck className="h-4 w-4 mr-2" />
+                          Assign Runner
                         </Button>
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span>
-                              <Button 
-                                size="sm" 
-                                variant="destructive" 
-                                disabled
-                              >
-                                Cancel
-                              </Button>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Delivered order is locked. Only admin can modify.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      {hasDeliveredOrders && !isAdmin && (
-                        <Badge variant="secondary" className="ml-2">
-                          Selection includes delivered orders
-                        </Badge>
-                      )}
-                    </div>
-                  );
-                })()
-              ) : undefined
-            }
-          />
+                        <Button size="sm" variant="outline" onClick={handleExportSelected}>
+                          Export Selected
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={handleDispute}>
+                          Mark Dispute
+                        </Button>
+                        {canCancel ? (
+                          <Button 
+                            size="sm" 
+                            variant="destructive" 
+                            onClick={() => setCancelDialogOpen(true)}
+                          >
+                            Cancel
+                          </Button>
+                        ) : (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span>
+                                <Button 
+                                  size="sm" 
+                                  variant="destructive" 
+                                  disabled
+                                >
+                                  Cancel
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Delivered order is locked. Only admin can modify.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {hasDeliveredOrders && !isAdmin && (
+                          <Badge variant="secondary" className="ml-2">
+                            Selection includes delivered orders
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })()
+                ) : undefined
+              }
+            />
+
+            {filteredOrders.length > 0 && totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30 rounded-b-lg">
+                <div className="text-sm text-muted-foreground">
+                  Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 

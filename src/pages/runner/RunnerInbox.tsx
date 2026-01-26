@@ -65,11 +65,11 @@ export default function RunnerInbox() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  // Use server-side filtering to exclude delivered/failed orders - increased limit for all orders
+  // Use server-side filtering to exclude delivered/failed orders - high limit for all orders
   const { data: orders, isLoading } = useOrders({ 
     runnerId: user?.id,
     excludeDeliveredAndFailed: true,
-    limit: 1000
+    limit: 1000000
   });
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
