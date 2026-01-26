@@ -14,54 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      admin_impersonation_sessions: {
-        Row: {
-          actions_count: number | null
-          admin_id: string
-          created_at: string | null
-          ended_at: string | null
-          id: string
-          started_at: string
-          target_role: Database["public"]["Enums"]["app_role"]
-          target_user_id: string
-        }
-        Insert: {
-          actions_count?: number | null
-          admin_id: string
-          created_at?: string | null
-          ended_at?: string | null
-          id?: string
-          started_at?: string
-          target_role: Database["public"]["Enums"]["app_role"]
-          target_user_id: string
-        }
-        Update: {
-          actions_count?: number | null
-          admin_id?: string
-          created_at?: string | null
-          ended_at?: string | null
-          id?: string
-          started_at?: string
-          target_role?: Database["public"]["Enums"]["app_role"]
-          target_user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "admin_impersonation_sessions_admin_id_fkey"
-            columns: ["admin_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "admin_impersonation_sessions_target_user_id_fkey"
-            columns: ["target_user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       app_notifications: {
         Row: {
           body: string | null
@@ -160,8 +112,6 @@ export type Database = {
           entity_id: string
           entity_type: string
           id: string
-          impersonated_user_id: string | null
-          impersonation_session_id: string | null
         }
         Insert: {
           action: string
@@ -172,8 +122,6 @@ export type Database = {
           entity_id: string
           entity_type: string
           id?: string
-          impersonated_user_id?: string | null
-          impersonation_session_id?: string | null
         }
         Update: {
           action?: string
@@ -184,8 +132,6 @@ export type Database = {
           entity_id?: string
           entity_type?: string
           id?: string
-          impersonated_user_id?: string | null
-          impersonation_session_id?: string | null
         }
         Relationships: [
           {
@@ -193,20 +139,6 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "audit_logs_impersonated_user_id_fkey"
-            columns: ["impersonated_user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "audit_logs_impersonation_session_id_fkey"
-            columns: ["impersonation_session_id"]
-            isOneToOne: false
-            referencedRelation: "admin_impersonation_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -3433,10 +3365,6 @@ export type Database = {
         Returns: Database["public"]["Enums"]["app_role"]
       }
       get_visible_owner_ids: { Args: never; Returns: string[] }
-      get_visible_owner_ids_for_user: {
-        Args: { p_user_id: string }
-        Returns: string[]
-      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

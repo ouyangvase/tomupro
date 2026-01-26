@@ -8,48 +8,30 @@ import { supabase } from '@/integrations/supabase/client';
  * Hook to fetch visible owner IDs from server-side RPC.
  * This is the source of truth for team visibility.
  * 
- * When asUserId is provided (for admin impersonation), fetches that user's visibility.
- * 
  * Returns:
  * - null if admin (can see all)
  * - array of UUIDs for manager/salesperson/runner
  */
-export function useServerVisibleIds(asUserId?: string | null) {
+export function useServerVisibleIds() {
   const { user, role } = useAuth();
-  const effectiveUserId = asUserId ?? user?.id;
 
   return useQuery({
-    queryKey: ['visible-owner-ids', effectiveUserId, asUserId],
+    queryKey: ['visible-owner-ids', user?.id],
     queryFn: async () => {
-      if (!effectiveUserId) return [];
+      if (!user?.id) return [];
 
-      // If impersonating (asUserId provided), use the specific RPC
-      if (asUserId) {
-        const { data, error } = await supabase.rpc('get_visible_owner_ids_for_user', {
-          p_user_id: asUserId
-        });
-        
-        if (error) {
-          console.error('Failed to fetch visible owner IDs for user:', error);
-          return [asUserId];
-        }
-        
-        return data as string[] | null;
-      }
-
-      // Normal case - use auth-based RPC
       const { data, error } = await supabase.rpc('get_visible_owner_ids');
       
       if (error) {
         console.error('Failed to fetch visible owner IDs:', error);
         // Fallback to own ID on error
-        return [effectiveUserId];
+        return [user.id];
       }
       
       // null means admin (can see all)
       return data as string[] | null;
     },
-    enabled: !!effectiveUserId,
+    enabled: !!user?.id,
     staleTime: 30000, // Cache for 30 seconds
   });
 }
@@ -57,9 +39,6 @@ export function useServerVisibleIds(asUserId?: string | null) {
 /**
  * Centralized hook for computing visible user IDs based on role and team bindings.
  * Uses server-side RPC as the source of truth.
- * 
- * When asUserId/asRole are provided (for admin impersonation), computes visibility
- * as if logged in as that user.
  * 
  * BUSINESS RULES:
  * 1. Salesperson: Can only see their own data (returns [profile.id])
@@ -69,16 +48,13 @@ export function useServerVisibleIds(asUserId?: string | null) {
  * 
  * Managers are ISOLATED - they cannot see other managers' team data.
  */
-export function useVisibleUserIds(asUserId?: string | null, asRole?: string | null) {
+export function useVisibleUserIds() {
   const { user, role, profile } = useAuth();
-  const effectiveUserId = asUserId ?? user?.id;
-  const effectiveRole = asRole ?? role;
-  
-  const { data: serverVisibleIds, isLoading: serverLoading } = useServerVisibleIds(asUserId);
+  const { data: serverVisibleIds, isLoading: serverLoading } = useServerVisibleIds();
   const { data: teamMembers = [] } = useTeamMembers();
 
   const visibleUserIds = useMemo<string[] | undefined>(() => {
-    if (!effectiveUserId) return [];
+    if (!user?.id) return [];
 
     // Use server-side RPC result if available
     if (serverVisibleIds !== undefined) {
@@ -88,41 +64,41 @@ export function useVisibleUserIds(asUserId?: string | null, asRole?: string | nu
     }
 
     // Fallback to client-side logic while server loads
-    // Admin can see all - no filter (but if impersonating, use impersonated role)
-    if (effectiveRole === 'admin' && !asUserId) return undefined;
+    // Admin can see all - no filter
+    if (role === 'admin') return undefined;
 
     // Salesperson can only see their own data
-    if (effectiveRole === 'salesperson') return [effectiveUserId];
+    if (role === 'salesperson') return [user.id];
 
     // Manager can see own + team members
-    if (effectiveRole === 'manager') {
-      return [effectiveUserId, ...teamMembers.map(m => m.id)];
+    if (role === 'manager') {
+      return [user.id, ...teamMembers.map(m => m.id)];
     }
 
     // Runner - typically returns their own, but visibility varies by context
-    if (effectiveRole === 'runner') return [effectiveUserId];
+    if (role === 'runner') return [user.id];
 
     // Default: own data only
-    return [effectiveUserId];
-  }, [effectiveUserId, effectiveRole, asUserId, serverVisibleIds, teamMembers]);
+    return [user.id];
+  }, [user?.id, role, serverVisibleIds, teamMembers]);
 
   // Team member IDs only (excludes manager themselves)
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
 
   // All team IDs including manager
   const allTeamIds = useMemo(() => {
-    if (!effectiveUserId || effectiveRole !== 'manager') return [];
-    return [effectiveUserId, ...teamMemberIds];
-  }, [effectiveUserId, effectiveRole, teamMemberIds]);
+    if (!user?.id || role !== 'manager') return [];
+    return [user.id, ...teamMemberIds];
+  }, [user?.id, role, teamMemberIds]);
 
   return {
     visibleUserIds,
     teamMemberIds,
     allTeamIds,
-    isManager: effectiveRole === 'manager',
-    isAdmin: effectiveRole === 'admin' && !asUserId,
-    isSalesperson: effectiveRole === 'salesperson',
-    userId: effectiveUserId,
+    isManager: role === 'manager',
+    isAdmin: role === 'admin',
+    isSalesperson: role === 'salesperson',
+    userId: user?.id,
     isLoading: serverLoading,
   };
 }
