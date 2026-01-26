@@ -69,6 +69,7 @@ import LeaderboardPage from "./pages/leaderboard/LeaderboardPage";
 import InviteCodesAdmin from "./pages/admin/InviteCodesAdmin";
 import MyPackagesPage from "./pages/packages/MyPackagesPage";
 import PcNotificationsPage from "./pages/packages/PcNotificationsPage";
+import DataSharingAdmin from "./pages/admin/DataSharingAdmin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -185,6 +186,7 @@ function AppRoutes() {
       <Route path="/settings/commission" element={<ProtectedRoute><CommissionSettings /></ProtectedRoute>} />
       <Route path="/admin/leaderboard-settings" element={<ProtectedRoute><LeaderboardSettings /></ProtectedRoute>} />
       <Route path="/admin/invite-codes" element={<ProtectedRoute><InviteCodesAdmin /></ProtectedRoute>} />
+      <Route path="/admin/data-sharing" element={<ProtectedRoute><DataSharingAdmin /></ProtectedRoute>} />
       <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/packages" element={<ProtectedRoute><MyPackagesPage /></ProtectedRoute>} />
       <Route path="/packages/notifications" element={<ProtectedRoute><PcNotificationsPage /></ProtectedRoute>} />

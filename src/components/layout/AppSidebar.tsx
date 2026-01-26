@@ -289,6 +289,11 @@ const settingsItems: NavItem[] = [{
   icon: Users,
   roles: ['admin']
 }, {
+  title: "Data Sharing",
+  url: "/admin/data-sharing",
+  icon: Users,
+  roles: ['admin']
+}, {
   title: "Users",
   url: "/settings/users",
   icon: Users,
