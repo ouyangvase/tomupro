@@ -14,6 +14,112 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_audit_log: {
+        Row: {
+          action_type: string
+          actor_user_id: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          resource_id: string | null
+          resource_type: string
+          share_id: string | null
+          subject_user_id: string
+        }
+        Insert: {
+          action_type: string
+          actor_user_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type: string
+          share_id?: string | null
+          subject_user_id: string
+        }
+        Update: {
+          action_type?: string
+          actor_user_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string
+          share_id?: string | null
+          subject_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_audit_log_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_audit_log_share_id_fkey"
+            columns: ["share_id"]
+            isOneToOne: false
+            referencedRelation: "user_data_shares"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_audit_log_subject_user_id_fkey"
+            columns: ["subject_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admin_impersonation_sessions: {
+        Row: {
+          actions_count: number | null
+          admin_id: string
+          created_at: string | null
+          ended_at: string | null
+          id: string
+          started_at: string
+          target_role: Database["public"]["Enums"]["app_role"]
+          target_user_id: string
+        }
+        Insert: {
+          actions_count?: number | null
+          admin_id: string
+          created_at?: string | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          target_role: Database["public"]["Enums"]["app_role"]
+          target_user_id: string
+        }
+        Update: {
+          actions_count?: number | null
+          admin_id?: string
+          created_at?: string | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          target_role?: Database["public"]["Enums"]["app_role"]
+          target_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_impersonation_sessions_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_impersonation_sessions_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_notifications: {
         Row: {
           body: string | null
@@ -112,6 +218,8 @@ export type Database = {
           entity_id: string
           entity_type: string
           id: string
+          impersonated_user_id: string | null
+          impersonation_session_id: string | null
         }
         Insert: {
           action: string
@@ -122,6 +230,8 @@ export type Database = {
           entity_id: string
           entity_type: string
           id?: string
+          impersonated_user_id?: string | null
+          impersonation_session_id?: string | null
         }
         Update: {
           action?: string
@@ -132,6 +242,8 @@ export type Database = {
           entity_id?: string
           entity_type?: string
           id?: string
+          impersonated_user_id?: string | null
+          impersonation_session_id?: string | null
         }
         Relationships: [
           {
@@ -139,6 +251,20 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_impersonated_user_id_fkey"
+            columns: ["impersonated_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_impersonation_session_id_fkey"
+            columns: ["impersonation_session_id"]
+            isOneToOne: false
+            referencedRelation: "admin_impersonation_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -2854,6 +2980,73 @@ export type Database = {
           },
         ]
       }
+      user_data_shares: {
+        Row: {
+          active: boolean
+          can_operate: boolean
+          created_at: string
+          created_by_admin_id: string
+          id: string
+          scope_inbound: boolean
+          scope_orders: boolean
+          scope_products: boolean
+          scope_stock_balance: boolean
+          subject_user_id: string
+          updated_at: string
+          viewer_user_id: string
+        }
+        Insert: {
+          active?: boolean
+          can_operate?: boolean
+          created_at?: string
+          created_by_admin_id: string
+          id?: string
+          scope_inbound?: boolean
+          scope_orders?: boolean
+          scope_products?: boolean
+          scope_stock_balance?: boolean
+          subject_user_id: string
+          updated_at?: string
+          viewer_user_id: string
+        }
+        Update: {
+          active?: boolean
+          can_operate?: boolean
+          created_at?: string
+          created_by_admin_id?: string
+          id?: string
+          scope_inbound?: boolean
+          scope_orders?: boolean
+          scope_products?: boolean
+          scope_stock_balance?: boolean
+          subject_user_id?: string
+          updated_at?: string
+          viewer_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_data_shares_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_data_shares_subject_user_id_fkey"
+            columns: ["subject_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_data_shares_viewer_user_id_fkey"
+            columns: ["viewer_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_directory: {
         Row: {
           created_at: string
@@ -3123,6 +3316,10 @@ export type Database = {
         Args: { p_approver_id: string; p_transfer_id: string }
         Returns: Json
       }
+      can_operate_on_user: {
+        Args: { p_subject_id: string; p_viewer_id: string }
+        Returns: boolean
+      }
       can_view_owner_data: { Args: { p_owner_id: string }; Returns: boolean }
       can_view_stock: {
         Args: { owner_id: string; viewer_id: string }
@@ -3165,6 +3362,10 @@ export type Database = {
       }
       debug_team_visibility: { Args: never; Returns: Json }
       generate_driver_code: { Args: { p_driver_id: string }; Returns: Json }
+      get_accessible_user_ids: {
+        Args: { p_user_id?: string }
+        Returns: string[]
+      }
       get_delivered_orders_fast: {
         Args: {
           p_limit?: number
@@ -3270,6 +3471,17 @@ export type Database = {
               salesperson_name: string
             }[]
           }
+      get_share_scopes: {
+        Args: { p_subject_id: string; p_viewer_id: string }
+        Returns: {
+          can_operate: boolean
+          has_access: boolean
+          scope_inbound: boolean
+          scope_orders: boolean
+          scope_products: boolean
+          scope_stock_balance: boolean
+        }[]
+      }
       get_stock_balance: {
         Args: never
         Returns: {
@@ -3365,6 +3577,10 @@ export type Database = {
         Returns: Database["public"]["Enums"]["app_role"]
       }
       get_visible_owner_ids: { Args: never; Returns: string[] }
+      get_visible_owner_ids_for_user: {
+        Args: { p_user_id: string }
+        Returns: string[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
