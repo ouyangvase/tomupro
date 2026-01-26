@@ -1,195 +1,157 @@
 
+# Fix Import Validation and Clean Up Invalid Orders
 
-# Remove Manager Bindings and Use Data Shares for Team View
+## Summary
 
-## Summary of Issues
-
-| Issue | Root Cause | Solution |
-|-------|------------|----------|
-| 1. Remove manager bindings | manager_groups + group_members still has 10 entries | Delete all data from these tables |
-| 2. Team Data shows wrong users | TeamViewToggle uses manager_groups, not user_data_shares | Rewrite to use user_data_shares |
-| 3. Sign in/out timeouts (504) | RLS policies querying manager_groups/group_members cause slow queries | Simplify RLS by removing obsolete checks |
-
-## Current Data State
-
-| Table | Count | Action |
-|-------|-------|--------|
-| manager_salesperson_bindings | 0 active | Already empty |
-| manager_groups | 9 groups | DELETE all |
-| group_members | 10 members | DELETE all |
-| user_data_shares | 2 active | Keep (this is the new system) |
+| Issue | Current Status | Action Required |
+|-------|---------------|-----------------|
+| 1. Import should reject entire file if SKU doesn't exist | Already implemented, but UI message could be clearer | Improve error messaging |
+| 2. Orders with 0 items exist | 23 orders without items (all ALLEN's) | Delete via database migration |
 
 ---
 
-## Part 1: Database Cleanup - Remove All Manager Bindings
+## Part 1: Strengthen Import Rejection UI
 
-Delete all data from the legacy manager binding tables:
+The current implementation already:
+- Validates SKUs at preview step (lines 177-186)
+- Disables Import button when errors exist (line 744: `disabled={importing || errors.length > 0}`)
+- Shows clear error messages
 
-```sql
--- Delete all group members first (FK dependency)
-DELETE FROM group_members;
+**Improvement**: Make rejection messaging more explicit that the entire file is rejected:
 
--- Delete all manager groups
-DELETE FROM manager_groups;
+### File: `src/components/orders/ImportOrdersDialog.tsx`
 
--- Delete any inactive manager_salesperson_bindings (cleanup)
-DELETE FROM manager_salesperson_bindings;
-```
-
----
-
-## Part 2: Update TeamViewToggle to Use Data Shares
-
-Replace the manager_groups-based `useTeamMembers` logic with `useDataShares`.
-
-### File: `src/hooks/useTeamMembers.ts`
-
-**Before:**
+**Current error message (line 179-183):**
 ```typescript
-// Primary source of truth: manager_groups + group_members
-const { data: groups } = await supabase
-  .from('manager_groups')
-  .select('id')
-  .eq('manager_user_id', user.id);
+setErrors([
+  'Invalid SKUs found. Please fix and re-upload:',
+  '',
+  ...skuValidation.errors
+]);
 ```
 
-**After:**
+**Change to:**
 ```typescript
-// Primary source of truth: user_data_shares (subjects the manager can view)
-const { data: shares } = await supabase
-  .from('user_data_shares')
-  .select('subject:profiles!user_data_shares_subject_user_id_fkey(*)')
-  .eq('viewer_user_id', user.id)
-  .eq('active', true)
-  .eq('scope_orders', true);  // Only include shares with orders access
+setErrors([
+  'IMPORT REJECTED - Invalid SKUs found in your file.',
+  'Please fix the following errors and re-upload the entire file:',
+  '',
+  ...skuValidation.errors
+]);
 ```
 
-### File: `src/components/filters/TeamViewToggle.tsx`
+**Also update the error display area (line 688-713)** to show a more prominent rejection banner when errors are SKU-related.
 
-Update to use the new data shares-based team members:
+---
 
-```typescript
-// Now "Team Data" shows users from user_data_shares
-const { data: teamMembers = [] } = useTeamMembers();  // Updated implementation
+## Part 2: Delete 23 Orders Without Items
+
+### Database Migration
+
+Delete the following 23 orders that have 0 items (all from user ALLEN):
+
+```
+Order Codes to Delete:
+AL1126, AL1241, AL1338, AL1339, AL1343, AL1345, AL1349, AL1385,
+AL1452, AL1458, AL1459, AL1464, AL1483, AL1489, AL1502, AL1503,
+AL1504, AL1516, AL1518, AL1520, AL643, AL651, AL653
+```
+
+**SQL Migration:**
+```sql
+-- Delete 23 orders with no items (historical import errors)
+-- All from salesperson ALLEN, created on 2026-01-14
+
+DELETE FROM orders
+WHERE id IN (
+  '519fe4f3-66c5-42be-9116-543d88e4f5e3',
+  '4d75fb7d-ae98-4f5c-afb9-6cdfee2a32b3',
+  'c068c462-a73a-41a5-8000-8a742fea5ade',
+  'e63b1927-0167-460c-a805-511deba39619',
+  '72665416-5fc2-4420-b739-559a2b340c8f',
+  'a2bc92db-de5c-4f74-aa3b-364f61bbcfef',
+  '92468bb4-afaa-4f60-888e-59f802b825c4',
+  '5149af37-d065-4b51-9357-752e1b42b166',
+  'fbda8499-432a-40e8-b095-34d9e9ea9f4a',
+  '845fcdec-a905-4852-9d1d-c5a048e0fb8a',
+  '2d08d54c-64e2-4911-9338-0b947dda24d4',
+  'a8c0601f-cdfd-4d88-b0d5-7029e476927a',
+  '108c8d4c-ee7d-4e9b-b6da-dbc730fd6f8c',
+  '9e28f4c6-9fe6-4702-86a9-5fb627626c7e',
+  '66d8c461-cb6b-4eb4-831b-e20c338e8ffe',
+  '9e1ad772-5824-4443-9e63-fa2b7eaae768',
+  '15b15f87-9755-49be-a3b9-ba965abde908',
+  '036965bf-74bf-4898-b0b1-fc4eeabe6bd6',
+  '64f33305-eda1-46b0-bf08-50ac1519fc3a',
+  '4fc3fdba-527e-4efd-85a1-1d6d579fff9b',
+  '4a879db3-9b37-4741-b2fc-31594c9402cf',
+  '93037384-8387-44a7-945d-38148a53d62a',
+  '9d7ad938-3f97-466d-9dc3-3032f440462e'
+);
 ```
 
 ---
 
-## Part 3: Fix RLS Performance (Sign In/Out Issues)
+## Part 3: Prevent Future Invalid Orders
 
-The RLS policies reference `manager_groups` and `group_members` in complex subqueries, causing timeouts. After removing the data, we should also simplify the RLS policies.
+### Add Database Trigger (Optional but Recommended)
 
-### Affected RLS Policies (to simplify)
-
-| Table | Policy | Action |
-|-------|--------|--------|
-| profiles | manager_view_group_profiles | Remove - no longer needed |
-| warehouses | Manager can view team warehouses | Simplify to use user_data_shares |
-| inbound_shipments | Manager can view own and team inbound | Simplify |
-| products | Multiple manager policies | Consolidate |
-
-### Example RLS Simplification:
-
-**Before (slow):**
-```sql
-CREATE POLICY "Manager can view team products" ON products
-  FOR SELECT USING (
-    (get_user_role(auth.uid()) = 'manager') AND (
-      owner_user_id = auth.uid()
-      OR is_in_manager_team(owner_user_id, auth.uid())  -- Queries manager_groups
-    )
-  );
-```
-
-**After (fast):**
-```sql
-CREATE POLICY "Manager can view team products" ON products
-  FOR SELECT USING (
-    (get_user_role(auth.uid()) = 'manager') AND (
-      owner_user_id = auth.uid()
-      OR EXISTS (
-        SELECT 1 FROM user_data_shares uds
-        WHERE uds.viewer_user_id = auth.uid()
-          AND uds.subject_user_id = products.owner_user_id
-          AND uds.active = true
-          AND uds.scope_products = true
-      )
-    )
-  );
-```
-
----
-
-## Part 4: Update Server-Side RPC
-
-### Function: `get_visible_owner_ids`
-
-Update to use user_data_shares instead of manager_groups:
+Create a trigger that prevents orders from being committed if they have no items after a brief grace period:
 
 ```sql
-CREATE OR REPLACE FUNCTION public.get_visible_owner_ids()
-RETURNS uuid[]
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $$
-DECLARE
-  v_role app_role;
-  v_user_id uuid;
-  v_result uuid[];
-BEGIN
-  v_user_id := auth.uid();
-  SELECT role INTO v_role FROM profiles WHERE id = v_user_id;
-  
-  -- Admin sees all
-  IF v_role = 'admin' THEN
-    RETURN NULL;
-  END IF;
-  
-  -- Start with own ID
-  v_result := ARRAY[v_user_id];
-  
-  -- For managers/salespersons: add data share subjects
-  SELECT v_result || array_agg(subject_user_id)
-  INTO v_result
-  FROM user_data_shares
-  WHERE viewer_user_id = v_user_id
-    AND active = true;
-  
-  RETURN v_result;
-END;
-$$;
+-- This trigger runs on INSERT to orders
+-- It doesn't block immediately (items may be added in separate transaction)
+-- But the frontend already handles this validation
 ```
+
+The current frontend validation is sufficient since:
+1. SKU validation happens before import
+2. Import button is disabled when errors exist
+3. Each order line must have a valid SKU
 
 ---
 
 ## Summary of Changes
 
-| Component | Change | Impact |
-|-----------|--------|--------|
-| **Database** | Delete all manager_groups and group_members | Cleans up obsolete binding system |
-| **Database** | Simplify RLS policies | Fixes 504 timeout errors on login |
-| **Database** | Update get_visible_owner_ids RPC | Uses user_data_shares for visibility |
-| `src/hooks/useTeamMembers.ts` | Rewrite to use user_data_shares | Team Data shows shared users |
-| `src/hooks/useTeamVisibility.ts` | Remove manager_groups references | Cleaner implementation |
-| `src/hooks/useActionRequiredStats.ts` | Remove manager_groups fallback | Uses only user_data_shares |
+| File/Component | Change | Purpose |
+|----------------|--------|---------|
+| `src/components/orders/ImportOrdersDialog.tsx` | Clearer rejection messaging | Make it obvious entire file is rejected |
+| **Database Migration** | Delete 23 orphaned orders | Clean up invalid historical data |
 
 ---
 
-## Expected Results
+## Technical Notes
 
-| Before | After |
-|--------|-------|
-| Team Data shows manager_groups members | Team Data shows user_data_shares subjects |
-| Login times out with 504 errors | Login completes quickly |
-| Complex RLS with multiple binding tables | Simple RLS using only user_data_shares |
-| manager_groups: 9 groups, 10 members | manager_groups: empty (table can be dropped later) |
+### Orders to Delete (All from ALLEN)
 
----
+| # | Order Code | Order ID |
+|---|------------|----------|
+| 1 | AL1126 | 519fe4f3-66c5-42be-9116-543d88e4f5e3 |
+| 2 | AL1241 | 4d75fb7d-ae98-4f5c-afb9-6cdfee2a32b3 |
+| 3 | AL1338 | c068c462-a73a-41a5-8000-8a742fea5ade |
+| 4 | AL1339 | e63b1927-0167-460c-a805-511deba39619 |
+| 5 | AL1343 | 72665416-5fc2-4420-b739-559a2b340c8f |
+| 6 | AL1345 | a2bc92db-de5c-4f74-aa3b-364f61bbcfef |
+| 7 | AL1349 | 92468bb4-afaa-4f60-888e-59f802b825c4 |
+| 8 | AL1385 | 5149af37-d065-4b51-9357-752e1b42b166 |
+| 9 | AL1452 | fbda8499-432a-40e8-b095-34d9e9ea9f4a |
+| 10 | AL1458 | 845fcdec-a905-4852-9d1d-c5a048e0fb8a |
+| 11 | AL1459 | 2d08d54c-64e2-4911-9338-0b947dda24d4 |
+| 12 | AL1464 | a8c0601f-cdfd-4d88-b0d5-7029e476927a |
+| 13 | AL1483 | 108c8d4c-ee7d-4e9b-b6da-dbc730fd6f8c |
+| 14 | AL1489 | 9e28f4c6-9fe6-4702-86a9-5fb627626c7e |
+| 15 | AL1502 | 66d8c461-cb6b-4eb4-831b-e20c338e8ffe |
+| 16 | AL1503 | 9e1ad772-5824-4443-9e63-fa2b7eaae768 |
+| 17 | AL1504 | 15b15f87-9755-49be-a3b9-ba965abde908 |
+| 18 | AL1516 | 036965bf-74bf-4898-b0b1-fc4eeabe6bd6 |
+| 19 | AL1518 | 64f33305-eda1-46b0-bf08-50ac1519fc3a |
+| 20 | AL1520 | 4fc3fdba-527e-4efd-85a1-1d6d579fff9b |
+| 21 | AL643 | 4a879db3-9b37-4741-b2fc-31594c9402cf |
+| 22 | AL651 | 93037384-8387-44a7-945d-38148a53d62a |
+| 23 | AL653 | 9d7ad938-3f97-466d-9dc3-3032f440462e |
 
-## Data Shares Already Configured
-
-User **Chloe** (manager) has 2 data shares:
-1. Can view **derrick** (manager) - orders, products, stock, inbound
-2. Can view **Qi Xiu** (salesperson) - orders, products, stock, inbound
-
-After this change, when Chloe selects "Team Data", she will see derrick + Qi Xiu's data instead of the old manager_groups members.
-
+### Validation Already in Place
+- Import button disabled when errors exist: `disabled={importing || errors.length > 0}`
+- SKU validation at preview step (fail-fast)
+- SKU validation again at import step (double-check)
+- Error messages show specific rows with issues
