@@ -11,17 +11,29 @@ export function useProductsByOwner(ownerUserId: string | null) {
     queryFn: async () => {
       if (!ownerUserId) return [];
       
+      console.log('[useProductsByOwner] Fetching products for owner:', ownerUserId);
+      
       const { data, error } = await supabase
         .from('products')
-        .select('id, sku_code, sku_name')
+        .select('id, sku_code, sku_name, owner_user_id')
         .eq('owner_user_id', ownerUserId)
         .eq('is_active', true)
         .order('sku_code', { ascending: true });
       
       if (error) throw error;
-      return data as Array<{ id: string; sku_code: string | null; sku_name: string }>;
+      
+      console.log('[useProductsByOwner] Fetched products count:', data?.length, 'for owner:', ownerUserId);
+      
+      // Verify all products belong to the correct owner (sanity check)
+      const mismatchedProducts = data?.filter(p => p.owner_user_id !== ownerUserId);
+      if (mismatchedProducts && mismatchedProducts.length > 0) {
+        console.error('[useProductsByOwner] CRITICAL: Products returned for wrong owner!', mismatchedProducts);
+      }
+      
+      return data as Array<{ id: string; sku_code: string | null; sku_name: string; owner_user_id: string }>;
     },
     enabled: !!ownerUserId,
+    staleTime: 0, // Always fetch fresh data
   });
 }
 
