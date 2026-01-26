@@ -17,8 +17,9 @@ interface TeamViewToggleProps {
 }
 
 /**
- * Team View Toggle component for managers to switch between their own data and team data.
- * Shows a toggle between "My Data" and "Team Data", plus a salesperson filter when in team mode.
+ * Team View Toggle component for users to switch between their own data and shared data.
+ * Shows a toggle between "My Data" and "Team Data", plus a user filter when in team mode.
+ * Uses user_data_shares to determine which users are visible as "team".
  */
 export function TeamViewToggle({
   viewMode,
@@ -27,11 +28,11 @@ export function TeamViewToggle({
   onMemberChange,
   className = '',
 }: TeamViewToggleProps) {
-  const { profile, role } = useAuth();
+  const { profile } = useAuth();
   const { data: teamMembers = [], isLoading: teamLoading } = useTeamMembers();
   
-  // Only show for managers
-  if (role !== 'manager') return null;
+  // Only show if user has team members (data shares)
+  if (teamMembers.length === 0 && !teamLoading) return null;
   
   return (
     <div className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 ${className}`}>
@@ -54,29 +55,29 @@ export function TeamViewToggle({
           </ToggleGroupItem>
           <ToggleGroupItem
             value="team"
-            aria-label="Team Data"
+            aria-label="Shared Data"
             className="data-[state=on]:bg-background data-[state=on]:shadow-sm px-3 h-8 text-xs"
           >
             <Users className="h-3 w-3 mr-1" />
-            Team Data
+            Shared Data
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
       
-      {/* Salesperson Filter - only show in team mode */}
+      {/* User Filter - only show in team mode */}
       {viewMode === 'team' && (
         teamLoading ? (
-          <span className="text-xs text-muted-foreground">Loading team…</span>
+          <span className="text-xs text-muted-foreground">Loading…</span>
         ) : teamMembers.length > 0 ? (
           <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">Salesperson:</Label>
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">User:</Label>
             <Select value={selectedMember} onValueChange={onMemberChange}>
               <SelectTrigger className="w-[180px] h-8 text-xs">
-                <SelectValue placeholder="All Team" />
+                <SelectValue placeholder="All Shared" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Team</SelectItem>
-                {profile?.id && <SelectItem value={profile.id}>Me (Manager)</SelectItem>}
+                <SelectItem value="all">All Shared Users</SelectItem>
+                {profile?.id && <SelectItem value={profile.id}>Me</SelectItem>}
                 {teamMembers.map((member) => (
                   <SelectItem key={member.id} value={member.id}>
                     {member.display_name}
@@ -87,7 +88,7 @@ export function TeamViewToggle({
           </div>
         ) : (
           <span className="text-xs text-muted-foreground italic">
-            No team members assigned yet
+            No shared users
           </span>
         )
       )}
@@ -96,28 +97,27 @@ export function TeamViewToggle({
 }
 
 /**
- * Hook to manage team view state for manager role
+ * Hook to manage team view state
  */
 export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
   const { role, profile } = useAuth();
   const { data: teamMembers = [] } = useTeamMembers();
   
-  // Default view mode for managers (defaults to 'my' now)
-  const [viewMode, setViewMode] = useState<ViewMode>(role === 'manager' ? defaultViewMode : 'my');
+  const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
   const [selectedMember, setSelectedMember] = useState<string>('all');
   
-  // Calculate salesperson IDs based on view mode and selected member
-  const getFilteredSalespersonIds = (): string[] | undefined => {
-    if (role !== 'manager' || !profile?.id) return undefined;
+  // Calculate user IDs based on view mode and selected member
+  const getFilteredUserIds = (): string[] | undefined => {
+    if (!profile?.id) return undefined;
     
     if (viewMode === 'my') {
       // My Data mode: only show current user's data
       return [profile.id];
     }
     
-    // Team Data mode
+    // Shared Data mode
     if (selectedMember === 'all') {
-      // All team: include manager + all team members
+      // All shared: include self + all team members
       return [profile.id, ...teamMembers.map(m => m.id)];
     }
     
@@ -130,7 +130,8 @@ export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
     setViewMode,
     selectedMember,
     setSelectedMember,
-    salespersonIds: getFilteredSalespersonIds(),
+    salespersonIds: getFilteredUserIds(),
+    hasTeamMembers: teamMembers.length > 0,
     isManager: role === 'manager',
     teamMembers,
   };
