@@ -367,7 +367,7 @@ export default function AdminRunnerInbox() {
         />
 
         <DataGrid
-          data={paginatedOrders}
+          data={filteredOrders}
           columns={columns}
           loading={isLoading}
           keyField="id"
@@ -377,35 +377,6 @@ export default function AdminRunnerInbox() {
           onExport={handleExport}
           emptyMessage="No orders found"
         />
-
-        {filteredOrders.length > 0 && totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30 rounded-b-lg">
-            <div className="text-sm text-muted-foreground">
-              Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(currentPage - 1)}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-sm">
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
     </AppLayout>
   );
