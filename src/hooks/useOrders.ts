@@ -10,6 +10,8 @@ interface OrderFilters {
   runnerId?: string;
   runnerStatus?: RunnerStatus;
   reconciliationStatus?: ReconciliationStatus;
+  limit?: number;  // Custom limit for queries
+  excludeDeliveredAndFailed?: boolean;  // For inbox views - excludes completed orders
 }
 
 export function useOrders(filters?: OrderFilters) {
@@ -53,6 +55,17 @@ export function useOrders(filters?: OrderFilters) {
       }
       if (filters?.reconciliationStatus) {
         query = query.eq('reconciliation_status', filters.reconciliationStatus);
+      }
+      
+      // Server-side exclusion of delivered/failed for inbox views
+      if (filters?.excludeDeliveredAndFailed) {
+        query = query.neq('runner_status', 'DELIVERED');
+        query = query.neq('runner_status', 'FAILED_DELIVERY');
+      }
+      
+      // Apply custom limit if specified
+      if (filters?.limit) {
+        query = query.limit(filters.limit);
       }
 
       const { data: ordersData, error: ordersError } = await query;
