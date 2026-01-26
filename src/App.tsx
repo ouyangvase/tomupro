@@ -78,6 +78,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
   
+  // Show loading while auth is initializing
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -89,12 +90,26 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   
+  // Redirect to auth if not logged in
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
 
+  // Safety: Wait for profile to load if user exists but profile doesn't
+  // This is a safety net - the AuthContext fix should prevent this state
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span>Loading profile...</span>
+        </div>
+      </div>
+    );
+  }
+
   // Only check runner binding for drivers - salespersons, runners, admins, managers never need this
-  const isDriver = profile?.role === "driver";
+  const isDriver = profile.role === "driver";
   
   // Show loading while checking driver-runner link (only for drivers)
   if (isDriver && checkingLink) {
@@ -115,7 +130,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   // Users with 'user' role can only access profile page
-  if (profile?.role === "user") {
+  if (profile.role === "user") {
     return <Navigate to="/settings/profile" replace />;
   }
   

@@ -1334,6 +1334,18 @@ export default function Dashboard() {
 
   // Desktop: Use console-style layout
   const renderDashboard = () => {
+    // Handle null/undefined role explicitly - prevents showing wrong dashboard
+    if (!role) {
+      return (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span>Loading profile...</span>
+          </div>
+        </div>
+      );
+    }
+    
     switch (role) {
       case 'driver':
         return <DriverDashboard />;
@@ -1344,8 +1356,15 @@ export default function Dashboard() {
       case 'manager':
         return <ManagerDashboard />;
       case 'salesperson':
-      default:
         return <SalespersonDashboard />;
+      default:
+        // Unknown role - show error state
+        return (
+          <div className="text-center py-8">
+            <p className="text-destructive">Unknown role: {role}</p>
+            <p className="text-muted-foreground">Please contact admin.</p>
+          </div>
+        );
     }
   };
 
