@@ -404,14 +404,36 @@ export function DataGrid<T extends object>({
       </div>
 
       {/* Bulk actions - Desktop */}
-      {!isMobile && selectedRows.length > 0 && (
-        <Card className="p-3 border-primary/30 bg-primary/5">
+      {!isMobile && selectable && (
+        <Card className={cn(
+          "p-3 border-primary/30",
+          selectedRows.length > 0 ? "bg-primary/5" : "bg-muted/30"
+        )}>
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-medium text-primary">{selectedRows.length} selected</span>
-            <div className="flex items-center gap-2 flex-wrap">{bulkActions}</div>
-            <Button variant="ghost" size="sm" onClick={() => onSelectionChange?.([])} className="text-primary hover:text-primary ml-auto">
-              Clear
-            </Button>
+            <span className="text-sm font-medium text-primary">
+              {selectedRows.length > 0 ? `${selectedRows.length} selected` : 'No selection'}
+            </span>
+            
+            {/* Select All button - selects ALL filtered data, not just current page */}
+            {selectedRows.length < filteredData.length && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => onSelectionChange?.(filteredData.map((item) => String(item[keyField])))}
+                className="text-primary border-primary/30 hover:bg-primary/10"
+              >
+                Select All ({filteredData.length})
+              </Button>
+            )}
+            
+            {selectedRows.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">{bulkActions}</div>
+                <Button variant="ghost" size="sm" onClick={() => onSelectionChange?.([])} className="text-primary hover:text-primary ml-auto">
+                  Clear
+                </Button>
+              </>
+            )}
           </div>
         </Card>
       )}
