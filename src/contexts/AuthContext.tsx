@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -22,8 +22,11 @@ interface AuthContextType {
   loading: boolean;
   signingOut: boolean;
   roleChanged: boolean;
+  connectionError: string | null;
+  retryCount: number;
   dismissRoleChange: () => void;
   refreshProfile: () => Promise<void>;
+  retryConnection: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, displayName: string, role: AppRole) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -47,6 +50,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [signingOut, setSigningOut] = useState(false);
   const [roleChanged, setRoleChanged] = useState(false);
   const [previousRole, setPreviousRole] = useState<AppRole | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  
+  // Refs to prevent duplicate calls and track retry state
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isRetryingRef = useRef(false);
 
   // Function to handle account disabled - force sign out
   const handleAccountDisabled = useCallback(async (reason?: string) => {
@@ -71,16 +80,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
     setPreviousRole(null);
     setRoleChanged(false);
+    setConnectionError(null);
+    setRetryCount(0);
   }, []);
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-    
-    if (!error && data) {
+  const fetchProfile = useCallback(async (userId: string): Promise<boolean> => {
+    try {
+      setConnectionError(null);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Profile fetch error:', error);
+        setConnectionError('Unable to connect to server. Please check your connection.');
+        return false;
+      }
+      
+      if (!data) {
+        console.error('No profile found for user:', userId);
+        setConnectionError('Profile not found. Please contact support.');
+        return false;
+      }
+      
       const newProfile = data as ExtendedProfile;
       
       // Check if account is disabled or resigned
@@ -90,7 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? 'Your account has been marked as resigned. Please contact admin.'
             : 'Your account has been disabled. Please contact admin.'
         );
-        return;
+        return false;
       }
       
       // Check if role changed while session is active
@@ -100,8 +125,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       setPreviousRole(newProfile.role);
       setProfile(newProfile);
+      setConnectionError(null);
+      setRetryCount(0);
+      return true;
+      
+    } catch (err) {
+      console.error('Unexpected error fetching profile:', err);
+      setConnectionError('Connection error. Please try again.');
+      return false;
     }
   }, [previousRole, handleAccountDisabled]);
+
+  const retryConnection = useCallback(async () => {
+    if (!user?.id || isRetryingRef.current) return;
+    
+    isRetryingRef.current = true;
+    const currentRetry = retryCount;
+    setRetryCount(prev => prev + 1);
+    setLoading(true);
+    setConnectionError(null);
+    
+    const success = await fetchProfile(user.id);
+    setLoading(false);
+    isRetryingRef.current = false;
+    
+    if (!success && currentRetry < 3) {
+      // Auto-retry with exponential backoff
+      const delay = 2000 * Math.pow(2, currentRetry);
+      retryTimeoutRef.current = setTimeout(() => {
+        retryConnection();
+      }, delay);
+    }
+  }, [user?.id, fetchProfile, retryCount]);
 
   const refreshProfile = useCallback(async () => {
     if (user?.id) {
@@ -116,40 +171,85 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    let isMounted = true;
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        if (!isMounted) return;
+        
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Keep loading = true until profile is loaded
         if (session?.user) {
-          // Defer profile fetch but keep loading true until it completes
+          // Defer profile fetch
           setTimeout(async () => {
-            await fetchProfile(session.user.id);
-            setLoading(false);  // Only set loading false AFTER profile loads
+            if (!isMounted) return;
+            const success = await fetchProfile(session.user.id);
+            if (isMounted) {
+              setLoading(false);
+              if (!success) {
+                retryConnection();
+              }
+            }
           }, 0);
         } else {
           setProfile(null);
           setPreviousRole(null);
           setRoleChanged(false);
-          setLoading(false);  // No user = no profile needed, safe to stop loading
+          setConnectionError(null);
+          setRetryCount(0);
+          setLoading(false);
         }
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // Initial session check with timeout
+    const sessionPromise = supabase.auth.getSession();
+    
+    // Set a 15-second timeout for initial load
+    timeoutId = setTimeout(() => {
+      if (isMounted) {
+        setConnectionError('Connection timed out. Please check your network.');
+        setLoading(false);
+      }
+    }, 15000);
+    
+    sessionPromise.then(async ({ data: { session } }) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (!isMounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
+      
       if (session?.user) {
-        await fetchProfile(session.user.id);
+        const success = await fetchProfile(session.user.id);
+        if (isMounted) {
+          setLoading(false);
+          if (!success) {
+            retryConnection();
+          }
+        }
+      } else {
+        setLoading(false);
       }
-      setLoading(false);  // Only after profile fetch completes
+    }).catch((err) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (!isMounted) return;
+      
+      console.error('Session check failed:', err);
+      setConnectionError('Failed to check session. Please refresh.');
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
-  }, [fetchProfile]);
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+      if (timeoutId) clearTimeout(timeoutId);
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+    };
+  }, [fetchProfile, retryConnection]);
 
   // Subscribe to realtime changes on the profile
   useEffect(() => {
@@ -221,6 +321,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setSigningOut(true);
     
+    // Clear any pending retries
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
+    
     try {
       // Clear session from Supabase
       await supabase.auth.signOut();
@@ -241,6 +346,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
     setPreviousRole(null);
     setRoleChanged(false);
+    setConnectionError(null);
+    setRetryCount(0);
     setSigningOut(false);
   };
 
@@ -254,8 +361,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         signingOut,
         roleChanged,
+        connectionError,
+        retryCount,
         dismissRoleChange,
         refreshProfile,
+        retryConnection,
         signIn,
         signUp,
         signOut,

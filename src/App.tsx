@@ -9,6 +9,8 @@ import { LocationProvider } from "@/contexts/LocationContext";
 import { RoleChangeBanner } from "@/components/RoleChangeBanner";
 import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
 import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
+import { Button } from "@/components/ui/button";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 // Pages
 import Auth from "./pages/Auth";
@@ -75,7 +77,7 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, connectionError, retryConnection, retryCount, signOut } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
   
   // Show loading while auth is initializing
@@ -95,8 +97,50 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/auth" replace />;
   }
 
+  // Handle connection error state - show retry UI instead of infinite loading
+  if (!profile && connectionError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center px-4">
+          <AlertCircle className="h-12 w-12 text-destructive" />
+          <div>
+            <h2 className="text-lg font-semibold">Backend Unavailable</h2>
+            <p className="text-muted-foreground mt-1">{connectionError}</p>
+          </div>
+          <div className="flex gap-3">
+            <Button onClick={retryConnection} disabled={loading}>
+              {loading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry
+                </>
+              )}
+            </Button>
+            <Button variant="outline" onClick={signOut}>
+              Sign Out
+            </Button>
+          </div>
+          {retryCount > 0 && retryCount <= 3 && (
+            <p className="text-xs text-muted-foreground">
+              Attempt {retryCount} of 3 - Auto-retrying...
+            </p>
+          )}
+          {retryCount > 3 && (
+            <p className="text-xs text-muted-foreground">
+              Auto-retry exhausted. Please try manually or check your connection.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Safety: Wait for profile to load if user exists but profile doesn't
-  // This is a safety net - the AuthContext fix should prevent this state
   if (!profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
