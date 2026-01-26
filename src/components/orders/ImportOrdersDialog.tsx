@@ -250,6 +250,26 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     return product?.id || null;
   };
 
+  /**
+   * Checks which order_refs already exist in the database
+   * Uses exact match comparison (no normalization)
+   */
+  const checkExistingOrders = async (orderRefs: string[]): Promise<Set<string>> => {
+    if (orderRefs.length === 0) return new Set();
+    
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_code')
+      .in('order_code', orderRefs);
+    
+    if (error) {
+      console.error('[checkExistingOrders] Error:', error);
+      return new Set();
+    }
+    
+    return new Set(data?.map(o => o.order_code) || []);
+  };
+
   const handleImport = async () => {
     if (!rawData || !profile) return;
     
@@ -290,6 +310,31 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         return;
       }
 
+      // Pre-flight duplicate check: Extract all unique order_refs from validated rows
+      const allOrderRefs = [...new Set(validation.valid.map(row => row.order_ref.trim()))];
+      
+      // Check for existing orders in database (exact match)
+      const existingOrderCodes = await checkExistingOrders(allOrderRefs);
+      const skippedDuplicates: string[] = [];
+      
+      // Identify which orders already exist
+      for (const ref of allOrderRefs) {
+        if (existingOrderCodes.has(ref)) {
+          skippedDuplicates.push(ref);
+        }
+      }
+      
+      // If all orders are duplicates, show message and exit early
+      if (skippedDuplicates.length === allOrderRefs.length) {
+        setErrors([
+          `All ${skippedDuplicates.length} order(s) already exist in the system.`,
+          '',
+          `Skipped: ${skippedDuplicates.slice(0, 10).join(', ')}${skippedDuplicates.length > 10 ? ` and ${skippedDuplicates.length - 10} more...` : ''}`
+        ]);
+        setImporting(false);
+        return;
+      }
+
       // Group by order_ref and validate for duplicate SKUs
       const orderGroups = new Map<string, {
         orderRef: string;
@@ -301,6 +346,12 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       
       for (const row of validation.valid) {
         const orderRef = row.order_ref.trim();
+        
+        // Skip if this order already exists in database
+        if (existingOrderCodes.has(orderRef)) {
+          continue;
+        }
+        
         const skuValue = row.sku_name_or_code?.trim();
         
         if (!skuValue) {
@@ -413,18 +464,23 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         }
       }
 
+      // Add skipped duplicates info to errors if any
+      if (skippedDuplicates.length > 0) {
+        newErrors.push(`Skipped ${skippedDuplicates.length} existing order(s): ${skippedDuplicates.slice(0, 5).join(', ')}${skippedDuplicates.length > 5 ? '...' : ''}`);
+      }
+      
       setErrors(newErrors);
       setSuccessCount(created);
 
       if (created > 0) {
         toast({
           title: 'Import Complete',
-          description: `Successfully imported ${created} order(s)${newErrors.length > 0 ? ` with ${newErrors.length} error(s)` : ''}`,
+          description: `Imported ${created} order(s)${skippedDuplicates.length > 0 ? `, skipped ${skippedDuplicates.length} existing` : ''}${newErrors.length > 0 ? ` with ${newErrors.length} note(s)` : ''}`,
         });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       }
 
-      if (newErrors.length === 0) {
+      if (newErrors.length === 0 || (newErrors.length === 1 && skippedDuplicates.length > 0)) {
         onOpenChange(false);
         clearErrors();
       }
