@@ -6,6 +6,7 @@ import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/t
 interface OrderFilters {
   status?: OrderStatus;
   salespersonId?: string;
+  salespersonIds?: string[];  // For manager team view
   runnerId?: string;
   runnerStatus?: RunnerStatus;
   reconciliationStatus?: ReconciliationStatus;
@@ -40,6 +41,9 @@ export function useOrders(filters?: OrderFilters) {
       }
       if (filters?.salespersonId) {
         query = query.eq('salesperson_id', filters.salespersonId);
+      }
+      if (filters?.salespersonIds && filters.salespersonIds.length > 0) {
+        query = query.in('salesperson_id', filters.salespersonIds);
       }
       if (filters?.runnerId) {
         query = query.eq('runner_id', filters.runnerId);
