@@ -1,120 +1,198 @@
 
-# Fix CSV Import Duplicate Order Error
+# Fix Delivered Orders Page - Show All Data with Pagination
 
-## Problem Analysis
-The import is failing because the CSV contains `order_ref` values (PO739, PO766, PO769, etc.) that already exist in the database. The current implementation attempts to insert all orders without checking for duplicates first, causing database constraint violations.
+## Problem Summary
+
+The Delivered Orders page shows only 101 orders while the dashboard correctly shows 207 delivered orders. This happens because:
+
+1. **Server-side limit**: The `useOrders` hook fetches only 500 most recent orders (by `created_at`), then filters for delivered orders on the client side
+2. **Client-side filtering**: Many of those 500 orders aren't delivered, leaving only 101 out of 207 actual delivered orders
+3. **No pagination**: All orders are rendered at once without page navigation
+
+---
 
 ## Solution
-Implement a **pre-flight duplicate check** that queries for existing order codes before attempting inserts, then **skips duplicates** and continues with new orders.
 
-## Implementation
+### 1. Add Server-Side Filter for Delivered Orders
 
-### File: `src/components/orders/ImportOrdersDialog.tsx`
+**File:** `src/pages/runner/RunnerDeliveredOrders.tsx`
 
-**1. Add Pre-flight Duplicate Check Function** (new helper function around line 244)
+Change the orders query to include `runnerStatus: 'DELIVERED'` in the filter, so the database returns only delivered orders (not all orders filtered client-side).
+
+**Current (around line 90-104):**
 ```typescript
-/**
- * Checks which order_refs already exist in the database
- * Uses exact match comparison (no normalization)
- */
-const checkExistingOrders = async (orderRefs: string[]): Promise<Set<string>> => {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('order_code')
-    .in('order_code', orderRefs);
-  
-  if (error) {
-    console.error('[checkExistingOrders] Error:', error);
-    return new Set();
+const ordersFilter = useMemo(() => {
+  if (role === 'runner') {
+    return { runnerId: user?.id };
   }
-  
-  return new Set(data?.map(o => o.order_code) || []);
-};
+  // ...
+}, [role, user?.id, salespersonIds]);
+
+const { data: orders, isLoading } = useOrders(ordersFilter as any);
 ```
 
-**2. Modify `handleImport` Function** (around lines 253-436)
-
-Before processing orders, add duplicate detection:
+**Change to:**
 ```typescript
-// Extract all unique order_refs from validated rows
-const allOrderRefs = [...new Set(validation.valid.map(row => row.order_ref.trim()))];
-
-// Check for existing orders in database (exact match)
-const existingOrderCodes = await checkExistingOrders(allOrderRefs);
-const skippedDuplicates: string[] = [];
-
-// Filter out duplicates
-const newOrderRefs = allOrderRefs.filter(ref => {
-  if (existingOrderCodes.has(ref)) {
-    skippedDuplicates.push(ref);
-    return false;
+const ordersFilter = useMemo(() => {
+  const baseFilter = { runnerStatus: 'DELIVERED' as const };
+  
+  if (role === 'runner') {
+    return { ...baseFilter, runnerId: user?.id };
   }
-  return true;
+  if (role === 'salesperson') {
+    return { ...baseFilter, salespersonId: user?.id };
+  }
+  if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
+    return { ...baseFilter, salespersonIds };
+  }
+  return baseFilter; // admin - all delivered orders
+}, [role, user?.id, salespersonIds]);
+```
+
+This ensures the database only returns delivered orders, making the 500 limit apply to delivered orders only.
+
+---
+
+### 2. Remove Client-Side "DELIVERED" Filter
+
+Since we're now filtering server-side, update `deliveredOrders` memo to skip redundant filtering:
+
+**Current (around line 141-146):**
+```typescript
+const deliveredOrders = useMemo(() => {
+  if (!orders) return [];
+  
+  let filtered = orders.filter(order => 
+    order.runner_status === 'DELIVERED' && order.status !== 'CANCELLED'
+  );
+  // ... other filters
+```
+
+**Change to:**
+```typescript
+const deliveredOrders = useMemo(() => {
+  if (!orders) return [];
+  
+  // Server-side already filters for DELIVERED, just exclude cancelled
+  let filtered = orders.filter(order => order.status !== 'CANCELLED');
+  // ... rest of filters remain the same
+```
+
+---
+
+### 3. Add Pagination
+
+Import and use the existing `useResponsivePagination` hook:
+
+**Add import (around line 1):**
+```typescript
+import { useResponsivePagination } from '@/hooks/useResponsivePagination';
+```
+
+**Add pagination hook after filters state (around line 123):**
+```typescript
+// Pagination
+const {
+  currentPage,
+  setCurrentPage,
+  totalPages,
+  paginatedData,
+} = useResponsivePagination({
+  totalItems: deliveredOrders.length,
+  headerHeight: 380, // Account for header + stats + filters
+  footerHeight: 80,
 });
 
-// If all orders are duplicates, show message and exit
-if (newOrderRefs.length === 0) {
-  setErrors([
-    `All ${skippedDuplicates.length} order(s) already exist in the system.`,
-    '',
-    `Skipped: ${skippedDuplicates.slice(0, 10).join(', ')}${skippedDuplicates.length > 10 ? ` and ${skippedDuplicates.length - 10} more...` : ''}`
-  ]);
-  setImporting(false);
-  return;
-}
+// Paginated orders for display
+const paginatedOrders = paginatedData(deliveredOrders);
 ```
 
-**3. Filter Order Groups to Exclude Duplicates**
+---
 
-When building `orderGroups`, only include orders whose `order_ref` is NOT in `existingOrderCodes`:
+### 4. Update Table/Card Rendering to Use Paginated Data
+
+**Desktop table (around line 782):**
 ```typescript
-for (const row of validation.valid) {
-  const orderRef = row.order_ref.trim();
-  
-  // Skip if this order already exists in database
-  if (existingOrderCodes.has(orderRef)) {
-    continue;
-  }
-  
-  // ... rest of grouping logic
-}
+// Change: deliveredOrders.map(...)
+// To: paginatedOrders.map(...)
 ```
 
-**4. Show Skipped Duplicates in Summary**
-
-After import completes, include skipped duplicates in the success message:
+**Mobile cards (around line 639):**
 ```typescript
-if (skippedDuplicates.length > 0) {
-  newErrors.push(`Skipped ${skippedDuplicates.length} existing order(s): ${skippedDuplicates.slice(0, 5).join(', ')}${skippedDuplicates.length > 5 ? '...' : ''}`);
-}
-
-// Update toast message to reflect skipped orders
-toast({
-  title: 'Import Complete',
-  description: `Imported ${created} order(s)${skippedDuplicates.length > 0 ? `, skipped ${skippedDuplicates.length} existing` : ''}${newErrors.length > 0 ? ` with ${newErrors.length} note(s)` : ''}`,
-});
+// Change: deliveredOrders.map(...)
+// To: paginatedOrders.map(...)
 ```
+
+---
+
+### 5. Add Pagination Controls UI
+
+Add pagination controls after the table/cards section (around line 921):
+
+```typescript
+{/* Pagination Controls */}
+{deliveredOrders.length > 0 && totalPages > 1 && (
+  <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
+    <div className="text-sm text-muted-foreground">
+      Showing {((currentPage - 1) * paginatedOrders.length) + 1} - {Math.min(currentPage * paginatedOrders.length, deliveredOrders.length)} of {deliveredOrders.length} orders
+    </div>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setCurrentPage(currentPage - 1)}
+        disabled={currentPage === 1}
+      >
+        Previous
+      </Button>
+      <span className="text-sm">
+        Page {currentPage} of {totalPages}
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setCurrentPage(currentPage + 1)}
+        disabled={currentPage === totalPages}
+      >
+        Next
+      </Button>
+    </div>
+  </div>
+)}
+```
+
+---
+
+### 6. Update Export "Select All" Behavior
+
+Update `toggleExportSelectAll` to only select visible/paginated orders or clarify it selects all filtered:
+
+**Add info text to Export dropdown (around line 451):**
+```typescript
+<DropdownMenuItem onClick={handleExportAll}>
+  Export All Filtered ({deliveredOrders.length})
+</DropdownMenuItem>
+```
+
+---
 
 ## Summary of Changes
 
-| Change | Location | Purpose |
-|--------|----------|---------|
-| Add `checkExistingOrders()` | Line ~244 | Query DB for existing order codes |
-| Pre-flight duplicate check | `handleImport` start | Identify duplicates before insert |
-| Filter order groups | Order grouping loop | Skip duplicates |
-| Update success message | Toast + errors array | Show user what was skipped |
+| File | Change | Purpose |
+|------|--------|---------|
+| `src/pages/runner/RunnerDeliveredOrders.tsx` | Add `runnerStatus: 'DELIVERED'` to filter | Server-side filtering |
+| `src/pages/runner/RunnerDeliveredOrders.tsx` | Import and use `useResponsivePagination` | Enable pagination |
+| `src/pages/runner/RunnerDeliveredOrders.tsx` | Add pagination controls UI | User can navigate pages |
+| `src/pages/runner/RunnerDeliveredOrders.tsx` | Use `paginatedOrders` in map | Display current page only |
 
-## Expected Behavior After Fix
+---
 
-| Scenario | Current | After Fix |
-|----------|---------|-----------|
-| All 34 orders exist | 34 errors, 0 imported | Message: "All 34 orders already exist", list of skipped |
-| 10 exist, 24 new | 10 errors, 0 imported | 24 imported, "Skipped 10 existing orders: PO739, PO766..." |
-| 0 duplicates | Works fine | Works fine (no change) |
+## Expected Result
 
-## Technical Notes
-
-- Uses **exact match** comparison for `order_code` (per user preference)
-- Performs a single query upfront to check all order refs (efficient)
-- Skipped duplicates are shown as **info messages** (not blocking errors)
-- Import continues with valid new orders even when some are duplicates
+| Metric | Before | After |
+|--------|--------|-------|
+| Total Delivered shown | 101 | 207 (matches dashboard) |
+| Pagination | None | Yes, with Previous/Next |
+| Query efficiency | Fetches 500 orders, filters client | Fetches only delivered orders |
+| Filter: All | Works | Works |
+| Stats accuracy | Accurate after filtering | Accurate |
