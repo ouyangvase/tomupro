@@ -10,7 +10,6 @@ interface TeamOrderFilters {
   runnerId?: string;
   runnerStatus?: RunnerStatus;
   reconciliationStatus?: ReconciliationStatus;
-  limit?: number; // Configurable limit (default 500)
 }
 
 /**
@@ -37,9 +36,6 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
         // Fallback to own ID only on error
       }
       
-      // Use configurable limit (default 500, max 1000000 for pagination support)
-      const queryLimit = filters?.limit ?? 500;
-      
       let query = supabase
         .from('orders')
         .select(`
@@ -50,7 +46,7 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
           )
         `)
         .order('created_at', { ascending: false })
-        .limit(queryLimit);
+        .limit(500); // Prevent statement timeout on large datasets
 
       if (filters?.status) {
         query = query.eq('status', filters.status);

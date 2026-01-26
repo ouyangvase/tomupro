@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +43,8 @@ const runnerStatusOptions = [
   { label: 'Unassigned', value: 'UNASSIGNED' },
   { label: 'Assigned', value: 'ASSIGNED' },
   { label: 'Taken', value: 'TAKEN' },
+  { label: 'Delivered', value: 'DELIVERED' },
+  { label: 'Failed Delivery', value: 'FAILED_DELIVERY' },
 ];
 
 const reconciliationStatusOptions = [
@@ -57,7 +58,7 @@ const reconciliationStatusOptions = [
 
 export default function AdminRunnerInbox() {
   const { toast } = useToast();
-  const { data: allOrders, isLoading } = useOrders({ limit: 1000000 }); // Admin gets all orders
+  const { data: allOrders, isLoading } = useOrders(); // Admin gets all orders
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: runners = [] } = useRunners();
   const bulkUpdateOrders = useBulkUpdateOrders();
@@ -88,21 +89,6 @@ export default function AdminRunnerInbox() {
   const filteredOrders = useMemo(() => {
     return applyOrderFilters(runnerFilteredOrders, panelFilters);
   }, [runnerFilteredOrders, panelFilters]);
-
-  // Add pagination for large datasets
-  const {
-    currentPage,
-    setCurrentPage,
-    totalPages,
-    paginatedData,
-    pageSize,
-  } = useResponsivePagination({
-    totalItems: filteredOrders.length,
-    headerHeight: 350,
-    footerHeight: 80,
-  });
-
-  const paginatedOrders = paginatedData(filteredOrders);
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {

@@ -24,11 +24,7 @@ const statusColors: Record<string, string> = {
 
 export default function RunnerFailedOrders() {
   const { user } = useAuth();
-  const { data: orders, isLoading, refetch } = useOrders({ 
-    runnerId: user?.id,
-    includeFailedAndCancelledOnly: true,
-    limit: 1000000
-  });
+  const { data: orders, isLoading, refetch } = useOrders({ runnerId: user?.id });
   const { data: userDirectory = [] } = useUserDirectory();
 
   // Filter to show only failed delivery and cancelled orders

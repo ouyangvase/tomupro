@@ -449,18 +449,6 @@ export function MobileDashboard() {
   useRealtimeUpdates();
 
   const renderDashboard = () => {
-    // Handle null/undefined role explicitly - prevents showing wrong dashboard
-    if (!role) {
-      return (
-        <div className="flex items-center justify-center min-h-[50vh]">
-          <div className="flex items-center gap-2">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span>Loading...</span>
-          </div>
-        </div>
-      );
-    }
-    
     switch (role) {
       case 'driver':
         return <DriverMobileDashboard />;
@@ -471,13 +459,8 @@ export function MobileDashboard() {
       case 'manager':
         return <ManagerMobileDashboard />;
       case 'salesperson':
-        return <SalespersonMobileDashboard />;
       default:
-        return (
-          <div className="text-center py-8">
-            <p className="text-destructive">Unknown role: {role}</p>
-          </div>
-        );
+        return <SalespersonMobileDashboard />;
     }
   };
 

@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -89,20 +88,17 @@ export default function RunnerDeliveredOrders() {
   // - Manager: fetch based on view mode (my data vs team data)
   // - Admin: fetch all orders
   const ordersFilter = useMemo(() => {
-    // Always filter for DELIVERED orders server-side to get accurate counts
-    const baseFilter = { runnerStatus: 'DELIVERED' as const };
-    
     if (role === 'runner') {
-      return { ...baseFilter, runnerId: user?.id };
+      return { runnerId: user?.id };
     }
     if (role === 'salesperson') {
-      return { ...baseFilter, salespersonId: user?.id };
+      return { salespersonId: user?.id };
     }
     if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
       // Use filtered salesperson IDs from team view state
-      return { ...baseFilter, salespersonIds };
+      return { salespersonIds };
     }
-    return baseFilter; // admin - all delivered orders
+    return {}; // admin - fetch all
   }, [role, user?.id, salespersonIds]);
   
   const { data: orders, isLoading } = useOrders(ordersFilter as any);
@@ -141,12 +137,13 @@ export default function RunnerDeliveredOrders() {
     return true;
   };
 
-  // Filter delivered orders - server-side already filters for DELIVERED, just exclude cancelled
+  // Filter to only delivered orders
   const deliveredOrders = useMemo(() => {
     if (!orders) return [];
     
-    // Server-side already filters for DELIVERED, just exclude cancelled orders
-    let filtered = orders.filter(order => order.status !== 'CANCELLED');
+    let filtered = orders.filter(order => 
+      order.runner_status === 'DELIVERED' && order.status !== 'CANCELLED'
+    );
 
     // Apply search
     if (searchQuery.trim()) {
@@ -415,22 +412,6 @@ export default function RunnerDeliveredOrders() {
   const isMobile = useIsMobile();
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
-  // Pagination
-  const {
-    currentPage,
-    setCurrentPage,
-    totalPages,
-    paginatedData,
-    pageSize,
-  } = useResponsivePagination({
-    totalItems: deliveredOrders.length,
-    headerHeight: 380, // Account for header + stats + filters
-    footerHeight: 80,
-  });
-
-  // Paginated orders for display
-  const paginatedOrders = paginatedData(deliveredOrders);
-
   const toggleCardExpanded = (id: string) => {
     setExpandedCards(prev => {
       const next = new Set(prev);
@@ -655,7 +636,7 @@ export default function RunnerDeliveredOrders() {
                 No delivered orders found
               </div>
             ) : (
-              paginatedOrders.map((order) => {
+              deliveredOrders.map((order) => {
                 const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
                 const isSelected = selectedIds.has(order.id);
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
@@ -798,7 +779,7 @@ export default function RunnerDeliveredOrders() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      paginatedOrders.map((order) => {
+                      deliveredOrders.map((order) => {
                         const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
                         const isSelected = selectedIds.has(order.id);
                         const isExportSelected = exportSelectedIds.has(order.id);
@@ -938,36 +919,6 @@ export default function RunnerDeliveredOrders() {
               </div>
             </CardContent>
           </Card>
-        )}
-
-        {/* Pagination Controls */}
-        {deliveredOrders.length > 0 && totalPages > 1 && (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border rounded-lg bg-muted/30">
-            <div className="text-sm text-muted-foreground">
-              Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, deliveredOrders.length)} of {deliveredOrders.length} orders
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(currentPage - 1)}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-sm px-2">
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
         )}
 
         {/* Bulk Claim Dialog */}

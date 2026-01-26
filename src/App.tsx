@@ -9,8 +9,6 @@ import { LocationProvider } from "@/contexts/LocationContext";
 import { RoleChangeBanner } from "@/components/RoleChangeBanner";
 import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
 import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
-import { Button } from "@/components/ui/button";
-import { AlertCircle, RefreshCw } from "lucide-react";
 
 // Pages
 import Auth from "./pages/Auth";
@@ -71,16 +69,14 @@ import LeaderboardPage from "./pages/leaderboard/LeaderboardPage";
 import InviteCodesAdmin from "./pages/admin/InviteCodesAdmin";
 import MyPackagesPage from "./pages/packages/MyPackagesPage";
 import PcNotificationsPage from "./pages/packages/PcNotificationsPage";
-import DataSharingAdmin from "./pages/admin/DataSharingAdmin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading, connectionError, retryConnection, retryCount, signOut } = useAuth();
+  const { user, profile, loading } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
   
-  // Show loading while auth is initializing
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -92,68 +88,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   
-  // Redirect to auth if not logged in
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Handle connection error state - show retry UI instead of infinite loading
-  if (!profile && connectionError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4 max-w-md text-center px-4">
-          <AlertCircle className="h-12 w-12 text-destructive" />
-          <div>
-            <h2 className="text-lg font-semibold">Backend Unavailable</h2>
-            <p className="text-muted-foreground mt-1">{connectionError}</p>
-          </div>
-          <div className="flex gap-3">
-            <Button onClick={retryConnection} disabled={loading}>
-              {loading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Retrying...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry
-                </>
-              )}
-            </Button>
-            <Button variant="outline" onClick={signOut}>
-              Sign Out
-            </Button>
-          </div>
-          {retryCount > 0 && retryCount <= 3 && (
-            <p className="text-xs text-muted-foreground">
-              Attempt {retryCount} of 3 - Auto-retrying...
-            </p>
-          )}
-          {retryCount > 3 && (
-            <p className="text-xs text-muted-foreground">
-              Auto-retry exhausted. Please try manually or check your connection.
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Safety: Wait for profile to load if user exists but profile doesn't
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex items-center gap-2">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span>Loading profile...</span>
-        </div>
-      </div>
-    );
-  }
-
   // Only check runner binding for drivers - salespersons, runners, admins, managers never need this
-  const isDriver = profile.role === "driver";
+  const isDriver = profile?.role === "driver";
   
   // Show loading while checking driver-runner link (only for drivers)
   if (isDriver && checkingLink) {
@@ -174,7 +114,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   // Users with 'user' role can only access profile page
-  if (profile.role === "user") {
+  if (profile?.role === "user") {
     return <Navigate to="/settings/profile" replace />;
   }
   
@@ -245,7 +185,6 @@ function AppRoutes() {
       <Route path="/settings/commission" element={<ProtectedRoute><CommissionSettings /></ProtectedRoute>} />
       <Route path="/admin/leaderboard-settings" element={<ProtectedRoute><LeaderboardSettings /></ProtectedRoute>} />
       <Route path="/admin/invite-codes" element={<ProtectedRoute><InviteCodesAdmin /></ProtectedRoute>} />
-      <Route path="/admin/data-sharing" element={<ProtectedRoute><DataSharingAdmin /></ProtectedRoute>} />
       <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/packages" element={<ProtectedRoute><MyPackagesPage /></ProtectedRoute>} />
       <Route path="/packages/notifications" element={<ProtectedRoute><PcNotificationsPage /></ProtectedRoute>} />

@@ -163,31 +163,16 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       return;
     }
 
-    // Apply mapping and validate basic schema
+    // Apply mapping and validate
     const mappedRows = applyColumnMapping(rawData.rows, columnMapping);
     const validation = validateOrderLines(mappedRows);
     
     if (validation.errors.length > 0) {
       setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
-      setStep('preview');
-      return;
+    } else {
+      setErrors([]);
     }
     
-    // Validate SKU ownership at preview step (fail-fast)
-    const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
-    if (!skuValidation.valid) {
-      setErrors([
-        '⛔ IMPORT REJECTED - Invalid SKUs found in your file.',
-        'Please fix the following errors and re-upload the entire file:',
-        '',
-        ...skuValidation.errors
-      ]);
-      setStep('preview');
-      return;
-    }
-    
-    // No errors - clear and proceed
-    setErrors([]);
     setStep('preview');
   };
 
@@ -211,17 +196,6 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   ): { valid: boolean; errors: string[] } => {
     const skuErrors: string[] = [];
 
-    // Debug: Log owner products list details
-    console.log('[validateSkuOwnership] Products list count:', ownerProductsList.length);
-    console.log('[validateSkuOwnership] Owner ID filter:', orderOwnerId);
-    
-    // Check for products from different owners (sanity check)
-    const uniqueOwners = new Set(ownerProductsList.map((p: any) => p.owner_user_id));
-    if (uniqueOwners.size > 1) {
-      console.error('[validateSkuOwnership] CRITICAL: Products from multiple owners detected!', 
-        Array.from(uniqueOwners));
-    }
-
     for (let i = 0; i < validatedRows.length; i++) {
       const row = validatedRows[i];
       const csvRowNum = i + 2;
@@ -236,8 +210,6 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       if (codeMatches.length === 1) continue;
 
       if (codeMatches.length > 1) {
-        console.error('[validateSkuOwnership] Duplicate SKU found:', skuValue, 
-          'Matches:', codeMatches.map((p: any) => ({ id: p.id, sku_code: p.sku_code, owner: p.owner_user_id })));
         skuErrors.push(`Row ${csvRowNum}: Multiple products with sku_code="${skuValue}"; please use unique sku_code`);
         continue;
       }
@@ -247,7 +219,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       );
 
       if (nameMatches.length === 0) {
-        skuErrors.push(`Row ${csvRowNum}: SKU "${skuValue}" not found in your product catalog. Please add this product first or correct the SKU code.`);
+        skuErrors.push(`Row ${csvRowNum}: SKU not found in the selected owner's product list (sku_name_or_code="${skuValue}")`);
       } else if (nameMatches.length > 1) {
         skuErrors.push(`Row ${csvRowNum}: SKU name is ambiguous (${nameMatches.length} matches); please use sku_code (sku_name="${skuValue}")`);
       }
@@ -265,36 +237,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     return product?.id || null;
   };
 
-  /**
-   * Checks which order_refs already exist in the database
-   * Uses exact match comparison (no normalization)
-   */
-  const checkExistingOrders = async (orderRefs: string[]): Promise<Set<string>> => {
-    if (orderRefs.length === 0) return new Set();
-    
-    const { data, error } = await supabase
-      .from('orders')
-      .select('order_code')
-      .in('order_code', orderRefs);
-    
-    if (error) {
-      console.error('[checkExistingOrders] Error:', error);
-      return new Set();
-    }
-    
-    return new Set(data?.map(o => o.order_code) || []);
-  };
-
   const handleImport = async () => {
     if (!rawData || !profile) return;
-    
-    // Ensure orderOwnerId is set - fallback to profile.id for salesperson
-    // Check for empty string explicitly since it's falsy but could slip through
-    const effectiveOwnerId = (orderOwnerId && orderOwnerId.trim() !== '') ? orderOwnerId : profile?.id;
-    if (!effectiveOwnerId || effectiveOwnerId.trim() === '') {
-      toast({ variant: 'destructive', title: 'Error', description: 'Order owner not set. Please select an owner or wait for profile to load.' });
-      return;
-    }
 
     setImporting(true);
     setErrors([]);
@@ -326,31 +270,6 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         return;
       }
 
-      // Pre-flight duplicate check: Extract all unique order_refs from validated rows
-      const allOrderRefs = [...new Set(validation.valid.map(row => row.order_ref.trim()))];
-      
-      // Check for existing orders in database (exact match)
-      const existingOrderCodes = await checkExistingOrders(allOrderRefs);
-      const skippedDuplicates: string[] = [];
-      
-      // Identify which orders already exist
-      for (const ref of allOrderRefs) {
-        if (existingOrderCodes.has(ref)) {
-          skippedDuplicates.push(ref);
-        }
-      }
-      
-      // If all orders are duplicates, show message and exit early
-      if (skippedDuplicates.length === allOrderRefs.length) {
-        setErrors([
-          `All ${skippedDuplicates.length} order(s) already exist in the system.`,
-          '',
-          `Skipped: ${skippedDuplicates.slice(0, 10).join(', ')}${skippedDuplicates.length > 10 ? ` and ${skippedDuplicates.length - 10} more...` : ''}`
-        ]);
-        setImporting(false);
-        return;
-      }
-
       // Group by order_ref and validate for duplicate SKUs
       const orderGroups = new Map<string, {
         orderRef: string;
@@ -362,12 +281,6 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       
       for (const row of validation.valid) {
         const orderRef = row.order_ref.trim();
-        
-        // Skip if this order already exists in database
-        if (existingOrderCodes.has(orderRef)) {
-          continue;
-        }
-        
         const skuValue = row.sku_name_or_code?.trim();
         
         if (!skuValue) {
@@ -450,7 +363,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
               salesperson_id: profile.id,
-              order_owner_id: effectiveOwnerId, // Use selected order owner for SKU validation
+              order_owner_id: orderOwnerId, // Use selected order owner for SKU validation
               status: defaultStatus,
               total_qty: totalQty,
               total_amount: totalAmount,
@@ -480,23 +393,18 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         }
       }
 
-      // Add skipped duplicates info to errors if any
-      if (skippedDuplicates.length > 0) {
-        newErrors.push(`Skipped ${skippedDuplicates.length} existing order(s): ${skippedDuplicates.slice(0, 5).join(', ')}${skippedDuplicates.length > 5 ? '...' : ''}`);
-      }
-      
       setErrors(newErrors);
       setSuccessCount(created);
 
       if (created > 0) {
         toast({
           title: 'Import Complete',
-          description: `Imported ${created} order(s)${skippedDuplicates.length > 0 ? `, skipped ${skippedDuplicates.length} existing` : ''}${newErrors.length > 0 ? ` with ${newErrors.length} note(s)` : ''}`,
+          description: `Successfully imported ${created} order(s)${newErrors.length > 0 ? ` with ${newErrors.length} error(s)` : ''}`,
         });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       }
 
-      if (newErrors.length === 0 || (newErrors.length === 1 && skippedDuplicates.length > 0)) {
+      if (newErrors.length === 0) {
         onOpenChange(false);
         clearErrors();
       }
@@ -687,13 +595,11 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
             )}
 
             {errors.length > 0 && (
-              <div className="bg-destructive/10 border border-destructive/50 rounded-lg p-2.5 sm:p-3">
+              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2.5 sm:p-3">
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1.5 text-destructive">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                    <span className="font-bold text-xs sm:text-sm">
-                      {errors[0]?.includes('IMPORT REJECTED') ? 'FILE REJECTED' : `Errors (${errors.filter(e => e.trim()).length})`}
-                    </span>
+                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="font-medium text-xs sm:text-sm">Errors ({errors.filter(e => e.trim()).length})</span>
                   </div>
                   <Button
                     variant="ghost"

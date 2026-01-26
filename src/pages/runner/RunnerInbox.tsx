@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
@@ -50,6 +49,8 @@ const reconciliationColors: Record<ReconciliationStatus, string> = {
 const runnerStatusOptions = [
   { label: 'Assigned', value: 'ASSIGNED' },
   { label: 'Taken', value: 'TAKEN' },
+  { label: 'Delivered', value: 'DELIVERED' },
+  { label: 'Failed Delivery', value: 'FAILED_DELIVERY' },
 ];
 
 const reconciliationStatusOptions = [
@@ -63,12 +64,7 @@ export default function RunnerInbox() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  // Use server-side filtering to exclude delivered/failed orders - high limit for all orders
-  const { data: orders, isLoading } = useOrders({ 
-    runnerId: user?.id,
-    excludeDeliveredAndFailed: true,
-    limit: 1000000
-  });
+  const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
   const assignOrderToDriver = useAssignOrderToDriver();
@@ -113,21 +109,6 @@ export default function RunnerInbox() {
     
     return applyOrderFilters(activeOrders, panelFilters);
   }, [orders, panelFilters]);
-
-  // Add pagination for large datasets
-  const {
-    currentPage,
-    setCurrentPage,
-    totalPages,
-    paginatedData,
-    pageSize,
-  } = useResponsivePagination({
-    totalItems: filteredOrders.length,
-    headerHeight: 350,
-    footerHeight: 80,
-  });
-
-  const paginatedOrders = paginatedData(filteredOrders);
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {

@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -55,12 +54,11 @@ export default function CancelledSales() {
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('my');
 
-  // Use team-aware orders hook with high limit
+  // Use team-aware orders hook
   const { data: allOrders = [], isLoading } = useTeamOrders({ 
     status: 'CANCELLED',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
-    limit: 1000000,
   });
   
   const { data: userDirectory = [] } = useUserDirectory();
@@ -147,21 +145,6 @@ export default function CancelledSales() {
       return true;
     });
   }, [allOrders, filterMonth, filterReason, filterSalesperson, filterArea]);
-
-  // Add pagination for large datasets
-  const {
-    currentPage,
-    setCurrentPage,
-    totalPages,
-    paginatedData,
-    pageSize,
-  } = useResponsivePagination({
-    totalItems: filteredOrders.length,
-    headerHeight: 350,
-    footerHeight: 80,
-  });
-
-  const paginatedOrders = paginatedData(filteredOrders);
 
   const columns: Column<Order>[] = [
     { 

@@ -94,10 +94,7 @@ function needsSalespersonAction(order: Order): boolean {
 export default function SalespersonActionInbox() {
   const navigate = useNavigate();
   const { profile, role } = useAuth();
-  const { data: allOrders = [], isLoading, refetch } = useOrders({ 
-    actionRequiredOnly: true,
-    limit: 1000000  // Fetch all action-required orders
-  });
+  const { data: allOrders = [], isLoading, refetch } = useOrders();
   
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [salespersonFilter, setSalespersonFilter] = useState<string>('all');

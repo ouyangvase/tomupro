@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -47,12 +46,11 @@ export default function BookingSales() {
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
-  // Use team-aware orders hook with high limit
+  // Use team-aware orders hook
   const { data: orders = [], isLoading } = useTeamOrders({ 
     status: 'BOOKING',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
-    limit: 1000000,
   });
 
   // Apply mobile search filter
@@ -66,21 +64,6 @@ export default function BookingSales() {
       order.area?.toLowerCase().includes(query)
     );
   }, [orders, mobileSearch]);
-
-  // Add pagination for large datasets
-  const {
-    currentPage,
-    setCurrentPage,
-    totalPages,
-    paginatedData,
-    pageSize,
-  } = useResponsivePagination({
-    totalItems: filteredOrders.length,
-    headerHeight: 300,
-    footerHeight: 80,
-  });
-
-  const paginatedOrders = paginatedData(filteredOrders);
   
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
@@ -471,7 +454,7 @@ export default function BookingSales() {
         </div>
 
         <DataGrid
-          data={filteredOrders}
+          data={orders}
           columns={columns}
           keyField="id"
           selectable={isEditable}

@@ -6,14 +6,9 @@ import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/t
 interface OrderFilters {
   status?: OrderStatus;
   salespersonId?: string;
-  salespersonIds?: string[];  // For manager team view
   runnerId?: string;
   runnerStatus?: RunnerStatus;
   reconciliationStatus?: ReconciliationStatus;
-  limit?: number;  // Custom limit for queries
-  excludeDeliveredAndFailed?: boolean;  // For inbox views - excludes completed orders
-  actionRequiredOnly?: boolean;  // For action required page - server-side filter
-  includeFailedAndCancelledOnly?: boolean;  // For Failed Orders page - server-side filter
 }
 
 export function useOrders(filters?: OrderFilters) {
@@ -46,9 +41,6 @@ export function useOrders(filters?: OrderFilters) {
       if (filters?.salespersonId) {
         query = query.eq('salesperson_id', filters.salespersonId);
       }
-      if (filters?.salespersonIds && filters.salespersonIds.length > 0) {
-        query = query.in('salesperson_id', filters.salespersonIds);
-      }
       if (filters?.runnerId) {
         query = query.eq('runner_id', filters.runnerId);
       }
@@ -57,30 +49,6 @@ export function useOrders(filters?: OrderFilters) {
       }
       if (filters?.reconciliationStatus) {
         query = query.eq('reconciliation_status', filters.reconciliationStatus);
-      }
-      
-      // Server-side exclusion of delivered/failed for inbox views
-      if (filters?.excludeDeliveredAndFailed) {
-        query = query.neq('runner_status', 'DELIVERED');
-        query = query.neq('runner_status', 'FAILED_DELIVERY');
-      }
-      
-      // Server-side filter for action required orders
-      if (filters?.actionRequiredOnly) {
-        // Get orders where salesperson_action_required = true OR runner_status = FAILED_DELIVERY
-        query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
-        // Also exclude cancelled orders for this view
-        query = query.neq('status', 'CANCELLED');
-      }
-      
-      // Server-side filter for failed/cancelled orders only
-      if (filters?.includeFailedAndCancelledOnly) {
-        query = query.or('runner_status.eq.FAILED_DELIVERY,status.eq.CANCELLED');
-      }
-      
-      // Apply custom limit if specified
-      if (filters?.limit) {
-        query = query.limit(filters.limit);
       }
 
       const { data: ordersData, error: ordersError } = await query;

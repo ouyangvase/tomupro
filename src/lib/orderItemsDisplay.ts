@@ -53,9 +53,8 @@ export function formatOrderItemsDisplay(orderItems: OrderItem[] | undefined): {
   if (!orderItems || orderItems.length === 0) {
     return {
       displayText: 'No items',
-      fullText: 'No items - order may need repair',
-      hasError: true,
-      errorMessage: 'This order has no items. Please edit and add items.',
+      fullText: 'No items',
+      hasError: false,
     };
   }
 

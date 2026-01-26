@@ -1,279 +1,328 @@
 
-# Fix Infinite Loading When Backend Is Unavailable
 
-## Problem Analysis
+# Comprehensive Fix Plan: Manager Data Visibility & SKU Ownership
 
-The app gets stuck on "Loading..." or "Loading profile..." indefinitely when the Supabase backend is experiencing timeouts. This is happening because:
+## Part 1: Fix Manager Data Visibility
 
-1. **Database is timing out** - Postgres logs show multiple "canceling statement due to statement timeout" errors
-2. **Error handling gap** - The `fetchProfile` function in `AuthContext.tsx` silently ignores errors
-3. **No retry mechanism** - When the profile fetch fails, there's no way for the user to retry
-4. **Stuck state** - `ProtectedRoute` sees `user` exists but `profile` is null, showing "Loading profile..." forever
-
-## Solution
-
-Implement a robust loading state with:
-- Error tracking in AuthContext
-- Auto-retry with exponential backoff
-- Clear "Backend unavailable" message with manual retry button
-- Timeout detection to prevent infinite loading
+### Problem Analysis
+The `get_visible_owner_ids()` RPC and `useVisibleUserIds()` hook are correctly implemented, but they're not consistently applied across all data queries.
 
 ---
 
-## Changes Required
+### 1.1 Create Manager Dashboard Stats Hook
+**File:** `src/hooks/useDashboardStats.ts`
 
-### 1. Update AuthContext.tsx
-
-Add new state for tracking connection errors and retry logic:
-
-```typescript
-// New state
-const [connectionError, setConnectionError] = useState<string | null>(null);
-const [retryCount, setRetryCount] = useState(0);
-
-// Enhanced fetchProfile with error handling
-const fetchProfile = useCallback(async (userId: string): Promise<boolean> => {
-  try {
-    setConnectionError(null);
-    
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-    
-    if (error) {
-      console.error('Profile fetch error:', error);
-      setConnectionError('Unable to connect to server. Please check your connection.');
-      return false;
-    }
-    
-    if (!data) {
-      console.error('No profile found for user:', userId);
-      setConnectionError('Profile not found. Please contact support.');
-      return false;
-    }
-    
-    // ... existing profile processing logic ...
-    setProfile(newProfile);
-    return true;
-    
-  } catch (err) {
-    console.error('Unexpected error fetching profile:', err);
-    setConnectionError('Connection error. Please try again.');
-    return false;
-  }
-}, [previousRole, handleAccountDisabled]);
-
-// Add retry function to context
-const retryConnection = useCallback(async () => {
-  if (!user?.id) return;
-  
-  setRetryCount(prev => prev + 1);
-  setLoading(true);
-  setConnectionError(null);
-  
-  const success = await fetchProfile(user.id);
-  setLoading(false);
-  
-  if (!success && retryCount < 3) {
-    // Auto-retry with delay
-    setTimeout(() => retryConnection(), 2000 * (retryCount + 1));
-  }
-}, [user?.id, fetchProfile, retryCount]);
-
-// Export connectionError and retryConnection in context value
-```
-
-### 2. Update App.tsx - ProtectedRoute
-
-Replace the static "Loading profile..." with an interactive error state:
+Create a new `useManagerStats()` function that uses team visibility:
 
 ```typescript
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading, connectionError, retryConnection, retryCount } = useAuth();
+export function useManagerStats() {
+  const { user } = useAuth();
+  const { data: serverVisibleIds } = useServerVisibleIds();
   
-  // ... existing loading check ...
-  
-  // Handle connection error state
-  if (!profile && connectionError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4 max-w-md text-center px-4">
-          <AlertCircle className="h-12 w-12 text-destructive" />
-          <div>
-            <h2 className="text-lg font-semibold">Backend Unavailable</h2>
-            <p className="text-muted-foreground mt-1">{connectionError}</p>
-          </div>
-          <div className="flex gap-3">
-            <Button onClick={retryConnection} disabled={loading}>
-              {loading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Retrying...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry
-                </>
-              )}
-            </Button>
-            <Button variant="outline" onClick={signOut}>
-              Sign Out
-            </Button>
-          </div>
-          {retryCount > 0 && (
-            <p className="text-xs text-muted-foreground">
-              Attempt {retryCount + 1} - Auto-retrying...
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ... rest of existing logic ...
-}
-```
-
-### 3. Add Initial Load Timeout
-
-Add a timeout to the initial session check to prevent indefinite waiting:
-
-```typescript
-// In AuthContext useEffect
-useEffect(() => {
-  let timeoutId: NodeJS.Timeout;
-  
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    (event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+  return useQuery({
+    queryKey: ['dashboard-stats', 'manager', user?.id, serverVisibleIds],
+    queryFn: async () => {
+      // Fetch get_visible_owner_ids RPC
+      const { data: visibleIds } = await supabase.rpc('get_visible_owner_ids');
       
-      if (session?.user) {
-        setTimeout(async () => {
-          const success = await fetchProfile(session.user.id);
-          setLoading(false);
-          
-          if (!success) {
-            // Start auto-retry
-            retryConnection();
-          }
-        }, 0);
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
-    }
-  );
-
-  // Initial session check with timeout
-  const sessionPromise = supabase.auth.getSession();
-  
-  // Set a 15-second timeout for initial load
-  timeoutId = setTimeout(() => {
-    setConnectionError('Connection timed out. Please check your network.');
-    setLoading(false);
-  }, 15000);
-  
-  sessionPromise.then(async ({ data: { session } }) => {
-    clearTimeout(timeoutId);
-    setSession(session);
-    setUser(session?.user ?? null);
-    
-    if (session?.user) {
-      const success = await fetchProfile(session.user.id);
-      setLoading(false);
-      if (!success) {
-        retryConnection();
-      }
-    } else {
-      setLoading(false);
-    }
-  }).catch((err) => {
-    clearTimeout(timeoutId);
-    console.error('Session check failed:', err);
-    setConnectionError('Failed to check session. Please refresh.');
-    setLoading(false);
+      // Use visibleIds array in all queries with .in('salesperson_id', visibleIds)
+      // ... count booking, ready, delivered, etc. for entire team
+    },
   });
-
-  return () => {
-    subscription.unsubscribe();
-    clearTimeout(timeoutId);
-  };
-}, [fetchProfile, retryConnection]);
-```
-
----
-
-## Updated AuthContextType Interface
-
-```typescript
-interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  profile: ExtendedProfile | null;
-  role: AppRole | null;
-  loading: boolean;
-  signingOut: boolean;
-  roleChanged: boolean;
-  connectionError: string | null;  // NEW
-  retryCount: number;              // NEW
-  dismissRoleChange: () => void;
-  refreshProfile: () => Promise<void>;
-  retryConnection: () => Promise<void>;  // NEW
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, displayName: string, role: AppRole) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
 }
 ```
 
 ---
 
-## User Experience Flow
+### 1.2 Create `useOrderOwnerProducts` Hook
+**File:** `src/hooks/useProductsByOwner.ts`
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ User opens app / refreshes                                       │
-├─────────────────────────────────────────────────────────────────┤
-│ 1. Show "Loading..." spinner                                     │
-│ 2. Attempt to fetch session + profile                            │
-│    ├─ Success → Navigate to dashboard                            │
-│    └─ Failure (timeout/error) →                                  │
-│       ├─ Show "Backend Unavailable" message                      │
-│       ├─ Auto-retry up to 3 times with exponential backoff       │
-│       └─ Show "Retry" + "Sign Out" buttons                       │
-│                                                                   │
-│ 3. After 15 seconds with no response → Force show error UI       │
-└─────────────────────────────────────────────────────────────────┘
+This hook will filter products to a specific order owner:
+
+```typescript
+export function useOrderOwnerProducts(ownerUserId: string | null) {
+  return useQuery({
+    queryKey: ['products', 'order-owner', ownerUserId],
+    queryFn: async () => {
+      if (!ownerUserId) return [];
+      
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, sku_code, sku_name')
+        .eq('owner_user_id', ownerUserId)
+        .eq('is_active', true)
+        .order('sku_code', { ascending: true });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!ownerUserId,
+  });
+}
 ```
 
 ---
 
-## Files to Modify
+### 1.3 Update Dashboard Page to Use Role-Specific Stats
 
-| File | Changes |
-|------|---------|
-| `src/contexts/AuthContext.tsx` | Add error state, retry logic, timeout handling |
-| `src/App.tsx` | Update ProtectedRoute to show error UI with retry |
+**File:** `src/pages/Dashboard.tsx`
 
----
-
-## Technical Notes
-
-- The postgres logs show repeated "canceling statement due to statement timeout" errors, indicating the database is under heavy load or there are slow queries
-- The `profiles` table RLS policy is simple (`FOR SELECT USING (true)`) so it shouldn't cause timeouts
-- The issue is likely with database connection pool exhaustion or slow upstream queries
-- This fix handles the symptom (stuck UI) while the underlying database performance issue may need separate investigation
+Add manager case to use `useManagerStats()` hook so dashboard counters reflect team data.
 
 ---
 
-## Testing Checklist
+## Part 2: Fix SKU Ownership for Orders
 
-- [ ] User sees loading spinner initially
-- [ ] If backend times out, error message appears within 15 seconds
-- [ ] "Retry" button triggers new fetch attempt
-- [ ] Auto-retry happens up to 3 times with increasing delays
-- [ ] "Sign Out" button works even when backend is down
-- [ ] When backend recovers, retry succeeds and app loads normally
+### Problem Analysis
+Currently:
+- `OrderEditor.tsx` uses `useProducts()` which returns team-wide products for managers
+- `ImportOrdersDialog.tsx` validates SKU ownership but against team-wide products
+- No "Order Owner" selection exists for managers
+
+---
+
+### 2.1 Add `order_owner_id` Column to Orders Table
+
+**Database Migration:**
+
+```sql
+-- The order owner for SKU validation purposes
+-- For salesperson: always themselves
+-- For manager: can be themselves OR a bound salesperson
+ALTER TABLE orders 
+ADD COLUMN order_owner_id uuid REFERENCES profiles(id);
+
+-- Backfill existing orders: set order_owner_id = salesperson_id
+UPDATE orders SET order_owner_id = salesperson_id WHERE order_owner_id IS NULL;
+
+-- Make it NOT NULL after backfill
+ALTER TABLE orders ALTER COLUMN order_owner_id SET NOT NULL;
+
+-- Add index for performance
+CREATE INDEX idx_orders_owner ON orders(order_owner_id);
+```
+
+---
+
+### 2.2 Update OrderEditor Component
+
+**File:** `src/components/orders/OrderEditor.tsx`
+
+Add Order Owner selection for managers:
+
+```typescript
+interface OrderEditorProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  order?: Order | null;
+  mode: 'create' | 'edit';
+  defaultStatus?: 'BOOKING' | 'READY';
+}
+
+// Inside component:
+const { profile, role } = useAuth();
+const { data: teamMembers = [] } = useTeamMembers();
+const isManager = role === 'manager';
+const isAdmin = role === 'admin';
+
+// Order owner state
+const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
+
+// Determine available owners for selection
+const ownerOptions = useMemo(() => {
+  if (role === 'salesperson') return []; // No selection, auto-set to self
+  if (role === 'manager') {
+    return [
+      { id: profile!.id, display_name: `${profile!.display_name} (My Order)` },
+      ...teamMembers.map(m => ({ id: m.id, display_name: m.display_name })),
+    ];
+  }
+  // Admin: would need to fetch all eligible users
+  return [];
+}, [role, profile, teamMembers]);
+
+// Products filtered to selected order owner
+const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
+
+// Use ownerProducts in the ProductCombobox instead of all products
+```
+
+Add UI for owner selection:
+```tsx
+{(isManager || isAdmin) && mode === 'create' && (
+  <FormItem>
+    <FormLabel>Order Owner *</FormLabel>
+    <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
+      <SelectTrigger>
+        <SelectValue placeholder="Select order owner" />
+      </SelectTrigger>
+      <SelectContent>
+        {ownerOptions.map(opt => (
+          <SelectItem key={opt.id} value={opt.id}>
+            {opt.display_name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+    <p className="text-xs text-muted-foreground">
+      Products will be filtered to this owner's catalog
+    </p>
+  </FormItem>
+)}
+```
+
+---
+
+### 2.3 Update ImportOrdersDialog Component
+
+**File:** `src/components/orders/ImportOrdersDialog.tsx`
+
+Add Order Owner selection at the start of the import flow:
+
+```typescript
+// Add state for order owner selection
+const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
+const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
+
+// Use ownerProducts for SKU validation instead of all products
+const validateSkuOwnership = (
+  validatedRows: ValidatedOrderLine[],
+  products: typeof ownerProducts  // Only owner's products
+): { valid: boolean; errors: string[] } => {
+  // Same logic but against filtered products
+};
+
+// In handleImport, set order_owner_id on created orders:
+const { data: order, error: orderError } = await supabase
+  .from('orders')
+  .insert([{
+    order_code: orderRef,
+    // ...other fields
+    salesperson_id: profile.id,  // Who created the order
+    order_owner_id: orderOwnerId,  // Whose products are being used
+    status: defaultStatus,
+  }])
+  .select()
+  .single();
+```
+
+Add owner selection UI before the upload step:
+```tsx
+{step === 'upload' && (isManager || isAdmin) && (
+  <div className="mb-4 p-4 border rounded-lg bg-muted/50">
+    <Label>Order Owner</Label>
+    <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
+      <SelectTrigger className="mt-2">
+        <SelectValue placeholder="Select who owns these orders" />
+      </SelectTrigger>
+      <SelectContent>
+        {ownerOptions.map(opt => (
+          <SelectItem key={opt.id} value={opt.id}>{opt.display_name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+    <p className="text-xs text-muted-foreground mt-1">
+      Only SKUs belonging to this user will be matched during import
+    </p>
+  </div>
+)}
+```
+
+---
+
+### 2.4 Server-Side Enforcement (Database Trigger)
+
+**Database Migration:**
+
+```sql
+-- Trigger to validate order_items use products owned by order_owner_id
+CREATE OR REPLACE FUNCTION validate_order_item_product_ownership()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_order_owner_id uuid;
+  v_product_owner_id uuid;
+BEGIN
+  -- Get order owner
+  SELECT order_owner_id INTO v_order_owner_id
+  FROM orders WHERE id = NEW.order_id;
+  
+  -- Get product owner
+  SELECT owner_user_id INTO v_product_owner_id
+  FROM products WHERE id = NEW.product_id;
+  
+  -- Validate ownership match
+  IF v_order_owner_id IS NOT NULL 
+     AND v_product_owner_id IS NOT NULL 
+     AND v_order_owner_id != v_product_owner_id THEN
+    RAISE EXCEPTION 
+      'Product owner mismatch: Cannot use products owned by another user. Order owner: %, Product owner: %',
+      v_order_owner_id, v_product_owner_id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER check_order_item_product_ownership
+  BEFORE INSERT OR UPDATE ON order_items
+  FOR EACH ROW
+  EXECUTE FUNCTION validate_order_item_product_ownership();
+```
+
+---
+
+## Part 3: Ensure Consistent Visibility Across All Pages
+
+### 3.1 Update Sales Pages
+
+Apply `get_visible_owner_ids` filtering to:
+- `src/pages/sales/BookingSales.tsx`
+- `src/pages/sales/ReadySales.tsx`
+- `src/pages/sales/CancelledSales.tsx`
+- `src/pages/sales/SalespersonActionInbox.tsx`
+
+Ensure all use `useTeamOrders()` or equivalent with visibility filtering.
+
+---
+
+### 3.2 Update Products Page
+
+**File:** `src/pages/products/ProductsPage.tsx`
+
+Ensure `useProducts()` hook is used correctly and add "My Products" vs "Team Products" tabs for managers (similar to Stock Balance page).
+
+---
+
+### 3.3 Verify Notification System Uses Same Scope
+
+Check that `useNotifications()` and related hooks filter by visible owner IDs.
+
+---
+
+## Summary of Changes
+
+| Component | Change |
+|-----------|--------|
+| `orders` table | Add `order_owner_id` column |
+| `order_items` | Add validation trigger for ownership |
+| `OrderEditor.tsx` | Add owner selector, filter products by owner |
+| `ImportOrdersDialog.tsx` | Add owner selector, validate SKUs by owner |
+| `useProductsByOwner.ts` | Add `useOrderOwnerProducts()` hook |
+| `useDashboardStats.ts` | Add `useManagerStats()` for team metrics |
+| Products page | Add My/Team tabs for managers |
+| All sales pages | Verify using team visibility consistently |
+
+---
+
+## Acceptance Criteria Validation
+
+| Criteria | Solution |
+|----------|----------|
+| Manager sees team products & stock after login | `get_visible_owner_ids()` + consistent hook usage |
+| Dashboard numbers match team activity | New `useManagerStats()` hook |
+| Product & stock pages never show empty if data exists | Fix hooks to use visibility, add tabs |
+| Salesperson can only use own products | `order_owner_id` = self (auto) |
+| Manager "My Order" uses only manager products | `order_owner_id` = manager.id |
+| Manager "Team Order" uses selected salesperson products | `order_owner_id` = selected salesperson |
+| Import no longer fails due to cross-owner SKU collisions | SKU lookup scoped to `order_owner_id` |
+
