@@ -237,7 +237,7 @@ export function DataGrid<T extends object>({
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      onSelectionChange?.(displayData.map((item) => String(item[keyField])));
+      onSelectionChange?.(filteredData.map((item) => String(item[keyField])));
     } else {
       onSelectionChange?.([]);
     }
@@ -272,8 +272,8 @@ export function DataGrid<T extends object>({
     else if (e.key === 'Escape') { setEditingCell(null); setEditValue(''); }
   };
 
-  const isAllSelected = displayData.length > 0 && 
-    displayData.every((item) => selectedRows.includes(String(item[keyField])));
+  const isAllSelected = filteredData.length > 0 && 
+    filteredData.every((item) => selectedRows.includes(String(item[keyField])));
 
   const getSortIcon = (field: string) => {
     if (sortField !== field) return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
@@ -442,10 +442,10 @@ export function DataGrid<T extends object>({
       {isMobile ? (
         // Mobile Card View
         <div className="space-y-3 pb-24">
-          {selectable && displayData.length > 0 && (
+          {selectable && filteredData.length > 0 && (
             <div className="flex items-center gap-3 px-3 py-2.5 bg-secondary/30 rounded-lg border border-border/50">
               <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} className="h-5 w-5" />
-              <span className="text-sm font-medium">Select all ({displayData.length})</span>
+              <span className="text-sm font-medium">Select all ({filteredData.length})</span>
             </div>
           )}
 

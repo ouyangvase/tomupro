@@ -50,8 +50,6 @@ const reconciliationColors: Record<ReconciliationStatus, string> = {
 const runnerStatusOptions = [
   { label: 'Assigned', value: 'ASSIGNED' },
   { label: 'Taken', value: 'TAKEN' },
-  { label: 'Delivered', value: 'DELIVERED' },
-  { label: 'Failed Delivery', value: 'FAILED_DELIVERY' },
 ];
 
 const reconciliationStatusOptions = [
