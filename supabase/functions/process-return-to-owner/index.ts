@@ -104,32 +104,52 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get the warehouse where stock was deducted from (MUST be salesperson's warehouse)
-    let warehouseId = order.fulfillment_warehouse_id;
+    // CRITICAL: Always recalculate the correct ACTIVE warehouse using database function
+    // Never trust cached fulfillment_warehouse_id - it may be stale from role changes
+    // (e.g., user was salesperson, now is manager with different warehouse type)
+    console.log('[RETURN] Calculating correct active warehouse for order:', orderId);
     
+    const { data: warehouseResult, error: warehouseError } = await supabase
+      .rpc('get_stock_owner_warehouse', { p_order_id: orderId });
+    
+    let warehouseId = warehouseResult;
+    
+    if (warehouseError) {
+      console.error('[RETURN] Error getting stock owner warehouse:', warehouseError);
+    }
+
+    // Fallback: try to find any active warehouse for the salesperson
     if (!warehouseId) {
-      // Find salesperson's warehouse - the ONLY valid stock owner
-      const { data: spWarehouse } = await supabase
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', order.salesperson_id)
+        .single();
+      
+      const warehouseType = profile?.role === 'manager' ? 'MANAGER' : 'SALESPERSON';
+      
+      const { data: activeWarehouse } = await supabase
         .from('warehouses')
         .select('id')
         .eq('owner_user_id', order.salesperson_id)
-        .eq('warehouse_type', 'SALESPERSON')
+        .eq('warehouse_type', warehouseType)
         .eq('is_active', true)
         .single();
       
-      warehouseId = spWarehouse?.id;
+      warehouseId = activeWarehouse?.id;
     }
 
-    // NO FALLBACK TO RUNNER - stock only belongs to salesperson
     if (!warehouseId) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'No salesperson warehouse found. Stock can only be returned to salesperson inventory.' 
+          error: 'No active warehouse found. Stock can only be returned to active warehouse inventory.' 
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log('[RETURN] Using active warehouse:', warehouseId);
 
     // Find all DELIVER_DEDUCT movements for this order
     const { data: deductions, error: deductionsError } = await supabase
@@ -176,11 +196,12 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Create the return movement - return to the ORIGINAL warehouse
+      // Create the return movement - return to the ACTIVE warehouse (not the old one from deduction)
+      // This handles role changes (e.g., user was salesperson, now is manager)
       const { error: returnError } = await supabase
         .from('stock_movements')
         .insert({
-          warehouse_id: deduction.warehouse_id, // Return to where it was deducted from
+          warehouse_id: warehouseId, // Use the ACTIVE warehouse calculated above
           product_id: deduction.product_id,
           movement_type: 'RETURN_TO_OWNER',
           qty_change: Math.abs(deduction.qty_change), // Positive to add back
