@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
@@ -64,11 +65,11 @@ export default function RunnerInbox() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  // Use server-side filtering to exclude delivered/failed orders and limit results
+  // Use server-side filtering to exclude delivered/failed orders - increased limit for all orders
   const { data: orders, isLoading } = useOrders({ 
     runnerId: user?.id,
     excludeDeliveredAndFailed: true,
-    limit: 200
+    limit: 1000
   });
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
@@ -114,6 +115,21 @@ export default function RunnerInbox() {
     
     return applyOrderFilters(activeOrders, panelFilters);
   }, [orders, panelFilters]);
+
+  // Add pagination for large datasets
+  const {
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    paginatedData,
+    pageSize,
+  } = useResponsivePagination({
+    totalItems: filteredOrders.length,
+    headerHeight: 350,
+    footerHeight: 80,
+  });
+
+  const paginatedOrders = paginatedData(filteredOrders);
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {
@@ -567,7 +583,7 @@ export default function RunnerInbox() {
         />
 
         <DataGrid
-          data={filteredOrders}
+          data={paginatedOrders}
           columns={columns}
           loading={isLoading}
           keyField="id"
@@ -601,6 +617,35 @@ export default function RunnerInbox() {
             ) : undefined
           }
         />
+
+        {filteredOrders.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30 rounded-b-lg">
+            <div className="text-sm text-muted-foreground">
+              Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <CreateClaimDialog
