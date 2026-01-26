@@ -177,7 +177,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
     if (!skuValidation.valid) {
       setErrors([
-        'Invalid SKUs found. Please fix and re-upload:',
+        '⛔ IMPORT REJECTED - Invalid SKUs found in your file.',
+        'Please fix the following errors and re-upload the entire file:',
         '',
         ...skuValidation.errors
       ]);
@@ -686,11 +687,13 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
             )}
 
             {errors.length > 0 && (
-              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2.5 sm:p-3">
+              <div className="bg-destructive/10 border border-destructive/50 rounded-lg p-2.5 sm:p-3">
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1.5 text-destructive">
-                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="font-medium text-xs sm:text-sm">Errors ({errors.filter(e => e.trim()).length})</span>
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span className="font-bold text-xs sm:text-sm">
+                      {errors[0]?.includes('IMPORT REJECTED') ? 'FILE REJECTED' : `Errors (${errors.filter(e => e.trim()).length})`}
+                    </span>
                   </div>
                   <Button
                     variant="ghost"
