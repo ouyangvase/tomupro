@@ -67,12 +67,20 @@ export default function Auth() {
     setLoading(false);
     
     if (error) {
+      let errorMessage = 'An unexpected error occurred. Please try again.';
+      if (error.message) {
+        if (error.message === 'Invalid login credentials') {
+          errorMessage = 'Invalid email or password. Please try again.';
+        } else if (error.message.includes('timeout') || error.message.includes('504')) {
+          errorMessage = 'Server is temporarily unavailable. Please try again in a moment.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
       toast({
         variant: 'destructive',
         title: 'Login Failed',
-        description: error.message === 'Invalid login credentials' 
-          ? 'Invalid email or password. Please try again.'
-          : error.message,
+        description: errorMessage,
       });
     } else {
       navigate('/');
