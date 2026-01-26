@@ -1,116 +1,137 @@
 
-# Fix Runner Inbox to Show All Assigned Orders
+# Fix Select All and Simplify Delivery Filter
 
 ## Problem Summary
 
-| Metric | Expected | Actual | Gap |
-|--------|----------|--------|-----|
-| Runner Inbox orders | 530 | 200 | Missing 330 orders |
-| Display | All assigned orders | Limited subset | 62% of data hidden |
-
-The Runner Inbox currently has a hard limit of `200` orders in the `useOrders` hook call, which was added to prevent database timeouts. However, this causes over 60% of assigned orders to be hidden from the runner.
-
-## Root Cause
-
-In `src/pages/runner/RunnerInbox.tsx` (lines 68-72):
-```typescript
-const { data: orders, isLoading } = useOrders({ 
-  runnerId: user?.id,
-  excludeDeliveredAndFailed: true,
-  limit: 200  // <-- This limits to only 200 orders
-});
-```
-
-The limit was added for performance reasons, but it's too restrictive for runners with 500+ active orders.
+| Issue | Current Behavior | Expected Behavior |
+|-------|------------------|-------------------|
+| Select All (Desktop) | Only selects current page (12) | Should select ALL filtered orders (560) |
+| Select All (Mobile) | Only selects visible items | Should select ALL filtered orders |
+| Delivery Filter | Shows 5 options (Unassigned, Assigned, Taken, Delivered, Failed) | Should show 3 options (Unassigned, Assigned, Taken) - "Assigned" includes "Taken" |
 
 ---
 
-## Solution: Remove Limit + Add Pagination
+## Part 1: Fix Select All to Apply to ALL Filtered Orders
 
-### Step 1: Increase or Remove the Limit
+### File: `src/components/data-grid/DataGrid.tsx`
 
-**File: `src/pages/runner/RunnerInbox.tsx`**
+#### A) Fix Table Header Checkbox (Desktop)
 
-Change the limit from 200 to 1000 (or remove it to use the default 500):
-
+**Current code (line 238-244):**
 ```typescript
-const { data: orders, isLoading } = useOrders({ 
-  runnerId: user?.id,
-  excludeDeliveredAndFailed: true,
-  limit: 1000  // Increase to accommodate all active orders
-});
+const handleSelectAll = (checked: boolean) => {
+  if (checked) {
+    onSelectionChange?.(displayData.map((item) => String(item[keyField])));
+  } else {
+    onSelectionChange?.([]);
+  }
+};
 ```
 
-Since the `excludeDeliveredAndFailed` filter is already reducing the dataset significantly (530 vs 699 total), and database indexes were added in the previous fix, a higher limit is now safe.
-
-### Step 2: Add Pagination (Optional but Recommended)
-
-For large datasets, add pagination using `useResponsivePagination`:
-
+**Fix:** Change `displayData` to `filteredData` to select ALL filtered items across all pages:
 ```typescript
-import { useResponsivePagination } from '@/hooks/useResponsivePagination';
-
-// After filteredOrders is calculated:
-const {
-  currentPage,
-  setCurrentPage,
-  totalPages,
-  paginatedData,
-  pageSize,
-} = useResponsivePagination({
-  totalItems: filteredOrders.length,
-  headerHeight: 350,
-  footerHeight: 80,
-});
-
-const paginatedOrders = paginatedData(filteredOrders);
+const handleSelectAll = (checked: boolean) => {
+  if (checked) {
+    onSelectionChange?.(filteredData.map((item) => String(item[keyField])));
+  } else {
+    onSelectionChange?.([]);
+  }
+};
 ```
 
-### Step 3: Update DataGrid to Use Paginated Data
+#### B) Fix `isAllSelected` Check (line 275-276)
 
-Pass `paginatedOrders` to the DataGrid instead of `filteredOrders`:
-
+**Current:**
 ```typescript
-<DataGrid
-  data={paginatedOrders}  // Changed from filteredOrders
-  columns={columns}
-  ...
-/>
+const isAllSelected = displayData.length > 0 && 
+  displayData.every((item) => selectedRows.includes(String(item[keyField])));
 ```
 
-### Step 4: Add Pagination Controls
-
-Add pagination UI after the DataGrid:
-
+**Fix:** Check against `filteredData`:
 ```typescript
-{filteredOrders.length > 0 && totalPages > 1 && (
-  <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
-    <div className="text-sm text-muted-foreground">
-      Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders
-    </div>
-    <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setCurrentPage(currentPage - 1)}
-        disabled={currentPage === 1}
-      >
-        Previous
-      </Button>
-      <span className="text-sm">
-        Page {currentPage} of {totalPages}
-      </span>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setCurrentPage(currentPage + 1)}
-        disabled={currentPage === totalPages}
-      >
-        Next
-      </Button>
-    </div>
-  </div>
-)}
+const isAllSelected = filteredData.length > 0 && 
+  filteredData.every((item) => selectedRows.includes(String(item[keyField])));
+```
+
+#### C) Fix Mobile Select All (line 446-449)
+
+**Current:**
+```typescript
+<span className="text-sm font-medium">Select all ({displayData.length})</span>
+```
+
+**Fix:** Show total filtered count:
+```typescript
+<span className="text-sm font-medium">Select all ({filteredData.length})</span>
+```
+
+---
+
+## Part 2: Simplify Delivery Status Filter Options
+
+### File: `src/components/filters/OrderFiltersPanel.tsx`
+
+**Current (line 86-92):**
+```typescript
+const runnerStatusOptions: FilterOption[] = [
+  { label: 'Unassigned', value: 'UNASSIGNED' },
+  { label: 'Assigned', value: 'ASSIGNED' },
+  { label: 'Taken', value: 'TAKEN' },
+  { label: 'Delivered', value: 'DELIVERED' },
+  { label: 'Failed Delivery', value: 'FAILED_DELIVERY' },
+];
+```
+
+**Change to simplified options:**
+```typescript
+const runnerStatusOptions: FilterOption[] = [
+  { label: 'Unassigned', value: 'UNASSIGNED' },
+  { label: 'Assigned', value: 'ASSIGNED' },  // Will include TAKEN
+  { label: 'Taken', value: 'TAKEN' },
+];
+```
+
+### File: `src/components/filters/OrderFiltersPanel.tsx` - `applyOrderFilters` function
+
+Update the filter logic so "Assigned" filter includes TAKEN orders:
+
+**Current logic (around line 530-540):**
+```typescript
+if (filters.runnerStatus) {
+  result = result.filter((o) => o.runner_status === filters.runnerStatus);
+}
+```
+
+**Updated logic:**
+```typescript
+if (filters.runnerStatus) {
+  if (filters.runnerStatus === 'ASSIGNED') {
+    // "Assigned" includes both ASSIGNED and TAKEN statuses
+    result = result.filter((o) => 
+      o.runner_status === 'ASSIGNED' || o.runner_status === 'TAKEN'
+    );
+  } else {
+    result = result.filter((o) => o.runner_status === filters.runnerStatus);
+  }
+}
+```
+
+### Update DataGrid Column Filter Options
+
+For pages that define their own filter options (like ReadySales.tsx, AdminRunnerInbox.tsx), we need to update those too:
+
+**Files to update:**
+- `src/pages/sales/ReadySales.tsx` (line 312-318)
+- `src/pages/admin/AdminRunnerInbox.tsx` (line 43-49)
+- `src/pages/runner/RunnerInbox.tsx` (line 50-55)
+
+Change the column filter options from 5 options to 3:
+```typescript
+filterOptions: [
+  { label: 'Unassigned', value: 'UNASSIGNED' },
+  { label: 'Assigned', value: 'ASSIGNED' },
+  { label: 'Taken', value: 'TAKEN' },
+],
 ```
 
 ---
@@ -119,23 +140,22 @@ Add pagination UI after the DataGrid:
 
 | File | Change | Purpose |
 |------|--------|---------|
-| `src/pages/runner/RunnerInbox.tsx` | Change `limit: 200` to `limit: 1000` | Fetch all active orders |
-| `src/pages/runner/RunnerInbox.tsx` | Add `useResponsivePagination` hook | Handle large data display |
-| `src/pages/runner/RunnerInbox.tsx` | Add pagination controls UI | Navigate through pages |
+| `src/components/data-grid/DataGrid.tsx` | Change `handleSelectAll` to use `filteredData` | Select all 560 orders, not just current page |
+| `src/components/data-grid/DataGrid.tsx` | Change `isAllSelected` to check `filteredData` | Correct checkbox state |
+| `src/components/data-grid/DataGrid.tsx` | Update mobile select all count | Show total (560) not page count (12) |
+| `src/components/filters/OrderFiltersPanel.tsx` | Remove Delivered/Failed from options | Simplify to 3 delivery statuses |
+| `src/components/filters/OrderFiltersPanel.tsx` | Update filter logic for "Assigned" | Include TAKEN when filtering by Assigned |
+| `src/pages/sales/ReadySales.tsx` | Update column filter options | Match simplified options |
+| `src/pages/admin/AdminRunnerInbox.tsx` | Update column filter options | Match simplified options |
+| `src/pages/runner/RunnerInbox.tsx` | Update column filter options | Match simplified options |
 
 ---
 
 ## Expected Results
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Select All count | 200 | 530 (all active orders) |
-| Data visibility | 38% | 100% |
-| Page load time | Fast (small data) | Fast (optimized with pagination) |
-| User experience | Missing orders | All orders visible with pagination |
-
----
-
-## Technical Notes
-
-The database optimizations from the previous fix (indexes on `order_items.product_id` and `orders.runner_id + created_at`, plus the optimized RLS policy) make it safe to increase the limit. The `excludeDeliveredAndFailed` server-side filter also reduces the query workload significantly.
+| Before | After |
+|--------|-------|
+| Select All shows (12) and selects 12 | Select All shows (560) and selects 560 |
+| Delivery filter shows 5 options | Delivery filter shows 3 options |
+| "Assigned" filter shows only ASSIGNED | "Assigned" filter shows ASSIGNED + TAKEN |
+| Bulk actions apply to 12 rows max | Bulk actions can apply to all 560 rows |
