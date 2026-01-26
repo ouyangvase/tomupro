@@ -196,6 +196,17 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   ): { valid: boolean; errors: string[] } => {
     const skuErrors: string[] = [];
 
+    // Debug: Log owner products list details
+    console.log('[validateSkuOwnership] Products list count:', ownerProductsList.length);
+    console.log('[validateSkuOwnership] Owner ID filter:', orderOwnerId);
+    
+    // Check for products from different owners (sanity check)
+    const uniqueOwners = new Set(ownerProductsList.map((p: any) => p.owner_user_id));
+    if (uniqueOwners.size > 1) {
+      console.error('[validateSkuOwnership] CRITICAL: Products from multiple owners detected!', 
+        Array.from(uniqueOwners));
+    }
+
     for (let i = 0; i < validatedRows.length; i++) {
       const row = validatedRows[i];
       const csvRowNum = i + 2;
@@ -210,6 +221,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       if (codeMatches.length === 1) continue;
 
       if (codeMatches.length > 1) {
+        console.error('[validateSkuOwnership] Duplicate SKU found:', skuValue, 
+          'Matches:', codeMatches.map((p: any) => ({ id: p.id, sku_code: p.sku_code, owner: p.owner_user_id })));
         skuErrors.push(`Row ${csvRowNum}: Multiple products with sku_code="${skuValue}"; please use unique sku_code`);
         continue;
       }
