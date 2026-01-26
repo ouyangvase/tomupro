@@ -4,8 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { Profile } from '@/types/database';
 
 /**
- * Hook to fetch team members for the current user (if manager)
- * Returns all users whose manager_id matches the current user's id
+ * Hook to fetch team members for the current user based on user_data_shares.
+ * Returns all users that the current user has active data shares for (subjects).
  */
 export function useTeamMembers() {
   const { user, role } = useAuth();
@@ -15,44 +15,27 @@ export function useTeamMembers() {
     queryFn: async () => {
       if (!user?.id) return [];
 
-      // Primary source of truth: manager_groups + group_members
-      const { data: groups, error: groupsError } = await supabase
-        .from('manager_groups')
-        .select('id')
-        .eq('manager_user_id', user.id);
-
-      if (groupsError) throw groupsError;
-
-      const groupIds = (groups ?? []).map((g) => g.id);
-
-      if (groupIds.length > 0) {
-        const { data: memberRows, error: membersError } = await supabase
-          .from('group_members')
-          .select('member:profiles!group_members_member_user_id_fkey(*)')
-          .in('group_id', groupIds);
-
-        if (membersError) throw membersError;
-
-        const members = (
-          ((memberRows ?? []).map((r) => r.member).filter(Boolean) as unknown as Profile[])
-        )
-          .filter((m) => m.is_active)
-          .sort((a, b) => a.display_name.localeCompare(b.display_name));
-
-        return members;
-      }
-
-      // Backward-compatible fallback: profiles.manager_id
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('manager_id', user.id)
-        .order('display_name', { ascending: true });
+      // Use user_data_shares as the source of truth for team visibility
+      const { data: shares, error } = await supabase
+        .from('user_data_shares')
+        .select(`
+          subject:profiles!user_data_shares_subject_user_id_fkey(*)
+        `)
+        .eq('viewer_user_id', user.id)
+        .eq('active', true)
+        .eq('scope_orders', true);
 
       if (error) throw error;
-      return (data ?? []) as Profile[];
+
+      // Extract profiles from shares and filter active ones
+      const members = (shares ?? [])
+        .map((s) => s.subject as unknown as Profile)
+        .filter((m): m is Profile => m !== null && m.is_active)
+        .sort((a, b) => a.display_name.localeCompare(b.display_name));
+
+      return members;
     },
-    enabled: !!user?.id && role === 'manager',
+    enabled: !!user?.id,
   });
 }
 

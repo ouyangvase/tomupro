@@ -10,7 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
  * 
  * Returns:
  * - null if admin (can see all)
- * - array of UUIDs for manager/salesperson/runner
+ * - array of UUIDs for other roles
  */
 export function useServerVisibleIds() {
   const { user, role } = useAuth();
@@ -37,19 +37,17 @@ export function useServerVisibleIds() {
 }
 
 /**
- * Centralized hook for computing visible user IDs based on role and team bindings.
+ * Centralized hook for computing visible user IDs based on role and data shares.
  * Uses server-side RPC as the source of truth.
  * 
  * BUSINESS RULES:
- * 1. Salesperson: Can only see their own data (returns [profile.id])
- * 2. Manager: Can see own + bound team salespersons' data
+ * 1. Salesperson: Can see own + data share subjects
+ * 2. Manager: Can see own + data share subjects
  * 3. Admin: Can see all (returns undefined = no filter)
  * 4. Runner: Depends on context (handled separately)
- * 
- * Managers are ISOLATED - they cannot see other managers' team data.
  */
 export function useVisibleUserIds() {
-  const { user, role, profile } = useAuth();
+  const { user, role } = useAuth();
   const { data: serverVisibleIds, isLoading: serverLoading } = useServerVisibleIds();
   const { data: teamMembers = [] } = useTeamMembers();
 
@@ -67,29 +65,18 @@ export function useVisibleUserIds() {
     // Admin can see all - no filter
     if (role === 'admin') return undefined;
 
-    // Salesperson can only see their own data
-    if (role === 'salesperson') return [user.id];
-
-    // Manager can see own + team members
-    if (role === 'manager') {
-      return [user.id, ...teamMembers.map(m => m.id)];
-    }
-
-    // Runner - typically returns their own, but visibility varies by context
-    if (role === 'runner') return [user.id];
-
-    // Default: own data only
-    return [user.id];
+    // All other roles: own ID + team members (from data shares)
+    return [user.id, ...teamMembers.map(m => m.id)];
   }, [user?.id, role, serverVisibleIds, teamMembers]);
 
-  // Team member IDs only (excludes manager themselves)
+  // Team member IDs only (excludes self)
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
 
-  // All team IDs including manager
+  // All team IDs including self
   const allTeamIds = useMemo(() => {
-    if (!user?.id || role !== 'manager') return [];
+    if (!user?.id) return [];
     return [user.id, ...teamMemberIds];
-  }, [user?.id, role, teamMemberIds]);
+  }, [user?.id, teamMemberIds]);
 
   return {
     visibleUserIds,
@@ -104,30 +91,26 @@ export function useVisibleUserIds() {
 }
 
 /**
- * Hook to get team member options for filter dropdowns (manager/admin only).
- * For managers, this returns ONLY their bound team members.
- * For admins, returns all users with salesperson/manager role.
+ * Hook to get team member options for filter dropdowns.
+ * Returns users from data shares for the current user.
  */
 export function useTeamFilterOptions() {
   const { user, role, profile } = useAuth();
   const { data: teamMembers = [] } = useTeamMembers();
 
   const options = useMemo(() => {
-    if (role === 'manager' && profile) {
-      // Manager: show self + team members only
-      return [
-        { id: profile.id, display_name: `${profile.display_name} (Me)`, role: 'manager' as const },
-        ...teamMembers.map(m => ({
-          id: m.id,
-          display_name: m.display_name,
-          role: m.role as 'salesperson' | 'manager',
-        })),
-      ];
-    }
-
-    // Admin/other: this hook doesn't provide admin options (use UserDirectory for that)
-    return [];
-  }, [role, profile, teamMembers]);
+    if (!profile) return [];
+    
+    // Show self + team members from data shares
+    return [
+      { id: profile.id, display_name: `${profile.display_name} (Me)`, role: profile.role },
+      ...teamMembers.map(m => ({
+        id: m.id,
+        display_name: m.display_name,
+        role: m.role,
+      })),
+    ];
+  }, [profile, teamMembers]);
 
   return { options, isManager: role === 'manager', isAdmin: role === 'admin' };
 }
