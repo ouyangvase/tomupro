@@ -1,157 +1,327 @@
 
-# Fix Import Validation and Clean Up Invalid Orders
+# Fix Auth Race Condition - Role Shows as Salesperson
 
-## Summary
+## Root Cause Identified
 
-| Issue | Current Status | Action Required |
-|-------|---------------|-----------------|
-| 1. Import should reject entire file if SKU doesn't exist | Already implemented, but UI message could be clearer | Improve error messaging |
-| 2. Orders with 0 items exist | 23 orders without items (all ALLEN's) | Delete via database migration |
+The issue is **NOT** caused by binding removal affecting roles. The database is intact with all roles correctly stored.
+
+The actual bug is a **race condition** in the authentication flow:
+
+```
+Current Flow (BROKEN):
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. User logs in                                                 │
+│ 2. Auth state changes → setLoading(false) ← TOO EARLY!         │
+│ 3. Profile fetch is DEFERRED via setTimeout()                   │
+│ 4. App renders with user=✓ but profile=null, role=null         │
+│ 5. Dashboard switch(role) hits default: → SalespersonDashboard │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+The `loading` flag becomes `false` before the profile is actually loaded, causing the dashboard to render with `role === null`, which triggers the `default:` case in the switch statement.
 
 ---
 
-## Part 1: Strengthen Import Rejection UI
+## Solution Overview
 
-The current implementation already:
-- Validates SKUs at preview step (lines 177-186)
-- Disables Import button when errors exist (line 744: `disabled={importing || errors.length > 0}`)
-- Shows clear error messages
+| Component | Issue | Fix |
+|-----------|-------|-----|
+| AuthContext.tsx | `loading` set to false before profile loads | Keep `loading = true` until profile is fetched |
+| Dashboard.tsx | `default:` case falls through to Salesperson | Add explicit null handling / loading state |
+| MobileDashboard.tsx | Same default case issue | Add explicit null handling / loading state |
+| ProtectedRoute | Doesn't wait for profile | Add profile loading check |
 
-**Improvement**: Make rejection messaging more explicit that the entire file is rejected:
+---
 
-### File: `src/components/orders/ImportOrdersDialog.tsx`
+## Part 1: Fix AuthContext Loading State
 
-**Current error message (line 179-183):**
+**File: `src/contexts/AuthContext.tsx`**
+
+The `loading` state must remain `true` until the profile is actually loaded.
+
+### Current Code (Lines 118-150):
 ```typescript
-setErrors([
-  'Invalid SKUs found. Please fix and re-upload:',
-  '',
-  ...skuValidation.errors
-]);
+useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        setTimeout(() => {
+          fetchProfile(session.user.id);
+        }, 0);
+      } else {
+        setProfile(null);
+        setPreviousRole(null);
+        setRoleChanged(false);
+      }
+      setLoading(false);  // ❌ PROBLEM: Loading false before profile loads!
+    }
+  );
+  // ...
+}, [fetchProfile]);
 ```
 
-**Change to:**
+### Fixed Code:
 ```typescript
-setErrors([
-  'IMPORT REJECTED - Invalid SKUs found in your file.',
-  'Please fix the following errors and re-upload the entire file:',
-  '',
-  ...skuValidation.errors
-]);
+useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        // Keep loading = true until profile loads
+        setTimeout(async () => {
+          await fetchProfile(session.user.id);
+          setLoading(false);  // ✅ Only set loading false AFTER profile loads
+        }, 0);
+      } else {
+        setProfile(null);
+        setPreviousRole(null);
+        setRoleChanged(false);
+        setLoading(false);  // No user = no profile needed, safe to stop loading
+      }
+    }
+  );
+
+  supabase.auth.getSession().then(async ({ data: { session } }) => {
+    setSession(session);
+    setUser(session?.user ?? null);
+    if (session?.user) {
+      await fetchProfile(session.user.id);
+    }
+    setLoading(false);  // ✅ Only after profile fetch completes
+  });
+
+  return () => subscription.unsubscribe();
+}, [fetchProfile]);
 ```
 
-**Also update the error display area (line 688-713)** to show a more prominent rejection banner when errors are SKU-related.
+Also update `fetchProfile` to properly handle async:
+```typescript
+const fetchProfile = useCallback(async (userId: string) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+  
+  if (error) {
+    console.error('Error fetching profile:', error);
+    return;  // Don't clear profile on error
+  }
+  
+  if (!data) {
+    console.error('No profile found for user:', userId);
+    // Profile doesn't exist - this is a critical error
+    // Could show a blocking screen here
+    return;
+  }
+  
+  const newProfile = data as ExtendedProfile;
+  
+  // Check if account is disabled or resigned
+  if (newProfile.status && newProfile.status !== 'active') {
+    await handleAccountDisabled(
+      newProfile.status === 'resigned' 
+        ? 'Your account has been marked as resigned. Please contact admin.'
+        : 'Your account has been disabled. Please contact admin.'
+    );
+    return;
+  }
+  
+  // Check if role changed while session is active
+  if (previousRole && previousRole !== newProfile.role) {
+    setRoleChanged(true);
+  }
+  
+  setPreviousRole(newProfile.role);
+  setProfile(newProfile);
+}, [previousRole, handleAccountDisabled]);
+```
 
 ---
 
-## Part 2: Delete 23 Orders Without Items
+## Part 2: Fix Dashboard Default Case
 
-### Database Migration
+**File: `src/pages/Dashboard.tsx`** (Lines 1336-1349)
 
-Delete the following 23 orders that have 0 items (all from user ALLEN):
-
+### Current Code:
+```typescript
+const renderDashboard = () => {
+  switch (role) {
+    case 'driver':
+      return <DriverDashboard />;
+    case 'runner':
+      return <RunnerDashboard />;
+    case 'admin':
+      return <AdminDashboard />;
+    case 'manager':
+      return <ManagerDashboard />;
+    case 'salesperson':
+    default:  // ❌ PROBLEM: null falls into default!
+      return <SalespersonDashboard />;
+  }
+};
 ```
-Order Codes to Delete:
-AL1126, AL1241, AL1338, AL1339, AL1343, AL1345, AL1349, AL1385,
-AL1452, AL1458, AL1459, AL1464, AL1483, AL1489, AL1502, AL1503,
-AL1504, AL1516, AL1518, AL1520, AL643, AL651, AL653
-```
 
-**SQL Migration:**
-```sql
--- Delete 23 orders with no items (historical import errors)
--- All from salesperson ALLEN, created on 2026-01-14
-
-DELETE FROM orders
-WHERE id IN (
-  '519fe4f3-66c5-42be-9116-543d88e4f5e3',
-  '4d75fb7d-ae98-4f5c-afb9-6cdfee2a32b3',
-  'c068c462-a73a-41a5-8000-8a742fea5ade',
-  'e63b1927-0167-460c-a805-511deba39619',
-  '72665416-5fc2-4420-b739-559a2b340c8f',
-  'a2bc92db-de5c-4f74-aa3b-364f61bbcfef',
-  '92468bb4-afaa-4f60-888e-59f802b825c4',
-  '5149af37-d065-4b51-9357-752e1b42b166',
-  'fbda8499-432a-40e8-b095-34d9e9ea9f4a',
-  '845fcdec-a905-4852-9d1d-c5a048e0fb8a',
-  '2d08d54c-64e2-4911-9338-0b947dda24d4',
-  'a8c0601f-cdfd-4d88-b0d5-7029e476927a',
-  '108c8d4c-ee7d-4e9b-b6da-dbc730fd6f8c',
-  '9e28f4c6-9fe6-4702-86a9-5fb627626c7e',
-  '66d8c461-cb6b-4eb4-831b-e20c338e8ffe',
-  '9e1ad772-5824-4443-9e63-fa2b7eaae768',
-  '15b15f87-9755-49be-a3b9-ba965abde908',
-  '036965bf-74bf-4898-b0b1-fc4eeabe6bd6',
-  '64f33305-eda1-46b0-bf08-50ac1519fc3a',
-  '4fc3fdba-527e-4efd-85a1-1d6d579fff9b',
-  '4a879db3-9b37-4741-b2fc-31594c9402cf',
-  '93037384-8387-44a7-945d-38148a53d62a',
-  '9d7ad938-3f97-466d-9dc3-3032f440462e'
-);
+### Fixed Code:
+```typescript
+const renderDashboard = () => {
+  // Handle null/undefined role explicitly
+  if (!role) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span>Loading profile...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  switch (role) {
+    case 'driver':
+      return <DriverDashboard />;
+    case 'runner':
+      return <RunnerDashboard />;
+    case 'admin':
+      return <AdminDashboard />;
+    case 'manager':
+      return <ManagerDashboard />;
+    case 'salesperson':
+      return <SalespersonDashboard />;
+    default:
+      // Unknown role - show error state
+      return (
+        <div className="text-center py-8">
+          <p className="text-destructive">Unknown role: {role}</p>
+          <p className="text-muted-foreground">Please contact admin.</p>
+        </div>
+      );
+  }
+};
 ```
 
 ---
 
-## Part 3: Prevent Future Invalid Orders
+## Part 3: Fix MobileDashboard Default Case
 
-### Add Database Trigger (Optional but Recommended)
+**File: `src/pages/dashboard/MobileDashboard.tsx`** (Lines 451-464)
 
-Create a trigger that prevents orders from being committed if they have no items after a brief grace period:
+Same fix as Dashboard.tsx:
 
-```sql
--- This trigger runs on INSERT to orders
--- It doesn't block immediately (items may be added in separate transaction)
--- But the frontend already handles this validation
+```typescript
+const renderDashboard = () => {
+  if (!role) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span>Loading...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  switch (role) {
+    case 'driver':
+      return <DriverMobileDashboard />;
+    case 'runner':
+      return <RunnerMobileDashboard />;
+    case 'admin':
+      return <AdminMobileDashboard />;
+    case 'manager':
+      return <ManagerMobileDashboard />;
+    case 'salesperson':
+      return <SalespersonMobileDashboard />;
+    default:
+      return (
+        <div className="text-center py-8">
+          <p className="text-destructive">Unknown role: {role}</p>
+        </div>
+      );
+  }
+};
 ```
 
-The current frontend validation is sufficient since:
-1. SKU validation happens before import
-2. Import button is disabled when errors exist
-3. Each order line must have a valid SKU
+---
+
+## Part 4: Add Profile Loading Check to ProtectedRoute (Optional Safety)
+
+**File: `src/App.tsx`** (ProtectedRoute function)
+
+Add a secondary check to ensure profile is loaded:
+
+```typescript
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, profile, loading } = useAuth();
+  const { needsOnboarding, checkingLink } = useDriverOnboarding();
+  
+  // Show loading while auth is initializing
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span>Loading...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  // Redirect to auth if not logged in
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+  
+  // Safety: Wait for profile to load if user exists but profile doesn't
+  // This shouldn't happen with the AuthContext fix, but is a safety net
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span>Loading profile...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ... rest of the function remains the same
+}
+```
 
 ---
 
 ## Summary of Changes
 
-| File/Component | Change | Purpose |
-|----------------|--------|---------|
-| `src/components/orders/ImportOrdersDialog.tsx` | Clearer rejection messaging | Make it obvious entire file is rejected |
-| **Database Migration** | Delete 23 orphaned orders | Clean up invalid historical data |
+| File | Change |
+|------|--------|
+| `src/contexts/AuthContext.tsx` | Keep `loading = true` until profile fetch completes |
+| `src/pages/Dashboard.tsx` | Handle null role explicitly before switch statement |
+| `src/pages/dashboard/MobileDashboard.tsx` | Handle null role explicitly before switch statement |
+| `src/App.tsx` | Add profile null check in ProtectedRoute as safety net |
 
 ---
 
-## Technical Notes
+## Why This Fixes the Issue
 
-### Orders to Delete (All from ALLEN)
+1. **AuthContext** now keeps `loading = true` until the profile is actually fetched
+2. **ProtectedRoute** shows loading spinner while `loading = true`
+3. **Dashboard** explicitly handles null role with loading indicator
+4. No more race condition where role is null but app tries to render dashboard
 
-| # | Order Code | Order ID |
-|---|------------|----------|
-| 1 | AL1126 | 519fe4f3-66c5-42be-9116-543d88e4f5e3 |
-| 2 | AL1241 | 4d75fb7d-ae98-4f5c-afb9-6cdfee2a32b3 |
-| 3 | AL1338 | c068c462-a73a-41a5-8000-8a742fea5ade |
-| 4 | AL1339 | e63b1927-0167-460c-a805-511deba39619 |
-| 5 | AL1343 | 72665416-5fc2-4420-b739-559a2b340c8f |
-| 6 | AL1345 | a2bc92db-de5c-4f74-aa3b-364f61bbcfef |
-| 7 | AL1349 | 92468bb4-afaa-4f60-888e-59f802b825c4 |
-| 8 | AL1385 | 5149af37-d065-4b51-9357-752e1b42b166 |
-| 9 | AL1452 | fbda8499-432a-40e8-b095-34d9e9ea9f4a |
-| 10 | AL1458 | 845fcdec-a905-4852-9d1d-c5a048e0fb8a |
-| 11 | AL1459 | 2d08d54c-64e2-4911-9338-0b947dda24d4 |
-| 12 | AL1464 | a8c0601f-cdfd-4d88-b0d5-7029e476927a |
-| 13 | AL1483 | 108c8d4c-ee7d-4e9b-b6da-dbc730fd6f8c |
-| 14 | AL1489 | 9e28f4c6-9fe6-4702-86a9-5fb627626c7e |
-| 15 | AL1502 | 66d8c461-cb6b-4eb4-831b-e20c338e8ffe |
-| 16 | AL1503 | 9e1ad772-5824-4443-9e63-fa2b7eaae768 |
-| 17 | AL1504 | 15b15f87-9755-49be-a3b9-ba965abde908 |
-| 18 | AL1516 | 036965bf-74bf-4898-b0b1-fc4eeabe6bd6 |
-| 19 | AL1518 | 64f33305-eda1-46b0-bf08-50ac1519fc3a |
-| 20 | AL1520 | 4fc3fdba-527e-4efd-85a1-1d6d579fff9b |
-| 21 | AL643 | 4a879db3-9b37-4741-b2fc-31594c9402cf |
-| 22 | AL651 | 93037384-8387-44a7-945d-38148a53d62a |
-| 23 | AL653 | 9d7ad938-3f97-466d-9dc3-3032f440462e |
+---
 
-### Validation Already in Place
-- Import button disabled when errors exist: `disabled={importing || errors.length > 0}`
-- SKU validation at preview step (fail-fast)
-- SKU validation again at import step (double-check)
-- Error messages show specific rows with issues
+## Verification
+
+After implementing:
+- Admin (admin@gmail.com) will see AdminDashboard
+- Manager (tse.93@hotmail.com) will see ManagerDashboard
+- Salesperson will see SalespersonDashboard
+- No user will incorrectly see SalespersonDashboard due to null role
+
+The binding tables remain untouched - they are pure relationship tables with no side effects on user roles.
