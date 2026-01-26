@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useResponsivePagination } from '@/hooks/useResponsivePagination';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -54,11 +55,12 @@ export default function CancelledSales() {
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('my');
 
-  // Use team-aware orders hook
+  // Use team-aware orders hook with high limit
   const { data: allOrders = [], isLoading } = useTeamOrders({ 
     status: 'CANCELLED',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
+    limit: 1000000,
   });
   
   const { data: userDirectory = [] } = useUserDirectory();
@@ -145,6 +147,21 @@ export default function CancelledSales() {
       return true;
     });
   }, [allOrders, filterMonth, filterReason, filterSalesperson, filterArea]);
+
+  // Add pagination for large datasets
+  const {
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    paginatedData,
+    pageSize,
+  } = useResponsivePagination({
+    totalItems: filteredOrders.length,
+    headerHeight: 350,
+    footerHeight: 80,
+  });
+
+  const paginatedOrders = paginatedData(filteredOrders);
 
   const columns: Column<Order>[] = [
     { 
@@ -441,7 +458,7 @@ export default function CancelledSales() {
         </div>
 
         <DataGrid
-          data={filteredOrders}
+          data={paginatedOrders}
           columns={columns}
           keyField="id"
           selectable={isEditable}
@@ -459,6 +476,35 @@ export default function CancelledSales() {
             ) : undefined
           }
         />
+
+        {filteredOrders.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30 rounded-b-lg">
+            <div className="text-sm text-muted-foreground">
+              Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Restore Dialog */}

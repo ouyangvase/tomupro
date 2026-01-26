@@ -96,7 +96,7 @@ export default function SalespersonActionInbox() {
   const { profile, role } = useAuth();
   const { data: allOrders = [], isLoading, refetch } = useOrders({ 
     actionRequiredOnly: true,
-    limit: 1000  // Higher limit since these are specifically action-required
+    limit: 1000000  // Fetch all action-required orders
   });
   
   const [sourceFilter, setSourceFilter] = useState<string>('all');
