@@ -122,28 +122,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Defer profile fetch
+        // Keep loading = true until profile is loaded
         if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
+          // Defer profile fetch but keep loading true until it completes
+          setTimeout(async () => {
+            await fetchProfile(session.user.id);
+            setLoading(false);  // Only set loading false AFTER profile loads
           }, 0);
         } else {
           setProfile(null);
           setPreviousRole(null);
           setRoleChanged(false);
+          setLoading(false);  // No user = no profile needed, safe to stop loading
         }
-        setLoading(false);
       }
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        await fetchProfile(session.user.id);
       }
-      setLoading(false);
+      setLoading(false);  // Only after profile fetch completes
     });
 
     return () => subscription.unsubscribe();
