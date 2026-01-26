@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AdminViewModeToggle } from "@/components/admin/AdminViewModeToggle";
 
 interface NavItem {
   title: string;
@@ -509,6 +510,9 @@ export function AppSidebar() {
 
       {/* Premium Footer with User Card */}
       <SidebarFooter className="p-4 border-t border-border/30 bg-gradient-to-t from-primary/5 to-transparent">
+        {/* Admin View Mode Toggle */}
+        {userRole === 'admin' && !collapsed && <AdminViewModeToggle />}
+        
         {!collapsed && (
           <div className="flex items-center gap-3 mb-4 p-3 rounded-xl bg-secondary/50 backdrop-blur-sm border border-border/30">
             <div className="relative">
