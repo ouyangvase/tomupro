@@ -6,22 +6,35 @@ import { useDataShares } from '@/hooks/useDataShares';
 import { supabase } from '@/integrations/supabase/client';
 
 /**
- * Server-side hook to get accessible user IDs including data shares.
- * This is the source of truth for visibility with shares included.
+ * Server-side hook to get accessible user IDs.
+ * This calls the unified get_accessible_owner_ids() RPC which handles:
+ * - Admin: NULL (sees all)
+ * - Manager: self + bound salespersons + data shares
+ * - Salesperson: self + data shares
+ * - Runner: self + bound salespersons + manager-bound users
  * 
  * Returns:
  * - null if admin (can see all)
  * - array of UUIDs for non-admins (own + team + shared)
  */
-export function useServerAccessibleIds() {
+export function useServerAccessibleIds(includeShares = true) {
   const { user, role } = useAuth();
 
   return useQuery({
-    queryKey: ['accessible-user-ids', user?.id],
+    queryKey: ['accessible-owner-ids', user?.id, includeShares],
     queryFn: async () => {
       if (!user?.id) return [];
 
-      const { data, error } = await supabase.rpc('get_accessible_user_ids');
+      // Use existing get_accessible_user_ids or get_visible_owner_ids
+      // First try get_accessible_user_ids (includes shares)
+      const { data: accessibleData, error: accessibleError } = await supabase.rpc('get_accessible_user_ids');
+      
+      if (!accessibleError && accessibleData !== undefined) {
+        return accessibleData as string[] | null;
+      }
+      
+      // Fallback to get_visible_owner_ids (team visibility only)
+      const { data, error } = await supabase.rpc('get_visible_owner_ids');
       
       if (error) {
         console.error('Failed to fetch accessible user IDs:', error);
@@ -32,6 +45,8 @@ export function useServerAccessibleIds() {
     },
     enabled: !!user?.id,
     staleTime: 30000,
+    retry: 2,
+    retryDelay: 1000,
   });
 }
 
@@ -39,12 +54,15 @@ export function useServerAccessibleIds() {
  * Client-side hook that combines team visibility with data shares.
  * Used for filtering data in queries.
  * 
+ * This is the PRIMARY hook for visibility - all pages should use this.
+ * 
  * Returns:
  * - undefined if admin (no filter needed)
  * - array of accessible user IDs for non-admins
  */
 export function useAccessibleUserIds() {
   const { user, role } = useAuth();
+  const { data: serverIds, isLoading: serverLoading, refetch } = useServerAccessibleIds();
   const { visibleUserIds: teamVisibleIds } = useVisibleUserIds();
   const { data: shares = [], isLoading: sharesLoading } = useDataShares();
   
@@ -52,7 +70,14 @@ export function useAccessibleUserIds() {
     if (!user?.id) return [];
     if (role === 'admin') return undefined; // Admin sees all
     
-    // Start with team visibility
+    // Prefer server-side result if available
+    if (serverIds !== undefined) {
+      // null from server means admin (no filter)
+      if (serverIds === null) return undefined;
+      return serverIds;
+    }
+    
+    // Fallback to client-side computation while server loads
     const teamIds = teamVisibleIds || [user.id];
     
     // Add shared subject IDs
@@ -62,7 +87,7 @@ export function useAccessibleUserIds() {
     
     // Combine and deduplicate
     return [...new Set([...teamIds, ...sharedSubjectIds])];
-  }, [user?.id, role, teamVisibleIds, shares]);
+  }, [user?.id, role, serverIds, teamVisibleIds, shares]);
   
   // Get only the shared subject IDs (excluding team/own)
   const sharedSubjectIds = useMemo(() => {
@@ -75,8 +100,9 @@ export function useAccessibleUserIds() {
     accessibleUserIds,
     sharedSubjectIds,
     hasShares: sharedSubjectIds.length > 0,
-    isLoading: sharesLoading,
+    isLoading: serverLoading || sharesLoading,
     shares,
+    refetch,
   };
 }
 
@@ -88,7 +114,7 @@ export function useAccessibleUserIds() {
  */
 export function useDataScopeUserIds(scope: 'my' | 'shared' | 'all') {
   const { user, role } = useAuth();
-  const { accessibleUserIds, sharedSubjectIds, isLoading } = useAccessibleUserIds();
+  const { accessibleUserIds, sharedSubjectIds, isLoading, refetch } = useAccessibleUserIds();
   
   const scopedUserIds = useMemo<string[] | undefined>(() => {
     if (!user?.id) return [];
@@ -105,5 +131,5 @@ export function useDataScopeUserIds(scope: 'my' | 'shared' | 'all') {
     }
   }, [user?.id, role, scope, accessibleUserIds, sharedSubjectIds]);
   
-  return { scopedUserIds, isLoading };
+  return { scopedUserIds, isLoading, refetch };
 }
