@@ -1,111 +1,116 @@
 
-# Fix Import Error and Action Required Page
+# Fix Runner Inbox to Show All Assigned Orders
 
-## Issue Summary
+## Problem Summary
 
-| Issue | Root Cause | Solution |
-|-------|-----------|----------|
-| Import error: `order_owner_id` null | Empty string `''` is truthy, so `orderOwnerId \|\| profile.id` fails | Check for truthy and non-empty string |
-| Dashboard shows 2, page shows 0 | Action Required page uses `useOrders()` with 500 limit, but failed orders are older than 500th newest order | Add dedicated server-side filter for action-required orders |
-| Action Required orders not visible | Same as above - failed orders excluded by 500 limit | Fetch action-required orders specifically |
+| Metric | Expected | Actual | Gap |
+|--------|----------|--------|-----|
+| Runner Inbox orders | 530 | 200 | Missing 330 orders |
+| Display | All assigned orders | Limited subset | 62% of data hidden |
 
----
+The Runner Inbox currently has a hard limit of `200` orders in the `useOrders` hook call, which was added to prevent database timeouts. However, this causes over 60% of assigned orders to be hidden from the runner.
 
-## Part 1: Fix Import Error
+## Root Cause
 
-### File: `src/components/orders/ImportOrdersDialog.tsx`
-
-**Problem**: Line 277 uses `orderOwnerId || profile.id` but `orderOwnerId` can be empty string `''` which is falsy in JavaScript... wait, actually empty string IS falsy. Let me re-check.
-
-Actually the issue is different - the initial state on line 48 is `profile?.id || ''`. If profile is not yet loaded when the dialog opens, `orderOwnerId` starts as `''`. Then on line 277, `effectiveOwnerId = orderOwnerId || profile.id` - if `orderOwnerId` is `''` (falsy), it should fall back to `profile.id`. But if `profile.id` is also undefined at that moment, it stays as undefined.
-
-**Fix**: Add proper validation that blocks import if `effectiveOwnerId` is empty/undefined.
-
+In `src/pages/runner/RunnerInbox.tsx` (lines 68-72):
 ```typescript
-// Line 277-281 - Current code already has validation but needs strengthening
-const effectiveOwnerId = orderOwnerId || profile?.id;
-if (!effectiveOwnerId || effectiveOwnerId.trim() === '') {
-  toast({ variant: 'destructive', title: 'Error', description: 'Order owner not set. Please select an owner or wait for profile to load.' });
-  return;
-}
-```
-
----
-
-## Part 2: Fix Action Required Page Data Fetch
-
-### Problem Analysis
-- `useOrders()` fetches 500 most recent orders by `created_at DESC`
-- Failed orders `MK00287` (created Jan 20) and `EV110` (created Jan 13) are older than the 500th newest
-- They are never included in the results
-
-### Solution: Add dedicated filter for action-required orders
-
-### File: `src/hooks/useOrders.ts`
-
-Add a new filter option `actionRequiredOnly`:
-
-```typescript
-interface OrderFilters {
-  // ... existing filters
-  actionRequiredOnly?: boolean;  // NEW: Filter for action-required orders
-}
-```
-
-In the query function:
-
-```typescript
-// Server-side filter for action required orders
-if (filters?.actionRequiredOnly) {
-  // Get orders where salesperson_action_required = true OR runner_status = FAILED_DELIVERY
-  query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
-  // Also exclude cancelled orders for this view
-  query = query.neq('status', 'CANCELLED');
-}
-```
-
-### File: `src/pages/sales/SalespersonActionInbox.tsx`
-
-Update the orders fetch to use the new filter:
-
-```typescript
-// Line 97 - Change from:
-const { data: allOrders = [], isLoading, refetch } = useOrders();
-
-// To:
-const { data: allOrders = [], isLoading, refetch } = useOrders({ 
-  actionRequiredOnly: true,
-  limit: 1000  // Higher limit since these are specifically action-required
+const { data: orders, isLoading } = useOrders({ 
+  runnerId: user?.id,
+  excludeDeliveredAndFailed: true,
+  limit: 200  // <-- This limits to only 200 orders
 });
 ```
 
-Update the `actionRequiredOrders` memo since server already filters:
+The limit was added for performance reasons, but it's too restrictive for runners with 500+ active orders.
+
+---
+
+## Solution: Remove Limit + Add Pagination
+
+### Step 1: Increase or Remove the Limit
+
+**File: `src/pages/runner/RunnerInbox.tsx`**
+
+Change the limit from 200 to 1000 (or remove it to use the default 500):
 
 ```typescript
-// Line 118-119 - Simplified since server does the filtering
-const actionRequiredOrders = useMemo(() => {
-  let filtered = allOrders;  // Already filtered by server
-  
-  // Role-based filtering still needed (client-side)
-  if (canViewAll) {
-    // Admin sees all - no additional filter
-  } else if (canViewGroup) {
-    // Manager filtering...
-  } else {
-    // Salesperson filtering
-    filtered = filtered.filter(order => order.salesperson_id === profile?.id);
-  }
-  
-  // Apply UI filters
-  if (salespersonFilter !== 'all' && canViewAll) {
-    filtered = filtered.filter(o => o.salesperson_id === salespersonFilter);
-  }
-  if (sourceFilter !== 'all') {
-    filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
-  }
-  
-  return filtered;
-}, [allOrders, ...]);
+const { data: orders, isLoading } = useOrders({ 
+  runnerId: user?.id,
+  excludeDeliveredAndFailed: true,
+  limit: 1000  // Increase to accommodate all active orders
+});
+```
+
+Since the `excludeDeliveredAndFailed` filter is already reducing the dataset significantly (530 vs 699 total), and database indexes were added in the previous fix, a higher limit is now safe.
+
+### Step 2: Add Pagination (Optional but Recommended)
+
+For large datasets, add pagination using `useResponsivePagination`:
+
+```typescript
+import { useResponsivePagination } from '@/hooks/useResponsivePagination';
+
+// After filteredOrders is calculated:
+const {
+  currentPage,
+  setCurrentPage,
+  totalPages,
+  paginatedData,
+  pageSize,
+} = useResponsivePagination({
+  totalItems: filteredOrders.length,
+  headerHeight: 350,
+  footerHeight: 80,
+});
+
+const paginatedOrders = paginatedData(filteredOrders);
+```
+
+### Step 3: Update DataGrid to Use Paginated Data
+
+Pass `paginatedOrders` to the DataGrid instead of `filteredOrders`:
+
+```typescript
+<DataGrid
+  data={paginatedOrders}  // Changed from filteredOrders
+  columns={columns}
+  ...
+/>
+```
+
+### Step 4: Add Pagination Controls
+
+Add pagination UI after the DataGrid:
+
+```typescript
+{filteredOrders.length > 0 && totalPages > 1 && (
+  <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
+    <div className="text-sm text-muted-foreground">
+      Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders
+    </div>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setCurrentPage(currentPage - 1)}
+        disabled={currentPage === 1}
+      >
+        Previous
+      </Button>
+      <span className="text-sm">
+        Page {currentPage} of {totalPages}
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setCurrentPage(currentPage + 1)}
+        disabled={currentPage === totalPages}
+      >
+        Next
+      </Button>
+    </div>
+  </div>
+)}
 ```
 
 ---
@@ -114,33 +119,23 @@ const actionRequiredOrders = useMemo(() => {
 
 | File | Change | Purpose |
 |------|--------|---------|
-| `src/components/orders/ImportOrdersDialog.tsx` | Strengthen `effectiveOwnerId` validation | Fix null `order_owner_id` error |
-| `src/hooks/useOrders.ts` | Add `actionRequiredOnly` filter | Server-side filter for action-required orders |
-| `src/pages/sales/SalespersonActionInbox.tsx` | Use `actionRequiredOnly: true` filter | Fetch all action-required orders (not limited by recency) |
+| `src/pages/runner/RunnerInbox.tsx` | Change `limit: 200` to `limit: 1000` | Fetch all active orders |
+| `src/pages/runner/RunnerInbox.tsx` | Add `useResponsivePagination` hook | Handle large data display |
+| `src/pages/runner/RunnerInbox.tsx` | Add pagination controls UI | Navigate through pages |
 
 ---
 
 ## Expected Results
 
-| Scenario | Before | After |
-|----------|--------|-------|
-| Import orders | 86 errors for null `order_owner_id` | Proper validation message, blocks import if owner not set |
-| Dashboard Action Required | Shows 2 (correct) | Shows 2 (unchanged) |
-| Action Required page | Shows 0 (missing data) | Shows 2 (matches dashboard) |
-| Failed orders visible | Not visible | Visible with details |
+| Metric | Before | After |
+|--------|--------|-------|
+| Select All count | 200 | 530 (all active orders) |
+| Data visibility | 38% | 100% |
+| Page load time | Fast (small data) | Fast (optimized with pagination) |
+| User experience | Missing orders | All orders visible with pagination |
 
 ---
 
 ## Technical Notes
 
-### Why server-side filtering is critical:
-- With 761+ orders and only 500 fetched, failed orders may be outside the window
-- Failed orders `MK00287` (rank ~501) and `EV110` (rank ~600+) are excluded by the 500 limit
-- Using `actionRequiredOnly` filter fetches only the relevant orders regardless of creation date
-
-### Query optimization:
-The new filter uses Supabase `.or()` for efficient server-side filtering:
-```sql
-WHERE (salesperson_action_required = true OR runner_status = 'FAILED_DELIVERY')
-  AND status != 'CANCELLED'
-```
+The database optimizations from the previous fix (indexes on `order_items.product_id` and `orders.runner_id + created_at`, plus the optimized RLS policy) make it safe to increase the limit. The `excludeDeliveredAndFailed` server-side filter also reduces the query workload significantly.
