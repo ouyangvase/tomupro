@@ -46,6 +46,36 @@ serve(async (req) => {
       );
     }
 
+    // Role-based authorization: Only drivers, runners, and admins need maps access
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      console.log('Profile fetch error:', profileError?.message);
+      return new Response(
+        JSON.stringify({ error: 'Unable to verify user role' }),
+        { 
+          status: 403, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const allowedRoles = ['driver', 'runner', 'admin'];
+    if (!allowedRoles.includes(profile.role)) {
+      console.log('Unauthorized role attempt:', profile.role, 'for user:', user.id);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Maps access restricted to drivers and runners' }),
+        { 
+          status: 403, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY');
     
     if (!GOOGLE_MAPS_API_KEY) {
