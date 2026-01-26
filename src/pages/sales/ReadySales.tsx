@@ -313,8 +313,6 @@ export default function ReadySales() {
         { label: 'Unassigned', value: 'UNASSIGNED' },
         { label: 'Assigned', value: 'ASSIGNED' },
         { label: 'Taken', value: 'TAKEN' },
-        { label: 'Delivered', value: 'DELIVERED' },
-        { label: 'Failed', value: 'FAILED_DELIVERY' },
       ],
       render: (o) => (
         <div className="space-y-1">

@@ -87,8 +87,6 @@ const runnerStatusOptions: FilterOption[] = [
   { label: 'Unassigned', value: 'UNASSIGNED' },
   { label: 'Assigned', value: 'ASSIGNED' },
   { label: 'Taken', value: 'TAKEN' },
-  { label: 'Delivered', value: 'DELIVERED' },
-  { label: 'Failed Delivery', value: 'FAILED_DELIVERY' },
 ];
 
 const driverStatusOptions: FilterOption[] = [
@@ -568,8 +566,14 @@ export function applyOrderFilters<T extends {
       }
     }
 
-    // Status filters
-    if (filters.runnerStatus && order.runner_status !== filters.runnerStatus) return false;
+    // Status filters - "Assigned" includes both ASSIGNED and TAKEN
+    if (filters.runnerStatus) {
+      if (filters.runnerStatus === 'ASSIGNED') {
+        if (order.runner_status !== 'ASSIGNED' && order.runner_status !== 'TAKEN') return false;
+      } else if (order.runner_status !== filters.runnerStatus) {
+        return false;
+      }
+    }
     if (filters.driverStatus && order.driver_status !== filters.driverStatus) return false;
     if (filters.orderStatus && order.status !== filters.orderStatus) return false;
     if (filters.reconciliationStatus && order.reconciliation_status !== filters.reconciliationStatus) return false;
