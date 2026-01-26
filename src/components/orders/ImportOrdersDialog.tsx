@@ -163,16 +163,30 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       return;
     }
 
-    // Apply mapping and validate
+    // Apply mapping and validate basic schema
     const mappedRows = applyColumnMapping(rawData.rows, columnMapping);
     const validation = validateOrderLines(mappedRows);
     
     if (validation.errors.length > 0) {
       setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
-    } else {
-      setErrors([]);
+      setStep('preview');
+      return;
     }
     
+    // Validate SKU ownership at preview step (fail-fast)
+    const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
+    if (!skuValidation.valid) {
+      setErrors([
+        'Invalid SKUs found. Please fix and re-upload:',
+        '',
+        ...skuValidation.errors
+      ]);
+      setStep('preview');
+      return;
+    }
+    
+    // No errors - clear and proceed
+    setErrors([]);
     setStep('preview');
   };
 
@@ -232,7 +246,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       );
 
       if (nameMatches.length === 0) {
-        skuErrors.push(`Row ${csvRowNum}: SKU not found in the selected owner's product list (sku_name_or_code="${skuValue}")`);
+        skuErrors.push(`Row ${csvRowNum}: SKU "${skuValue}" not found in your product catalog. Please add this product first or correct the SKU code.`);
       } else if (nameMatches.length > 1) {
         skuErrors.push(`Row ${csvRowNum}: SKU name is ambiguous (${nameMatches.length} matches); please use sku_code (sku_name="${skuValue}")`);
       }
