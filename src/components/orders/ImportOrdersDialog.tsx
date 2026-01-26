@@ -274,9 +274,10 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     if (!rawData || !profile) return;
     
     // Ensure orderOwnerId is set - fallback to profile.id for salesperson
-    const effectiveOwnerId = orderOwnerId || profile.id;
-    if (!effectiveOwnerId) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Order owner not set. Please select an owner.' });
+    // Check for empty string explicitly since it's falsy but could slip through
+    const effectiveOwnerId = (orderOwnerId && orderOwnerId.trim() !== '') ? orderOwnerId : profile?.id;
+    if (!effectiveOwnerId || effectiveOwnerId.trim() === '') {
+      toast({ variant: 'destructive', title: 'Error', description: 'Order owner not set. Please select an owner or wait for profile to load.' });
       return;
     }
 
