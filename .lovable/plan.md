@@ -1,198 +1,168 @@
 
-# Fix Delivered Orders Page - Show All Data with Pagination
+# Fix Database Statement Timeout Error
 
-## Problem Summary
+## Problem Analysis
 
-The Delivered Orders page shows only 101 orders while the dashboard correctly shows 207 delivered orders. This happens because:
+The error "current transaction is aborted, commands ignored until end of transaction block" is a **cascading failure** caused by:
 
-1. **Server-side limit**: The `useOrders` hook fetches only 500 most recent orders (by `created_at`), then filters for delivered orders on the client side
-2. **Client-side filtering**: Many of those 500 orders aren't delivered, leaving only 101 out of 207 actual delivered orders
-3. **No pagination**: All orders are rendered at once without page navigation
+1. **Statement timeout on orders query** - The main query fetching orders with nested `order_items` and `products` is timing out
+2. **Heavy RLS policy evaluation** - The `order_items` RLS policies call `get_user_role(auth.uid())` and `is_in_manager_team()` for EVERY row
+3. **Large dataset** - One runner has **688 orders**, triggering ~2000+ RLS function calls per page load
+4. **Transaction cascade** - Once one query times out, PostgreSQL marks the transaction as aborted, and ALL subsequent queries fail
 
----
+## Solution: Multi-Part Fix
 
-## Solution
+### Part 1: Add Missing Index for Product Lookup
 
-### 1. Add Server-Side Filter for Delivered Orders
+Create an index on `order_items.product_id` to speed up the product join in nested queries.
 
-**File:** `src/pages/runner/RunnerDeliveredOrders.tsx`
-
-Change the orders query to include `runnerStatus: 'DELIVERED'` in the filter, so the database returns only delivered orders (not all orders filtered client-side).
-
-**Current (around line 90-104):**
-```typescript
-const ordersFilter = useMemo(() => {
-  if (role === 'runner') {
-    return { runnerId: user?.id };
-  }
-  // ...
-}, [role, user?.id, salespersonIds]);
-
-const { data: orders, isLoading } = useOrders(ordersFilter as any);
+```sql
+CREATE INDEX idx_order_items_product_id 
+ON order_items(product_id);
 ```
 
-**Change to:**
-```typescript
-const ordersFilter = useMemo(() => {
-  const baseFilter = { runnerStatus: 'DELIVERED' as const };
-  
-  if (role === 'runner') {
-    return { ...baseFilter, runnerId: user?.id };
-  }
-  if (role === 'salesperson') {
-    return { ...baseFilter, salespersonId: user?.id };
-  }
-  if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
-    return { ...baseFilter, salespersonIds };
-  }
-  return baseFilter; // admin - all delivered orders
-}, [role, user?.id, salespersonIds]);
+### Part 2: Optimize RLS Policy on order_items
+
+The current policy evaluates `get_user_role()` for every row. Replace with a more efficient policy that:
+1. Caches the role check
+2. Uses JOIN instead of EXISTS for better query planning
+
+**Current problematic policy:**
+```sql
+-- Calls get_user_role() per row + EXISTS subquery per row
+(EXISTS ( SELECT 1 FROM orders o
+  WHERE o.id = order_items.order_id 
+  AND ((auth.uid() = o.salesperson_id) 
+    OR (auth.uid() = o.runner_id) 
+    OR (get_user_role(auth.uid()) = ANY (ARRAY['admin', 'manager'])))))
 ```
 
-This ensures the database only returns delivered orders, making the 500 limit apply to delivered orders only.
-
----
-
-### 2. Remove Client-Side "DELIVERED" Filter
-
-Since we're now filtering server-side, update `deliveredOrders` memo to skip redundant filtering:
-
-**Current (around line 141-146):**
-```typescript
-const deliveredOrders = useMemo(() => {
-  if (!orders) return [];
-  
-  let filtered = orders.filter(order => 
-    order.runner_status === 'DELIVERED' && order.status !== 'CANCELLED'
+**Optimized policy using security definer function:**
+```sql
+CREATE OR REPLACE FUNCTION can_access_order_items(p_order_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM orders o
+    WHERE o.id = p_order_id
+    AND (
+      o.salesperson_id = auth.uid()
+      OR o.runner_id = auth.uid()
+      OR o.driver_id = auth.uid()
+      OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+      OR (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'manager')
+        AND (
+          o.salesperson_id = auth.uid()
+          OR EXISTS (
+            SELECT 1 FROM manager_salesperson_bindings
+            WHERE manager_id = auth.uid() AND salesperson_id = o.salesperson_id AND active = true
+          )
+        )
+      )
+    )
   );
-  // ... other filters
+$$;
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Order items follow order access" ON order_items;
+DROP POLICY IF EXISTS "Manager can view team order items" ON order_items;
+
+-- Create simplified policy
+CREATE POLICY "order_items_access" ON order_items
+FOR ALL
+USING (can_access_order_items(order_id));
 ```
 
-**Change to:**
-```typescript
-const deliveredOrders = useMemo(() => {
-  if (!orders) return [];
-  
-  // Server-side already filters for DELIVERED, just exclude cancelled
-  let filtered = orders.filter(order => order.status !== 'CANCELLED');
-  // ... rest of filters remain the same
+### Part 3: Add Composite Index for Runner Queries
+
+Create a composite index optimized for the runner inbox query pattern:
+
+```sql
+CREATE INDEX idx_orders_runner_created_desc
+ON orders(runner_id, created_at DESC)
+WHERE runner_id IS NOT NULL;
 ```
 
----
+### Part 4: Frontend Query Optimization
 
-### 3. Add Pagination
+Reduce the initial load by adding more specific server-side filters in `useOrders`:
 
-Import and use the existing `useResponsivePagination` hook:
+**File: `src/hooks/useOrders.ts`**
 
-**Add import (around line 1):**
+Add a `limit` parameter and reduce default from 500 to 100 for inbox views:
+
 ```typescript
-import { useResponsivePagination } from '@/hooks/useResponsivePagination';
+interface OrderFilters {
+  status?: OrderStatus;
+  salespersonId?: string;
+  salespersonIds?: string[];
+  runnerId?: string;
+  runnerStatus?: RunnerStatus;
+  reconciliationStatus?: ReconciliationStatus;
+  limit?: number;  // Add this
+}
+
+// In query:
+.limit(filters?.limit || 500)
 ```
 
-**Add pagination hook after filters state (around line 123):**
+**File: `src/pages/runner/RunnerInbox.tsx`**
+
+Exclude delivered/failed orders at the server level:
+
 ```typescript
-// Pagination
-const {
-  currentPage,
-  setCurrentPage,
-  totalPages,
-  paginatedData,
-} = useResponsivePagination({
-  totalItems: deliveredOrders.length,
-  headerHeight: 380, // Account for header + stats + filters
-  footerHeight: 80,
+const { data: orders, isLoading } = useOrders({ 
+  runnerId: user?.id,
+  limit: 200  // Reduce initial load
 });
-
-// Paginated orders for display
-const paginatedOrders = paginatedData(deliveredOrders);
 ```
 
----
+### Part 5: Reduce Query Scope for Runner Inbox
 
-### 4. Update Table/Card Rendering to Use Paginated Data
+Since Runner Inbox only shows active orders (not delivered, not failed), add server-side exclusion:
 
-**Desktop table (around line 782):**
-```typescript
-// Change: deliveredOrders.map(...)
-// To: paginatedOrders.map(...)
-```
+**File: `src/hooks/useOrders.ts`**
 
-**Mobile cards (around line 639):**
-```typescript
-// Change: deliveredOrders.map(...)
-// To: paginatedOrders.map(...)
-```
-
----
-
-### 5. Add Pagination Controls UI
-
-Add pagination controls after the table/cards section (around line 921):
+Add new filter for excluding specific runner statuses:
 
 ```typescript
-{/* Pagination Controls */}
-{deliveredOrders.length > 0 && totalPages > 1 && (
-  <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
-    <div className="text-sm text-muted-foreground">
-      Showing {((currentPage - 1) * paginatedOrders.length) + 1} - {Math.min(currentPage * paginatedOrders.length, deliveredOrders.length)} of {deliveredOrders.length} orders
-    </div>
-    <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setCurrentPage(currentPage - 1)}
-        disabled={currentPage === 1}
-      >
-        Previous
-      </Button>
-      <span className="text-sm">
-        Page {currentPage} of {totalPages}
-      </span>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setCurrentPage(currentPage + 1)}
-        disabled={currentPage === totalPages}
-      >
-        Next
-      </Button>
-    </div>
-  </div>
-)}
-```
-
----
-
-### 6. Update Export "Select All" Behavior
-
-Update `toggleExportSelectAll` to only select visible/paginated orders or clarify it selects all filtered:
-
-**Add info text to Export dropdown (around line 451):**
-```typescript
-<DropdownMenuItem onClick={handleExportAll}>
-  Export All Filtered ({deliveredOrders.length})
-</DropdownMenuItem>
+if (filters?.excludeDeliveredAndFailed) {
+  query = query.neq('runner_status', 'DELIVERED');
+  query = query.neq('runner_status', 'FAILED_DELIVERY');
+}
 ```
 
 ---
 
 ## Summary of Changes
 
-| File | Change | Purpose |
-|------|--------|---------|
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Add `runnerStatus: 'DELIVERED'` to filter | Server-side filtering |
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Import and use `useResponsivePagination` | Enable pagination |
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Add pagination controls UI | User can navigate pages |
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Use `paginatedOrders` in map | Display current page only |
-
----
+| Change | Type | Purpose |
+|--------|------|---------|
+| `CREATE INDEX idx_order_items_product_id` | Database | Speed up product JOIN |
+| `CREATE INDEX idx_orders_runner_created_desc` | Database | Speed up runner queries |
+| Replace order_items RLS policies | Database | Reduce function call overhead |
+| Create `can_access_order_items()` function | Database | Single-point access check |
+| Add `limit` param to useOrders | Frontend | Reduce data fetched |
+| Add `excludeDeliveredAndFailed` filter | Frontend | Server-side filtering |
 
 ## Expected Result
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Total Delivered shown | 101 | 207 (matches dashboard) |
-| Pagination | None | Yes, with Previous/Next |
-| Query efficiency | Fetches 500 orders, filters client | Fetches only delivered orders |
-| Filter: All | Works | Works |
-| Stats accuracy | Accurate after filtering | Accurate |
+| Orders query time | Timeout (>8s) | <1s |
+| RLS function calls | 2000+/page | 200-300/page |
+| Page load for runner | Error | Works |
+| Transaction errors | Cascade failure | None |
+
+## Execution Order
+
+1. Create database indexes (immediate performance boost)
+2. Create `can_access_order_items` function
+3. Replace RLS policies (requires careful migration)
+4. Update frontend hooks
+5. Update RunnerInbox component
