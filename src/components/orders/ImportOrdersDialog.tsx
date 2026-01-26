@@ -239,6 +239,13 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
   const handleImport = async () => {
     if (!rawData || !profile) return;
+    
+    // Ensure orderOwnerId is set - fallback to profile.id for salesperson
+    const effectiveOwnerId = orderOwnerId || profile.id;
+    if (!effectiveOwnerId) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Order owner not set. Please select an owner.' });
+      return;
+    }
 
     setImporting(true);
     setErrors([]);
@@ -363,7 +370,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
               salesperson_id: profile.id,
-              order_owner_id: orderOwnerId, // Use selected order owner for SKU validation
+              order_owner_id: effectiveOwnerId, // Use selected order owner for SKU validation
               status: defaultStatus,
               total_qty: totalQty,
               total_amount: totalAmount,
