@@ -1,430 +1,564 @@
 
-# Admin "View As / Operate As" Access Control System
+# Admin-Only Data Visibility Sharing System
 
-## Architecture Overview
+## Overview
 
-This feature uses a **client-side impersonation context** that wraps the AuthContext, allowing admins to temporarily assume another user's data visibility and permissions without affecting the actual authentication or database ownership.
+This feature allows Admins to grant users (Viewers) permission to view and optionally operate on another user's (Subject) data. This is NOT impersonation - the Viewer remains themselves but gains access to the Subject's Orders, Products, Stock Balance, and related dashboards.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   AuthProvider                      │
-│  (Real user: Admin, real session, real auth)       │
-│                                                     │
-│  ┌───────────────────────────────────────────────┐  │
-│  │         ImpersonationProvider                 │  │
-│  │                                               │  │
-│  │  • impersonatedUser (target profile)         │  │
-│  │  • effectiveRole (target's role)             │  │
-│  │  • effectiveUserId (target's ID)             │  │
-│  │  • isImpersonating (boolean flag)            │  │
-│  │  • startImpersonation() / stopImpersonation()│  │
-│  │                                               │  │
-│  └───────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────┘
+The system builds on the existing `stock_visibility_overrides` pattern but extends it with granular scope controls and operation permissions.
+
+---
+
+## Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                     user_data_shares                            │
+│                                                                 │
+│  viewer_user_id ─────► Subject's data becomes visible           │
+│  subject_user_id                                                │
+│                                                                 │
+│  Scopes:                                                        │
+│  ├─ scope_orders        (boolean)                               │
+│  ├─ scope_products      (boolean)                               │
+│  ├─ scope_stock_balance (boolean)                               │
+│  └─ scope_inbound       (boolean)                               │
+│                                                                 │
+│  can_operate = true ──► Viewer can perform actions              │
+│  can_operate = false ─► Read-only access                        │
+└─────────────────────────────────────────────────────────────────┘
+
+             ┌──────────────────────────────────────┐
+             │     Visibility Computation Flow      │
+             └──────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────────────┐
+        │  get_accessible_user_ids(current_user_id)   │
+        │                                             │
+        │  1. Start with [current_user_id]            │
+        │  2. Add team members (if manager)           │
+        │  3. Add shared subjects from user_data_shares│
+        │                                             │
+        │  Return: unique array of accessible IDs     │
+        └─────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Phase 1: Database Schema
 
-### 1.1 Create Impersonation Sessions Table
+### 1.1 Create `user_data_shares` Table
 
 ```sql
--- Table to track admin impersonation sessions for audit
-CREATE TABLE admin_impersonation_sessions (
+-- Core sharing permissions table
+CREATE TABLE user_data_shares (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  admin_id uuid REFERENCES profiles(id) NOT NULL,
-  target_user_id uuid REFERENCES profiles(id) NOT NULL,
-  target_role app_role NOT NULL,
-  started_at timestamptz DEFAULT now() NOT NULL,
-  ended_at timestamptz,
-  actions_count integer DEFAULT 0,
-  created_at timestamptz DEFAULT now()
+  
+  -- Who can see
+  viewer_user_id uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  
+  -- Whose data is shared
+  subject_user_id uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  
+  -- Granular scope toggles
+  scope_orders boolean DEFAULT true NOT NULL,
+  scope_products boolean DEFAULT true NOT NULL,
+  scope_stock_balance boolean DEFAULT true NOT NULL,
+  scope_inbound boolean DEFAULT false NOT NULL,
+  
+  -- Operation permission
+  can_operate boolean DEFAULT false NOT NULL,
+  
+  -- Status
+  active boolean DEFAULT true NOT NULL,
+  
+  -- Audit
+  created_by_admin_id uuid REFERENCES profiles(id) NOT NULL,
+  created_at timestamptz DEFAULT now() NOT NULL,
+  updated_at timestamptz DEFAULT now() NOT NULL,
+  
+  -- Constraints
+  CONSTRAINT unique_viewer_subject UNIQUE (viewer_user_id, subject_user_id),
+  CONSTRAINT no_self_share CHECK (viewer_user_id != subject_user_id)
 );
 
--- Index for quick lookups
-CREATE INDEX idx_impersonation_admin ON admin_impersonation_sessions(admin_id);
-CREATE INDEX idx_impersonation_active ON admin_impersonation_sessions(admin_id) WHERE ended_at IS NULL;
+-- Indexes for fast lookups
+CREATE INDEX idx_shares_viewer ON user_data_shares(viewer_user_id) WHERE active = true;
+CREATE INDEX idx_shares_subject ON user_data_shares(subject_user_id) WHERE active = true;
 
--- RLS: Only admins can read/write
-ALTER TABLE admin_impersonation_sessions ENABLE ROW LEVEL SECURITY;
+-- RLS: Admin only
+ALTER TABLE user_data_shares ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Admins can manage impersonation sessions"
-  ON admin_impersonation_sessions
+CREATE POLICY "Admins can manage data shares"
+  ON user_data_shares
   FOR ALL
+  USING (public.get_user_role(auth.uid()) = 'admin');
+
+-- Read policy for viewers to see their own shares
+CREATE POLICY "Users can view their own shares"
+  ON user_data_shares
+  FOR SELECT
+  USING (viewer_user_id = auth.uid());
+```
+
+### 1.2 Create Access Audit Log Table
+
+```sql
+-- Audit log for shared data access
+CREATE TABLE access_audit_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_user_id uuid REFERENCES profiles(id) NOT NULL,
+  subject_user_id uuid REFERENCES profiles(id) NOT NULL,
+  action_type text NOT NULL, -- 'view', 'read', 'write'
+  resource_type text NOT NULL, -- 'order', 'product', 'stock', 'inbound'
+  resource_id uuid,
+  share_id uuid REFERENCES user_data_shares(id),
+  metadata jsonb,
+  created_at timestamptz DEFAULT now() NOT NULL
+);
+
+CREATE INDEX idx_audit_actor ON access_audit_log(actor_user_id);
+CREATE INDEX idx_audit_subject ON access_audit_log(subject_user_id);
+CREATE INDEX idx_audit_timestamp ON access_audit_log(created_at DESC);
+
+-- RLS: Admin read-only, write via trigger/function
+ALTER TABLE access_audit_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Admins can read audit logs"
+  ON access_audit_log
+  FOR SELECT
   USING (public.get_user_role(auth.uid()) = 'admin');
 ```
 
-### 1.2 Add Impersonation Fields to Audit Logs
-
-Extend the audit_logs table to track when actions are performed during impersonation:
+### 1.3 Create Helper RPC Function
 
 ```sql
-ALTER TABLE audit_logs
-ADD COLUMN impersonated_user_id uuid REFERENCES profiles(id),
-ADD COLUMN impersonation_session_id uuid REFERENCES admin_impersonation_sessions(id);
-
-COMMENT ON COLUMN audit_logs.impersonated_user_id IS 'If set, admin was viewing as this user when action was performed';
-COMMENT ON COLUMN audit_logs.impersonation_session_id IS 'Links to the impersonation session record';
-```
-
----
-
-## Phase 2: Impersonation Context
-
-### 2.1 Create ImpersonationContext
-
-**File:** `src/contexts/ImpersonationContext.tsx`
-
-```typescript
-interface ImpersonatedUser {
-  id: string;
-  display_name: string;
-  email: string;
-  role: AppRole;
-  status: string;
-}
-
-interface ImpersonationContextType {
-  // State
-  isImpersonating: boolean;
-  impersonatedUser: ImpersonatedUser | null;
-  sessionId: string | null;
-  
-  // Effective values (use these instead of real auth)
-  effectiveUserId: string | null;
-  effectiveRole: AppRole | null;
-  effectiveProfile: Profile | null;
-  
-  // Actions
-  startImpersonation: (userId: string) => Promise<void>;
-  stopImpersonation: () => Promise<void>;
-  
-  // Audit helper
-  logImpersonatedAction: (action: string, details?: Record<string, unknown>) => Promise<void>;
-}
-```
-
-Key behaviors:
-- When NOT impersonating: returns real admin values
-- When impersonating: returns target user's values for `effectiveUserId`, `effectiveRole`
-- Stores session in `admin_impersonation_sessions` table
-- Persists state in sessionStorage (survives page refresh, clears on tab close)
-
-### 2.2 Create `useEffectiveAuth` Hook
-
-**File:** `src/hooks/useEffectiveAuth.ts`
-
-This hook replaces `useAuth()` in all data-fetching hooks:
-
-```typescript
-export function useEffectiveAuth() {
-  const auth = useAuth();
-  const impersonation = useImpersonation();
-  
-  // If impersonating, return target user's context
-  if (impersonation.isImpersonating && impersonation.impersonatedUser) {
-    return {
-      user: { id: impersonation.effectiveUserId },
-      profile: impersonation.effectiveProfile,
-      role: impersonation.effectiveRole,
-      // Keep session for actual auth
-      session: auth.session,
-      // Flags
-      isImpersonating: true,
-      realAdminId: auth.user?.id,
-    };
-  }
-  
-  return { ...auth, isImpersonating: false, realAdminId: null };
-}
-```
-
----
-
-## Phase 3: UI Components
-
-### 3.1 Admin View Mode Toggle (Sidebar)
-
-**File:** `src/components/admin/AdminViewModeToggle.tsx`
-
-Only visible when `role === 'admin'`:
-- Switch labeled "Admin View Mode"
-- When toggled ON, shows user selector dropdown
-- Searchable by name/email/role
-- Excludes other admins from the list
-
-### 3.2 User Selector Dropdown
-
-**File:** `src/components/admin/ImpersonationUserSelect.tsx`
-
-- Fetches all non-admin users from `profiles`
-- Searchable combobox with:
-  - Display name
-  - Email
-  - Role badge (Manager/Salesperson/Runner/Driver)
-  - Status indicator (active/disabled/resigned)
-- Disabled users are shown but marked
-- On selection: calls `startImpersonation(userId)`
-
-### 3.3 Impersonation Banner
-
-**File:** `src/components/admin/ImpersonationBanner.tsx`
-
-Persistent banner shown on ALL pages when impersonating:
-
-```tsx
-<div className="fixed top-0 left-0 right-0 z-50 bg-orange-500 text-white py-2 px-4 flex items-center justify-between">
-  <div className="flex items-center gap-2">
-    <Eye className="h-4 w-4" />
-    <span>Viewing as: <strong>{impersonatedUser.display_name}</strong> ({impersonatedUser.role})</span>
-  </div>
-  <Button variant="ghost" size="sm" onClick={stopImpersonation}>
-    <X className="h-4 w-4 mr-1" />
-    Exit View Mode
-  </Button>
-</div>
-```
-
-### 3.4 Update AppLayout
-
-**File:** `src/components/layout/AppLayout.tsx`
-
-- Wrap with `ImpersonationProvider`
-- Add `ImpersonationBanner` that shows when active
-- Adjust main content padding when banner is visible
-
----
-
-## Phase 4: Hook Updates (Critical)
-
-All data-fetching hooks must use `useEffectiveAuth()` instead of `useAuth()`:
-
-| Hook | Change Required |
-|------|-----------------|
-| `useTeamVisibility.ts` | Use `effectiveUserId` and `effectiveRole` |
-| `useDashboardStats.ts` | Use effective user for all queries |
-| `useOrders.ts` | No direct auth, but RLS applies via RPC |
-| `useProducts.ts` | Filter by effective owner_id |
-| `useInventory.ts` | Use effective warehouse visibility |
-| `useTeamMembers.ts` | Use effective manager_id for bindings |
-| `useNotifications.ts` | Show target user's notifications |
-
-### 4.1 Server-Side RPC Override
-
-For hooks that use `get_visible_owner_ids()` RPC, we need a new approach:
-
-**Option A:** Create `get_visible_owner_ids_for_user(p_user_id uuid)` RPC that takes an explicit user ID:
-
-```sql
-CREATE OR REPLACE FUNCTION get_visible_owner_ids_for_user(p_user_id uuid)
+-- Get all accessible user IDs for a given user (including shares)
+CREATE OR REPLACE FUNCTION get_accessible_user_ids(p_user_id uuid DEFAULT NULL)
 RETURNS uuid[]
 LANGUAGE plpgsql
 STABLE SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+  v_user_id uuid;
   v_role app_role;
+  v_result uuid[];
+  v_shared_subjects uuid[];
 BEGIN
-  SELECT role INTO v_role FROM profiles WHERE id = p_user_id;
+  v_user_id := COALESCE(p_user_id, auth.uid());
   
-  IF v_role = 'admin' THEN
-    RETURN NULL; -- Admin sees all
-  ELSIF v_role = 'manager' THEN
-    -- Return manager + team
-    RETURN ARRAY(
-      SELECT salesperson_id FROM manager_salesperson_bindings
-      WHERE manager_id = p_user_id AND active = true
-    ) || p_user_id;
-  ELSE
-    RETURN ARRAY[p_user_id];
+  IF v_user_id IS NULL THEN
+    RETURN ARRAY[]::uuid[];
   END IF;
+  
+  v_role := public.get_user_role(v_user_id);
+  
+  -- Admin can see all - return NULL to indicate no filter
+  IF v_role = 'admin' THEN
+    RETURN NULL;
+  END IF;
+  
+  -- Start with base visibility from get_visible_owner_ids
+  v_result := public.get_visible_owner_ids_for_user(v_user_id);
+  IF v_result IS NULL THEN
+    -- Shouldn't happen for non-admin, but fallback
+    v_result := ARRAY[v_user_id];
+  END IF;
+  
+  -- Add shared subjects
+  SELECT ARRAY_AGG(DISTINCT subject_user_id)
+  INTO v_shared_subjects
+  FROM user_data_shares
+  WHERE viewer_user_id = v_user_id
+    AND active = true;
+  
+  IF v_shared_subjects IS NOT NULL THEN
+    v_result := v_result || v_shared_subjects;
+  END IF;
+  
+  -- Return unique IDs
+  RETURN ARRAY(SELECT DISTINCT unnest(v_result));
 END;
+$$;
+
+-- Helper to check if user can operate on subject's data
+CREATE OR REPLACE FUNCTION can_operate_on_user(p_viewer_id uuid, p_subject_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM user_data_shares
+    WHERE viewer_user_id = p_viewer_id
+      AND subject_user_id = p_subject_id
+      AND can_operate = true
+      AND active = true
+  )
+  OR p_viewer_id = p_subject_id  -- Can always operate on own data
+  OR get_user_role(p_viewer_id) = 'admin';  -- Admin can operate on all
+$$;
+
+-- Helper to get share scopes for a viewer-subject pair
+CREATE OR REPLACE FUNCTION get_share_scopes(p_viewer_id uuid, p_subject_id uuid)
+RETURNS TABLE(
+  has_access boolean,
+  scope_orders boolean,
+  scope_products boolean,
+  scope_stock_balance boolean,
+  scope_inbound boolean,
+  can_operate boolean
+)
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT 
+    true AS has_access,
+    scope_orders,
+    scope_products,
+    scope_stock_balance,
+    scope_inbound,
+    can_operate
+  FROM user_data_shares
+  WHERE viewer_user_id = p_viewer_id
+    AND subject_user_id = p_subject_id
+    AND active = true
+  LIMIT 1;
 $$;
 ```
 
-**Option B:** Pass effectiveUserId as filter parameter to existing queries (client-side filtering).
-
-We'll use **Option B** for simpler implementation - hooks accept an optional `asUserId` parameter.
-
 ---
 
-## Phase 5: Write Operations
+## Phase 2: React Hooks
 
-### 5.1 Action Attribution
+### 2.1 Create `useAccessibleUserIds` Hook
 
-When impersonating and performing write operations:
-
-1. **Ownership stays with target user** - e.g., creating an order sets `salesperson_id = targetUserId`
-2. **Actor tracking** - audit logs capture both:
-   - `actor_id = realAdminId` (who actually clicked)
-   - `impersonated_user_id = targetUserId` (who they were viewing as)
-
-### 5.2 Blocked Operations
-
-During impersonation, block these actions with clear error:
-
-| Action | Reason |
-|--------|--------|
-| Change user role | Security - could elevate privileges |
-| Change user password | Security - account takeover |
-| Disable/enable user | Should be done as admin directly |
-| Transfer stock ownership | Data integrity |
-| Impersonate another user | Prevent nested impersonation |
-| Access admin-only pages | `/admin/*` routes should exit impersonation first |
-
-### 5.3 Mutation Wrapper
-
-Create a wrapper for mutations that:
-1. Checks if operation is allowed during impersonation
-2. Automatically adds audit fields
-3. Increments `actions_count` on the session
+**File:** `src/hooks/useAccessibleUserIds.ts`
 
 ```typescript
-function useImpersonationAwareMutation<T, V>(
-  mutationFn: (variables: V) => Promise<T>,
-  options?: {
-    blockedDuringImpersonation?: boolean;
-    actionName?: string;
-  }
-) {
-  const { isImpersonating, logImpersonatedAction, realAdminId, effectiveUserId } = useImpersonation();
+// Extends useVisibleUserIds to include data shares
+export function useAccessibleUserIds() {
+  const { user, role } = useAuth();
+  const { visibleUserIds: teamVisibleIds } = useVisibleUserIds();
   
-  return useMutation({
-    mutationFn: async (variables: V) => {
-      if (options?.blockedDuringImpersonation && isImpersonating) {
-        throw new Error('This action cannot be performed while viewing as another user.');
-      }
+  // Fetch active shares for current user
+  const { data: shares = [] } = useDataShares();
+  
+  const accessibleUserIds = useMemo(() => {
+    if (!user?.id) return [];
+    if (role === 'admin') return undefined; // Admin sees all
+    
+    // Combine team visibility + shared subjects
+    const teamIds = teamVisibleIds || [user.id];
+    const sharedSubjectIds = shares
+      .filter(s => s.active)
+      .map(s => s.subject_user_id);
+    
+    return [...new Set([...teamIds, ...sharedSubjectIds])];
+  }, [user?.id, role, teamVisibleIds, shares]);
+  
+  return { accessibleUserIds };
+}
+```
+
+### 2.2 Create `useDataShares` Hook
+
+**File:** `src/hooks/useDataShares.ts`
+
+```typescript
+// Hook for fetching shares where current user is the viewer
+export function useDataShares() {
+  const { user } = useAuth();
+  
+  return useQuery({
+    queryKey: ['data-shares', 'viewer', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_data_shares')
+        .select(`
+          *,
+          subject:profiles!subject_user_id(id, display_name, email, role)
+        `)
+        .eq('viewer_user_id', user?.id)
+        .eq('active', true);
       
-      const result = await mutationFn(variables);
-      
-      if (isImpersonating && options?.actionName) {
-        await logImpersonatedAction(options.actionName, { variables });
-      }
-      
-      return result;
+      if (error) throw error;
+      return data;
     },
+    enabled: !!user?.id,
+  });
+}
+
+// Admin hook for all shares
+export function useAllDataShares() {
+  const { role } = useAuth();
+  
+  return useQuery({
+    queryKey: ['data-shares', 'all'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_data_shares')
+        .select(`
+          *,
+          viewer:profiles!viewer_user_id(id, display_name, email, role),
+          subject:profiles!subject_user_id(id, display_name, email, role),
+          created_by:profiles!created_by_admin_id(id, display_name)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: role === 'admin',
   });
 }
 ```
 
----
+### 2.3 Create Share Management Mutations
 
-## Phase 6: Navigation & Routing
-
-### 6.1 Sidebar Behavior
-
-When impersonating:
-- Sidebar shows menu items for the **impersonated role**, not admin
-- This helps admin see exactly what the user sees
-- Admin-only items are hidden (with tooltip "Exit view mode to access")
-
-### 6.2 Route Guards
-
-Add checks to admin-only routes:
+**File:** `src/hooks/useDataShareMutations.ts`
 
 ```typescript
-// In admin routes (e.g., /admin/*)
-function AdminRoute({ children }) {
-  const { role } = useAuth(); // Real role, not effective
-  const { isImpersonating } = useImpersonation();
+export function useCreateDataShare() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   
-  if (role !== 'admin') return <Navigate to="/" />;
-  
-  if (isImpersonating) {
-    // Auto-exit impersonation when accessing admin pages
-    stopImpersonation();
-    return <Navigate to="/" />;
-  }
-  
-  return children;
+  return useMutation({
+    mutationFn: async (data: {
+      viewer_user_id: string;
+      subject_user_id: string;
+      scope_orders?: boolean;
+      scope_products?: boolean;
+      scope_stock_balance?: boolean;
+      scope_inbound?: boolean;
+      can_operate?: boolean;
+    }) => {
+      const { data: result, error } = await supabase
+        .from('user_data_shares')
+        .insert({
+          ...data,
+          created_by_admin_id: user?.id,
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['data-shares'] });
+      toast.success('Data share created');
+    },
+  });
+}
+
+export function useUpdateDataShare() { /* ... */ }
+export function useDeleteDataShare() { /* ... */ }
+```
+
+---
+
+## Phase 3: Admin UI
+
+### 3.1 Create Admin Data Sharing Page
+
+**File:** `src/pages/admin/DataSharingAdmin.tsx`
+
+**Features:**
+- Table listing all active shares with columns:
+  - Viewer (name, email, role badge)
+  - Subject (name, email, role badge)
+  - Scopes (badges for each enabled scope)
+  - Can Operate (toggle)
+  - Active (toggle)
+  - Created At
+  - Actions (Edit, Disable, Delete)
+
+- "Create Share" dialog:
+  - Viewer selector (searchable, excludes admins)
+  - Subject selector (searchable, excludes admins)
+  - Scope toggles (Orders, Products, Stock Balance, Inbound)
+  - Can Operate toggle
+  - Active toggle (default ON)
+  - Save button
+
+### 3.2 Add to Sidebar
+
+**File:** `src/components/layout/AppSidebar.tsx`
+
+Add to Settings items:
+```typescript
+{
+  title: "Data Sharing",
+  url: "/admin/data-sharing",
+  icon: Share2,
+  roles: ['admin']
 }
 ```
 
 ---
 
-## Phase 7: Security Hardening
+## Phase 4: Viewer-Side Data Scope Selector
 
-### 7.1 Prevent Admin-to-Admin Impersonation
+### 4.1 Create Data Scope Selector Component
+
+**File:** `src/components/filters/DataScopeSelector.tsx`
 
 ```typescript
-const startImpersonation = async (userId: string) => {
-  const { data: target } = await supabase
-    .from('profiles')
-    .select('id, role, display_name, email, status')
-    .eq('id', userId)
-    .single();
+interface DataScopeSelectorProps {
+  value: 'my' | 'shared' | 'all';
+  onChange: (value: 'my' | 'shared' | 'all') => void;
+  shares: DataShare[];
+}
+
+export function DataScopeSelector({ value, onChange, shares }: DataScopeSelectorProps) {
+  if (shares.length === 0) return null; // No shares, no selector
   
-  if (target.role === 'admin') {
-    toast.error('Cannot impersonate another admin');
-    return;
-  }
-  
-  // Continue with impersonation...
-};
+  return (
+    <Tabs value={value} onValueChange={onChange}>
+      <TabsList>
+        <TabsTrigger value="my">My Data</TabsTrigger>
+        <TabsTrigger value="shared">Shared Users ({shares.length})</TabsTrigger>
+        <TabsTrigger value="all">All Accessible</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+}
 ```
 
-### 7.2 Session Timeout
+### 4.2 Add Owner Column to Data Tables
 
-Impersonation sessions auto-expire after 30 minutes of inactivity:
-- Track last activity timestamp
-- Check on each action
-- Show warning at 25 minutes
-
-### 7.3 Audit Everything
-
-All impersonation events are logged:
-- Session start (admin_id, target_user_id, target_role)
-- Session end (duration, actions_count)
-- Each significant action during session
+Update `OrdersTableFixed`, `MobileOrderCard`, `MobileStockCard` to show owner badge when viewing shared data.
 
 ---
 
-## Implementation Order
+## Phase 5: Update Data Queries
 
-| Step | Component | Priority |
-|------|-----------|----------|
-| 1 | Database migration (sessions table, audit columns) | P0 |
-| 2 | ImpersonationContext + Provider | P0 |
-| 3 | useEffectiveAuth hook | P0 |
-| 4 | ImpersonationBanner component | P0 |
-| 5 | AdminViewModeToggle + UserSelector | P0 |
-| 6 | Update AppLayout with provider + banner | P0 |
-| 7 | Update useTeamVisibility to use effective auth | P1 |
-| 8 | Update useDashboardStats | P1 |
-| 9 | Update sidebar to show effective role menus | P1 |
-| 10 | Add blocked operation checks | P1 |
-| 11 | Session timeout logic | P2 |
-| 12 | Admin impersonation history page | P2 |
+### 5.1 Update `useTeamOrders`
 
----
+Add `dataScope` parameter:
+- `'my'` = filter to current user only
+- `'shared'` = filter to shared subject IDs only
+- `'all'` = use full `accessibleUserIds`
 
-## Expected Behavior Summary
+### 5.2 Update `useProducts`
 
-| Scenario | Behavior |
-|----------|----------|
-| Admin logs in | Normal admin view, "Admin View Mode" toggle visible |
-| Admin enables View Mode | User selector appears, admin must pick a user |
-| Admin selects "Sarah (salesperson)" | Banner appears, sidebar shows salesperson menus, data filtered to Sarah's scope |
-| Admin views Orders page | Shows only Sarah's orders (as if Sarah was logged in) |
-| Admin creates an order | Order created with `salesperson_id = Sarah.id`, audit shows admin performed action |
-| Admin tries to access /admin/* | Auto-exits impersonation, returns to admin view |
-| Admin clicks "Exit View Mode" | Banner disappears, full admin access restored |
+Same pattern - accept `dataScope` and filter accordingly.
+
+### 5.3 Update `useFilteredStockBalance`
+
+Same pattern - integrate with shares.
 
 ---
 
-## Files to Create/Modify
+## Phase 6: Operation Guards
 
-| File | Action |
-|------|--------|
-| `supabase/migrations/xxx_impersonation.sql` | CREATE |
-| `src/contexts/ImpersonationContext.tsx` | CREATE |
-| `src/hooks/useEffectiveAuth.ts` | CREATE |
-| `src/components/admin/AdminViewModeToggle.tsx` | CREATE |
-| `src/components/admin/ImpersonationUserSelect.tsx` | CREATE |
-| `src/components/admin/ImpersonationBanner.tsx` | CREATE |
-| `src/components/layout/AppLayout.tsx` | MODIFY |
-| `src/components/layout/AppSidebar.tsx` | MODIFY |
-| `src/hooks/useTeamVisibility.ts` | MODIFY |
-| `src/hooks/useDashboardStats.ts` | MODIFY |
-| `src/App.tsx` | MODIFY (wrap with provider) |
+### 6.1 Create `useCanOperate` Hook
+
+```typescript
+export function useCanOperate(subjectUserId: string) {
+  const { user, role } = useAuth();
+  const { data: shares = [] } = useDataShares();
+  
+  return useMemo(() => {
+    if (!user?.id) return false;
+    if (user.id === subjectUserId) return true; // Own data
+    if (role === 'admin') return true; // Admin can operate on all
+    
+    const share = shares.find(s => 
+      s.subject_user_id === subjectUserId && s.active
+    );
+    
+    return share?.can_operate ?? false;
+  }, [user?.id, subjectUserId, role, shares]);
+}
+```
+
+### 6.2 Apply Guards to Actions
+
+In order detail dialogs and action buttons:
+```typescript
+const canOperate = useCanOperate(order.salesperson_id);
+
+<Button 
+  disabled={!canOperate}
+  onClick={handleDelivered}
+>
+  Mark Delivered
+</Button>
+
+{!canOperate && (
+  <Tooltip content="You have read-only access to this user's data">
+    <Lock className="h-4 w-4 text-muted-foreground" />
+  </Tooltip>
+)}
+```
+
+---
+
+## Phase 7: Audit Logging
+
+### 7.1 Create Audit Logging Helper
+
+```typescript
+async function logSharedDataAccess(params: {
+  subjectUserId: string;
+  actionType: 'view' | 'read' | 'write';
+  resourceType: 'order' | 'product' | 'stock' | 'inbound';
+  resourceId?: string;
+  shareId?: string;
+}) {
+  // Only log for shared data access, not own data
+  if (params.subjectUserId === currentUserId) return;
+  
+  await supabase.from('access_audit_log').insert({
+    actor_user_id: currentUserId,
+    ...params,
+  });
+}
+```
+
+### 7.2 Log Write Operations
+
+In mutations that modify shared data, add audit logging.
+
+---
+
+## Summary of Files to Create/Modify
+
+| File | Action | Description |
+|------|--------|-------------|
+| `supabase/migrations/xxx_data_sharing.sql` | CREATE | Tables + RPC functions |
+| `src/hooks/useDataShares.ts` | CREATE | Share fetching hooks |
+| `src/hooks/useDataShareMutations.ts` | CREATE | CRUD mutations |
+| `src/hooks/useAccessibleUserIds.ts` | CREATE | Combined visibility hook |
+| `src/hooks/useCanOperate.ts` | CREATE | Operation permission check |
+| `src/pages/admin/DataSharingAdmin.tsx` | CREATE | Admin management page |
+| `src/components/filters/DataScopeSelector.tsx` | CREATE | Viewer-side scope toggle |
+| `src/components/layout/AppSidebar.tsx` | MODIFY | Add admin menu item |
+| `src/App.tsx` | MODIFY | Add route |
+| `src/hooks/useTeamOrders.ts` | MODIFY | Integrate data scope |
+| `src/hooks/useProducts.ts` | MODIFY | Integrate data scope |
+| `src/hooks/useStockVisibility.ts` | MODIFY | Integrate data scope |
+| `src/pages/sales/ReadySales.tsx` | MODIFY | Add scope selector |
+| `src/pages/sales/BookingSales.tsx` | MODIFY | Add scope selector |
+| `src/pages/InventoryBalance.tsx` | MODIFY | Add scope selector |
+| `src/pages/products/ProductsPage.tsx` | MODIFY | Add scope selector |
+
+---
+
+## Acceptance Criteria Validation
+
+| Criteria | Implementation |
+|----------|----------------|
+| Admin can grant Manager visibility to Salesperson data | `user_data_shares` table with admin-only management |
+| Manager sees non-zero team data after share enabled | `get_accessible_user_ids()` includes shared subjects |
+| Products/Orders/Stock never leak outside accessible scope | All queries use `accessibleUserIds` filter |
+| Import validates SKUs within accessible scope | `useOrderOwnerProducts` respects scope |
+| UI shows owner column for shared data | Owner badge added to cards/tables |
+| Read-only vs operate permissions enforced | `can_operate` flag checked before actions |
+| All shared access is audited | `access_audit_log` table with triggers |
+| Fast UI with pagination, no horizontal scroll | DataGrid patterns maintained |
