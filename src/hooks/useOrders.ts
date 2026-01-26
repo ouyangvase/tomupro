@@ -13,6 +13,7 @@ interface OrderFilters {
   limit?: number;  // Custom limit for queries
   excludeDeliveredAndFailed?: boolean;  // For inbox views - excludes completed orders
   actionRequiredOnly?: boolean;  // For action required page - server-side filter
+  includeFailedAndCancelledOnly?: boolean;  // For Failed Orders page - server-side filter
 }
 
 export function useOrders(filters?: OrderFilters) {
@@ -70,6 +71,11 @@ export function useOrders(filters?: OrderFilters) {
         query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
         // Also exclude cancelled orders for this view
         query = query.neq('status', 'CANCELLED');
+      }
+      
+      // Server-side filter for failed/cancelled orders only
+      if (filters?.includeFailedAndCancelledOnly) {
+        query = query.or('runner_status.eq.FAILED_DELIVERY,status.eq.CANCELLED');
       }
       
       // Apply custom limit if specified
