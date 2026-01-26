@@ -4,6 +4,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useServerVisibleIds } from '@/hooks/useTeamVisibility';
 import { startOfDay, endOfDay, startOfMonth } from 'date-fns';
 
+interface StatsOptions {
+  /** Override user ID for admin impersonation */
+  asUserId?: string | null;
+  /** Override role for admin impersonation */
+  asRole?: string | null;
+}
+
 export interface DashboardStats {
   bookingOrders: number;
   readyOrders: number;
@@ -23,13 +30,14 @@ export interface DashboardStats {
   totalUsers: number;
 }
 
-export function useSalespersonStats() {
+export function useSalespersonStats(options?: StatsOptions) {
   const { user } = useAuth();
+  const effectiveUserId = options?.asUserId ?? user?.id;
 
   return useQuery({
-    queryKey: ['dashboard-stats', 'salesperson', user?.id],
+    queryKey: ['dashboard-stats', 'salesperson', effectiveUserId],
     queryFn: async () => {
-      if (!user) throw new Error('Not authenticated');
+      if (!effectiveUserId) throw new Error('Not authenticated');
 
       const [
         bookingRes,
@@ -43,21 +51,21 @@ export function useSalespersonStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('salesperson_id', user.id)
+          .eq('salesperson_id', effectiveUserId)
           .eq('status', 'BOOKING'),
         
         // Ready orders count
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('salesperson_id', user.id)
+          .eq('salesperson_id', effectiveUserId)
           .eq('status', 'READY'),
         
         // Pending delivery (ASSIGNED or TAKEN, READY status)
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('salesperson_id', user.id)
+          .eq('salesperson_id', effectiveUserId)
           .eq('status', 'READY')
           .in('runner_status', ['ASSIGNED', 'TAKEN']),
         
@@ -65,20 +73,21 @@ export function useSalespersonStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('salesperson_id', user.id)
+          .eq('salesperson_id', effectiveUserId)
           .in('reconciliation_status', ['SP_ACK_PENDING', 'ADMIN_ACK_PENDING']),
         
         // Disputes
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('salesperson_id', user.id)
+          .eq('salesperson_id', effectiveUserId)
           .eq('reconciliation_status', 'DISPUTE'),
         
-        // Active products count
+        // Active products count for this user
         supabase
           .from('products')
           .select('id', { count: 'exact', head: true })
+          .eq('owner_user_id', effectiveUserId)
           .eq('is_active', true),
       ]);
 
@@ -91,25 +100,29 @@ export function useSalespersonStats() {
         productsCount: productsRes.count || 0,
       };
     },
-    enabled: !!user,
+    enabled: !!effectiveUserId,
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 }
 
 /**
  * Manager dashboard stats - uses team visibility to aggregate data across team members
+ * Supports admin impersonation via options.asUserId
  */
-export function useManagerStats() {
+export function useManagerStats(options?: StatsOptions) {
   const { user } = useAuth();
-  const { data: serverVisibleIds } = useServerVisibleIds();
+  const effectiveUserId = options?.asUserId ?? user?.id;
+  const { data: serverVisibleIds } = useServerVisibleIds(options?.asUserId);
 
   return useQuery({
-    queryKey: ['dashboard-stats', 'manager', user?.id, serverVisibleIds],
+    queryKey: ['dashboard-stats', 'manager', effectiveUserId, serverVisibleIds],
     queryFn: async () => {
-      if (!user) throw new Error('Not authenticated');
+      if (!effectiveUserId) throw new Error('Not authenticated');
 
-      // Get visible owner IDs from server RPC
-      const { data: visibleIds, error: visibleError } = await supabase.rpc('get_visible_owner_ids');
+      // Get visible owner IDs from server RPC (for the effective user if impersonating)
+      const { data: visibleIds, error: visibleError } = options?.asUserId
+        ? await supabase.rpc('get_visible_owner_ids_for_user', { p_user_id: options.asUserId })
+        : await supabase.rpc('get_visible_owner_ids');
       
       if (visibleError) {
         console.error('Failed to fetch visible owner IDs:', visibleError);
@@ -252,21 +265,22 @@ export function useManagerStats() {
         teamPipelineGmv,
       };
     },
-    enabled: !!user,
+    enabled: !!effectiveUserId,
     refetchInterval: 30000,
   });
 }
 
-export function useRunnerStats() {
+export function useRunnerStats(options?: StatsOptions) {
   const { user } = useAuth();
+  const effectiveUserId = options?.asUserId ?? user?.id;
   const today = new Date();
   const todayStart = startOfDay(today).toISOString();
   const todayEnd = endOfDay(today).toISOString();
 
   return useQuery({
-    queryKey: ['dashboard-stats', 'runner', user?.id],
+    queryKey: ['dashboard-stats', 'runner', effectiveUserId],
     queryFn: async () => {
-      if (!user) throw new Error('Not authenticated');
+      if (!effectiveUserId) throw new Error('Not authenticated');
 
       const [
         assignedRes,
@@ -278,14 +292,14 @@ export function useRunnerStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('runner_id', user.id)
+          .eq('runner_id', effectiveUserId)
           .in('runner_status', ['ASSIGNED', 'TAKEN']),
         
         // Delivered today
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('runner_id', user.id)
+          .eq('runner_id', effectiveUserId)
           .eq('runner_status', 'DELIVERED')
           .gte('delivered_at', todayStart)
           .lte('delivered_at', todayEnd),
@@ -294,7 +308,7 @@ export function useRunnerStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('runner_id', user.id)
+          .eq('runner_id', effectiveUserId)
           .eq('runner_status', 'FAILED_DELIVERY')
           .gte('updated_at', todayStart)
           .lte('updated_at', todayEnd),
@@ -303,7 +317,7 @@ export function useRunnerStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('runner_id', user.id)
+          .eq('runner_id', effectiveUserId)
           .eq('runner_status', 'DELIVERED')
           .eq('reconciliation_status', 'NOT_CLAIMED'),
       ]);
@@ -315,7 +329,7 @@ export function useRunnerStats() {
         pendingClaims: pendingClaimsRes.count || 0,
       };
     },
-    enabled: !!user,
+    enabled: !!effectiveUserId,
     refetchInterval: 30000,
   });
 }
