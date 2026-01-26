@@ -1,151 +1,157 @@
 
+# Fix Import Validation and Clean Up Invalid Orders
 
-# Fix Order Items Display and Strengthen Import Validation
+## Summary
 
-## Problem Summary
-
-| Issue | Root Cause | Solution |
-|-------|------------|----------|
-| 1. Orders show "No items" when managers view team orders | RLS policy blocks managers from seeing salesperson's products in embedded joins | Add RLS policy for managers to view team products |
-| 2. 23 existing orders have 0 items | Historical data issue - orders imported without items | Data fix + prevent future occurrences |
-| 3. Import should reject invalid SKUs before import | Validation happens, but UI flow could be clearer | Move SKU validation to preview step + block import button |
+| Issue | Current Status | Action Required |
+|-------|---------------|-----------------|
+| 1. Import should reject entire file if SKU doesn't exist | Already implemented, but UI message could be clearer | Improve error messaging |
+| 2. Orders with 0 items exist | 23 orders without items (all ALLEN's) | Delete via database migration |
 
 ---
 
-## Part 1: Fix RLS Policy for Products (Database)
+## Part 1: Strengthen Import Rejection UI
 
-The core issue is that when managers view orders from their team members, the nested `product:products(...)` join in the query returns null because the products RLS policy doesn't grant managers visibility to team member's products through embedded joins.
+The current implementation already:
+- Validates SKUs at preview step (lines 177-186)
+- Disables Import button when errors exist (line 744: `disabled={importing || errors.length > 0}`)
+- Shows clear error messages
 
-**Current RLS Policies on products table:**
-- "Manager can view team products" - uses `is_in_manager_team(created_by, auth.uid())` but this checks `created_by`, not `owner_user_id`
-- "Manager can view group products" - checks manager_groups but may not be configured for all managers
-
-**Fix:** Add/update RLS policy to allow managers to see products owned by their team members:
-
-```sql
--- Drop existing policy that uses created_by
-DROP POLICY IF EXISTS "Manager can view team products" ON products;
-
--- Create corrected policy that uses owner_user_id
-CREATE POLICY "Manager can view team products" ON products
-  FOR SELECT
-  TO public
-  USING (
-    (get_user_role(auth.uid()) = 'manager'::app_role) 
-    AND (
-      (owner_user_id = auth.uid())  -- Own products
-      OR is_in_manager_team(owner_user_id, auth.uid())  -- Team products
-    )
-  );
-```
-
----
-
-## Part 2: Strengthen Import Validation (Frontend)
+**Improvement**: Make rejection messaging more explicit that the entire file is rejected:
 
 ### File: `src/components/orders/ImportOrdersDialog.tsx`
 
-**Current Flow:**
-1. Upload CSV
-2. Map columns
-3. Preview (validation errors shown here)
-4. User clicks Import (validation runs again, rejects if errors)
-
-**Problem:** User can see "Import" button even when there are validation errors. They're confused when import is rejected.
-
-**Fix:** Run SKU validation when moving to Preview step, not during import. Disable import button when errors exist.
-
-### Changes to `handleProceedToPreview`:
-
+**Current error message (line 179-183):**
 ```typescript
-const handleProceedToPreview = () => {
-  if (!rawData || !areRequiredFieldsMapped(columnMapping)) {
-    toast({ variant: 'destructive', title: 'Missing required fields', description: 'Please map all required fields' });
-    return;
-  }
-
-  // Apply mapping and validate basic schema
-  const mappedRows = applyColumnMapping(rawData.rows, columnMapping);
-  const validation = validateOrderLines(mappedRows);
-  
-  if (validation.errors.length > 0) {
-    setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
-    setStep('preview');
-    return;
-  }
-  
-  // NEW: Validate SKU ownership at preview step (fail-fast)
-  const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
-  if (!skuValidation.valid) {
-    setErrors([
-      'Invalid SKUs found in your file. Please fix and re-upload:',
-      '',
-      ...skuValidation.errors
-    ]);
-    setStep('preview');
-    return;
-  }
-  
-  // No errors - clear and proceed
-  setErrors([]);
-  setStep('preview');
-};
+setErrors([
+  'Invalid SKUs found. Please fix and re-upload:',
+  '',
+  ...skuValidation.errors
+]);
 ```
 
-### Clearer Error Messages:
-
-Update error messages to be more specific about what row and which SKU failed:
-
+**Change to:**
 ```typescript
-// In validateSkuOwnership:
-skuErrors.push(
-  `Row ${csvRowNum}: SKU "${skuValue}" not found in your product catalog. ` +
-  `Please add this product first or correct the SKU code.`
+setErrors([
+  'IMPORT REJECTED - Invalid SKUs found in your file.',
+  'Please fix the following errors and re-upload the entire file:',
+  '',
+  ...skuValidation.errors
+]);
+```
+
+**Also update the error display area (line 688-713)** to show a more prominent rejection banner when errors are SKU-related.
+
+---
+
+## Part 2: Delete 23 Orders Without Items
+
+### Database Migration
+
+Delete the following 23 orders that have 0 items (all from user ALLEN):
+
+```
+Order Codes to Delete:
+AL1126, AL1241, AL1338, AL1339, AL1343, AL1345, AL1349, AL1385,
+AL1452, AL1458, AL1459, AL1464, AL1483, AL1489, AL1502, AL1503,
+AL1504, AL1516, AL1518, AL1520, AL643, AL651, AL653
+```
+
+**SQL Migration:**
+```sql
+-- Delete 23 orders with no items (historical import errors)
+-- All from salesperson ALLEN, created on 2026-01-14
+
+DELETE FROM orders
+WHERE id IN (
+  '519fe4f3-66c5-42be-9116-543d88e4f5e3',
+  '4d75fb7d-ae98-4f5c-afb9-6cdfee2a32b3',
+  'c068c462-a73a-41a5-8000-8a742fea5ade',
+  'e63b1927-0167-460c-a805-511deba39619',
+  '72665416-5fc2-4420-b739-559a2b340c8f',
+  'a2bc92db-de5c-4f74-aa3b-364f61bbcfef',
+  '92468bb4-afaa-4f60-888e-59f802b825c4',
+  '5149af37-d065-4b51-9357-752e1b42b166',
+  'fbda8499-432a-40e8-b095-34d9e9ea9f4a',
+  '845fcdec-a905-4852-9d1d-c5a048e0fb8a',
+  '2d08d54c-64e2-4911-9338-0b947dda24d4',
+  'a8c0601f-cdfd-4d88-b0d5-7029e476927a',
+  '108c8d4c-ee7d-4e9b-b6da-dbc730fd6f8c',
+  '9e28f4c6-9fe6-4702-86a9-5fb627626c7e',
+  '66d8c461-cb6b-4eb4-831b-e20c338e8ffe',
+  '9e1ad772-5824-4443-9e63-fa2b7eaae768',
+  '15b15f87-9755-49be-a3b9-ba965abde908',
+  '036965bf-74bf-4898-b0b1-fc4eeabe6bd6',
+  '64f33305-eda1-46b0-bf08-50ac1519fc3a',
+  '4fc3fdba-527e-4efd-85a1-1d6d579fff9b',
+  '4a879db3-9b37-4741-b2fc-31594c9402cf',
+  '93037384-8387-44a7-945d-38148a53d62a',
+  '9d7ad938-3f97-466d-9dc3-3032f440462e'
 );
 ```
 
 ---
 
-## Part 3: Handle Existing Orders with 0 Items
+## Part 3: Prevent Future Invalid Orders
 
-For the 23 ALLEN orders with 0 items, these are historical data issues. Two approaches:
+### Add Database Trigger (Optional but Recommended)
 
-**Option A: Hide orders with 0 items in UI (not recommended)**
+Create a trigger that prevents orders from being committed if they have no items after a brief grace period:
 
-**Option B: Mark orders with 0 items for review (recommended)**
-
-Add a warning indicator in the data grid for orders with no items:
-
-```typescript
-// In formatOrderItemsDisplay:
-if (!orderItems || orderItems.length === 0) {
-  return {
-    displayText: 'No items',
-    fullText: 'No items - order may need repair',
-    hasError: true,  // Changed from false to true
-    errorMessage: 'This order has no items. Please edit and add items.',
-  };
-}
+```sql
+-- This trigger runs on INSERT to orders
+-- It doesn't block immediately (items may be added in separate transaction)
+-- But the frontend already handles this validation
 ```
+
+The current frontend validation is sufficient since:
+1. SKU validation happens before import
+2. Import button is disabled when errors exist
+3. Each order line must have a valid SKU
 
 ---
 
 ## Summary of Changes
 
-| File | Change | Purpose |
-|------|--------|---------|
-| **Database Migration** | Fix RLS policy for products table | Allow managers to see team products in embedded joins |
-| `src/components/orders/ImportOrdersDialog.tsx` | Move SKU validation to preview step | Fail-fast validation before import |
-| `src/components/orders/ImportOrdersDialog.tsx` | Improve error messages with row numbers | Clear indication of which rows failed |
-| `src/lib/orderItemsDisplay.ts` | Mark "No items" as error condition | Visual indicator for orders needing repair |
+| File/Component | Change | Purpose |
+|----------------|--------|---------|
+| `src/components/orders/ImportOrdersDialog.tsx` | Clearer rejection messaging | Make it obvious entire file is rejected |
+| **Database Migration** | Delete 23 orphaned orders | Clean up invalid historical data |
 
 ---
 
-## Expected Results
+## Technical Notes
 
-| Before | After |
-|--------|-------|
-| Manager sees "No items" for team orders | Manager sees "TLS001/TURMERIC LEMON SOAP x 2" |
-| Invalid SKU allows clicking Import, then fails | Invalid SKU shows error at Preview step, Import button disabled |
-| Orders with 0 items show no warning | Orders with 0 items show warning indicator |
+### Orders to Delete (All from ALLEN)
 
+| # | Order Code | Order ID |
+|---|------------|----------|
+| 1 | AL1126 | 519fe4f3-66c5-42be-9116-543d88e4f5e3 |
+| 2 | AL1241 | 4d75fb7d-ae98-4f5c-afb9-6cdfee2a32b3 |
+| 3 | AL1338 | c068c462-a73a-41a5-8000-8a742fea5ade |
+| 4 | AL1339 | e63b1927-0167-460c-a805-511deba39619 |
+| 5 | AL1343 | 72665416-5fc2-4420-b739-559a2b340c8f |
+| 6 | AL1345 | a2bc92db-de5c-4f74-aa3b-364f61bbcfef |
+| 7 | AL1349 | 92468bb4-afaa-4f60-888e-59f802b825c4 |
+| 8 | AL1385 | 5149af37-d065-4b51-9357-752e1b42b166 |
+| 9 | AL1452 | fbda8499-432a-40e8-b095-34d9e9ea9f4a |
+| 10 | AL1458 | 845fcdec-a905-4852-9d1d-c5a048e0fb8a |
+| 11 | AL1459 | 2d08d54c-64e2-4911-9338-0b947dda24d4 |
+| 12 | AL1464 | a8c0601f-cdfd-4d88-b0d5-7029e476927a |
+| 13 | AL1483 | 108c8d4c-ee7d-4e9b-b6da-dbc730fd6f8c |
+| 14 | AL1489 | 9e28f4c6-9fe6-4702-86a9-5fb627626c7e |
+| 15 | AL1502 | 66d8c461-cb6b-4eb4-831b-e20c338e8ffe |
+| 16 | AL1503 | 9e1ad772-5824-4443-9e63-fa2b7eaae768 |
+| 17 | AL1504 | 15b15f87-9755-49be-a3b9-ba965abde908 |
+| 18 | AL1516 | 036965bf-74bf-4898-b0b1-fc4eeabe6bd6 |
+| 19 | AL1518 | 64f33305-eda1-46b0-bf08-50ac1519fc3a |
+| 20 | AL1520 | 4fc3fdba-527e-4efd-85a1-1d6d579fff9b |
+| 21 | AL643 | 4a879db3-9b37-4741-b2fc-31594c9402cf |
+| 22 | AL651 | 93037384-8387-44a7-945d-38148a53d62a |
+| 23 | AL653 | 9d7ad938-3f97-466d-9dc3-3032f440462e |
+
+### Validation Already in Place
+- Import button disabled when errors exist: `disabled={importing || errors.length > 0}`
+- SKU validation at preview step (fail-fast)
+- SKU validation again at import step (double-check)
+- Error messages show specific rows with issues
