@@ -64,7 +64,12 @@ export default function RunnerInbox() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: orders, isLoading } = useOrders({ runnerId: user?.id });
+  // Use server-side filtering to exclude delivered/failed orders and limit results
+  const { data: orders, isLoading } = useOrders({ 
+    runnerId: user?.id,
+    excludeDeliveredAndFailed: true,
+    limit: 200
+  });
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
   const assignOrderToDriver = useAssignOrderToDriver();

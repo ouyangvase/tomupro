@@ -3316,6 +3316,7 @@ export type Database = {
         Args: { p_approver_id: string; p_transfer_id: string }
         Returns: Json
       }
+      can_access_order_items: { Args: { p_order_id: string }; Returns: boolean }
       can_operate_on_user: {
         Args: { p_subject_id: string; p_viewer_id: string }
         Returns: boolean
