@@ -1,187 +1,132 @@
 
 
-# Fix Manager Warehouse Error, Failed Orders Data, and Runner Inbox
+# Fix Order Items Display and Strengthen Import Validation
 
-## Issues Summary
+## Problem Summary
 
-| Issue | Root Cause | Impact |
-|-------|------------|--------|
-| 1. "Cannot create stock movement for inactive warehouse" error for managers | Database trigger uses stale `fulfillment_warehouse_id` without recalculating it | Managers can't complete deliveries |
-| 2. Failed Orders page shows 0 orders | `useOrders` hook defaults to 500 orders and doesn't fetch failed orders specifically | Runners can't see failed/cancelled orders |
-| 3. Runner Inbox should show real data | Already fixed - uses `limit: 1000000` | Working correctly |
+| Issue | Root Cause | Solution |
+|-------|------------|----------|
+| 1. Orders show "No items" when managers view team orders | RLS policy blocks managers from seeing salesperson's products in embedded joins | Add RLS policy for managers to view team products |
+| 2. 23 existing orders have 0 items | Historical data issue - orders imported without items | Data fix + prevent future occurrences |
+| 3. Import should reject invalid SKUs before import | Validation happens, but UI flow could be clearer | Move SKU validation to preview step + block import button |
 
 ---
 
-## Part 1: Fix Inactive Warehouse Error for Managers
+## Part 1: Fix RLS Policy for Products (Database)
 
-### Root Cause Analysis
+The core issue is that when managers view orders from their team members, the nested `product:products(...)` join in the query returns null because the products RLS policy doesn't grant managers visibility to team member's products through embedded joins.
 
-There are **105 orders** with stale `fulfillment_warehouse_id` pointing to inactive SALESPERSON warehouses, but the owners are now managers with active MANAGER warehouses.
+**Current RLS Policies on products table:**
+- "Manager can view team products" - uses `is_in_manager_team(created_by, auth.uid())` but this checks `created_by`, not `owner_user_id`
+- "Manager can view group products" - checks manager_groups but may not be configured for all managers
 
-The `process_delivery_queue_item` database trigger (line 276) uses the stale warehouse ID directly:
+**Fix:** Add/update RLS policy to allow managers to see products owned by their team members:
+
 ```sql
-v_warehouse_id := v_order.fulfillment_warehouse_id;  -- Uses stale ID!
-IF v_warehouse_id IS NULL THEN
-  -- Only falls back to finding active warehouse when NULL
+-- Drop existing policy that uses created_by
+DROP POLICY IF EXISTS "Manager can view team products" ON products;
+
+-- Create corrected policy that uses owner_user_id
+CREATE POLICY "Manager can view team products" ON products
+  FOR SELECT
+  TO public
+  USING (
+    (get_user_role(auth.uid()) = 'manager'::app_role) 
+    AND (
+      (owner_user_id = auth.uid())  -- Own products
+      OR is_in_manager_team(owner_user_id, auth.uid())  -- Team products
+    )
+  );
 ```
 
-### Solution
+---
 
-**Database Migration**: Update the `process_delivery_queue_item` trigger to ALWAYS recalculate the correct active warehouse using the `get_stock_owner_warehouse` RPC, just like the edge functions do.
+## Part 2: Strengthen Import Validation (Frontend)
 
-```sql
--- Fix: ALWAYS recalculate correct warehouse, never trust cached ID
-CREATE OR REPLACE FUNCTION public.process_delivery_queue_item()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-  v_order RECORD;
-  v_warehouse_id UUID;
-  v_item RECORD;
-  v_missing_items TEXT[];
-BEGIN
-  SELECT o.id, o.salesperson_id, o.runner_id, o.order_code, o.stock_deducted
-  INTO v_order
-  FROM orders o
-  WHERE o.id = NEW.order_id;
+### File: `src/components/orders/ImportOrdersDialog.tsx`
+
+**Current Flow:**
+1. Upload CSV
+2. Map columns
+3. Preview (validation errors shown here)
+4. User clicks Import (validation runs again, rejects if errors)
+
+**Problem:** User can see "Import" button even when there are validation errors. They're confused when import is rejected.
+
+**Fix:** Run SKU validation when moving to Preview step, not during import. Disable import button when errors exist.
+
+### Changes to `handleProceedToPreview`:
+
+```typescript
+const handleProceedToPreview = () => {
+  if (!rawData || !areRequiredFieldsMapped(columnMapping)) {
+    toast({ variant: 'destructive', title: 'Missing required fields', description: 'Please map all required fields' });
+    return;
+  }
+
+  // Apply mapping and validate basic schema
+  const mappedRows = applyColumnMapping(rawData.rows, columnMapping);
+  const validation = validateOrderLines(mappedRows);
   
-  -- ... existing checks ...
+  if (validation.errors.length > 0) {
+    setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
+    setStep('preview');
+    return;
+  }
   
-  -- CRITICAL FIX: ALWAYS recalculate the correct warehouse
-  -- Never trust cached fulfillment_warehouse_id - it may be stale from role changes
-  SELECT public.get_stock_owner_warehouse(NEW.order_id) INTO v_warehouse_id;
+  // NEW: Validate SKU ownership at preview step (fail-fast)
+  const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
+  if (!skuValidation.valid) {
+    setErrors([
+      'Invalid SKUs found in your file. Please fix and re-upload:',
+      '',
+      ...skuValidation.errors
+    ]);
+    setStep('preview');
+    return;
+  }
   
-  IF v_warehouse_id IS NULL THEN
-    -- Fallback: find any active warehouse for the salesperson
-    SELECT id INTO v_warehouse_id
-    FROM warehouses
-    WHERE owner_user_id = v_order.salesperson_id
-      AND is_active = true
-    LIMIT 1;
-  END IF;
-  
-  -- ... rest of function ...
-END;
-$$;
+  // No errors - clear and proceed
+  setErrors([]);
+  setStep('preview');
+};
 ```
 
-Also need to **update the `set_default_fulfillment_warehouse` trigger** to set the correct warehouse type based on the salesperson's role:
+### Clearer Error Messages:
 
-```sql
-CREATE OR REPLACE FUNCTION public.set_default_fulfillment_warehouse()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-  v_warehouse_id UUID;
-  v_user_role TEXT;
-BEGIN
-  IF NEW.fulfillment_warehouse_id IS NULL AND NEW.salesperson_id IS NOT NULL THEN
-    -- Get the user's role
-    SELECT role INTO v_user_role FROM profiles WHERE id = NEW.salesperson_id;
-    
-    -- Find the correct warehouse based on role
-    SELECT id INTO v_warehouse_id
-    FROM warehouses
-    WHERE owner_user_id = NEW.salesperson_id
-      AND warehouse_type = (CASE 
-        WHEN v_user_role = 'manager' THEN 'MANAGER' 
-        ELSE 'SALESPERSON' 
-      END)::warehouse_type
-      AND is_active = true
-    LIMIT 1;
-    
-    NEW.fulfillment_warehouse_id := v_warehouse_id;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-```
+Update error messages to be more specific about what row and which SKU failed:
 
-Additionally, run a **data fix** to correct all stale warehouse IDs:
-
-```sql
--- Fix all orders with stale fulfillment_warehouse_id
-UPDATE orders o
-SET fulfillment_warehouse_id = (
-  SELECT public.get_stock_owner_warehouse(o.id)
-)
-WHERE o.fulfillment_warehouse_id IN (
-  SELECT id FROM warehouses WHERE is_active = false
+```typescript
+// In validateSkuOwnership:
+skuErrors.push(
+  `Row ${csvRowNum}: SKU "${skuValue}" not found in your product catalog. ` +
+  `Please add this product first or correct the SKU code.`
 );
 ```
 
 ---
 
-## Part 2: Fix Failed Orders Page to Show Real Data
+## Part 3: Handle Existing Orders with 0 Items
 
-### Root Cause
+For the 23 ALLEN orders with 0 items, these are historical data issues. Two approaches:
 
-The `RunnerFailedOrders.tsx` page uses:
-```typescript
-const { data: orders } = useOrders({ runnerId: user?.id });  // Defaults to 500 orders
-```
+**Option A: Hide orders with 0 items in UI (not recommended)**
 
-This fetches up to 500 orders sorted by `created_at DESC`, but doesn't specifically request failed orders. If failed orders are older than the 500 most recent, they won't be included.
+**Option B: Mark orders with 0 items for review (recommended)**
 
-### Solution
-
-**File: `src/pages/runner/RunnerFailedOrders.tsx`**
-
-Update the hook to:
-1. Request a high limit (1000000) 
-2. OR create a new filter option for failed orders specifically
+Add a warning indicator in the data grid for orders with no items:
 
 ```typescript
-// Option 1: Use high limit (simple fix)
-const { data: orders, isLoading, refetch } = useOrders({ 
-  runnerId: user?.id,
-  limit: 1000000
-});
-```
-
-OR add a dedicated filter in useOrders:
-
-**File: `src/hooks/useOrders.ts`**
-
-Add a new filter option `includeFailedOnly` that uses a server-side filter:
-
-```typescript
-interface OrderFilters {
-  // ... existing filters ...
-  includeFailedAndCancelledOnly?: boolean;  // For Failed Orders page
-}
-
-// In queryFn:
-if (filters?.includeFailedAndCancelledOnly) {
-  query = query.or('runner_status.eq.FAILED_DELIVERY,status.eq.CANCELLED');
+// In formatOrderItemsDisplay:
+if (!orderItems || orderItems.length === 0) {
+  return {
+    displayText: 'No items',
+    fullText: 'No items - order may need repair',
+    hasError: true,  // Changed from false to true
+    errorMessage: 'This order has no items. Please edit and add items.',
+  };
 }
 ```
-
-**File: `src/pages/runner/RunnerFailedOrders.tsx`**
-
-```typescript
-const { data: orders, isLoading, refetch } = useOrders({ 
-  runnerId: user?.id,
-  includeFailedAndCancelledOnly: true,
-  limit: 1000000
-});
-
-// Remove client-side filtering since it's now server-side
-const failedOrders = orders || [];
-```
-
----
-
-## Part 3: Confirm Runner Inbox Works Correctly
-
-The Runner Inbox already uses:
-```typescript
-const { data: orders, isLoading } = useOrders({ 
-  runnerId: user?.id,
-  excludeDeliveredAndFailed: true,
-  limit: 1000000
-});
-```
-
-**Status**: Already working correctly. The screenshot shows 521 orders selected, which matches the database count (521 active orders).
 
 ---
 
@@ -189,44 +134,18 @@ const { data: orders, isLoading } = useOrders({
 
 | File | Change | Purpose |
 |------|--------|---------|
-| **Database Migration** | Update `process_delivery_queue_item` to always recalculate warehouse | Fix inactive warehouse error |
-| **Database Migration** | Update `set_default_fulfillment_warehouse` to be role-aware | Prevent future stale IDs |
-| **Database Migration** | Fix existing stale `fulfillment_warehouse_id` values | Clean up existing data |
-| `src/hooks/useOrders.ts` | Add `includeFailedAndCancelledOnly` filter | Server-side filter for failed orders |
-| `src/pages/runner/RunnerFailedOrders.tsx` | Use new filter with high limit | Show all failed/cancelled orders |
+| **Database Migration** | Fix RLS policy for products table | Allow managers to see team products in embedded joins |
+| `src/components/orders/ImportOrdersDialog.tsx` | Move SKU validation to preview step | Fail-fast validation before import |
+| `src/components/orders/ImportOrdersDialog.tsx` | Improve error messages with row numbers | Clear indication of which rows failed |
+| `src/lib/orderItemsDisplay.ts` | Mark "No items" as error condition | Visual indicator for orders needing repair |
 
 ---
 
-## Technical Details
-
-### Database Function Fix
-
-The `get_stock_owner_warehouse` RPC correctly handles role changes:
-```sql
-SELECT w.id
-FROM orders o
-JOIN profiles p ON p.id = o.salesperson_id
-JOIN warehouses w ON w.owner_user_id = o.salesperson_id
-WHERE o.id = p_order_id
-  AND w.warehouse_type = (CASE 
-    WHEN p.role = 'manager' THEN 'MANAGER'
-    ELSE 'SALESPERSON'
-  END)::warehouse_type
-  AND w.is_active = true
-LIMIT 1;
-```
-
-### Current Data State
-
-- **105 orders** have stale `fulfillment_warehouse_id` (pointing to inactive warehouses)
-- **10 failed/cancelled orders** exist for the runner but aren't showing
-- Affected managers include: KAIWEI, derrick, and others who changed from salesperson to manager role
-
-### Expected Results After Fix
+## Expected Results
 
 | Before | After |
 |--------|-------|
-| Manager users get "inactive warehouse" error | Deliveries complete successfully |
-| Failed Orders shows 0 | Failed Orders shows 10 orders for this runner |
-| Runner Inbox works | Still works (no change needed) |
+| Manager sees "No items" for team orders | Manager sees "TLS001/TURMERIC LEMON SOAP x 2" |
+| Invalid SKU allows clicking Import, then fails | Invalid SKU shows error at Preview step, Import button disabled |
+| Orders with 0 items show no warning | Orders with 0 items show warning indicator |
 
