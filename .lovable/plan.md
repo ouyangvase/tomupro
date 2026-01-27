@@ -1,122 +1,204 @@
 
-Goal
-- Eliminate the “stuck Loading your dashboard…” state and ensure every user sees the correct role-based UI (Admin/Manager/Runner/Driver/Salesperson) reliably.
-- Make the system recoverable when the backend is slow/unavailable (no infinite spinners; clear next action for user).
+# Fix: Action Required Page Not Showing Failed Orders for Managers with Data Sharing
 
-What’s actually happening (root cause, from code + your screenshots)
-- The UI now correctly refuses to “guess” a role (we removed unsafe fallbacks like `|| 'salesperson'`).
-- But there’s a new failure mode: if `fetchProfile()` fails (503/schema cache, network, or RLS/other) it returns without setting `profile`.
-- AuthContext still sets `loading=false` after `fetchProfile()` returns, so the app reaches a state:
-  - user/session exists
-  - loading=false
-  - profile=null → role=null
-- Dashboard and Sidebar both treat “role missing” as “keep loading”:
-  - `Dashboard.tsx`: `if (loading || !role) return <DashboardLoading />`
-  - `AppSidebar.tsx`: `isRoleLoading = loading || !userRole` → skeleton forever
-- Result: infinite “Loading…” with no recovery action, even though auth has completed.
+## Problem Summary
+The Action Required page shows 0 failed orders for managers who have data sharing or team member access configured. The database contains 42+ failed orders that should be visible to certain managers.
 
-How top 0.1% teams think about this (high-level thinking + evaluation system)
-1) They model it as a state machine, not a boolean
-   - “loading” is not enough. You need explicit states:
-     - auth_initializing → unauthenticated → authenticated_profile_loading → authenticated_ready
-     - plus terminal failure states: authenticated_profile_error / authenticated_profile_missing
-   - They refuse “silent ambiguity” (indefinite spinner). Every state must be either:
-     - progressing, or
-     - terminal with an action (Retry / Sign out / Contact admin).
+## Root Cause Analysis
 
-2) They optimize for two invariants:
-   - Safety invariant: Never assign permissions/role without verified backend profile.
-   - Liveness invariant: The UI must not deadlock (no infinite spinners). User must have a path to recovery.
+### Database State
+I queried the database and found:
+- **42 failed orders** exist in the system (across Yao Xiang, Kaien, HC, yongjie, Evelyn)
+- **3 managers have visibility** to other users via different sources:
+  - **ZC**: Can see Yao Xiang (23 failed orders) via `user_data_shares`
+  - **Chloe**: Can see HC, derrick, Qi Xiu (3 failed orders) via `user_data_shares`
+  - **Emily**: Can see Evelyn, Xiao Tong, Yong Xin (1 failed order) via `group_members`
 
-3) Their judgment criteria (what “good” looks like)
-   - Deterministic UI: same inputs → same screen (no random role fallbacks).
-   - Bounded waiting: retries have a cap; after that, show an error state with controls.
-   - Observability: log/track transitions (“session acquired”, “profile fetch attempt 2/4”, “profile missing”).
-   - Fast recovery: 1-click “Retry profile load” and 1-click “Reset session” that always works.
+### The Bug
+There are **two issues** causing the problem:
 
-4) Their evaluation system (how they decide if it’s fixed)
-   - Scenario coverage:
-     - Valid session + profile exists → role renders correctly within seconds.
-     - Backend 503 for 15–60s → UI shows “Profile loading…” then either succeeds or shows error with Retry.
-     - Invalid refresh token → user is cleanly signed out + returned to login.
-     - Profile missing (edge case) → explicit message + guided recovery (create profile or contact admin).
-   - “No infinite spinners” as a hard acceptance test.
+**Issue 1: Client-side `visibleIds` filter blocking valid orders**
 
-Implementation approach (what I will change)
-A) Add an explicit “profile load status” to AuthContext
-- In `src/contexts/AuthContext.tsx` add:
-  - `profileStatus: 'idle' | 'loading' | 'ready' | 'error' | 'missing'`
-  - `profileError: string | null`
-- Update `fetchProfile()` to set terminal states:
-  - If it errors after retries → `profileStatus='error'`, `profileError=error.message`
-  - If it returns `data=null` (no row) → `profileStatus='missing'`
-  - If it succeeds → set `profile`, `profileStatus='ready'`, clear `profileError`
-- Important: Avoid “loading=false but role=null” without a terminal status.
+In `SalespersonActionInbox.tsx` (lines 132-140):
+```typescript
+const actionRequiredOrders = useMemo(() => {
+  let filtered = allOrders.filter(order => {
+    // This filter may be too aggressive
+    if (visibleIds !== null && Array.isArray(visibleIds) && !visibleIds.includes(order.salesperson_id)) {
+      return false;  // <-- Blocks orders if visibleIds is stale or incomplete
+    }
+    return needsSalespersonAction(order);
+  });
+```
 
-B) Remove the deadlock pattern: “show loading forever when role is null”
-- Create a single reusable UI component (or inline JSX) for “Profile Gate”:
-  - Loading view (spinner) when `profileStatus==='loading'`
-  - Error view when `profileStatus==='error'` (shows message + Retry + Reset Session)
-  - Missing view when `profileStatus==='missing'` (explain account setup incomplete + actions)
-  - Ready view when `profileStatus==='ready'` renders the app
+The `visibleIds` comes from `get_visible_owner_ids()` RPC. If this returns an empty array or hasn't loaded yet, orders are incorrectly filtered out.
 
-C) Update route guard to block the whole app until profile is ready (or show recovery)
-- In `src/App.tsx` (`ProtectedRoute`):
-  - Replace “only checks `loading`” with:
-    - If auth initializing → show spinner
-    - If no user → redirect /auth
-    - If user exists but profileStatus is loading/error/missing → show ProfileGate screen (not DashboardLoading)
-  - This prevents every protected page from rendering partial UI when role is unknown.
+**Issue 2: The RLS policy may not be returning orders**
 
-D) Update Dashboard + Sidebar to use profileStatus (not `!role => infinite loading`)
-- `src/pages/Dashboard.tsx`:
-  - Replace `if (loading || !role)` with something like:
-    - If profileStatus is loading → show DashboardLoading
-    - If profileStatus is error/missing → show the same ProfileGate (or redirect to a dedicated error page)
-- `src/components/layout/AppSidebar.tsx`:
-  - Use `profileStatus` to decide skeleton vs error message vs normal navigation.
-  - If profileStatus is error/missing: show compact sidebar with “Retry” and “Sign out” rather than skeleton forever.
+The orders RLS policy `"Manager can view team orders"` uses:
+```sql
+is_in_manager_team(salesperson_id, auth.uid())
+```
 
-E) Add safe recovery actions
-- In AuthContext, expose:
-  - `retryProfile(): Promise<void>` (wrap `refreshProfile()` but sets status to loading first)
-  - `resetSession(): Promise<void>` that runs:
-    - `clearAuthState()`
-    - best-effort `supabase.auth.signOut()` (optional)
-    - redirect to `/auth`
-- This gives users a guaranteed “unstick” button.
+This calls the **two-parameter version** of `is_in_manager_team` which I verified DOES check `user_data_shares`. However, the `useOrders()` hook may not be receiving the orders if there's a timing issue or if the RLS check is failing for some reason.
 
-F) Optional: reduce noise from platform CORS warnings (non-blocking)
-- Your screenshot shows a CORS error on an internal “auth-bridge” request. This is platform-side and usually non-fatal.
-- If it confuses users, we can optionally disable the PWA manifest link in preview (reducing that request), but I’ll treat this as optional because the core functional failure is the profile deadlock.
+## Solution
 
-Files to change (no database changes required for this fix)
-- src/contexts/AuthContext.tsx
-  - Add profileStatus/profileError
-  - Ensure fetchProfile sets terminal states (ready/error/missing)
-  - Provide retryProfile/resetSession actions
-- src/App.tsx
-  - Update ProtectedRoute to gate on profileStatus and show recovery UI
-- src/pages/Dashboard.tsx
-  - Replace “role missing => loading forever” with profileStatus-based decision
-- src/components/layout/AppSidebar.tsx
-  - Replace skeleton-only role loading with status-based (loading vs error vs ready)
+### Part 1: Add Debug Logging and Fix Client-Side Filter
 
-Testing checklist (what I will verify after implementation)
-- Login as Admin → sidebar shows “Admin”, dashboard loads (no spinner).
-- Login as Salesperson/Runner/Driver/Manager → correct menu + correct dashboard.
-- Simulate “profile fetch fails” (by temporarily forcing fetchProfile to throw in dev) → see error screen with Retry + Reset Session; no infinite spinner.
-- Simulate “invalid refresh token” by clearing/poisoning local storage → app redirects to /auth and does not hang.
-- Confirm no role fallback exists anywhere critical (we already removed the main ones; will re-scan for any remaining “default to salesperson” in UI decision points).
+**File: `src/pages/sales/SalespersonActionInbox.tsx`**
 
-Why this will make the system “work as you want”
-- Your app depends on role-based workflows (sales tracking, team management, runner/driver operations). Correct role is the key that unlocks the right screens and permissions.
-- This change makes role retrieval:
-  - safe (no guessing),
-  - reliable (retries + explicit states),
-  - recoverable (no deadlocks; users can always get back to a working screen).
+1. Add better handling for the `visibleIds` loading state
+2. Show loading indicator while `visibleIds` is being fetched
+3. Log visibility information for debugging
+4. Fix the filter to not block orders when `visibleIds` is still loading
 
-Rollout / risk management
-- Low functional risk: changes are isolated to auth gating and UI decision logic.
-- High impact: eliminates a full-app deadlock scenario that looks like “system broken”.
-- If anything regresses, rollback is straightforward (revert these specific files), but the new approach is the industry-standard way to avoid exactly this class of bug.
+```typescript
+// Before the filter, add loading state check
+const { data: visibleIds, isLoading: visibleIdsLoading } = useQuery({...});
+
+// Don't filter by visibleIds until it's loaded
+const actionRequiredOrders = useMemo(() => {
+  // Wait for visibility data before filtering
+  if (visibleIdsLoading) return [];
+  
+  let filtered = allOrders.filter(order => {
+    // Only apply visibility filter if we have the data
+    if (visibleIds !== null && Array.isArray(visibleIds) && visibleIds.length > 0) {
+      if (!visibleIds.includes(order.salesperson_id)) {
+        return false;
+      }
+    }
+    return needsSalespersonAction(order);
+  });
+  // ... rest of filtering
+});
+```
+
+### Part 2: Fix Default View Mode for "Team Data"
+
+The default view mode is `'my'` which shows only the manager's own orders:
+```typescript
+const { viewMode, ... } = useTeamViewState('my');  // Defaults to 'my'
+```
+
+When switching to "Team Data", if `selectedMember` is `'all'`, the filter should show all accessible orders. But there's a bug at line 152:
+```typescript
+} else if (selectedMember !== 'all') {
+  filtered = filtered.filter(order => order.salesperson_id === selectedMember);
+}
+// If 'all' is selected, no additional filter - BUT visibleIds already filtered
+```
+
+The issue is that when `selectedMember === 'all'`, it relies on `visibleIds` to already have filtered correctly. But if `visibleIds` is empty/loading, no orders appear.
+
+**Fix: Ensure "All Team" mode shows orders from ALL accessible team members**
+
+```typescript
+if (canViewGroup) {
+  if (viewMode === 'my') {
+    filtered = filtered.filter(order => order.salesperson_id === profile?.id);
+  } else {
+    // Team mode
+    if (selectedMember !== 'all') {
+      filtered = filtered.filter(order => order.salesperson_id === selectedMember);
+    } else {
+      // "All Team" - explicitly filter by manager ID + all team member IDs
+      const accessibleIds = [profile?.id, ...teamMemberIds].filter(Boolean);
+      if (accessibleIds.length > 0) {
+        filtered = filtered.filter(order => accessibleIds.includes(order.salesperson_id));
+      }
+    }
+  }
+}
+```
+
+### Part 3: Fix `useTeamMembers` to Include All Sources
+
+The `useTeamMembers` hook needs to ensure it fetches members from ALL binding sources:
+- `manager_groups` + `group_members`
+- `manager_salesperson_bindings`
+- `profiles.manager_id`
+- `user_data_shares`
+
+**File: `src/hooks/useTeamMembers.ts`**
+
+Add query for `manager_salesperson_bindings` (currently missing from the hook):
+
+```typescript
+// Add: Fetch from manager_salesperson_bindings
+const { data: boundSalespersons, error: bindingsError } = await supabase
+  .from('manager_salesperson_bindings')
+  .select('salesperson:profiles!manager_salesperson_bindings_salesperson_id_fkey(*)')
+  .eq('manager_id', user.id)
+  .eq('active', true);
+
+if (bindingsError) throw bindingsError;
+
+for (const row of boundSalespersons ?? []) {
+  const sp = row.salesperson as unknown as Profile;
+  if (sp && sp.is_active && !seenIds.has(sp.id)) {
+    seenIds.add(sp.id);
+    allMembers.push({
+      id: sp.id,
+      display_name: sp.display_name,
+      email: sp.email,
+      role: sp.role,
+      is_active: sp.is_active,
+      avatar_url: sp.avatar_url,
+      isShared: false,
+    });
+  }
+}
+```
+
+### Part 4: Add Stats Debug Information
+
+Add a small debug indicator to help troubleshoot visibility issues:
+
+```typescript
+// Add after the stats cards
+{(role === 'admin' || role === 'manager') && (
+  <div className="text-xs text-muted-foreground">
+    Total orders fetched: {allOrders.length} | 
+    Visible IDs: {visibleIds === null ? 'All (admin)' : (visibleIds?.length ?? 'loading')} |
+    Team members: {teamMemberIds.length}
+  </div>
+)}
+```
+
+## Files to Change
+
+| File | Change |
+|------|--------|
+| `src/pages/sales/SalespersonActionInbox.tsx` | Fix visibility filter, add loading state, fix "All Team" mode |
+| `src/hooks/useTeamMembers.ts` | Add `manager_salesperson_bindings` query to include all team sources |
+
+## Expected Outcome
+
+After implementation:
+1. **ZC** viewing "Action Required" in Team Data mode will see **23 failed orders** from Yao Xiang
+2. **Chloe** will see **3 failed orders** from HC
+3. **Emily** will see **1 failed order** from Evelyn
+4. Managers without any bindings will see only their own orders (correctly showing 0 if they have none)
+
+## Technical Notes
+
+### Why the Bug Exists
+The visibility logic is split between:
+1. **RLS policies** (server-side) - using `is_in_manager_team(salesperson_id, auth.uid())`
+2. **Client-side filter** (JavaScript) - using `visibleIds` from `get_visible_owner_ids()` RPC
+3. **UI filter** (React state) - using `viewMode` and `selectedMember`
+
+When these three layers don't align, orders can be incorrectly filtered out. The fix ensures they all use the same source of truth.
+
+### RLS Function Verification
+I verified that the two-parameter `is_in_manager_team(p_user_id, p_manager_id)` function correctly returns `true` for data share relationships:
+```sql
+SELECT public.is_in_manager_team(
+  'a8a12027-ccf4-4f8a-9c8d-ea952319912f', -- Yao Xiang
+  '4c236c3d-4ee2-44b6-ab04-84e53649cfdb'  -- ZC
+) -- Returns TRUE
+```
+
+This confirms RLS should be returning the orders - the issue is the client-side filtering.
