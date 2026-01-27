@@ -9,6 +9,7 @@ import { LocationProvider } from "@/contexts/LocationContext";
 import { RoleChangeBanner } from "@/components/RoleChangeBanner";
 import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
 import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
+import { ProfileGate } from "@/components/auth/ProfileGate";
 
 // Pages
 import Auth from "./pages/Auth";
@@ -73,9 +74,10 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, profileStatus, profileError, retryProfile, resetSession } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
   
+  // Step 1: Auth is still initializing
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -87,11 +89,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   
+  // Step 2: No user - redirect to auth
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Only check runner binding for drivers - salespersons, runners, admins, managers never need this
+  // Step 3: User exists but profile is not ready - show ProfileGate
+  // This handles: loading, error, missing states with recovery actions
+  if (profileStatus !== 'ready') {
+    return (
+      <ProfileGate
+        profileStatus={profileStatus}
+        profileError={profileError}
+        onRetry={retryProfile}
+        onResetSession={resetSession}
+      >
+        {children}
+      </ProfileGate>
+    );
+  }
+
+  // Step 4: Only check runner binding for drivers
   const isDriver = profile?.role === "driver";
   
   // Show loading while checking driver-runner link (only for drivers)
@@ -107,7 +125,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   // Show onboarding ONLY for drivers not linked to a runner
-  // Salespersons, runners, admins, managers bypass this completely
   if (isDriver && needsOnboarding) {
     return <DriverOnboarding />;
   }
