@@ -109,6 +109,20 @@ export default function SalespersonActionInbox() {
   // Use team members hook directly
   const { data: teamMembers = [] } = useTeamMembers();
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
+  
+  // Fetch visible owner IDs from server (source of truth for visibility)
+  const { data: visibleIds } = useQuery({
+    queryKey: ['visible-owner-ids', profile?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_visible_owner_ids');
+      if (error) {
+        console.error('Failed to fetch visible owner IDs:', error);
+        return null;
+      }
+      return data;
+    },
+    enabled: !!profile?.id,
+  });
 
   // Determine if user can view all (admin), group members (manager), or just own (salesperson)
   const canViewAll = role === 'admin';
@@ -116,31 +130,34 @@ export default function SalespersonActionInbox() {
 
   // Filter orders requiring salesperson action based on role and view mode
   const actionRequiredOrders = useMemo(() => {
-    let filtered = allOrders.filter(order => needsSalespersonAction(order));
+    // First apply visibility filter from server (source of truth)
+    let filtered = allOrders.filter(order => {
+      // Apply server-side visibility first (null means admin - sees all)
+      if (visibleIds !== null && Array.isArray(visibleIds) && !visibleIds.includes(order.salesperson_id)) {
+        return false;
+      }
+      return needsSalespersonAction(order);
+    });
 
-    // Role-based filtering
+    // Role-based view mode filtering (UI preference, not security)
     if (canViewAll) {
       // Admin sees all - no additional filter
     } else if (canViewGroup) {
       // Manager - apply view mode filtering
       if (viewMode === 'my') {
         filtered = filtered.filter(order => order.salesperson_id === profile?.id);
-      } else {
-        // Team mode
-        const teamIds = [profile?.id, ...teamMemberIds];
-        if (selectedMember !== 'all') {
-          filtered = filtered.filter(order => order.salesperson_id === selectedMember);
-        } else {
-          filtered = filtered.filter(order => teamIds.includes(order.salesperson_id));
-        }
+      } else if (selectedMember !== 'all') {
+        // Specific team member selected
+        filtered = filtered.filter(order => order.salesperson_id === selectedMember);
       }
+      // If 'all' is selected, the server visibility already handles the scope
     } else {
-      // Salesperson sees only their own
+      // Salesperson sees only their own (server already filters, but double-check)
       filtered = filtered.filter(order => order.salesperson_id === profile?.id);
     }
 
-    // Apply salesperson filter (for admin)
-    if (salespersonFilter !== 'all' && canViewAll) {
+    // Apply salesperson filter (for admin/manager dropdown)
+    if (salespersonFilter !== 'all') {
       filtered = filtered.filter(o => o.salesperson_id === salespersonFilter);
     }
 
@@ -150,7 +167,7 @@ export default function SalespersonActionInbox() {
     }
 
     return filtered;
-  }, [allOrders, profile?.id, sourceFilter, salespersonFilter, canViewAll, canViewGroup, teamMemberIds, viewMode, selectedMember]);
+  }, [allOrders, profile?.id, sourceFilter, salespersonFilter, canViewAll, canViewGroup, viewMode, selectedMember, visibleIds]);
 
   // Fetch salesperson info for ALL orders in the filtered list (not just team members)
   const salespersonIds = useMemo(() => {
