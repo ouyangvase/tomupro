@@ -11,11 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
-import { ArrowLeftRight, Eye, Users, User, UsersRound, Search, Package } from 'lucide-react';
+import { ArrowLeftRight, Eye, Users, User, UsersRound, Search, Package, RefreshCw } from 'lucide-react';
 import { StockTransferDialog } from '@/components/inventory/StockTransferDialog';
 import { VisibilityManagementDialog } from '@/components/inventory/VisibilityManagementDialog';
 import { ManagerGroupsDialog } from '@/components/inventory/ManagerGroupsDialog';
 import { MobileStockCard } from '@/components/mobile/MobileStockCard';
+import { QueryWrapper } from '@/components/ui/query-wrapper';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { StockBalance } from '@/types/database';
 
@@ -25,7 +26,7 @@ interface StockBalanceRow extends StockBalance {
 
 export default function InventoryBalance() {
   const { profile } = useAuth();
-  const { data: stockBalance = [], isLoading } = useFilteredStockBalance();
+  const { data: stockBalance = [], isLoading, isError, error, refetch } = useFilteredStockBalance();
   const { data: users = [] } = useUsers();
   const { data: teamMembers = [] } = useTeamMembers();
   const isMobile = useIsMobile();
@@ -211,18 +212,20 @@ export default function InventoryBalance() {
           )}
 
           {/* Stock cards */}
-          {isLoading ? (
-            <div className="flex items-center justify-center gap-3 py-12">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <span className="text-muted-foreground">Loading...</span>
-            </div>
-          ) : filteredStock.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {isManager && stockTab === 'my' 
+          <QueryWrapper
+            isLoading={isLoading}
+            isError={isError}
+            error={error as Error}
+            isEmpty={filteredStock.length === 0}
+            onRetry={() => refetch()}
+            loadingMessage="Loading stock data..."
+            emptyMessage={
+              isManager && stockTab === 'my' 
                 ? "No stock in your warehouse yet. Acknowledge inbound shipments to add stock."
-                : searchQuery ? "No products match your search" : "No stock data available"}
-            </div>
-          ) : (
+                : searchQuery ? "No products match your search" : "No stock data available"
+            }
+            emptyIcon={<Package className="h-10 w-10 text-muted-foreground/50" />}
+          >
             <div className="space-y-3">
               {filteredStock.map((stock) => (
                 <MobileStockCard
@@ -237,7 +240,7 @@ export default function InventoryBalance() {
                 />
               ))}
             </div>
-          )}
+          </QueryWrapper>
         </div>
       </AppLayout>
     );
