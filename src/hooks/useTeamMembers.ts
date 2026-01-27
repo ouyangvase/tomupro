@@ -64,7 +64,32 @@ export function useTeamMembers() {
         }
       }
 
-      // 2. Fallback: profiles.manager_id
+      // 2. Fetch from manager_salesperson_bindings (active bindings)
+      const { data: boundSalespersons, error: bindingsError } = await supabase
+        .from('manager_salesperson_bindings')
+        .select('salesperson:profiles!manager_salesperson_bindings_salesperson_id_fkey(*)')
+        .eq('manager_id', user.id)
+        .eq('active', true);
+
+      if (bindingsError) throw bindingsError;
+
+      for (const row of boundSalespersons ?? []) {
+        const sp = row.salesperson as unknown as Profile;
+        if (sp && sp.is_active && !seenIds.has(sp.id)) {
+          seenIds.add(sp.id);
+          allMembers.push({
+            id: sp.id,
+            display_name: sp.display_name,
+            email: sp.email,
+            role: sp.role,
+            is_active: sp.is_active,
+            avatar_url: sp.avatar_url,
+            isShared: false,
+          });
+        }
+      }
+
+      // 3. Fallback: profiles.manager_id (legacy)
       const { data: legacyMembers, error: legacyError } = await supabase
         .from('profiles')
         .select('*')
