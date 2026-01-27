@@ -46,7 +46,7 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
           )
         `)
         .order('created_at', { ascending: false })
-        .limit(10000);
+        .limit(500); // Prevent statement timeout on large datasets
 
       if (filters?.status) {
         query = query.eq('status', filters.status);
