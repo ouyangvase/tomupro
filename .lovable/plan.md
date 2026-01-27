@@ -1,163 +1,156 @@
 
-# App Simplification and Cleanup Plan
+# Critical Fix: Authentication and Role Loading Issues
 
-## Current State Analysis
+## Problem Summary
 
-After reviewing the codebase, I found that the app is a comprehensive **delivery operations management system** with the following core workflows already well-implemented:
+The app has three critical issues:
 
-### What's Working Well
-1. **Order Tracking**: Booking → Ready → Delivered/Cancelled/Action Required flow
-2. **Role-Based Visibility**: Uses `get_visible_owner_ids()` RPC for consistent data access
-3. **Query Limits**: Recently fixed to 30,000 records for high-volume support
-4. **Dashboard per Role**: Salesperson, Manager, Runner, Driver, Admin each have tailored views
-5. **Leaderboard**: Ranking system for all users with delivered sales
+1. **All users display as "Salesperson"** - When profile fetch fails (503 errors), the app defaults to salesperson role
+2. **Loading spinner hangs indefinitely** - No timeout or retry for database errors
+3. **Sign out stuck on "Signing out..."** - No timeout for auth operations
 
-### Issues Identified
+## Root Cause
 
-1. **Database Connection Issues (PGRST002)**: The 503 errors in network logs are transient Supabase schema cache issues - not a code problem. These self-resolve.
+### The Core Problem: Unsafe Fallback to "Salesperson"
 
-2. **Potentially Unnecessary Features**:
-   - **Packages Module** (`/packages`, `/packages/notifications`): Appears to be for international shipping tracking (CNY, weight_kg, batch_id) - separate from the core delivery workflow
-   - **Some Reconciliation Pages**: May overlap with Claims functionality
-
-3. **Complexity in Navigation**: Too many sidebar items can overwhelm users
-
----
-
-## Proposed Cleanup Actions
-
-### Phase 1: Remove Unused "Packages" Feature
-
-The "Packages" module tracks international shipments with CNY pricing and weight - this appears to be a separate feature from the core delivery workflow described in your requirements.
-
-**Files to Remove:**
-- `src/pages/packages/MyPackagesPage.tsx`
-- `src/pages/packages/PcNotificationsPage.tsx`
-- `src/components/packages/PackageDetailDialog.tsx`
-- `src/components/packages/PcPackageDetailDialog.tsx`
-- `src/components/packages/AppNotificationBell.tsx`
-- `src/hooks/usePackages.ts`
-- `src/hooks/usePcPackages.ts`
-- `src/hooks/usePcNotifications.ts`
-
-**Code Changes:**
-- Remove routes from `App.tsx` (lines 191-192)
-- Remove `packageItems` from `AppSidebar.tsx` (lines 274-279)
-- Remove sidebar group for Packages (lines 488-499)
-
-### Phase 2: Simplify Sidebar Navigation
-
-**Current Structure (Too Complex):**
-- Sales (7 items)
-- Quick Actions (6 items for runner)
-- Runner (8 items)
-- Driver Quick Actions (3 items)
-- Driver (3 items)
-- Manager (5 items)
-- Reconciliation (9 items)
-- Inventory (6 items)
-- Packages (1 item)
-- Settings (8 items)
-
-**Simplified Structure (Your 5 Core Workflows):**
-
-```
-SALES & DELIVERY
-├── Dashboard
-├── Booking Sales
-├── Ready Sales
-├── Delivered Orders
-├── Cancelled Sales
-├── Action Required
-└── Leaderboard
-
-RUNNER OPERATIONS (runner role)
-├── Runner Inbox
-├── Delivered Orders
-├── Failed Orders
-├── Driver Management
-├── Inbound
-└── Claims
-
-INVENTORY & STOCK
-├── Stock Balance
-├── Products
-└── Inbound Pending
-
-ADMIN & SETTINGS
-├── Users
-├── Bindings
-└── Profile
+```typescript
+// AppSidebar.tsx line 328 - BAD
+const userRole = profile?.role || 'salesperson';  // Falls back when profile is null!
 ```
 
-### Phase 3: Consolidate Redundant Admin Pages
+When the database returns 503 (transient schema cache errors), the profile fetch fails and `profile` remains `null`. The code then falls back to `'salesperson'`, causing:
+- Sidebar shows wrong role
+- Wrong menu items displayed
+- Wrong dashboard rendered
 
-Some admin pages have overlapping functionality:
+## Solution
 
-- **Keep**: `/admin/claim-batches`, `/claims` (for claim history)
-- **Consider Consolidating**: SP Reconciliation + Admin Reconciliation into one page with tabs
+### Part 1: Remove Unsafe Role Fallbacks
 
----
+**Files to modify:**
+
+1. **`src/components/layout/AppSidebar.tsx`**
+   - Change line 328 from `profile?.role || 'salesperson'` to `profile?.role`
+   - Add loading state when role is undefined
+   - Show skeleton/loading UI until role is available
+
+2. **`src/pages/Dashboard.tsx`**
+   - Add check for `!role` and show loading spinner instead of defaulting to SalespersonDashboard
+   - Remove the `default:` case that falls back to SalespersonDashboard
+
+3. **`src/pages/dashboard/MobileDashboard.tsx`**
+   - Same fix - show loading when role is null instead of defaulting
+
+### Part 2: Add Retry Logic for Profile Fetch
+
+**File**: `src/contexts/AuthContext.tsx`
+
+Add retry with exponential backoff when profile fetch fails:
+
+```typescript
+const fetchProfile = useCallback(async (userId: string, retryCount = 0) => {
+  const maxRetries = 3;
+  const baseDelay = 1000; // 1 second
+  
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+  
+  if (error && retryCount < maxRetries) {
+    // Exponential backoff: 1s, 2s, 4s
+    const delay = baseDelay * Math.pow(2, retryCount);
+    console.warn(`Profile fetch failed, retrying in ${delay}ms...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return fetchProfile(userId, retryCount + 1);
+  }
+  
+  if (!error && data) {
+    // ... existing profile processing
+  }
+}, [previousRole, handleAccountDisabled]);
+```
+
+### Part 3: Fix Loading State Race Condition
+
+**File**: `src/contexts/AuthContext.tsx`
+
+Don't set `loading = false` until profile is fetched:
+
+```typescript
+useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    async (event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        // Fetch profile BEFORE setting loading to false
+        await fetchProfile(session.user.id);
+      } else {
+        setProfile(null);
+      }
+      setLoading(false);  // Only set after profile is fetched
+    }
+  );
+  // ...
+}, [fetchProfile]);
+```
+
+### Part 4: Add Timeout for Sign Out
+
+**File**: `src/contexts/AuthContext.tsx`
+
+Add timeout to prevent signout from hanging:
+
+```typescript
+const signOut = async () => {
+  if (signingOut) return;
+  setSigningOut(true);
+  
+  // Add 5-second timeout for signout
+  const signOutPromise = supabase.auth.signOut();
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error('Signout timeout')), 5000)
+  );
+  
+  try {
+    await Promise.race([signOutPromise, timeoutPromise]);
+  } catch (error) {
+    console.warn('Sign out error:', error);
+  }
+  
+  // Always clear local state regardless of API response
+  // ... existing cleanup code
+};
+```
 
 ## Summary of Changes
 
-### Files to Remove (8 files)
-| File | Reason |
-|------|--------|
-| `src/pages/packages/MyPackagesPage.tsx` | Unused international packages feature |
-| `src/pages/packages/PcNotificationsPage.tsx` | Unused notifications for packages |
-| `src/components/packages/*` | Supporting components for packages |
-| `src/hooks/usePackages.ts` | Unused hook |
-| `src/hooks/usePcPackages.ts` | Unused hook |
-| `src/hooks/usePcNotifications.ts` | Unused hook |
-
-### Files to Modify (2 files)
-
 | File | Change |
 |------|--------|
-| `src/App.tsx` | Remove package routes (lines 191-192) |
-| `src/components/layout/AppSidebar.tsx` | Remove packageItems and sidebar group |
+| `src/components/layout/AppSidebar.tsx` | Remove fallback to 'salesperson', show loading state |
+| `src/pages/Dashboard.tsx` | Show loading when role is null, remove default case |
+| `src/pages/dashboard/MobileDashboard.tsx` | Show loading when role is null, remove default case |
+| `src/contexts/AuthContext.tsx` | Add retry logic, fix loading race condition, add signout timeout |
 
----
+## Expected Outcome
 
-## Your 5 Core Requirements - Status Check
+After implementation:
 
-| Requirement | Status | Implementation |
-|-------------|--------|----------------|
-| 1. Track all delivery stages | ✅ Complete | Booking/Ready/Delivered/Cancel/Action Required pages exist |
-| 2. Manager manages team salesperson | ✅ Complete | ManagerDashboard, Team Oversight, Bindings work correctly |
-| 3. Runner manages driver delivery | ✅ Complete | Driver Management, Driver Inbox, Live Map implemented |
-| 4. Runner updates orders daily (inbound/stock) | ✅ Complete | Runner Inbox, Inbound, Stock Balance pages work |
-| 5. Leaderboard ranking for all users | ✅ Complete | LeaderboardPage with rankings by delivered sales |
-
----
+1. **Correct role display** - Users see their actual role, not a fallback
+2. **Graceful error handling** - Transient 503 errors are retried automatically
+3. **No more loading hangs** - Profile fetch has timeout and retry
+4. **Sign out works reliably** - Has 5-second timeout to prevent hanging
 
 ## Technical Notes
 
-### The 503 Errors Are Transient
-The `PGRST002` errors ("Could not query the database for the schema cache. Retrying.") are caused by Supabase PostgREST service temporarily being unable to refresh its schema cache. This is:
-- A Supabase infrastructure issue, not code
-- Self-healing (the "Retrying" message indicates automatic recovery)
-- Common during schema changes or high load
+### Why 503 PGRST002 Errors Occur
+These are transient Supabase PostgREST schema cache refresh errors. They self-resolve but the app needs to retry gracefully instead of failing silently.
 
-### Role-Based Visibility Is Working
-The `get_visible_owner_ids()` and `get_accessible_owner_ids()` RPCs correctly handle:
-- **Admin**: Sees all data
-- **Manager**: Sees own + bound team salespersons
-- **Salesperson**: Sees own data
-- **Runner**: Sees assigned orders
-
-### Query Limits Are Adequate
-All hooks now use 30,000 record limits which is sufficient for:
-- Runners with 700+ orders
-- Managers with 145+ team orders
-- High-volume salespersons
-
----
-
-## Implementation Priority
-
-1. **Remove Packages feature** (clean code, no user impact if unused)
-2. **Simplify sidebar** (better UX, less confusion)
-3. **Monitor database errors** (wait for Supabase to stabilize)
-
+### Why Default Fallback is Dangerous
+Defaulting to any role when the actual role is unknown is a security and UX issue:
+- Admins see only salesperson features
+- Runners can't access their tools
+- Users get confused about their access level
