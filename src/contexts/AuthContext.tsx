@@ -3,7 +3,6 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Profile, AppRole } from '@/types/database';
-import type { ProfileStatus } from '@/components/auth/ProfileGate';
 
 // Extended Profile type to include new status fields
 type UserStatus = 'active' | 'disabled' | 'resigned';
@@ -23,12 +22,8 @@ interface AuthContextType {
   loading: boolean;
   signingOut: boolean;
   roleChanged: boolean;
-  profileStatus: ProfileStatus;
-  profileError: string | null;
   dismissRoleChange: () => void;
   refreshProfile: () => Promise<void>;
-  retryProfile: () => Promise<void>;
-  resetSession: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, displayName: string, role: AppRole) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -52,8 +47,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [signingOut, setSigningOut] = useState(false);
   const [roleChanged, setRoleChanged] = useState(false);
   const [previousRole, setPreviousRole] = useState<AppRole | null>(null);
-  const [profileStatus, setProfileStatus] = useState<ProfileStatus>('idle');
-  const [profileError, setProfileError] = useState<string | null>(null);
 
   // Clear stale tokens function - used when session refresh fails
   const clearAuthState = useCallback(() => {
@@ -66,8 +59,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
     setPreviousRole(null);
     setRoleChanged(false);
-    setProfileStatus('idle');
-    setProfileError(null);
   }, []);
 
   // Function to handle account disabled - force sign out
@@ -99,14 +90,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const maxRetries = 3;
     const baseDelay = 1000; // 1 second
     
-    // Set loading status on first attempt
-    if (retryCount === 0) {
-      setProfileStatus('loading');
-      setProfileError(null);
-    }
-    
-    console.log(`[Auth] Fetching profile for ${userId} (attempt ${retryCount + 1}/${maxRetries + 1})`);
-    
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -116,50 +99,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Retry on transient errors (503, network issues)
     if (error && retryCount < maxRetries) {
       const delay = baseDelay * Math.pow(2, retryCount);
-      console.warn(`[Auth] Profile fetch failed (attempt ${retryCount + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message);
+      console.warn(`Profile fetch failed (attempt ${retryCount + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message);
       await new Promise(resolve => setTimeout(resolve, delay));
       return fetchProfile(userId, retryCount + 1);
     }
     
-    // Terminal error state - all retries exhausted
     if (error) {
-      console.error('[Auth] Profile fetch failed after all retries:', error);
-      setProfileStatus('error');
-      setProfileError(error.message || 'Failed to load profile after multiple attempts');
+      console.error('Profile fetch failed after all retries:', error);
+      // Don't set profile to null here - keep loading state
       return;
     }
     
-    // Profile missing - no row exists for this user
-    if (!data) {
-      console.warn('[Auth] No profile row found for user:', userId);
-      setProfileStatus('missing');
-      setProfileError('No profile found for your account');
-      return;
+    if (data) {
+      const newProfile = data as ExtendedProfile;
+      
+      // Check if account is disabled or resigned
+      if (newProfile.status && newProfile.status !== 'active') {
+        await handleAccountDisabled(
+          newProfile.status === 'resigned' 
+            ? 'Your account has been marked as resigned. Please contact admin.'
+            : 'Your account has been disabled. Please contact admin.'
+        );
+        return;
+      }
+      
+      // Check if role changed while session is active
+      if (previousRole && previousRole !== newProfile.role) {
+        setRoleChanged(true);
+      }
+      
+      setPreviousRole(newProfile.role);
+      setProfile(newProfile);
     }
-    
-    // Success - we have profile data
-    const newProfile = data as ExtendedProfile;
-    
-    // Check if account is disabled or resigned
-    if (newProfile.status && newProfile.status !== 'active') {
-      await handleAccountDisabled(
-        newProfile.status === 'resigned' 
-          ? 'Your account has been marked as resigned. Please contact admin.'
-          : 'Your account has been disabled. Please contact admin.'
-      );
-      return;
-    }
-    
-    // Check if role changed while session is active
-    if (previousRole && previousRole !== newProfile.role) {
-      setRoleChanged(true);
-    }
-    
-    console.log('[Auth] Profile loaded successfully, role:', newProfile.role);
-    setPreviousRole(newProfile.role);
-    setProfile(newProfile);
-    setProfileStatus('ready');
-    setProfileError(null);
   }, [previousRole, handleAccountDisabled]);
 
   const refreshProfile = useCallback(async () => {
@@ -167,29 +138,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await fetchProfile(user.id);
     }
   }, [user?.id, fetchProfile]);
-
-  // Retry profile fetch - for use with ProfileGate
-  const retryProfile = useCallback(async () => {
-    if (user?.id) {
-      console.log('[Auth] Retrying profile fetch...');
-      setProfileStatus('loading');
-      setProfileError(null);
-      await fetchProfile(user.id);
-    }
-  }, [user?.id, fetchProfile]);
-
-  // Reset session completely - for use with ProfileGate
-  const resetSession = useCallback(async () => {
-    console.log('[Auth] Resetting session...');
-    clearAuthState();
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.warn('[Auth] Sign out error during reset:', error);
-    }
-    // Navigate to auth page
-    window.location.href = '/auth';
-  }, [clearAuthState]);
 
   const dismissRoleChange = useCallback(() => {
     setRoleChanged(false);
@@ -403,12 +351,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         signingOut,
         roleChanged,
-        profileStatus,
-        profileError,
         dismissRoleChange,
         refreshProfile,
-        retryProfile,
-        resetSession,
         signIn,
         signUp,
         signOut,
