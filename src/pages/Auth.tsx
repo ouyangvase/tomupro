@@ -28,7 +28,7 @@ const signupSchema = z.object({
 
 export default function Auth() {
   const navigate = useNavigate();
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   
@@ -43,11 +43,13 @@ export default function Auth() {
   const [inviteCode, setInviteCode] = useState('');
   const [codeStatus, setCodeStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
 
+  // Only redirect when we have a confirmed user AND auth is done loading
+  // This prevents the auth page from being stuck on loading
   useEffect(() => {
-    if (user) {
+    if (user && !authLoading) {
       navigate('/');
     }
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

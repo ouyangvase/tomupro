@@ -48,6 +48,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [roleChanged, setRoleChanged] = useState(false);
   const [previousRole, setPreviousRole] = useState<AppRole | null>(null);
 
+  // Clear stale tokens function - used when session refresh fails
+  const clearAuthState = useCallback(() => {
+    const projectId = 'fitonksgqfxnpljiylkn';
+    localStorage.removeItem(`sb-${projectId}-auth-token`);
+    localStorage.removeItem('supabase.auth.token');
+    sessionStorage.clear();
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    setPreviousRole(null);
+    setRoleChanged(false);
+  }, []);
+
   // Function to handle account disabled - force sign out
   const handleAccountDisabled = useCallback(async (reason?: string) => {
     toast.error(reason || 'Account disabled. Please contact admin.');
@@ -132,6 +145,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.location.reload();
   }, []);
 
+  // Safety timeout to prevent infinite loading states
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.warn('Auth loading timeout (10s) - forcing completion');
+        setLoading(false);
+      }
+    }, 10000); // 10 second timeout
+    
+    return () => clearTimeout(timeout);
+  }, [loading]);
+
   useEffect(() => {
     let mounted = true;
     
@@ -139,6 +164,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+        
+        // Handle session refresh failures (e.g., invalid refresh token)
+        if (event === 'TOKEN_REFRESHED' && !session) {
+          console.warn('Token refresh failed - clearing stale tokens');
+          clearAuthState();
+          if (mounted) setLoading(false);
+          return;
+        }
+        
+        // Handle sign out event
+        if (event === 'SIGNED_OUT') {
+          clearAuthState();
+          if (mounted) setLoading(false);
+          return;
+        }
         
         setSession(session);
         setUser(session?.user ?? null);
@@ -158,18 +198,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // THEN check for existing session with proper error handling
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (!mounted) return;
       
-      setSession(session);
-      setUser(session?.user ?? null);
+      // If there's an auth error or no valid session, clear state and stop loading
+      if (error) {
+        console.error('Session check error:', error);
+        clearAuthState();
+        if (mounted) setLoading(false);
+        return;
+      }
       
-      if (session?.user) {
+      if (!session) {
+        // No session - that's fine, just stop loading
+        setUser(null);
+        setSession(null);
+        setProfile(null);
+        if (mounted) setLoading(false);
+        return;
+      }
+      
+      setSession(session);
+      setUser(session.user);
+      
+      if (session.user) {
         await fetchProfile(session.user.id);
       }
       
       if (mounted) {
+        setLoading(false);
+      }
+    }).catch((error) => {
+      console.error('Session check failed:', error);
+      if (mounted) {
+        clearAuthState();
         setLoading(false);
       }
     });
@@ -178,7 +241,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile, clearAuthState]);
 
   // Subscribe to realtime changes on the profile
   useEffect(() => {
