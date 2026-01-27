@@ -2,7 +2,7 @@ import { Bell, Settings } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { useUnreadPcNotificationCount } from '@/hooks/usePcNotifications';
+import { useUnreadNotificationCount } from '@/hooks/useNotifications';
 
 interface MobileHeaderProps {
   onNotificationClick?: () => void;
@@ -12,7 +12,7 @@ interface MobileHeaderProps {
 export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHeaderProps) {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  const { data: unreadCount = 0 } = useUnreadPcNotificationCount();
+  const { data: unreadCount = 0 } = useUnreadNotificationCount();
   
   const getInitials = (name?: string) => {
     if (!name) return 'U';
