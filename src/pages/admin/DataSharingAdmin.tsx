@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +28,8 @@ export default function DataSharingAdmin() {
   const operableShares = shares.filter(s => s.can_operate && s.active);
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <AppLayout>
+      <div className="container mx-auto py-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Data Sharing</h1>
@@ -127,7 +129,8 @@ export default function DataSharingAdmin() {
           onOpenChange={(open) => !open && setEditingShare(null)} 
         />
       )}
-    </div>
+      </div>
+    </AppLayout>
   );
 }
 
