@@ -1,13 +1,9 @@
-import { useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
-import { AppNotificationBell } from "@/components/packages/AppNotificationBell";
 import { PushNotificationPrompt } from "@/components/notifications/PushNotificationPrompt";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useRealtimeNotifications } from "@/hooks/useNotificationSystem";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { PackageDetailDialog } from "@/components/packages/PackageDetailDialog";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -16,8 +12,6 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   // Subscribe to realtime notifications
   useRealtimeNotifications();
-  const isMobile = useIsMobile();
-  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
 
   return (
     <SidebarProvider>
@@ -32,7 +26,6 @@ export function AppLayout({ children }: AppLayoutProps) {
             </div>
             <div className="flex items-center gap-1 md:gap-2">
               <ThemeToggle />
-              <AppNotificationBell onPackageClick={setSelectedPackageId} />
               <NotificationBell />
             </div>
           </header>
@@ -43,11 +36,6 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
       </div>
       <PushNotificationPrompt />
-      <PackageDetailDialog 
-        packageId={selectedPackageId}
-        open={!!selectedPackageId}
-        onOpenChange={(open) => !open && setSelectedPackageId(null)}
-      />
     </SidebarProvider>
   );
 }
