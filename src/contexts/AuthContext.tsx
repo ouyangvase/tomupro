@@ -73,14 +73,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRoleChanged(false);
   }, []);
 
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string, retryCount = 0): Promise<void> => {
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second
+    
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
     
-    if (!error && data) {
+    // Retry on transient errors (503, network issues)
+    if (error && retryCount < maxRetries) {
+      const delay = baseDelay * Math.pow(2, retryCount);
+      console.warn(`Profile fetch failed (attempt ${retryCount + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return fetchProfile(userId, retryCount + 1);
+    }
+    
+    if (error) {
+      console.error('Profile fetch failed after all retries:', error);
+      // Don't set profile to null here - keep loading state
+      return;
+    }
+    
+    if (data) {
       const newProfile = data as ExtendedProfile;
       
       // Check if account is disabled or resigned
@@ -116,37 +133,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    let mounted = true;
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
+        if (!mounted) return;
+        
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Defer profile fetch
         if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-          }, 0);
+          // Fetch profile BEFORE setting loading to false
+          await fetchProfile(session.user.id);
         } else {
           setProfile(null);
           setPreviousRole(null);
           setRoleChanged(false);
         }
-        setLoading(false);
+        
+        if (mounted) {
+          setLoading(false);
+        }
       }
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
+      
       if (session?.user) {
-        fetchProfile(session.user.id);
+        await fetchProfile(session.user.id);
       }
-      setLoading(false);
+      
+      if (mounted) {
+        setLoading(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [fetchProfile]);
 
   // Subscribe to realtime changes on the profile
@@ -219,15 +250,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setSigningOut(true);
     
+    // Add 5-second timeout to prevent hanging
+    const signOutPromise = supabase.auth.signOut();
+    const timeoutPromise = new Promise<void>((_, reject) => 
+      setTimeout(() => reject(new Error('Signout timeout')), 5000)
+    );
+    
     try {
-      // Clear session from Supabase
-      await supabase.auth.signOut();
+      await Promise.race([signOutPromise, timeoutPromise]);
     } catch (error) {
-      // Session may already be expired/invalid - that's okay
-      console.warn('Sign out error (session may be expired):', error);
+      // Session may already be expired/invalid or timeout - that's okay
+      console.warn('Sign out error:', error);
     }
     
-    // Clear all Supabase auth tokens from storage to prevent auto-rehydration
+    // Always clear local state regardless of API response
     const projectId = 'fitonksgqfxnpljiylkn';
     localStorage.removeItem(`sb-${projectId}-auth-token`);
     localStorage.removeItem('supabase.auth.token');

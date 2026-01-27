@@ -33,7 +33,8 @@ import {
   AlertCircle,
   Warehouse,
   ChevronRight,
-  RotateCcw
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import { 
   useSalespersonStats, 
@@ -58,6 +59,18 @@ import { cn } from '@/lib/utils';
 import { LeaderboardDashboardCard } from '@/components/leaderboard/LeaderboardDashboardCard';
 import { VisibilityDebugPanel } from '@/components/admin/VisibilityDebugPanel';
 import { KPIStrip, KPIItem } from '@/components/desktop/KPIStrip';
+
+// Loading component for when role is being fetched
+function DashboardLoading() {
+  return (
+    <AppLayout>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-muted-foreground text-lg">Loading your dashboard...</p>
+      </div>
+    </AppLayout>
+  );
+}
 
 interface StatCardProps {
   label: string;
@@ -1321,11 +1334,17 @@ function DriverDashboard() {
 }
 
 export default function Dashboard() {
-  const { profile, role } = useAuth();
+  const { profile, role, loading } = useAuth();
   const { isDesktop } = useDevice();
   
   // Enable real-time updates for all authenticated users
   useRealtimeUpdates();
+
+  // CRITICAL: Show loading spinner while role is being fetched
+  // Never default to any role - wait for the actual role
+  if (loading || !role) {
+    return <DashboardLoading />;
+  }
 
   // Mobile: Use Maybank-style MobileDashboard
   if (!isDesktop) {
@@ -1344,8 +1363,8 @@ export default function Dashboard() {
       case 'manager':
         return <ManagerDashboard />;
       case 'salesperson':
-      default:
         return <SalespersonDashboard />;
+      // No default case - all roles are explicitly handled
     }
   };
 
