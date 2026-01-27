@@ -16,6 +16,9 @@ export function useOrders(filters?: OrderFilters) {
     queryKey: ['orders', filters],
     queryFn: async () => {
       // First, get all orders
+      // Increase limit when filtering by runnerStatus (e.g., DELIVERED orders page needs all historical data)
+      const queryLimit = filters?.runnerStatus ? 10000 : 500;
+      
       let query = supabase
         .from('orders')
         .select(`
@@ -26,7 +29,7 @@ export function useOrders(filters?: OrderFilters) {
           )
         `)
         .order('created_at', { ascending: false })
-        .limit(500); // Prevent statement timeout on large datasets
+        .limit(queryLimit);
 
       if (filters?.status) {
         query = query.eq('status', filters.status);

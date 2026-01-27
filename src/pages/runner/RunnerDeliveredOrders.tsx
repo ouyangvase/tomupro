@@ -88,17 +88,20 @@ export default function RunnerDeliveredOrders() {
   // - Manager: fetch based on view mode (my data vs team data)
   // - Admin: fetch all orders
   const ordersFilter = useMemo(() => {
+    // Always filter for DELIVERED status at database level for performance
+    const baseFilter = { runnerStatus: 'DELIVERED' as const };
+    
     if (role === 'runner') {
-      return { runnerId: user?.id };
+      return { ...baseFilter, runnerId: user?.id };
     }
     if (role === 'salesperson') {
-      return { salespersonId: user?.id };
+      return { ...baseFilter, salespersonId: user?.id };
     }
     if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
       // Use filtered salesperson IDs from team view state
-      return { salespersonIds };
+      return { ...baseFilter, salespersonIds };
     }
-    return {}; // admin - fetch all
+    return baseFilter; // admin - fetch all delivered
   }, [role, user?.id, salespersonIds]);
   
   const { data: orders, isLoading } = useOrders(ordersFilter as any);
