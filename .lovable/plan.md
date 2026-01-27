@@ -1,124 +1,77 @@
 
+# Fix: Show All Delivered Orders
 
-# Fix Data Sharing Visibility - Missing RLS Policy
+## Problem
 
-## Problem Identified
+The Dashboard shows "Delivered Today: 43" but the Delivered Orders page shows only "Total Delivered: 62" instead of all 280 delivered orders.
 
-When a manager (Emily) clicks "Team Data", it shows "No team members or shared access" even though data sharing is configured correctly in the database.
+**Root Cause**: The `useOrders` hook has a `.limit(500)` and fetches orders sorted by `created_at DESC`. When the Delivered Orders page fetches all orders for a runner, only 65 of the 280 delivered orders fall within the most recent 500 orders.
 
-**Root Cause**: The `profiles` table RLS policies do not allow managers to view profiles of users they have active data shares with.
+## Data Analysis
 
-### Evidence from Network Logs
-```
-Request: GET user_data_shares?...viewer_user_id=eq.5ecadf18-f601-47e0-bacb-0efafe811196
-Response: [{"subject":null}, {"subject":null}]
-```
+| Metric | Database Truth | UI Display |
+|--------|----------------|------------|
+| Total Delivered (Yc) | 280 | 62 |
+| Delivered Today | 36 | 43* |
+| In Progress | 501 (TAKEN+ASSIGNED) | 504 |
 
-Emily can read the `user_data_shares` rows (2 records returned), but the JOIN to `profiles` for the `subject` field returns `null` because RLS blocks her from seeing those profiles.
-
----
+*The dashboard may count slightly differently or cache is stale
 
 ## Solution
 
-Add a new RLS policy on `profiles` table that allows managers to read profiles of users they have active data shares with.
+### Option A: Add runnerStatus Filter to Query (Recommended)
 
-### Database Migration
+Modify `RunnerDeliveredOrders.tsx` to pass `runnerStatus: 'DELIVERED'` to the `useOrders` hook. This filters at the database level and returns all delivered orders.
 
-```sql
--- Allow managers to view profiles of users they have active data shares with
-CREATE POLICY "manager_can_view_shared_subject_profiles"
-  ON public.profiles
-  FOR SELECT
-  TO authenticated
-  USING (
-    get_user_role(auth.uid()) = 'manager'::app_role
-    AND EXISTS (
-      SELECT 1 
-      FROM user_data_shares uds
-      WHERE uds.viewer_user_id = auth.uid()
-        AND uds.subject_user_id = profiles.id
-        AND uds.active = true
-    )
-  );
-```
-
-This policy:
-1. Only applies to users with `manager` role
-2. Allows SELECT access to profiles
-3. Only for profiles where there's an active data share with the manager as the viewer
-
----
-
-## Implementation Steps
-
-### Step 1: Create Database Migration
-
-Create a new migration file to add the RLS policy:
-
-**File**: `supabase/migrations/[timestamp]_add_shared_subject_profile_visibility.sql`
-
-```sql
--- Add RLS policy for managers to view profiles of shared subjects
-CREATE POLICY "manager_can_view_shared_subject_profiles"
-  ON public.profiles
-  FOR SELECT
-  TO authenticated
-  USING (
-    get_user_role(auth.uid()) = 'manager'::app_role
-    AND EXISTS (
-      SELECT 1 
-      FROM user_data_shares uds
-      WHERE uds.viewer_user_id = auth.uid()
-        AND uds.subject_user_id = profiles.id
-        AND uds.active = true
-    )
-  );
-```
-
----
-
-## Expected Outcome
-
-After this fix:
-
-1. Emily clicks "Team Data" → Sees dropdown with "Xiao Tong (Shared)" and "Yong Xin (Shared)"
-2. The query `user_data_shares?select=subject:profiles!...(*)` returns actual profile data instead of `null`
-3. Orders for shared users become visible in Ready Sales, Booking Sales, etc.
-
----
-
-## Technical Details
-
-### Why The Current Code Works (After RLS Fix)
-
-The `useTeamMembers` hook already includes the query for shared subjects:
+**Changes to `src/pages/runner/RunnerDeliveredOrders.tsx`**:
 ```typescript
-// Line 91-99 of useTeamMembers.ts
-const { data: sharedSubjects } = await supabase
-  .from('user_data_shares')
-  .select(`subject:profiles!user_data_shares_subject_user_id_fkey(*)`)
-  .eq('viewer_user_id', user.id)
-  .eq('active', true)
-  .eq('scope_orders', true);
+// Line 90-102 - Add runnerStatus to filter
+const ordersFilter = useMemo(() => {
+  const baseFilter: any = { runnerStatus: 'DELIVERED' };
+  
+  if (role === 'runner') {
+    return { ...baseFilter, runnerId: user?.id };
+  }
+  if (role === 'salesperson') {
+    return { ...baseFilter, salespersonId: user?.id };
+  }
+  if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
+    return { ...baseFilter, salespersonIds };
+  }
+  return baseFilter; // admin - all delivered
+}, [role, user?.id, salespersonIds]);
 ```
 
-The query is correct, but the JOIN fails because RLS blocks access to the `profiles` table for those specific users. Once the RLS policy is added, this same query will work.
+### Option B: Increase Limit for Delivered Orders
 
-### Security Considerations
+Modify `useOrders` hook to increase or remove the limit when specifically filtering for delivered orders.
 
-The new policy is secure because:
-- Only managers can use it (`get_user_role()` check)
-- Only allows SELECT, not UPDATE/DELETE
-- Only reveals profiles that the admin has explicitly granted access to via `user_data_shares`
-- The `user_data_shares` table itself is admin-controlled
+**Changes to `src/hooks/useOrders.ts`**:
+```typescript
+// Line 29 - Increase limit for delivered filter
+.limit(filters?.runnerStatus === 'DELIVERED' ? 10000 : 500);
+```
 
----
+## Recommended Approach: Combine Both
 
-## Files to Modify
+1. **RunnerDeliveredOrders.tsx**: Add `runnerStatus: 'DELIVERED'` to the filter
+2. **useOrders.ts**: Increase limit when filtering for specific runnerStatus
+
+This ensures:
+- Database does the heavy filtering (returns only DELIVERED)
+- More records are fetched when needed
+- Performance remains good for other pages
+
+## Implementation Files
 
 | File | Change |
 |------|--------|
-| `supabase/migrations/[new].sql` | Add RLS policy for shared subject profile visibility |
+| `src/pages/runner/RunnerDeliveredOrders.tsx` | Add `runnerStatus: 'DELIVERED'` to ordersFilter |
+| `src/hooks/useOrders.ts` | Increase limit to 10000 when runnerStatus is specified |
 
-**No code changes needed** - the hooks and components are already correctly implemented.
+## Expected Outcome
 
+After fix:
+- Dashboard: "Delivered Today: 36" (from today's deliveries)
+- Delivered Orders page: "Total Delivered: 280" (all delivered orders)
+- All historical delivered orders visible and exportable
