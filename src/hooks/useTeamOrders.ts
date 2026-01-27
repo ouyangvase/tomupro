@@ -46,7 +46,7 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
           )
         `)
         .order('created_at', { ascending: false })
-        .limit(1000000);
+        .limit(10000);
 
       if (filters?.status) {
         query = query.eq('status', filters.status);
