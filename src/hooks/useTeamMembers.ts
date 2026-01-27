@@ -3,9 +3,20 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Profile } from '@/types/database';
 
+export interface TeamMember {
+  id: string;
+  display_name: string;
+  email: string;
+  role: Profile['role'];
+  is_active: boolean;
+  avatar_url?: string | null;
+  isShared?: boolean;
+}
+
 /**
  * Hook to fetch team members for the current user (if manager)
- * Returns all users whose manager_id matches the current user's id
+ * Includes both traditional team members (via groups/manager_id) AND
+ * shared subjects from user_data_shares
  */
 export function useTeamMembers() {
   const { user, role } = useAuth();
@@ -15,7 +26,10 @@ export function useTeamMembers() {
     queryFn: async () => {
       if (!user?.id) return [];
 
-      // Primary source of truth: manager_groups + group_members
+      const allMembers: TeamMember[] = [];
+      const seenIds = new Set<string>();
+
+      // 1. Fetch traditional team members via manager_groups + group_members
       const { data: groups, error: groupsError } = await supabase
         .from('manager_groups')
         .select('id')
@@ -33,24 +47,77 @@ export function useTeamMembers() {
 
         if (membersError) throw membersError;
 
-        const members = (
-          ((memberRows ?? []).map((r) => r.member).filter(Boolean) as unknown as Profile[])
-        )
-          .filter((m) => m.is_active)
-          .sort((a, b) => a.display_name.localeCompare(b.display_name));
-
-        return members;
+        for (const row of memberRows ?? []) {
+          const member = row.member as unknown as Profile;
+          if (member && member.is_active && !seenIds.has(member.id)) {
+            seenIds.add(member.id);
+            allMembers.push({
+              id: member.id,
+              display_name: member.display_name,
+              email: member.email,
+              role: member.role,
+              is_active: member.is_active,
+              avatar_url: member.avatar_url,
+              isShared: false,
+            });
+          }
+        }
       }
 
-      // Backward-compatible fallback: profiles.manager_id
-      const { data, error } = await supabase
+      // 2. Fallback: profiles.manager_id
+      const { data: legacyMembers, error: legacyError } = await supabase
         .from('profiles')
         .select('*')
         .eq('manager_id', user.id)
-        .order('display_name', { ascending: true });
+        .eq('is_active', true);
 
-      if (error) throw error;
-      return (data ?? []) as Profile[];
+      if (legacyError) throw legacyError;
+
+      for (const member of legacyMembers ?? []) {
+        if (!seenIds.has(member.id)) {
+          seenIds.add(member.id);
+          allMembers.push({
+            id: member.id,
+            display_name: member.display_name,
+            email: member.email,
+            role: member.role,
+            is_active: member.is_active,
+            avatar_url: member.avatar_url,
+            isShared: false,
+          });
+        }
+      }
+
+      // 3. Add shared subjects from user_data_shares (for orders scope)
+      const { data: sharedSubjects, error: sharedError } = await supabase
+        .from('user_data_shares')
+        .select(`
+          subject:profiles!user_data_shares_subject_user_id_fkey(*)
+        `)
+        .eq('viewer_user_id', user.id)
+        .eq('active', true)
+        .eq('scope_orders', true);
+
+      if (sharedError) throw sharedError;
+
+      for (const row of sharedSubjects ?? []) {
+        const subject = row.subject as unknown as Profile;
+        if (subject && subject.is_active && !seenIds.has(subject.id)) {
+          seenIds.add(subject.id);
+          allMembers.push({
+            id: subject.id,
+            display_name: subject.display_name,
+            email: subject.email,
+            role: subject.role,
+            is_active: subject.is_active,
+            avatar_url: subject.avatar_url,
+            isShared: true,
+          });
+        }
+      }
+
+      // Sort all members by display_name
+      return allMembers.sort((a, b) => a.display_name.localeCompare(b.display_name));
     },
     enabled: !!user?.id && role === 'manager',
   });

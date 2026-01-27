@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { User, Users } from 'lucide-react';
-import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { Badge } from '@/components/ui/badge';
+import { User, Users, Share2 } from 'lucide-react';
+import { useTeamMembers, TeamMember } from '@/hooks/useTeamMembers';
 import { useAuth } from '@/contexts/AuthContext';
 
 export type ViewMode = 'my' | 'team';
@@ -19,6 +20,7 @@ interface TeamViewToggleProps {
 /**
  * Team View Toggle component for managers to switch between their own data and team data.
  * Shows a toggle between "My Data" and "Team Data", plus a salesperson filter when in team mode.
+ * Includes both traditional team members AND shared subjects from user_data_shares.
  */
 export function TeamViewToggle({
   viewMode,
@@ -32,6 +34,11 @@ export function TeamViewToggle({
   
   // Only show for managers
   if (role !== 'manager') return null;
+
+  // Separate team members from shared subjects for display
+  const traditionalMembers = teamMembers.filter(m => !m.isShared);
+  const sharedMembers = teamMembers.filter(m => m.isShared);
+  const hasAnyMembers = teamMembers.length > 0;
   
   return (
     <div className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 ${className}`}>
@@ -67,19 +74,39 @@ export function TeamViewToggle({
       {viewMode === 'team' && (
         teamLoading ? (
           <span className="text-xs text-muted-foreground">Loading team…</span>
-        ) : teamMembers.length > 0 ? (
+        ) : hasAnyMembers ? (
           <div className="flex items-center gap-2">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">Salesperson:</Label>
             <Select value={selectedMember} onValueChange={onMemberChange}>
-              <SelectTrigger className="w-[180px] h-8 text-xs">
+              <SelectTrigger className="w-[200px] h-8 text-xs">
                 <SelectValue placeholder="All Team" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Team</SelectItem>
+                <SelectItem value="all">All Team ({teamMembers.length + 1})</SelectItem>
                 {profile?.id && <SelectItem value={profile.id}>Me (Manager)</SelectItem>}
-                {teamMembers.map((member) => (
+                
+                {/* Traditional team members */}
+                {traditionalMembers.map((member) => (
                   <SelectItem key={member.id} value={member.id}>
                     {member.display_name}
+                  </SelectItem>
+                ))}
+                
+                {/* Shared subjects - with visual indicator */}
+                {sharedMembers.length > 0 && traditionalMembers.length > 0 && (
+                  <div className="px-2 py-1 text-xs text-muted-foreground border-t mt-1 pt-1">
+                    <Share2 className="h-3 w-3 inline mr-1" />
+                    Shared Access
+                  </div>
+                )}
+                {sharedMembers.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    <span className="flex items-center gap-1">
+                      {member.display_name}
+                      <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                        Shared
+                      </Badge>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -87,7 +114,7 @@ export function TeamViewToggle({
           </div>
         ) : (
           <span className="text-xs text-muted-foreground italic">
-            No team members assigned yet
+            No team members or shared access
           </span>
         )
       )}
@@ -97,6 +124,7 @@ export function TeamViewToggle({
 
 /**
  * Hook to manage team view state for manager role
+ * Includes both traditional team members AND shared subjects
  */
 export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
   const { role, profile } = useAuth();
@@ -105,6 +133,15 @@ export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
   // Default view mode for managers (defaults to 'my' now)
   const [viewMode, setViewMode] = useState<ViewMode>(role === 'manager' ? defaultViewMode : 'my');
   const [selectedMember, setSelectedMember] = useState<string>('all');
+
+  // Memoize accessible members (includes shared subjects now)
+  const allAccessibleMembers = useMemo(() => {
+    return teamMembers.map(m => ({
+      id: m.id,
+      displayName: m.display_name,
+      isShared: m.isShared ?? false,
+    }));
+  }, [teamMembers]);
   
   // Calculate salesperson IDs based on view mode and selected member
   const getFilteredSalespersonIds = (): string[] | undefined => {
@@ -117,8 +154,8 @@ export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
     
     // Team Data mode
     if (selectedMember === 'all') {
-      // All team: include manager + all team members
-      return [profile.id, ...teamMembers.map(m => m.id)];
+      // All team: include manager + all accessible members (team + shared)
+      return [profile.id, ...allAccessibleMembers.map(m => m.id)];
     }
     
     // Specific member selected
@@ -133,5 +170,7 @@ export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
     salespersonIds: getFilteredSalespersonIds(),
     isManager: role === 'manager',
     teamMembers,
+    allAccessibleMembers,
+    hasTeamOrSharedAccess: allAccessibleMembers.length > 0,
   };
 }
