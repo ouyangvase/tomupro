@@ -17,7 +17,7 @@ export function useOrders(filters?: OrderFilters) {
     queryKey: ['orders', filters],
     queryFn: async () => {
       // Fetch all orders with high limit to prevent data truncation for high-volume users
-      const queryLimit = 1000000;
+      const queryLimit = 30000;
       
       let query = supabase
         .from('orders')
