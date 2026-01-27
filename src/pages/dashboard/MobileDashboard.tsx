@@ -39,7 +39,20 @@ import {
   DollarSign,
   TrendingUp,
   RotateCcw,
+  Loader2,
 } from 'lucide-react';
+
+// Loading component for mobile
+function MobileDashboardLoading() {
+  return (
+    <MobileLayout>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="text-muted-foreground">Loading dashboard...</p>
+      </div>
+    </MobileLayout>
+  );
+}
 
 // Stat tile for mobile grid
 interface MobileStatTileProps {
@@ -444,9 +457,15 @@ function AdminMobileDashboard() {
 
 // Main Mobile Dashboard Component
 export function MobileDashboard() {
-  const { role } = useAuth();
+  const { role, loading } = useAuth();
   
   useRealtimeUpdates();
+
+  // CRITICAL: Show loading spinner while role is being fetched
+  // Never default to any role - wait for the actual role
+  if (loading || !role) {
+    return <MobileDashboardLoading />;
+  }
 
   const renderDashboard = () => {
     switch (role) {
@@ -459,8 +478,8 @@ export function MobileDashboard() {
       case 'manager':
         return <ManagerMobileDashboard />;
       case 'salesperson':
-      default:
         return <SalespersonMobileDashboard />;
+      // No default case - all roles are explicitly handled
     }
   };
 

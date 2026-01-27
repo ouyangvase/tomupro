@@ -1,11 +1,11 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award, Ticket, History, ClipboardCheck, Share2 } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award, Ticket, History, ClipboardCheck, Share2, Loader2 } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
 interface NavItem {
   title: string;
   url: string;
@@ -318,15 +318,57 @@ export function AppSidebar() {
   const {
     profile,
     signOut,
-    signingOut
+    signingOut,
+    loading
   } = useAuth();
   const {
     state,
     isMobile
   } = useSidebar();
   const collapsed = state === 'collapsed';
-  const userRole = profile?.role || 'salesperson';
-  const filterItems = (items: NavItem[]) => items.filter(item => item.roles.includes(userRole));
+  
+  // CRITICAL: Don't use a fallback role - wait for actual role to load
+  const userRole = profile?.role;
+  const isRoleLoading = loading || !userRole;
+  
+  const filterItems = (items: NavItem[]) => {
+    if (!userRole) return [];
+    return items.filter(item => item.roles.includes(userRole));
+  };
+  
+  // Show loading state while role is being fetched
+  if (isRoleLoading) {
+    return (
+      <Sidebar className={cn(
+        "border-r border-border/30 bg-gradient-to-b from-sidebar via-sidebar to-sidebar/95",
+        collapsed ? "w-16 md:w-20" : "w-64 md:w-72"
+      )}>
+        <SidebarHeader className="p-4 md:p-6 border-b border-primary/20 bg-gradient-to-br from-primary/10 via-secondary/30 to-transparent">
+          <div className="flex items-center gap-3">
+            <img src={tomuLogo} alt="TOMU Logo" className="h-12 w-12 md:h-14 md:w-14 object-contain" />
+            {!collapsed && (
+              <div>
+                <h2 className="font-extrabold text-xl md:text-2xl tracking-tight bg-gradient-to-r from-primary via-primary/80 to-[hsl(var(--status-warning))] bg-clip-text text-transparent">TOMU</h2>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                  <p className="text-xs text-muted-foreground">Loading...</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </SidebarHeader>
+        <SidebarContent className="px-2 md:px-3 py-4 md:py-6 space-y-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="space-y-2">
+              <Skeleton className="h-4 w-20 ml-3" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+            </div>
+          ))}
+        </SidebarContent>
+      </Sidebar>
+    );
+  }
   
   const renderMenuItems = (items: NavItem[]) => {
     const filteredItems = filterItems(items);
