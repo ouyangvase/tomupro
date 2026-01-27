@@ -17,8 +17,7 @@ export function useOrders(filters?: OrderFilters) {
     queryKey: ['orders', filters],
     queryFn: async () => {
       // First, get all orders
-      // Increase limit when filtering by runnerStatus or excludeDeliveredAndFailed (high-volume pages need all data)
-      const queryLimit = (filters?.runnerStatus || filters?.excludeDeliveredAndFailed) ? 10000 : 500;
+      const queryLimit = 1000000;
       
       let query = supabase
         .from('orders')

@@ -56,7 +56,7 @@ interface UseTeamOrdersServerParams {
  */
 export function useTeamOrdersServer(params: UseTeamOrdersServerParams = {}) {
   const { user } = useAuth();
-  const { status, runnerStatus, reconciliationStatus, limit = 500, offset = 0 } = params;
+  const { status, runnerStatus, reconciliationStatus, limit = 1000000, offset = 0 } = params;
 
   return useQuery({
     queryKey: ['team-orders-server', user?.id, status, runnerStatus, reconciliationStatus, limit, offset],
@@ -115,7 +115,7 @@ export function useCancelledOrdersServer(params: Omit<UseTeamOrdersServerParams,
  */
 export function useActionRequiredOrdersServer(params: UseTeamOrdersServerParams = {}) {
   const { user } = useAuth();
-  const { limit = 500, offset = 0 } = params;
+  const { limit = 1000000, offset = 0 } = params;
 
   return useQuery({
     queryKey: ['action-required-orders-server', user?.id, limit, offset],
