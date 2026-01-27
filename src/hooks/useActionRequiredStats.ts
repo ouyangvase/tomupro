@@ -123,10 +123,12 @@ export function useManagerActionRequiredStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // Get team members from multiple sources:
-      // 1. manager_salesperson_bindings (primary)
-      // 2. group_members (legacy fallback)
-      const [bindingsRes, groupMembersRes] = await Promise.all([
+      // Get team members from ALL visibility sources (aligned with is_in_manager_team RLS):
+      // 1. manager_salesperson_bindings (canonical)
+      // 2. group_members via manager_groups (backward compat)
+      // 3. profiles.manager_id (legacy binding)
+      // 4. user_data_shares (data sharing feature)
+      const [bindingsRes, groupMembersRes, legacyRes, sharesRes] = await Promise.all([
         supabase
           .from('manager_salesperson_bindings')
           .select('salesperson_id')
@@ -138,16 +140,37 @@ export function useManagerActionRequiredStats() {
             member_user_id,
             manager_groups!inner(manager_user_id)
           `)
-          .eq('manager_groups.manager_user_id', user.id)
+          .eq('manager_groups.manager_user_id', user.id),
+        supabase
+          .from('profiles')
+          .select('id')
+          .eq('manager_id', user.id)
+          .eq('is_active', true),
+        supabase
+          .from('user_data_shares')
+          .select('subject_user_id')
+          .eq('viewer_user_id', user.id)
+          .eq('active', true)
+          .eq('scope_orders', true)
       ]);
 
       if (bindingsRes.error) throw bindingsRes.error;
       if (groupMembersRes.error) throw groupMembersRes.error;
+      if (legacyRes.error) throw legacyRes.error;
+      if (sharesRes.error) throw sharesRes.error;
 
       // Combine all member IDs + manager's own ID
       const bindingMemberIds = bindingsRes.data?.map(b => b.salesperson_id) || [];
       const groupMemberIds = groupMembersRes.data?.map(gm => gm.member_user_id) || [];
-      const allMemberIds = [...new Set([user.id, ...bindingMemberIds, ...groupMemberIds])];
+      const legacyMemberIds = legacyRes.data?.map(p => p.id) || [];
+      const sharedSubjectIds = sharesRes.data?.map(s => s.subject_user_id) || [];
+      const allMemberIds = [...new Set([
+        user.id,
+        ...bindingMemberIds,
+        ...groupMemberIds,
+        ...legacyMemberIds,
+        ...sharedSubjectIds
+      ])];
 
       // Fetch orders for manager + team (either flagged OR failed delivery)
       const { data: orders, error: ordersError } = await supabase
