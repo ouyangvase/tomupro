@@ -9,6 +9,7 @@ interface OrderFilters {
   runnerId?: string;
   runnerStatus?: RunnerStatus;
   reconciliationStatus?: ReconciliationStatus;
+  excludeDeliveredAndFailed?: boolean;
 }
 
 export function useOrders(filters?: OrderFilters) {
@@ -16,8 +17,8 @@ export function useOrders(filters?: OrderFilters) {
     queryKey: ['orders', filters],
     queryFn: async () => {
       // First, get all orders
-      // Increase limit when filtering by runnerStatus (e.g., DELIVERED orders page needs all historical data)
-      const queryLimit = filters?.runnerStatus ? 10000 : 500;
+      // Increase limit when filtering by runnerStatus or excludeDeliveredAndFailed (high-volume pages need all data)
+      const queryLimit = (filters?.runnerStatus || filters?.excludeDeliveredAndFailed) ? 10000 : 500;
       
       let query = supabase
         .from('orders')
@@ -52,6 +53,10 @@ export function useOrders(filters?: OrderFilters) {
       }
       if (filters?.reconciliationStatus) {
         query = query.eq('reconciliation_status', filters.reconciliationStatus);
+      }
+      if (filters?.excludeDeliveredAndFailed) {
+        query = query.neq('runner_status', 'DELIVERED');
+        query = query.neq('runner_status', 'FAILED_DELIVERY');
       }
 
       const { data: ordersData, error: ordersError } = await query;
