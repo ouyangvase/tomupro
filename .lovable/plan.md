@@ -1,156 +1,183 @@
 
-# Critical Fix: Authentication and Role Loading Issues
+# Fix: Loading Stuck and Invalid Session Handling
 
 ## Problem Summary
 
-The app has three critical issues:
+The app is stuck on "Loading..." on the Auth page due to two issues:
 
-1. **All users display as "Salesperson"** - When profile fetch fails (503 errors), the app defaults to salesperson role
-2. **Loading spinner hangs indefinitely** - No timeout or retry for database errors
-3. **Sign out stuck on "Signing out..."** - No timeout for auth operations
+1. **Invalid refresh token not properly handled** - When Supabase has a stale refresh token, it returns a 400 error. The AuthContext tries to use this invalid session to fetch a profile, which can cause the loading state to get stuck.
 
-## Root Cause
+2. **Auth page shouldn't wait for loading** - The Auth page should display immediately regardless of auth loading state since it's the login page.
 
-### The Core Problem: Unsafe Fallback to "Salesperson"
+3. **Race condition in session handling** - The `getSession()` and `onAuthStateChange` callbacks can race, causing duplicate profile fetches or stuck states.
 
-```typescript
-// AppSidebar.tsx line 328 - BAD
-const userRole = profile?.role || 'salesperson';  // Falls back when profile is null!
+## Root Cause Analysis
+
+From the network logs:
+```
+POST /auth/v1/token?grant_type=refresh_token
+Status: 400
+Response: {"code":"refresh_token_not_found","message":"Invalid Refresh Token: Refresh Token Not Found"}
 ```
 
-When the database returns 503 (transient schema cache errors), the profile fetch fails and `profile` remains `null`. The code then falls back to `'salesperson'`, causing:
-- Sidebar shows wrong role
-- Wrong menu items displayed
-- Wrong dashboard rendered
+When this happens, the AuthContext's `getSession()` may return a stale session object, and the `onAuthStateChange` may not fire correctly, leaving `loading: true` indefinitely.
 
 ## Solution
 
-### Part 1: Remove Unsafe Role Fallbacks
+### Part 1: Handle Invalid Sessions Gracefully
 
-**Files to modify:**
+**File: `src/contexts/AuthContext.tsx`**
 
-1. **`src/components/layout/AppSidebar.tsx`**
-   - Change line 328 from `profile?.role || 'salesperson'` to `profile?.role`
-   - Add loading state when role is undefined
-   - Show skeleton/loading UI until role is available
-
-2. **`src/pages/Dashboard.tsx`**
-   - Add check for `!role` and show loading spinner instead of defaulting to SalespersonDashboard
-   - Remove the `default:` case that falls back to SalespersonDashboard
-
-3. **`src/pages/dashboard/MobileDashboard.tsx`**
-   - Same fix - show loading when role is null instead of defaulting
-
-### Part 2: Add Retry Logic for Profile Fetch
-
-**File**: `src/contexts/AuthContext.tsx`
-
-Add retry with exponential backoff when profile fetch fails:
-
-```typescript
-const fetchProfile = useCallback(async (userId: string, retryCount = 0) => {
-  const maxRetries = 3;
-  const baseDelay = 1000; // 1 second
-  
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .maybeSingle();
-  
-  if (error && retryCount < maxRetries) {
-    // Exponential backoff: 1s, 2s, 4s
-    const delay = baseDelay * Math.pow(2, retryCount);
-    console.warn(`Profile fetch failed, retrying in ${delay}ms...`);
-    await new Promise(resolve => setTimeout(resolve, delay));
-    return fetchProfile(userId, retryCount + 1);
-  }
-  
-  if (!error && data) {
-    // ... existing profile processing
-  }
-}, [previousRole, handleAccountDisabled]);
-```
-
-### Part 3: Fix Loading State Race Condition
-
-**File**: `src/contexts/AuthContext.tsx`
-
-Don't set `loading = false` until profile is fetched:
+Add session validation and clear invalid tokens when refresh fails:
 
 ```typescript
 useEffect(() => {
+  let mounted = true;
+  
   const { data: { subscription } } = supabase.auth.onAuthStateChange(
     async (event, session) => {
+      if (!mounted) return;
+      
+      // Handle session refresh failures
+      if (event === 'TOKEN_REFRESHED' && !session) {
+        // Refresh failed - clear invalid tokens
+        clearAuthState();
+        if (mounted) setLoading(false);
+        return;
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        // Fetch profile BEFORE setting loading to false
         await fetchProfile(session.user.id);
       } else {
         setProfile(null);
+        setPreviousRole(null);
+        setRoleChanged(false);
       }
-      setLoading(false);  // Only set after profile is fetched
+      
+      if (mounted) setLoading(false);
     }
   );
-  // ...
+  
+  // Check for existing session with error handling
+  supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+    if (!mounted) return;
+    
+    // If there's an auth error or no valid session, clear state
+    if (error || !session) {
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      if (mounted) setLoading(false);
+      return;
+    }
+    
+    setSession(session);
+    setUser(session.user);
+    
+    if (session.user) {
+      await fetchProfile(session.user.id);
+    }
+    
+    if (mounted) setLoading(false);
+  }).catch((error) => {
+    console.error('Session check failed:', error);
+    if (mounted) setLoading(false);
+  });
+
+  return () => {
+    mounted = false;
+    subscription.unsubscribe();
+  };
 }, [fetchProfile]);
 ```
 
-### Part 4: Add Timeout for Sign Out
+### Part 2: Add Auth Loading Timeout
 
-**File**: `src/contexts/AuthContext.tsx`
-
-Add timeout to prevent signout from hanging:
+Add a maximum loading timeout to prevent infinite loading:
 
 ```typescript
-const signOut = async () => {
-  if (signingOut) return;
-  setSigningOut(true);
+// Add a timeout to prevent infinite loading
+useEffect(() => {
+  const timeout = setTimeout(() => {
+    if (loading) {
+      console.warn('Auth loading timeout - forcing completion');
+      setLoading(false);
+    }
+  }, 10000); // 10 second timeout
   
-  // Add 5-second timeout for signout
-  const signOutPromise = supabase.auth.signOut();
-  const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('Signout timeout')), 5000)
-  );
+  return () => clearTimeout(timeout);
+}, [loading]);
+```
+
+### Part 3: Clear Stale Tokens on 400 Errors
+
+Add listener for auth errors to clear invalid tokens:
+
+```typescript
+// Clear stale tokens function
+const clearAuthState = useCallback(() => {
+  const projectId = 'fitonksgqfxnpljiylkn';
+  localStorage.removeItem(`sb-${projectId}-auth-token`);
+  localStorage.removeItem('supabase.auth.token');
+  sessionStorage.clear();
+  setUser(null);
+  setSession(null);
+  setProfile(null);
+  setPreviousRole(null);
+  setRoleChanged(false);
+}, []);
+```
+
+### Part 4: Show Auth Page Without Loading Check
+
+**File: `src/pages/Auth.tsx`**
+
+Add early return for auth page loading state:
+
+```typescript
+export default function Auth() {
+  const navigate = useNavigate();
+  const { signIn, signUp, user, loading } = useAuth();
+  const { toast } = useToast();
+  // ... rest of state
   
-  try {
-    await Promise.race([signOutPromise, timeoutPromise]);
-  } catch (error) {
-    console.warn('Sign out error:', error);
-  }
+  // Show auth page immediately if not authenticated
+  // Even if loading, show the form so users can try to login
+  useEffect(() => {
+    if (user && !loading) {
+      navigate('/');
+    }
+  }, [user, loading, navigate]);
   
-  // Always clear local state regardless of API response
-  // ... existing cleanup code
-};
+  // Rest of component renders normally...
+}
 ```
 
 ## Summary of Changes
 
 | File | Change |
 |------|--------|
-| `src/components/layout/AppSidebar.tsx` | Remove fallback to 'salesperson', show loading state |
-| `src/pages/Dashboard.tsx` | Show loading when role is null, remove default case |
-| `src/pages/dashboard/MobileDashboard.tsx` | Show loading when role is null, remove default case |
-| `src/contexts/AuthContext.tsx` | Add retry logic, fix loading race condition, add signout timeout |
+| `src/contexts/AuthContext.tsx` | Add invalid session handling, loading timeout, clear stale tokens |
+| `src/pages/Auth.tsx` | Update redirect logic to work with loading state |
 
 ## Expected Outcome
 
 After implementation:
+1. **No more infinite loading** - 10-second timeout prevents stuck states
+2. **Invalid tokens cleared automatically** - Users with stale sessions get logged out properly
+3. **Auth page shows immediately** - Login form visible even during loading
+4. **Proper error handling** - Auth errors are caught and handled gracefully
 
-1. **Correct role display** - Users see their actual role, not a fallback
-2. **Graceful error handling** - Transient 503 errors are retried automatically
-3. **No more loading hangs** - Profile fetch has timeout and retry
-4. **Sign out works reliably** - Has 5-second timeout to prevent hanging
+## Technical Details
 
-## Technical Notes
+### Why This Happens
+The Supabase client stores session tokens in localStorage. When the refresh token expires or becomes invalid (e.g., after a database reset or session cleanup), the client tries to refresh and fails with error 400. The current code doesn't handle this gracefully.
 
-### Why 503 PGRST002 Errors Occur
-These are transient Supabase PostgREST schema cache refresh errors. They self-resolve but the app needs to retry gracefully instead of failing silently.
+### The CORS Errors
+The `auth-bridge` and `manifest.json` CORS errors shown in the console are Lovable platform issues (not code-related) and are safe to ignore. They don't affect app functionality.
 
-### Why Default Fallback is Dangerous
-Defaulting to any role when the actual role is unknown is a security and UX issue:
-- Admins see only salesperson features
-- Runners can't access their tools
-- Users get confused about their access level
+### The ForwardRef Warnings
+The React warnings about "Function components cannot be given refs" are from react-router-dom and are harmless deprecation warnings that don't affect functionality.
