@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -54,6 +54,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [previousRole, setPreviousRole] = useState<AppRole | null>(null);
   const [profileStatus, setProfileStatus] = useState<ProfileStatus>('idle');
   const [profileError, setProfileError] = useState<string | null>(null);
+  
+  // Ref to track current profile user ID (avoids closure issues and infinite loops)
+  const profileUserIdRef = useRef<string | null>(null);
+  
+  // Update the ref whenever profile changes
+  useEffect(() => {
+    profileUserIdRef.current = profile?.id ?? null;
+  }, [profile?.id]);
 
   // Clear stale tokens function - used when session refresh fails
   const clearAuthState = useCallback(() => {
@@ -323,8 +331,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setSession(session);
           setUser(session.user);
           
-          // Only fetch profile if we don't already have it or user changed
-          if (!profile || profile.id !== session.user.id) {
+          // Only fetch profile if we don't already have it for THIS user
+          // Use ref to avoid stale closure issues and infinite loops
+          if (profileUserIdRef.current !== session.user.id) {
             await fetchProfile(session.user.id);
           }
         } else if (!session) {
@@ -349,7 +358,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, clearAuthState, validateSession, profile]);
+  }, [fetchProfile, clearAuthState, validateSession]);
 
   // Subscribe to realtime changes on the profile
   useEffect(() => {
