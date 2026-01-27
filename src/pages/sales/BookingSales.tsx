@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { Plus, AlertTriangle, Clock, Search, ShoppingBag } from 'lucide-react';
+import { Plus, AlertTriangle, Clock, Search, ShoppingBag, Upload } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -307,10 +307,16 @@ export default function BookingSales() {
               </div>
             </div>
             {isEditable && (
-              <Button size="sm" onClick={handleCreateNew}>
-                <Plus className="h-4 w-4 mr-1" />
-                New
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleCreateNew}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  New
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setImportDialogOpen(true)}>
+                  <Upload className="h-4 w-4 mr-1" />
+                  Import
+                </Button>
+              </div>
             )}
           </div>
 

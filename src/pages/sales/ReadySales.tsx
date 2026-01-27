@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck, Lock, Plus, AlertTriangle, ChevronDown, ChevronUp, Send, Search, X } from 'lucide-react';
+import { Truck, UserCheck, Lock, Plus, AlertTriangle, ChevronDown, ChevronUp, Send, Search, X, Upload } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
   Tooltip,
@@ -455,10 +455,18 @@ export default function ReadySales() {
               onMemberChange={setSelectedMember}
             />
             {isEditable && (
-              <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
-                <Plus className="h-4 w-4 mr-2" />
-                {isMobile ? 'New' : 'New Order'}
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  {isMobile ? 'New' : 'New Order'}
+                </Button>
+                {isMobile && (
+                  <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
