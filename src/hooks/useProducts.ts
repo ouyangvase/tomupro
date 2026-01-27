@@ -12,19 +12,21 @@ import type { Product } from '@/types/database';
  * - Salesperson: Only sees products they own (owner_user_id = auth.uid)
  * - Manager: Sees own products + bound team members' products (ISOLATED)
  * - Admin: Sees all products
+ * - Shared Access: Also sees products from shared subjects
  */
 export function useProducts(includeInactive = false) {
   const { user, role } = useAuth();
-  const { visibleUserIds } = useVisibleUserIds();
+  const { visibleUserIds, dataViewMode } = useVisibleUserIds('products');
   
   return useQuery({
-    queryKey: ['products', includeInactive, role, user?.id, visibleUserIds],
+    queryKey: ['products', includeInactive, role, user?.id, visibleUserIds, dataViewMode],
     queryFn: async () => {
       let query = supabase
         .from('products')
         .select(`
           *,
-          creator:profiles!products_created_by_fkey(id, display_name)
+          creator:profiles!products_created_by_fkey(id, display_name),
+          owner:profiles!products_owner_user_id_fkey(id, display_name)
         `)
         .order('sku_name', { ascending: true });
       
@@ -40,7 +42,10 @@ export function useProducts(includeInactive = false) {
       
       const { data, error } = await query;
       if (error) throw error;
-      return data as (Product & { creator?: { id: string; display_name: string } })[];
+      return data as (Product & { 
+        creator?: { id: string; display_name: string };
+        owner?: { id: string; display_name: string };
+      })[];
     },
     enabled: !!user?.id || role === 'admin',
   });
