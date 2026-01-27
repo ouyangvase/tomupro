@@ -1,111 +1,88 @@
 
+# Increase Fetch Limits to 1,000,000 for High-Volume Pages
 
-# Fix Runner Inbox to Show All Active Orders
+## Overview
 
-## Problem
-
-The Runner Inbox shows only 383 orders but the database has 451 active orders (ASSIGNED + TAKEN):
-- TAKEN: 419 orders
-- ASSIGNED: 32 orders
-- **Total: 451** (but UI shows 383)
-
-**Root Cause**: The `useOrders` hook fetches only 500 most recent orders across ALL statuses. Since this runner has 793 total orders, older active orders are cut off by the limit. Client-side filtering then shows only the ASSIGNED/TAKEN orders that happen to be in the most recent 500.
-
-## Solution
-
-Apply the same fix used for Delivered Orders: add server-side filtering to fetch specifically active orders (ASSIGNED + TAKEN) with an increased limit.
-
----
-
-## Implementation
-
-### 1. Update `useOrders.ts` - Add "excludeDeliveredAndFailed" filter
-
-Add a new filter option that fetches only active orders server-side:
-
-```typescript
-interface OrderFilters {
-  status?: OrderStatus;
-  salespersonId?: string;
-  runnerId?: string;
-  runnerStatus?: RunnerStatus;
-  reconciliationStatus?: ReconciliationStatus;
-  excludeDeliveredAndFailed?: boolean; // NEW
-}
-```
-
-When this filter is true, exclude DELIVERED and FAILED_DELIVERY at the database level and increase the limit.
-
-### 2. Update `RunnerInbox.tsx` - Use the new filter
-
-Change the orders hook call to:
-```typescript
-const { data: orders, isLoading } = useOrders({ 
-  runnerId: user?.id,
-  excludeDeliveredAndFailed: true  // Server-side filter for active orders only
-});
-```
-
-This ensures:
-1. Only ASSIGNED, TAKEN, UNASSIGNED orders are fetched (not DELIVERED/FAILED_DELIVERY)
-2. Limit is increased to 10,000 to accommodate high-volume runners
-3. All 451 active orders will be shown instead of 383
-
----
-
-## Technical Details
-
-### Changes to `src/hooks/useOrders.ts`
-
-```typescript
-// Line 6-12: Add new filter option
-interface OrderFilters {
-  status?: OrderStatus;
-  salespersonId?: string;
-  runnerId?: string;
-  runnerStatus?: RunnerStatus;
-  reconciliationStatus?: ReconciliationStatus;
-  excludeDeliveredAndFailed?: boolean; // For Runner Inbox
-}
-
-// Line 19-20: Increase limit for active orders filter
-const queryLimit = (filters?.runnerStatus || filters?.excludeDeliveredAndFailed) ? 10000 : 500;
-
-// After line 55: Add the exclusion filter
-if (filters?.excludeDeliveredAndFailed) {
-  query = query.neq('runner_status', 'DELIVERED');
-  query = query.neq('runner_status', 'FAILED_DELIVERY');
-}
-```
-
-### Changes to `src/pages/runner/RunnerInbox.tsx`
-
-```typescript
-// Line 67: Add server-side filter
-const { data: orders, isLoading } = useOrders({ 
-  runnerId: user?.id,
-  excludeDeliveredAndFailed: true
-});
-```
-
-The client-side `filteredOrders` logic can remain as a safety net, but the server-side filter does the heavy lifting.
-
----
+Update the query limits for all order-fetching hooks to support 1,000,000 records, ensuring all delivered orders, cancelled sales, action required orders, ready sales, and booking orders are fully visible.
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/hooks/useOrders.ts` | Add `excludeDeliveredAndFailed` filter option with server-side query |
-| `src/pages/runner/RunnerInbox.tsx` | Use new filter to fetch all active orders |
+### 1. `src/hooks/useOrders.ts`
+
+**Current (Line 21):**
+```typescript
+const queryLimit = (filters?.runnerStatus || filters?.excludeDeliveredAndFailed) ? 10000 : 500;
+```
+
+**Change to:**
+```typescript
+const queryLimit = 1000000;
+```
+
+This hook is used by:
+- RunnerDeliveredOrders (with `runnerStatus: 'DELIVERED'`)
+- SalespersonActionInbox (fetches all orders then filters client-side)
+- RunnerInbox (with `excludeDeliveredAndFailed: true`)
+
+### 2. `src/hooks/useTeamOrders.ts`
+
+**Current (Line 49):**
+```typescript
+.limit(500);
+```
+
+**Change to:**
+```typescript
+.limit(1000000);
+```
+
+This hook is used by:
+- ReadySales (with `status: 'READY'`)
+- BookingSales (with `status: 'BOOKING'`)
+- CancelledSales (with `status: 'CANCELLED'`)
+
+### 3. `src/hooks/useTeamOrdersServer.ts`
+
+**Current (Line 59):**
+```typescript
+const { status, runnerStatus, reconciliationStatus, limit = 500, offset = 0 } = params;
+```
+
+**Change to:**
+```typescript
+const { status, runnerStatus, reconciliationStatus, limit = 1000000, offset = 0 } = params;
+```
+
+**Current (Line 118):**
+```typescript
+const { limit = 500, offset = 0 } = params;
+```
+
+**Change to:**
+```typescript
+const { limit = 1000000, offset = 0 } = params;
+```
+
+This hook is used as an alternative server-side fetching mechanism with the same pages.
 
 ---
+
+## Summary of Changes
+
+| File | Line | Current | New |
+|------|------|---------|-----|
+| `src/hooks/useOrders.ts` | 21 | Conditional 10000/500 | 1000000 |
+| `src/hooks/useTeamOrders.ts` | 49 | 500 | 1000000 |
+| `src/hooks/useTeamOrdersServer.ts` | 59 | 500 | 1000000 |
+| `src/hooks/useTeamOrdersServer.ts` | 118 | 500 | 1000000 |
 
 ## Expected Outcome
 
 After implementation:
-- Runner Inbox shows "Select All (451)" instead of "Select All (383)"
-- All ASSIGNED and TAKEN orders are visible
-- Pagination works correctly for high-volume runners
-- No more missing orders due to limit truncation
+- Delivered Orders: Shows all historical delivered records
+- Cancelled Sales: Shows all cancelled orders
+- Action Required: Shows all orders needing attention
+- Ready Sales: Shows all ready orders
+- Booking Sales: Shows all booking orders
 
+All pages will fetch up to 1,000,000 records to ensure no data is truncated due to query limits.
