@@ -1,183 +1,111 @@
 
-# Fix Data Sharing Visibility for Orders
 
-## Problem Summary
+# Fix Runner Inbox to Show All Active Orders
 
-When Emily (manager) selects "Team Data" and chooses "Xiao Tong (Shared)", the page shows "No ready orders" even though:
-1. The data share exists and is active
-2. Xiao Tong appears correctly in the dropdown
-3. Xiao Tong has orders in the database
+## Problem
 
-## Root Cause
+The Runner Inbox shows only 383 orders but the database has 451 active orders (ASSIGNED + TAKEN):
+- TAKEN: 419 orders
+- ASSIGNED: 32 orders
+- **Total: 451** (but UI shows 383)
 
-The `get_visible_owner_ids()` database function does NOT include shared subjects from `user_data_shares`. It only checks traditional team bindings:
-- `manager_salesperson_bindings`
-- `manager_groups` + `group_members`  
-- `profiles.manager_id`
-
-When `useTeamOrders` passes `salespersonIds` that include shared users, the hook validates them against `visibleUserIds` from the RPC. Since Xiao Tong's ID is not in the RPC result, it gets filtered out and returns empty results.
-
-**Network Evidence:**
-```
-RPC get_visible_owner_ids returns: ["5ecadf18-f601-47e0-bacb-0efafe811196"] (only Emily)
-Expected: ["5ecadf18-f601-47e0-bacb-0efafe811196", "6e8d5ac8-92f7-49f7-97ef-875a86dc994c"] (Emily + Xiao Tong)
-```
-
----
+**Root Cause**: The `useOrders` hook fetches only 500 most recent orders across ALL statuses. Since this runner has 793 total orders, older active orders are cut off by the limit. Client-side filtering then shows only the ASSIGNED/TAKEN orders that happen to be in the most recent 500.
 
 ## Solution
 
-### Database Migration: Update `get_visible_owner_ids()` Function
+Apply the same fix used for Delivered Orders: add server-side filtering to fetch specifically active orders (ASSIGNED + TAKEN) with an increased limit.
 
-Add `user_data_shares` to the visibility calculation for all roles (managers and others who have shares):
+---
 
-```sql
-CREATE OR REPLACE FUNCTION public.get_visible_owner_ids()
-RETURNS uuid[]
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_user_id uuid;
-  v_role app_role;
-  v_result uuid[];
-BEGIN
-  v_user_id := auth.uid();
+## Implementation
 
-  IF v_user_id IS NULL THEN
-    RETURN ARRAY[]::uuid[];
-  END IF;
+### 1. Update `useOrders.ts` - Add "excludeDeliveredAndFailed" filter
 
-  v_role := public.get_user_role(v_user_id);
+Add a new filter option that fetches only active orders server-side:
 
-  -- Admin can see all - return NULL to indicate no filter
-  IF v_role = 'admin' THEN
-    RETURN NULL;
-  END IF;
-
-  -- Salesperson: own data + any shared subjects
-  IF v_role = 'salesperson' THEN
-    SELECT ARRAY[v_user_id] || COALESCE(
-      array_agg(DISTINCT uds.subject_user_id) FILTER (WHERE uds.subject_user_id IS NOT NULL),
-      ARRAY[]::uuid[]
-    )
-    INTO v_result
-    FROM public.user_data_shares uds
-    WHERE uds.viewer_user_id = v_user_id
-      AND uds.active = true
-      AND uds.scope_orders = true;
-    
-    RETURN v_result;
-  END IF;
-
-  -- Manager: own + bound salespersons + shared subjects
-  IF v_role = 'manager' THEN
-    SELECT ARRAY[v_user_id] || COALESCE(
-      array_agg(DISTINCT member_id) FILTER (WHERE member_id IS NOT NULL),
-      ARRAY[]::uuid[]
-    )
-    INTO v_result
-    FROM (
-      -- Canonical: manager_salesperson_bindings
-      SELECT msb.salesperson_id AS member_id
-      FROM public.manager_salesperson_bindings msb
-      WHERE msb.manager_id = v_user_id
-        AND msb.active = true
-
-      UNION
-
-      -- Backward compat: manager_groups + group_members
-      SELECT gm.member_user_id AS member_id
-      FROM public.manager_groups mg
-      JOIN public.group_members gm ON gm.group_id = mg.id
-      WHERE mg.manager_user_id = v_user_id
-
-      UNION
-
-      -- Backward compat: profiles.manager_id
-      SELECT p.id AS member_id
-      FROM public.profiles p
-      WHERE p.manager_id = v_user_id
-        AND p.is_active = true
-
-      UNION
-
-      -- NEW: Data sharing subjects (scope_orders = true)
-      SELECT uds.subject_user_id AS member_id
-      FROM public.user_data_shares uds
-      WHERE uds.viewer_user_id = v_user_id
-        AND uds.active = true
-        AND uds.scope_orders = true
-    ) team;
-
-    RETURN v_result;
-  END IF;
-
-  -- Runner (and any other role): own data + any shared subjects
-  SELECT ARRAY[v_user_id] || COALESCE(
-    array_agg(DISTINCT uds.subject_user_id) FILTER (WHERE uds.subject_user_id IS NOT NULL),
-    ARRAY[]::uuid[]
-  )
-  INTO v_result
-  FROM public.user_data_shares uds
-  WHERE uds.viewer_user_id = v_user_id
-    AND uds.active = true
-    AND uds.scope_orders = true;
-  
-  RETURN v_result;
-END;
-$$;
+```typescript
+interface OrderFilters {
+  status?: OrderStatus;
+  salespersonId?: string;
+  runnerId?: string;
+  runnerStatus?: RunnerStatus;
+  reconciliationStatus?: ReconciliationStatus;
+  excludeDeliveredAndFailed?: boolean; // NEW
+}
 ```
+
+When this filter is true, exclude DELIVERED and FAILED_DELIVERY at the database level and increase the limit.
+
+### 2. Update `RunnerInbox.tsx` - Use the new filter
+
+Change the orders hook call to:
+```typescript
+const { data: orders, isLoading } = useOrders({ 
+  runnerId: user?.id,
+  excludeDeliveredAndFailed: true  // Server-side filter for active orders only
+});
+```
+
+This ensures:
+1. Only ASSIGNED, TAKEN, UNASSIGNED orders are fetched (not DELIVERED/FAILED_DELIVERY)
+2. Limit is increased to 10,000 to accommodate high-volume runners
+3. All 451 active orders will be shown instead of 383
 
 ---
 
 ## Technical Details
 
-### What This Fix Does
+### Changes to `src/hooks/useOrders.ts`
 
-1. **For Managers**: Adds `user_data_shares` subjects to the UNION query that builds visible IDs
-2. **For Salespersons**: Adds support for shared data (previously hardcoded to own ID only)
-3. **For Runners/Others**: Adds support for shared data
-
-### Why This Works
-
-The `useTeamOrders` hook validates passed `salespersonIds` against the RPC result:
 ```typescript
-const allowedIds = filters.salespersonIds.filter(id => visibleUserIds.includes(id));
+// Line 6-12: Add new filter option
+interface OrderFilters {
+  status?: OrderStatus;
+  salespersonId?: string;
+  runnerId?: string;
+  runnerStatus?: RunnerStatus;
+  reconciliationStatus?: ReconciliationStatus;
+  excludeDeliveredAndFailed?: boolean; // For Runner Inbox
+}
+
+// Line 19-20: Increase limit for active orders filter
+const queryLimit = (filters?.runnerStatus || filters?.excludeDeliveredAndFailed) ? 10000 : 500;
+
+// After line 55: Add the exclusion filter
+if (filters?.excludeDeliveredAndFailed) {
+  query = query.neq('runner_status', 'DELIVERED');
+  query = query.neq('runner_status', 'FAILED_DELIVERY');
+}
 ```
 
-After the fix, when Emily selects Xiao Tong:
-- RPC returns: `[Emily's ID, Xiao Tong's ID]`
-- Passed salespersonIds: `[Xiao Tong's ID]`
-- allowedIds: `[Xiao Tong's ID]` ✅ (no longer filtered out)
+### Changes to `src/pages/runner/RunnerInbox.tsx`
 
-### Dashboard Stats Sync
+```typescript
+// Line 67: Add server-side filter
+const { data: orders, isLoading } = useOrders({ 
+  runnerId: user?.id,
+  excludeDeliveredAndFailed: true
+});
+```
 
-The same `get_visible_owner_ids()` function is used by:
-- `get_team_orders` RPC
-- `useManagerStats` hook
-- Dashboard statistics queries
-
-So fixing this function automatically fixes all dashboard and stats visibility issues.
+The client-side `filteredOrders` logic can remain as a safety net, but the server-side filter does the heavy lifting.
 
 ---
 
-## Files Changed
+## Files to Modify
 
 | File | Change |
 |------|--------|
-| `supabase/migrations/[new].sql` | Update `get_visible_owner_ids()` to include `user_data_shares` |
-
-No frontend code changes needed - the existing hooks already handle the IDs correctly once they're included in the RPC result.
+| `src/hooks/useOrders.ts` | Add `excludeDeliveredAndFailed` filter option with server-side query |
+| `src/pages/runner/RunnerInbox.tsx` | Use new filter to fetch all active orders |
 
 ---
 
 ## Expected Outcome
 
 After implementation:
-1. Emily selects "Team Data" → "Xiao Tong (Shared)"
-2. Orders from Xiao Tong appear in Ready Sales, Booking Sales, etc.
-3. Dashboard stats include Xiao Tong's orders in team totals
-4. Action Required shows items from shared users
+- Runner Inbox shows "Select All (451)" instead of "Select All (383)"
+- All ASSIGNED and TAKEN orders are visible
+- Pagination works correctly for high-volume runners
+- No more missing orders due to limit truncation
+
