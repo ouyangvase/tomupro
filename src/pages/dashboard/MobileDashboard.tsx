@@ -457,13 +457,13 @@ function AdminMobileDashboard() {
 
 // Main Mobile Dashboard Component
 export function MobileDashboard() {
-  const { role, loading } = useAuth();
+  const { role, profileStatus } = useAuth();
   
   useRealtimeUpdates();
 
-  // CRITICAL: Show loading spinner while role is being fetched
+  // CRITICAL: Show loading spinner while profile is being resolved
   // Never default to any role - wait for the actual role
-  if (loading || !role) {
+  if (profileStatus === 'loading' || profileStatus === 'idle' || !role) {
     return <MobileDashboardLoading />;
   }
 
