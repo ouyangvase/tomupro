@@ -27,6 +27,9 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
   
   return useQuery({
     queryKey: ['orders', 'team', filters, role, user?.id],
+    staleTime: 30000, // Cache for 30 seconds to reduce load
+    retry: 2,
+    retryDelay: 1000,
     queryFn: async () => {
       // First, fetch visible owner IDs from server (source of truth)
       const { data: visibleUserIds, error: visError } = await supabase.rpc('get_visible_owner_ids');
@@ -35,6 +38,9 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
         console.error('Failed to fetch visible owner IDs:', visError);
         // Fallback to own ID only on error
       }
+      
+      // Reduced limit for better performance
+      const queryLimit = 2000;
       
       let query = supabase
         .from('orders')
@@ -46,7 +52,7 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
           )
         `)
         .order('created_at', { ascending: false })
-        .limit(30000); // Sufficient limit for high-volume users
+        .limit(queryLimit);
 
       if (filters?.status) {
         query = query.eq('status', filters.status);
@@ -141,6 +147,5 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
       return orders as unknown as Order[];
     },
     enabled: !!user?.id,
-    staleTime: 10000,
   });
 }

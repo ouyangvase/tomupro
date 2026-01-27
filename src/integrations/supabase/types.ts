@@ -3317,6 +3317,10 @@ export type Database = {
         Returns: Json
       }
       can_access_order_items: { Args: { p_order_id: string }; Returns: boolean }
+      can_access_order_v2: {
+        Args: { p_order_runner_id?: string; p_order_salesperson_id: string }
+        Returns: boolean
+      }
       can_operate_on_shared_data: {
         Args: { p_scope?: string; p_subject_id: string; p_viewer_id: string }
         Returns: boolean

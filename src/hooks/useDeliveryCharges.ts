@@ -15,6 +15,9 @@ export function useDeliveryCharges(filters?: DeliveryChargeFilters) {
 
   return useQuery({
     queryKey: ['delivery-charges', filters],
+    staleTime: 30000,
+    retry: 2,
+    retryDelay: 1000,
     queryFn: async () => {
       let query = supabase
         .from('delivery_charges')

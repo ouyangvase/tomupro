@@ -90,33 +90,44 @@ export function useRealtimeOrderUpdates() {
   }, [profile, queryClient, toast]);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.id) return;
 
-    console.log('Setting up realtime subscription for orders...');
-    
-    const channel = supabase
-      .channel('orders-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-        },
-        (payload) => {
-          console.log('Realtime order update:', payload);
-          handleOrderChange(payload as unknown as RealtimePayload);
-        }
-      )
-      .subscribe((status) => {
-        console.log('Realtime subscription status:', status);
-      });
+    // Debounce subscription setup to prevent flapping
+    const timeoutId = setTimeout(() => {
+      console.log('Setting up realtime subscription for orders...');
+      
+      const channel = supabase
+        .channel(`orders-realtime-${profile.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'orders',
+          },
+          (payload) => {
+            console.log('Realtime order update:', payload);
+            handleOrderChange(payload as unknown as RealtimePayload);
+          }
+        )
+        .subscribe((status) => {
+          console.log('Realtime subscription status:', status);
+        });
+
+      // Store channel reference for cleanup
+      (window as any).__ordersChannel = channel;
+    }, 150);
 
     return () => {
-      console.log('Cleaning up realtime subscription...');
-      supabase.removeChannel(channel);
+      clearTimeout(timeoutId);
+      const channel = (window as any).__ordersChannel;
+      if (channel) {
+        console.log('Cleaning up realtime subscription...');
+        supabase.removeChannel(channel);
+        delete (window as any).__ordersChannel;
+      }
     };
-  }, [profile, handleOrderChange]);
+  }, [profile?.id, handleOrderChange]);
 }
 
 export function useRealtimePickupUpdates() {
