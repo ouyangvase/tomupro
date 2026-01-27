@@ -95,9 +95,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRoleChanged(false);
   }, []);
 
+  // Validate session by making an authenticated request
+  const validateSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        console.warn('[Auth] Session validation failed:', error?.message);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('[Auth] Session validation exception:', err);
+      return false;
+    }
+  }, []);
+
   const fetchProfile = useCallback(async (userId: string, retryCount = 0): Promise<void> => {
     const maxRetries = 3;
-    const baseDelay = 1000; // 1 second
+    const baseDelay = 1000;
+    const fetchTimeout = 8000; // 8 second timeout per attempt
     
     // Set loading status on first attempt
     if (retryCount === 0) {
@@ -107,13 +123,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     console.log(`[Auth] Fetching profile for ${userId} (attempt ${retryCount + 1}/${maxRetries + 1})`);
     
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+    // Add timeout wrapper using Promise.race
+    const fetchWithTimeout = async (): Promise<{ data: ExtendedProfile | null; error: any }> => {
+      const timeoutPromise = new Promise<{ data: null; error: { message: string } }>((resolve) => {
+        setTimeout(() => resolve({ data: null, error: { message: 'Request timed out' } }), fetchTimeout);
+      });
+      
+      const fetchPromise = supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle()
+        .then(({ data, error }) => ({ data: data as ExtendedProfile | null, error }));
+      
+      return Promise.race([fetchPromise, timeoutPromise]);
+    };
     
-    // Retry on transient errors (503, network issues)
+    const { data, error } = await fetchWithTimeout();
+    
+    // Retry on transient errors (503, network issues, timeout)
     if (error && retryCount < maxRetries) {
       const delay = baseDelay * Math.pow(2, retryCount);
       console.warn(`[Auth] Profile fetch failed (attempt ${retryCount + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message);
@@ -201,7 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (loading) {
-        console.warn('Auth loading timeout (10s) - forcing completion');
+        console.warn('[Auth] Loading timeout (10s) - forcing completion');
         setLoading(false);
       }
     }, 10000); // 10 second timeout
@@ -212,14 +240,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
     
+    // Initialize auth with proper session validation
+    const initializeAuth = async () => {
+      try {
+        console.log('[Auth] Initializing auth...');
+        
+        // First check if we have a stored session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.warn('[Auth] Initial session check error - clearing tokens:', error.message);
+          clearAuthState();
+          if (mounted) setLoading(false);
+          return;
+        }
+        
+        if (!session) {
+          console.log('[Auth] No session found - user needs to log in');
+          if (mounted) setLoading(false);
+          return;
+        }
+        
+        // Validate session with a getUser call (this checks if token is actually valid)
+        console.log('[Auth] Validating session...');
+        const isValid = await validateSession();
+        
+        if (!isValid) {
+          console.warn('[Auth] Session validation failed - clearing stale tokens');
+          clearAuthState();
+          if (mounted) setLoading(false);
+          return;
+        }
+        
+        console.log('[Auth] Session valid, fetching profile...');
+        // Session is valid - proceed
+        if (mounted) {
+          setSession(session);
+          setUser(session.user);
+          await fetchProfile(session.user.id);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('[Auth] Initialization error:', err);
+        clearAuthState();
+        if (mounted) setLoading(false);
+      }
+    };
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
         
+        console.log('[Auth] Auth state changed:', event);
+        
         // Handle session refresh failures (e.g., invalid refresh token)
         if (event === 'TOKEN_REFRESHED' && !session) {
-          console.warn('Token refresh failed - clearing stale tokens');
+          console.warn('[Auth] Token refresh failed - clearing stale tokens');
           clearAuthState();
           if (mounted) setLoading(false);
           return;
@@ -227,18 +304,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Handle sign out event
         if (event === 'SIGNED_OUT') {
+          console.log('[Auth] User signed out');
           clearAuthState();
           if (mounted) setLoading(false);
           return;
         }
         
-        setSession(session);
-        setUser(session?.user ?? null);
+        // Handle user deleted or auth error scenarios
+        if (event === 'USER_UPDATED' && !session) {
+          console.warn('[Auth] User updated but no session - clearing state');
+          clearAuthState();
+          if (mounted) setLoading(false);
+          return;
+        }
         
+        // For SIGNED_IN or valid session updates
         if (session?.user) {
-          // Fetch profile BEFORE setting loading to false
-          await fetchProfile(session.user.id);
-        } else {
+          setSession(session);
+          setUser(session.user);
+          
+          // Only fetch profile if we don't already have it or user changed
+          if (!profile || profile.id !== session.user.id) {
+            await fetchProfile(session.user.id);
+          }
+        } else if (!session) {
+          // No session after an event - clear state
+          setUser(null);
+          setSession(null);
           setProfile(null);
           setPreviousRole(null);
           setRoleChanged(false);
@@ -250,50 +342,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // THEN check for existing session with proper error handling
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      if (!mounted) return;
-      
-      // If there's an auth error or no valid session, clear state and stop loading
-      if (error) {
-        console.error('Session check error:', error);
-        clearAuthState();
-        if (mounted) setLoading(false);
-        return;
-      }
-      
-      if (!session) {
-        // No session - that's fine, just stop loading
-        setUser(null);
-        setSession(null);
-        setProfile(null);
-        if (mounted) setLoading(false);
-        return;
-      }
-      
-      setSession(session);
-      setUser(session.user);
-      
-      if (session.user) {
-        await fetchProfile(session.user.id);
-      }
-      
-      if (mounted) {
-        setLoading(false);
-      }
-    }).catch((error) => {
-      console.error('Session check failed:', error);
-      if (mounted) {
-        clearAuthState();
-        setLoading(false);
-      }
-    });
+    // THEN initialize auth
+    initializeAuth();
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, clearAuthState]);
+  }, [fetchProfile, clearAuthState, validateSession, profile]);
 
   // Subscribe to realtime changes on the profile
   useEffect(() => {
