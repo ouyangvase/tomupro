@@ -1,26 +1,29 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { supabase } from '@/integrations/supabase/client';
+import type { DataScope, DataViewMode } from '@/types/data-sharing';
 
 /**
- * Hook to fetch visible owner IDs from server-side RPC.
+ * Hook to fetch visible owner IDs from server-side RPC with scope support.
  * This is the source of truth for team visibility.
  * 
  * Returns:
  * - null if admin (can see all)
  * - array of UUIDs for manager/salesperson/runner
  */
-export function useServerVisibleIds() {
+export function useServerVisibleIds(scope: DataScope = 'orders') {
   const { user, role } = useAuth();
 
   return useQuery({
-    queryKey: ['visible-owner-ids', user?.id],
+    queryKey: ['visible-owner-ids', user?.id, scope],
     queryFn: async () => {
       if (!user?.id) return [];
 
-      const { data, error } = await supabase.rpc('get_visible_owner_ids');
+      const { data, error } = await supabase.rpc('get_accessible_owner_ids', {
+        p_scope: scope,
+      });
       
       if (error) {
         console.error('Failed to fetch visible owner IDs:', error);
@@ -37,6 +40,58 @@ export function useServerVisibleIds() {
 }
 
 /**
+ * Hook to get shared access subjects for the current user
+ */
+export function useSharedSubjects(scope: DataScope = 'orders') {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ['shared-subjects', user?.id, scope],
+    queryFn: async () => {
+      if (!user?.id) return [];
+
+      const { data, error } = await supabase
+        .from('user_data_shares')
+        .select(`
+          subject_user_id,
+          can_operate,
+          scope_orders,
+          scope_products,
+          scope_stock_balance,
+          scope_inbound,
+          subject:profiles!user_data_shares_subject_user_id_fkey(id, display_name)
+        `)
+        .eq('viewer_user_id', user.id)
+        .eq('active', true);
+
+      if (error) {
+        console.error('Failed to fetch shared subjects:', error);
+        return [];
+      }
+
+      // Filter by scope
+      return (data || [])
+        .filter(share => {
+          switch (scope) {
+            case 'orders': return share.scope_orders;
+            case 'products': return share.scope_products;
+            case 'stock': return share.scope_stock_balance;
+            case 'inbound': return share.scope_inbound;
+            default: return share.scope_orders;
+          }
+        })
+        .map(share => ({
+          id: share.subject_user_id,
+          displayName: share.subject?.display_name || 'Unknown',
+          canOperate: share.can_operate,
+        }));
+    },
+    enabled: !!user?.id,
+    staleTime: 30000,
+  });
+}
+
+/**
  * Centralized hook for computing visible user IDs based on role and team bindings.
  * Uses server-side RPC as the source of truth.
  * 
@@ -48,10 +103,14 @@ export function useServerVisibleIds() {
  * 
  * Managers are ISOLATED - they cannot see other managers' team data.
  */
-export function useVisibleUserIds() {
+export function useVisibleUserIds(scope: DataScope = 'orders') {
   const { user, role, profile } = useAuth();
-  const { data: serverVisibleIds, isLoading: serverLoading } = useServerVisibleIds();
+  const { data: serverVisibleIds, isLoading: serverLoading } = useServerVisibleIds(scope);
   const { data: teamMembers = [] } = useTeamMembers();
+  const { data: sharedSubjects = [] } = useSharedSubjects(scope);
+  
+  // Data view mode state
+  const [dataViewMode, setDataViewMode] = useState<DataViewMode>('all_accessible');
 
   const visibleUserIds = useMemo<string[] | undefined>(() => {
     if (!user?.id) return [];
@@ -60,6 +119,17 @@ export function useVisibleUserIds() {
     if (serverVisibleIds !== undefined) {
       // null from server means admin (no filter)
       if (serverVisibleIds === null) return undefined;
+      
+      // Apply data view mode filter
+      if (dataViewMode === 'my_data') {
+        return [user.id];
+      }
+      
+      if (dataViewMode === 'shared') {
+        return sharedSubjects.map(s => s.id);
+      }
+      
+      // 'all_accessible' - return full server result
       return serverVisibleIds;
     }
 
@@ -80,10 +150,13 @@ export function useVisibleUserIds() {
 
     // Default: own data only
     return [user.id];
-  }, [user?.id, role, serverVisibleIds, teamMembers]);
+  }, [user?.id, role, serverVisibleIds, teamMembers, sharedSubjects, dataViewMode]);
 
   // Team member IDs only (excludes manager themselves)
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
+
+  // Shared subject IDs only
+  const sharedSubjectIds = useMemo(() => sharedSubjects.map(s => s.id), [sharedSubjects]);
 
   // All team IDs including manager
   const allTeamIds = useMemo(() => {
@@ -91,15 +164,45 @@ export function useVisibleUserIds() {
     return [user.id, ...teamMemberIds];
   }, [user?.id, role, teamMemberIds]);
 
+  // Check if a specific user's data can be operated on
+  const canOperateOnUser = useCallback((subjectUserId: string) => {
+    if (!user?.id) return false;
+    
+    // Can always operate on own data
+    if (subjectUserId === user.id) return true;
+    
+    // Admin can operate on all
+    if (role === 'admin') return true;
+    
+    // Manager can operate on team members
+    if (role === 'manager' && teamMemberIds.includes(subjectUserId)) return true;
+    
+    // Check shared access
+    const sharedAccess = sharedSubjects.find(s => s.id === subjectUserId);
+    return sharedAccess?.canOperate || false;
+  }, [user?.id, role, teamMemberIds, sharedSubjects]);
+
+  // Check if current user is viewing their own data
+  const isOwnData = useCallback((ownerId: string) => {
+    return ownerId === user?.id;
+  }, [user?.id]);
+
   return {
     visibleUserIds,
     teamMemberIds,
+    sharedSubjectIds,
     allTeamIds,
     isManager: role === 'manager',
     isAdmin: role === 'admin',
     isSalesperson: role === 'salesperson',
     userId: user?.id,
     isLoading: serverLoading,
+    hasSharedAccess: sharedSubjects.length > 0,
+    dataViewMode,
+    setDataViewMode,
+    canOperateOnUser,
+    isOwnData,
+    sharedSubjects,
   };
 }
 

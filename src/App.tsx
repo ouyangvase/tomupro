@@ -67,6 +67,7 @@ import CommissionSettings from "./pages/admin/CommissionSettings";
 import LeaderboardSettings from "./pages/admin/LeaderboardSettings";
 import LeaderboardPage from "./pages/leaderboard/LeaderboardPage";
 import InviteCodesAdmin from "./pages/admin/InviteCodesAdmin";
+import DataSharingAdmin from "./pages/admin/DataSharingAdmin";
 import MyPackagesPage from "./pages/packages/MyPackagesPage";
 import PcNotificationsPage from "./pages/packages/PcNotificationsPage";
 import NotFound from "./pages/NotFound";
@@ -185,6 +186,7 @@ function AppRoutes() {
       <Route path="/settings/commission" element={<ProtectedRoute><CommissionSettings /></ProtectedRoute>} />
       <Route path="/admin/leaderboard-settings" element={<ProtectedRoute><LeaderboardSettings /></ProtectedRoute>} />
       <Route path="/admin/invite-codes" element={<ProtectedRoute><InviteCodesAdmin /></ProtectedRoute>} />
+      <Route path="/admin/data-sharing" element={<ProtectedRoute><DataSharingAdmin /></ProtectedRoute>} />
       <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/packages" element={<ProtectedRoute><MyPackagesPage /></ProtectedRoute>} />
       <Route path="/packages/notifications" element={<ProtectedRoute><PcNotificationsPage /></ProtectedRoute>} />
