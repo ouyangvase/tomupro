@@ -319,7 +319,10 @@ export function AppSidebar() {
     profile,
     signOut,
     signingOut,
-    loading
+    loading,
+    profileStatus,
+    retryProfile,
+    resetSession
   } = useAuth();
   const {
     state,
@@ -329,15 +332,19 @@ export function AppSidebar() {
   
   // CRITICAL: Don't use a fallback role - wait for actual role to load
   const userRole = profile?.role;
-  const isRoleLoading = loading || !userRole;
+  
+  // Use profileStatus for robust loading/error handling
+  const isProfileReady = profileStatus === 'ready' && !!userRole;
+  const isProfileLoading = profileStatus === 'loading' || profileStatus === 'idle';
+  const isProfileError = profileStatus === 'error' || profileStatus === 'missing';
   
   const filterItems = (items: NavItem[]) => {
     if (!userRole) return [];
     return items.filter(item => item.roles.includes(userRole));
   };
   
-  // Show loading state while role is being fetched
-  if (isRoleLoading) {
+  // Show loading state while profile is being fetched
+  if (isProfileLoading) {
     return (
       <Sidebar className={cn(
         "border-r border-border/30 bg-gradient-to-b from-sidebar via-sidebar to-sidebar/95",
@@ -366,6 +373,55 @@ export function AppSidebar() {
             </div>
           ))}
         </SidebarContent>
+      </Sidebar>
+    );
+  }
+
+  // Show error state with recovery actions - not infinite skeleton
+  if (isProfileError || !userRole) {
+    return (
+      <Sidebar className={cn(
+        "border-r border-border/30 bg-gradient-to-b from-sidebar via-sidebar to-sidebar/95",
+        collapsed ? "w-16 md:w-20" : "w-64 md:w-72"
+      )}>
+        <SidebarHeader className="p-4 md:p-6 border-b border-primary/20 bg-gradient-to-br from-primary/10 via-secondary/30 to-transparent">
+          <div className="flex items-center gap-3">
+            <img src={tomuLogo} alt="TOMU Logo" className="h-12 w-12 md:h-14 md:w-14 object-contain" />
+            {!collapsed && (
+              <div>
+                <h2 className="font-extrabold text-xl md:text-2xl tracking-tight bg-gradient-to-r from-primary via-primary/80 to-[hsl(var(--status-warning))] bg-clip-text text-transparent">TOMU</h2>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <AlertCircle className="h-3 w-3 text-destructive" />
+                  <p className="text-xs text-destructive">Profile Error</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </SidebarHeader>
+        <SidebarContent className="px-4 py-6 flex flex-col items-center justify-center gap-4">
+          {!collapsed && (
+            <>
+              <p className="text-sm text-muted-foreground text-center">
+                Could not load your profile. Please try again.
+              </p>
+              <Button onClick={retryProfile} size="sm" className="w-full gap-2">
+                <Loader2 className="h-3 w-3" />
+                Retry
+              </Button>
+            </>
+          )}
+        </SidebarContent>
+        <SidebarFooter className="p-4 border-t border-border/30">
+          <Button 
+            variant="outline" 
+            size={collapsed ? "icon" : "default"} 
+            onClick={resetSession}
+            className="w-full gap-2 border-border/50 hover:bg-destructive/10 hover:text-destructive"
+          >
+            <LogOut className="h-4 w-4" />
+            {!collapsed && "Sign Out"}
+          </Button>
+        </SidebarFooter>
       </Sidebar>
     );
   }
