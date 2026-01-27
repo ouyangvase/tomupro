@@ -22,6 +22,10 @@ export default function DataSharingAdmin() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingShare, setEditingShare] = useState<UserDataShare | null>(null);
 
+  const activeShares = shares.filter(s => s.active);
+  const inactiveShares = shares.filter(s => !s.active);
+  const operableShares = shares.filter(s => s.can_operate && s.active);
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -35,6 +39,58 @@ export default function DataSharingAdmin() {
           <Plus className="h-4 w-4 mr-2" />
           Create Share
         </Button>
+      </div>
+
+      {/* Dashboard Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Shares</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{shares.length}</div>
+            <p className="text-xs text-muted-foreground">
+              All configured shares
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active</CardTitle>
+            <Eye className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{activeShares.length}</div>
+            <p className="text-xs text-muted-foreground">
+              Currently enabled
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Inactive</CardTitle>
+            <EyeOff className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-muted-foreground">{inactiveShares.length}</div>
+            <p className="text-xs text-muted-foreground">
+              Disabled shares
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Can Operate</CardTitle>
+            <Shield className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-primary">{operableShares.length}</div>
+            <p className="text-xs text-muted-foreground">
+              With write access
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="shares">
