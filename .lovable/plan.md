@@ -1,183 +1,122 @@
 
-# Fix: Loading Stuck and Invalid Session Handling
+Goal
+- Eliminate the “stuck Loading your dashboard…” state and ensure every user sees the correct role-based UI (Admin/Manager/Runner/Driver/Salesperson) reliably.
+- Make the system recoverable when the backend is slow/unavailable (no infinite spinners; clear next action for user).
 
-## Problem Summary
+What’s actually happening (root cause, from code + your screenshots)
+- The UI now correctly refuses to “guess” a role (we removed unsafe fallbacks like `|| 'salesperson'`).
+- But there’s a new failure mode: if `fetchProfile()` fails (503/schema cache, network, or RLS/other) it returns without setting `profile`.
+- AuthContext still sets `loading=false` after `fetchProfile()` returns, so the app reaches a state:
+  - user/session exists
+  - loading=false
+  - profile=null → role=null
+- Dashboard and Sidebar both treat “role missing” as “keep loading”:
+  - `Dashboard.tsx`: `if (loading || !role) return <DashboardLoading />`
+  - `AppSidebar.tsx`: `isRoleLoading = loading || !userRole` → skeleton forever
+- Result: infinite “Loading…” with no recovery action, even though auth has completed.
 
-The app is stuck on "Loading..." on the Auth page due to two issues:
+How top 0.1% teams think about this (high-level thinking + evaluation system)
+1) They model it as a state machine, not a boolean
+   - “loading” is not enough. You need explicit states:
+     - auth_initializing → unauthenticated → authenticated_profile_loading → authenticated_ready
+     - plus terminal failure states: authenticated_profile_error / authenticated_profile_missing
+   - They refuse “silent ambiguity” (indefinite spinner). Every state must be either:
+     - progressing, or
+     - terminal with an action (Retry / Sign out / Contact admin).
 
-1. **Invalid refresh token not properly handled** - When Supabase has a stale refresh token, it returns a 400 error. The AuthContext tries to use this invalid session to fetch a profile, which can cause the loading state to get stuck.
+2) They optimize for two invariants:
+   - Safety invariant: Never assign permissions/role without verified backend profile.
+   - Liveness invariant: The UI must not deadlock (no infinite spinners). User must have a path to recovery.
 
-2. **Auth page shouldn't wait for loading** - The Auth page should display immediately regardless of auth loading state since it's the login page.
+3) Their judgment criteria (what “good” looks like)
+   - Deterministic UI: same inputs → same screen (no random role fallbacks).
+   - Bounded waiting: retries have a cap; after that, show an error state with controls.
+   - Observability: log/track transitions (“session acquired”, “profile fetch attempt 2/4”, “profile missing”).
+   - Fast recovery: 1-click “Retry profile load” and 1-click “Reset session” that always works.
 
-3. **Race condition in session handling** - The `getSession()` and `onAuthStateChange` callbacks can race, causing duplicate profile fetches or stuck states.
+4) Their evaluation system (how they decide if it’s fixed)
+   - Scenario coverage:
+     - Valid session + profile exists → role renders correctly within seconds.
+     - Backend 503 for 15–60s → UI shows “Profile loading…” then either succeeds or shows error with Retry.
+     - Invalid refresh token → user is cleanly signed out + returned to login.
+     - Profile missing (edge case) → explicit message + guided recovery (create profile or contact admin).
+   - “No infinite spinners” as a hard acceptance test.
 
-## Root Cause Analysis
+Implementation approach (what I will change)
+A) Add an explicit “profile load status” to AuthContext
+- In `src/contexts/AuthContext.tsx` add:
+  - `profileStatus: 'idle' | 'loading' | 'ready' | 'error' | 'missing'`
+  - `profileError: string | null`
+- Update `fetchProfile()` to set terminal states:
+  - If it errors after retries → `profileStatus='error'`, `profileError=error.message`
+  - If it returns `data=null` (no row) → `profileStatus='missing'`
+  - If it succeeds → set `profile`, `profileStatus='ready'`, clear `profileError`
+- Important: Avoid “loading=false but role=null” without a terminal status.
 
-From the network logs:
-```
-POST /auth/v1/token?grant_type=refresh_token
-Status: 400
-Response: {"code":"refresh_token_not_found","message":"Invalid Refresh Token: Refresh Token Not Found"}
-```
+B) Remove the deadlock pattern: “show loading forever when role is null”
+- Create a single reusable UI component (or inline JSX) for “Profile Gate”:
+  - Loading view (spinner) when `profileStatus==='loading'`
+  - Error view when `profileStatus==='error'` (shows message + Retry + Reset Session)
+  - Missing view when `profileStatus==='missing'` (explain account setup incomplete + actions)
+  - Ready view when `profileStatus==='ready'` renders the app
 
-When this happens, the AuthContext's `getSession()` may return a stale session object, and the `onAuthStateChange` may not fire correctly, leaving `loading: true` indefinitely.
+C) Update route guard to block the whole app until profile is ready (or show recovery)
+- In `src/App.tsx` (`ProtectedRoute`):
+  - Replace “only checks `loading`” with:
+    - If auth initializing → show spinner
+    - If no user → redirect /auth
+    - If user exists but profileStatus is loading/error/missing → show ProfileGate screen (not DashboardLoading)
+  - This prevents every protected page from rendering partial UI when role is unknown.
 
-## Solution
+D) Update Dashboard + Sidebar to use profileStatus (not `!role => infinite loading`)
+- `src/pages/Dashboard.tsx`:
+  - Replace `if (loading || !role)` with something like:
+    - If profileStatus is loading → show DashboardLoading
+    - If profileStatus is error/missing → show the same ProfileGate (or redirect to a dedicated error page)
+- `src/components/layout/AppSidebar.tsx`:
+  - Use `profileStatus` to decide skeleton vs error message vs normal navigation.
+  - If profileStatus is error/missing: show compact sidebar with “Retry” and “Sign out” rather than skeleton forever.
 
-### Part 1: Handle Invalid Sessions Gracefully
+E) Add safe recovery actions
+- In AuthContext, expose:
+  - `retryProfile(): Promise<void>` (wrap `refreshProfile()` but sets status to loading first)
+  - `resetSession(): Promise<void>` that runs:
+    - `clearAuthState()`
+    - best-effort `supabase.auth.signOut()` (optional)
+    - redirect to `/auth`
+- This gives users a guaranteed “unstick” button.
 
-**File: `src/contexts/AuthContext.tsx`**
+F) Optional: reduce noise from platform CORS warnings (non-blocking)
+- Your screenshot shows a CORS error on an internal “auth-bridge” request. This is platform-side and usually non-fatal.
+- If it confuses users, we can optionally disable the PWA manifest link in preview (reducing that request), but I’ll treat this as optional because the core functional failure is the profile deadlock.
 
-Add session validation and clear invalid tokens when refresh fails:
+Files to change (no database changes required for this fix)
+- src/contexts/AuthContext.tsx
+  - Add profileStatus/profileError
+  - Ensure fetchProfile sets terminal states (ready/error/missing)
+  - Provide retryProfile/resetSession actions
+- src/App.tsx
+  - Update ProtectedRoute to gate on profileStatus and show recovery UI
+- src/pages/Dashboard.tsx
+  - Replace “role missing => loading forever” with profileStatus-based decision
+- src/components/layout/AppSidebar.tsx
+  - Replace skeleton-only role loading with status-based (loading vs error vs ready)
 
-```typescript
-useEffect(() => {
-  let mounted = true;
-  
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      if (!mounted) return;
-      
-      // Handle session refresh failures
-      if (event === 'TOKEN_REFRESHED' && !session) {
-        // Refresh failed - clear invalid tokens
-        clearAuthState();
-        if (mounted) setLoading(false);
-        return;
-      }
-      
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-      } else {
-        setProfile(null);
-        setPreviousRole(null);
-        setRoleChanged(false);
-      }
-      
-      if (mounted) setLoading(false);
-    }
-  );
-  
-  // Check for existing session with error handling
-  supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-    if (!mounted) return;
-    
-    // If there's an auth error or no valid session, clear state
-    if (error || !session) {
-      setUser(null);
-      setSession(null);
-      setProfile(null);
-      if (mounted) setLoading(false);
-      return;
-    }
-    
-    setSession(session);
-    setUser(session.user);
-    
-    if (session.user) {
-      await fetchProfile(session.user.id);
-    }
-    
-    if (mounted) setLoading(false);
-  }).catch((error) => {
-    console.error('Session check failed:', error);
-    if (mounted) setLoading(false);
-  });
+Testing checklist (what I will verify after implementation)
+- Login as Admin → sidebar shows “Admin”, dashboard loads (no spinner).
+- Login as Salesperson/Runner/Driver/Manager → correct menu + correct dashboard.
+- Simulate “profile fetch fails” (by temporarily forcing fetchProfile to throw in dev) → see error screen with Retry + Reset Session; no infinite spinner.
+- Simulate “invalid refresh token” by clearing/poisoning local storage → app redirects to /auth and does not hang.
+- Confirm no role fallback exists anywhere critical (we already removed the main ones; will re-scan for any remaining “default to salesperson” in UI decision points).
 
-  return () => {
-    mounted = false;
-    subscription.unsubscribe();
-  };
-}, [fetchProfile]);
-```
+Why this will make the system “work as you want”
+- Your app depends on role-based workflows (sales tracking, team management, runner/driver operations). Correct role is the key that unlocks the right screens and permissions.
+- This change makes role retrieval:
+  - safe (no guessing),
+  - reliable (retries + explicit states),
+  - recoverable (no deadlocks; users can always get back to a working screen).
 
-### Part 2: Add Auth Loading Timeout
-
-Add a maximum loading timeout to prevent infinite loading:
-
-```typescript
-// Add a timeout to prevent infinite loading
-useEffect(() => {
-  const timeout = setTimeout(() => {
-    if (loading) {
-      console.warn('Auth loading timeout - forcing completion');
-      setLoading(false);
-    }
-  }, 10000); // 10 second timeout
-  
-  return () => clearTimeout(timeout);
-}, [loading]);
-```
-
-### Part 3: Clear Stale Tokens on 400 Errors
-
-Add listener for auth errors to clear invalid tokens:
-
-```typescript
-// Clear stale tokens function
-const clearAuthState = useCallback(() => {
-  const projectId = 'fitonksgqfxnpljiylkn';
-  localStorage.removeItem(`sb-${projectId}-auth-token`);
-  localStorage.removeItem('supabase.auth.token');
-  sessionStorage.clear();
-  setUser(null);
-  setSession(null);
-  setProfile(null);
-  setPreviousRole(null);
-  setRoleChanged(false);
-}, []);
-```
-
-### Part 4: Show Auth Page Without Loading Check
-
-**File: `src/pages/Auth.tsx`**
-
-Add early return for auth page loading state:
-
-```typescript
-export default function Auth() {
-  const navigate = useNavigate();
-  const { signIn, signUp, user, loading } = useAuth();
-  const { toast } = useToast();
-  // ... rest of state
-  
-  // Show auth page immediately if not authenticated
-  // Even if loading, show the form so users can try to login
-  useEffect(() => {
-    if (user && !loading) {
-      navigate('/');
-    }
-  }, [user, loading, navigate]);
-  
-  // Rest of component renders normally...
-}
-```
-
-## Summary of Changes
-
-| File | Change |
-|------|--------|
-| `src/contexts/AuthContext.tsx` | Add invalid session handling, loading timeout, clear stale tokens |
-| `src/pages/Auth.tsx` | Update redirect logic to work with loading state |
-
-## Expected Outcome
-
-After implementation:
-1. **No more infinite loading** - 10-second timeout prevents stuck states
-2. **Invalid tokens cleared automatically** - Users with stale sessions get logged out properly
-3. **Auth page shows immediately** - Login form visible even during loading
-4. **Proper error handling** - Auth errors are caught and handled gracefully
-
-## Technical Details
-
-### Why This Happens
-The Supabase client stores session tokens in localStorage. When the refresh token expires or becomes invalid (e.g., after a database reset or session cleanup), the client tries to refresh and fails with error 400. The current code doesn't handle this gracefully.
-
-### The CORS Errors
-The `auth-bridge` and `manifest.json` CORS errors shown in the console are Lovable platform issues (not code-related) and are safe to ignore. They don't affect app functionality.
-
-### The ForwardRef Warnings
-The React warnings about "Function components cannot be given refs" are from react-router-dom and are harmless deprecation warnings that don't affect functionality.
+Rollout / risk management
+- Low functional risk: changes are isolated to auth gating and UI decision logic.
+- High impact: eliminates a full-app deadlock scenario that looks like “system broken”.
+- If anything regresses, rollback is straightforward (revert these specific files), but the new approach is the industry-standard way to avoid exactly this class of bug.
