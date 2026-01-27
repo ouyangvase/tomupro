@@ -22,6 +22,9 @@ export function useNotifications() {
       return data as Notification[];
     },
     enabled: !!user,
+    staleTime: 30000, // Cache for 30 seconds
+    retry: 2,
+    retryDelay: 1000,
   });
 }
 
@@ -43,6 +46,9 @@ export function useUnreadNotificationCount() {
       return count ?? 0;
     },
     enabled: !!user,
+    staleTime: 30000,
+    retry: 2,
+    retryDelay: 1000,
   });
 }
 
