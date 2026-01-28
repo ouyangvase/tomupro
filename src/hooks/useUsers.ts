@@ -108,6 +108,17 @@ export async function ensureWarehouseForRole(
                         role === 'runner' ? 'RUNNER' : 
                         'SALESPERSON';
 
+  // FIRST: Deactivate ALL active warehouses for this user to avoid unique constraint violation
+  const { error: deactivateError } = await supabase
+    .from('warehouses')
+    .update({ is_active: false })
+    .eq('owner_user_id', userId)
+    .eq('is_active', true);
+
+  if (deactivateError) {
+    console.error('Error deactivating existing warehouses:', deactivateError);
+  }
+
   // Check if a warehouse of the correct type already exists for this user
   const { data: existingWarehouses, error: fetchError } = await supabase
     .from('warehouses')
@@ -121,24 +132,20 @@ export async function ensureWarehouseForRole(
   }
 
   if (existingWarehouses && existingWarehouses.length > 0) {
-    // Warehouse of correct type exists - ensure it's active
-    // The database trigger will auto-deactivate any other active warehouses
+    // Warehouse of correct type exists - activate it
     const warehouse = existingWarehouses[0];
-    if (!warehouse.is_active) {
-      const { error: updateError } = await supabase
-        .from('warehouses')
-        .update({ is_active: true })
-        .eq('id', warehouse.id);
-      
-      if (updateError) {
-        console.error('Error activating warehouse:', updateError);
-      }
+    const { error: updateError } = await supabase
+      .from('warehouses')
+      .update({ is_active: true })
+      .eq('id', warehouse.id);
+    
+    if (updateError) {
+      console.error('Error activating warehouse:', updateError);
     }
     return;
   }
 
   // No warehouse of correct type exists - create one
-  // The database trigger will auto-deactivate any other active warehouses
   const { error: createError } = await supabase
     .from('warehouses')
     .insert({
