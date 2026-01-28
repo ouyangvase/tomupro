@@ -1,130 +1,130 @@
 
-# Fix: Order Items Not Showing for Data Sharing Viewers
+Goal
+- Fix “duplicate key value violates unique constraint idx_unique_active_warehouse_per_user” when changing a user’s role in /settings/users.
 
-## Problem Summary
+What’s happening (root cause)
+- The role update on `public.profiles` triggers TWO warehouse-creation triggers:
+  1) `on_profile_role_change` → `auto_create_warehouse_on_role_change()`
+  2) `trg_ensure_manager_warehouse` → `ensure_manager_warehouse()`
+- Both functions can attempt to create/activate a new `warehouses.is_active = true` row while another active warehouse already exists for the same user.
+- Because the system enforces “only one active warehouse per user” via the partial unique index `idx_unique_active_warehouse_per_user (owner_user_id) WHERE is_active = true`, this causes the update to fail.
 
-When users view orders through data sharing (e.g., HC viewing Yao Xiang's orders), the "Items" column displays "No items" even though items exist. The same order (EL2515) shows items correctly when viewed by the owner.
+Evidence from backend
+- `public.profiles` currently has both triggers installed:
+  - `on_profile_role_change` (auto_create_warehouse_on_role_change)
+  - `trg_ensure_manager_warehouse` (ensure_manager_warehouse)
 
-**Affected scenarios:**
-- Managers viewing team member orders via `user_data_shares`
-- Managers viewing orders via `manager_groups`
-- Any visibility via legacy `profiles.manager_id` bindings
+Fix strategy
+1) Remove the redundant/broken manager-only trigger
+   - Drop trigger `trg_ensure_manager_warehouse` from `public.profiles`
+   - Drop function `public.ensure_manager_warehouse()`
+   Rationale:
+   - `auto_create_warehouse_on_role_change()` already covers manager role (so this trigger is unnecessary).
+   - `ensure_manager_warehouse()` uses `ON CONFLICT DO NOTHING` but does not target the partial unique index, so it can still throw the unique violation.
 
-## Root Cause
+2) Make `auto_create_warehouse_on_role_change()` safe with the “one active warehouse” rule
+   - Update the function to:
+     - Determine the correct warehouse type (SALESPERSON / RUNNER / MANAGER) based on NEW.role
+     - Find an existing warehouse of that type for the user (prefer active, else newest)
+     - Deactivate ALL currently active warehouses for the user
+     - Activate the chosen existing warehouse OR insert a new one as active
+   - This guarantees the unique index cannot be violated during the role-change transaction.
 
-The `can_access_order_items(p_order_id uuid)` database function is **missing data sharing visibility checks**. It currently only allows access for:
-- Direct salesperson/runner/driver on the order
-- Admin users
-- Managers with `manager_salesperson_bindings`
+3) Verification steps (after migration)
+   - Confirm only one role-change warehouse trigger remains:
+     - `on_profile_role_change` exists
+     - `trg_ensure_manager_warehouse` no longer exists
+   - In UI (/settings/users), change roles that previously failed (e.g., salesperson → manager, manager → salesperson) and confirm:
+     - No error toast appears
+     - Role updates persist after refresh
+   - Spot-check warehouses for the changed user:
+     - Exactly one active warehouse remains
+     - Warehouse type matches the role
 
-**Missing visibility sources:**
-1. `user_data_shares` (data sharing feature)
-2. `manager_groups` + `group_members` (team groups)
-3. `profiles.manager_id` (legacy manager assignment)
-
-This function controls RLS on `order_items` table, so when it returns false, the entire `order_items` array comes back empty.
-
-## Solution
-
-Update `can_access_order_items` function to use the same visibility logic as `is_in_manager_team` and `get_visible_owner_ids`, ensuring alignment across all data access functions.
-
-### Database Migration
+Database migration (what I will implement)
+- Create a new migration SQL (Test environment) with:
 
 ```sql
-CREATE OR REPLACE FUNCTION public.can_access_order_items(p_order_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE SECURITY DEFINER
+-- 1) Remove redundant manager-only trigger + function
+DROP TRIGGER IF EXISTS trg_ensure_manager_warehouse ON public.profiles;
+DROP FUNCTION IF EXISTS public.ensure_manager_warehouse();
+
+-- 2) Make role-change warehouse automation “one-active-warehouse” safe
+CREATE OR REPLACE FUNCTION public.auto_create_warehouse_on_role_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
-  SELECT EXISTS (
-    SELECT 1 FROM orders o
-    WHERE o.id = p_order_id
-    AND (
-      -- Direct assignment
-      o.salesperson_id = auth.uid()
-      OR o.runner_id = auth.uid()
-      OR o.driver_id = auth.uid()
-      
-      -- Admin can see all
-      OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-      
-      -- Manager visibility
-      OR (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'manager')
-        AND (
-          o.salesperson_id = auth.uid()
-          -- manager_salesperson_bindings
-          OR EXISTS (
-            SELECT 1 FROM manager_salesperson_bindings
-            WHERE manager_id = auth.uid() AND salesperson_id = o.salesperson_id AND active = true
-          )
-          -- manager_groups
-          OR EXISTS (
-            SELECT 1 FROM manager_groups mg
-            JOIN group_members gm ON gm.group_id = mg.id
-            WHERE mg.manager_user_id = auth.uid() AND gm.member_user_id = o.salesperson_id
-          )
-          -- legacy profiles.manager_id
-          OR EXISTS (
-            SELECT 1 FROM profiles
-            WHERE id = o.salesperson_id AND manager_id = auth.uid()
-          )
-        )
-      )
-      
-      -- Data sharing visibility (orders scope)
-      OR EXISTS (
-        SELECT 1 FROM user_data_shares
-        WHERE viewer_user_id = auth.uid()
-          AND subject_user_id = o.salesperson_id
-          AND active = true
-          AND scope_orders = true
-      )
-    )
-  );
+DECLARE
+  v_wh_type public.warehouse_type;
+  v_existing_id uuid;
+BEGIN
+  -- Only act when role is inserted/changed
+  IF (TG_OP = 'INSERT') OR (OLD.role IS DISTINCT FROM NEW.role) THEN
+
+    -- If new role requires a warehouse, ensure the correct one is active
+    IF NEW.role IN ('salesperson', 'runner', 'manager') THEN
+      v_wh_type := CASE
+        WHEN NEW.role = 'salesperson' THEN 'SALESPERSON'::public.warehouse_type
+        WHEN NEW.role = 'manager' THEN 'MANAGER'::public.warehouse_type
+        ELSE 'RUNNER'::public.warehouse_type
+      END;
+
+      -- Prefer already-active warehouse of correct type; else newest of that type
+      SELECT w.id
+      INTO v_existing_id
+      FROM public.warehouses w
+      WHERE w.owner_user_id = NEW.id
+        AND w.warehouse_type = v_wh_type
+      ORDER BY w.is_active DESC, w.created_at DESC
+      LIMIT 1;
+
+      -- Deactivate ALL active warehouses first to satisfy unique partial index
+      UPDATE public.warehouses
+      SET is_active = false
+      WHERE owner_user_id = NEW.id
+        AND is_active = true;
+
+      -- Activate existing or create new
+      IF v_existing_id IS NOT NULL THEN
+        UPDATE public.warehouses
+        SET is_active = true
+        WHERE id = v_existing_id;
+      ELSE
+        INSERT INTO public.warehouses (warehouse_type, owner_user_id, name, is_active)
+        VALUES (
+          v_wh_type,
+          NEW.id,
+          COALESCE(NEW.display_name, 'User') || '''s Warehouse',
+          true
+        );
+      END IF;
+
+    ELSE
+      -- Optional safety: if switching to a role that shouldn’t have a warehouse,
+      -- ensure none remain active (prevents stale “active warehouse” lingering).
+      UPDATE public.warehouses
+      SET is_active = false
+      WHERE owner_user_id = NEW.id
+        AND is_active = true;
+    END IF;
+
+  END IF;
+
+  RETURN NEW;
+END;
 $function$;
 ```
 
-## Files to Change
+Frontend changes (optional, not required for the error)
+- Leave the UI as-is initially; the DB fix should stop the error.
+- If you want to reduce redundant warehouse writes later, we can simplify /settings/users by removing the extra post-save warehouse calls and rely purely on the database trigger.
 
-| Location | Change |
-|----------|--------|
-| Database Migration | Update `can_access_order_items` function with missing visibility sources |
+Risks / Notes
+- After a role change, the active warehouse may switch types (by design). Since balances are calculated from active warehouses only, a promoted/demoted user might see different “current stock” if stock exists in the now-inactive warehouse. If this is not desired, we can add an explicit “transfer stock” workflow on role change (separate improvement).
 
-## Technical Details
-
-### Visibility Source Alignment
-
-After this fix, all visibility functions will be aligned:
-
-| Source | orders RLS | order_items RLS | products RLS | get_visible_owner_ids |
-|--------|------------|-----------------|--------------|----------------------|
-| manager_salesperson_bindings | Yes | Yes (after fix) | Yes | Yes |
-| manager_groups | Yes | Yes (after fix) | Yes | Yes |
-| profiles.manager_id | Yes | Yes (after fix) | Yes | Yes |
-| user_data_shares | Yes | Yes (after fix) | Yes | Yes |
-
-### Performance Considerations
-
-The function uses indexed columns:
-- `manager_salesperson_bindings(manager_id, salesperson_id, active)`
-- `manager_groups(manager_user_id)` + `group_members(group_id, member_user_id)`
-- `profiles(manager_id)` - index exists
-- `user_data_shares(viewer_user_id, subject_user_id, active)`
-
-These indexes are already in place per the memory about unified binding visibility.
-
-## Expected Outcome
-
-After applying this fix:
-1. HC and ZC will see items for Yao Xiang's orders (e.g., EL2316, JM046, JM257)
-2. All managers will see team member order items correctly
-3. Data sharing viewers with `scope_orders = true` will see order items
-4. Product names will resolve correctly in the joined query
-
-## Verification
-
-For manager HC viewing Yao Xiang's order EL2316:
-- Before fix: Shows "No items"
-- After fix: Shows "BWC001/BOTOX WRINKLE CREAM × 1"
+Acceptance criteria
+- Changing any user’s role in /settings/users no longer triggers the unique constraint error.
+- For any user, there is never more than one `warehouses` row with `is_active = true`.
+- The active warehouse type matches the user’s role when role is salesperson/runner/manager.
