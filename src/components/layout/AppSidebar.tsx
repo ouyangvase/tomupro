@@ -193,16 +193,6 @@ const managerItems: NavItem[] = [{
 }];
 
 const reconciliationItems: NavItem[] = [{
-  title: "Claims History",
-  url: "/claims",
-  icon: Receipt,
-  roles: ['admin']
-}, {
-  title: "SP Reconciliation",
-  url: "/reconciliation/sp",
-  icon: FileCheck,
-  roles: ['admin']
-}, {
   title: "Admin Reconciliation",
   url: "/reconciliation/admin",
   icon: PackageCheck,
