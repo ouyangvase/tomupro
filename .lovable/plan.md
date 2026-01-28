@@ -1,111 +1,130 @@
 
-# Fix: Stock Deduction Trigger Bug and Reprocess Failed Orders
+# Fix: Order Items Not Showing for Data Sharing Viewers
 
 ## Problem Summary
 
-Product P013 (CAR ACRYSTAL COATING) shows incorrect stock balance:
-- **Current Balance**: 23 units
-- **Expected Balance**: 9 units (Inbound 35 - Delivered 26 = 9)
+When users view orders through data sharing (e.g., HC viewing Yao Xiang's orders), the "Items" column displays "No items" even though items exist. The same order (EL2515) shows items correctly when viewed by the owner.
 
-The root cause is a bug in the `process_delivery_queue_item` database trigger that processes stock deductions asynchronously.
+**Affected scenarios:**
+- Managers viewing team member orders via `user_data_shares`
+- Managers viewing orders via `manager_groups`
+- Any visibility via legacy `profiles.manager_id` bindings
 
-## Root Cause Analysis
+## Root Cause
 
-The trigger function references `v_order.total_amount` but never selects it into the record variable:
+The `can_access_order_items(p_order_id uuid)` database function is **missing data sharing visibility checks**. It currently only allows access for:
+- Direct salesperson/runner/driver on the order
+- Admin users
+- Managers with `manager_salesperson_bindings`
 
-```sql
--- Line 18-20: Only selects these fields
-SELECT o.id, o.salesperson_id, o.runner_id, o.order_code, o.stock_deducted
-INTO v_order
-FROM orders o WHERE o.id = NEW.order_id;
+**Missing visibility sources:**
+1. `user_data_shares` (data sharing feature)
+2. `manager_groups` + `group_members` (team groups)
+3. `profiles.manager_id` (legacy manager assignment)
 
--- Line 113: Tries to use total_amount (which doesn't exist!)
-INSERT INTO claims (order_id, amount, created_by)
-VALUES (NEW.order_id, v_order.total_amount, ...);  -- FAILS HERE
-```
-
-**Impact:**
-- 208 orders across the system have FAILED stock deductions
-- 8 orders for P013 specifically failed (14 units not deducted)
-- Stock balances are overstated for many products
+This function controls RLS on `order_items` table, so when it returns false, the entire `order_items` array comes back empty.
 
 ## Solution
 
-### Part 1: Fix the Trigger Function
+Update `can_access_order_items` function to use the same visibility logic as `is_in_manager_team` and `get_visible_owner_ids`, ensuring alignment across all data access functions.
 
-Add `total_amount` to the SELECT statement in the trigger:
-
-```sql
-SELECT o.id, o.salesperson_id, o.runner_id, o.order_code, o.stock_deducted, o.total_amount
-INTO v_order
-FROM orders o
-WHERE o.id = NEW.order_id;
-```
-
-### Part 2: Reprocess All Failed Queue Items
-
-Create a migration that:
-1. Fixes the trigger function
-2. Reprocesses all FAILED queue items by resetting their status to PENDING
-3. The trigger will then automatically reprocess them
-
-## Database Migration
+### Database Migration
 
 ```sql
--- 1. Fix the trigger function by adding total_amount to the SELECT
-CREATE OR REPLACE FUNCTION public.process_delivery_queue_item()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
+CREATE OR REPLACE FUNCTION public.can_access_order_items(p_order_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
-DECLARE
-  v_order RECORD;
-  v_warehouse_id UUID;
-  v_item RECORD;
-  v_missing_items TEXT[];
-BEGIN
-  -- Get the order details (FIX: include total_amount)
-  SELECT o.id, o.salesperson_id, o.runner_id, o.order_code, 
-         o.stock_deducted, o.total_amount
-  INTO v_order
-  FROM orders o
-  WHERE o.id = NEW.order_id;
-
-  -- ... rest of function unchanged ...
-END;
+  SELECT EXISTS (
+    SELECT 1 FROM orders o
+    WHERE o.id = p_order_id
+    AND (
+      -- Direct assignment
+      o.salesperson_id = auth.uid()
+      OR o.runner_id = auth.uid()
+      OR o.driver_id = auth.uid()
+      
+      -- Admin can see all
+      OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+      
+      -- Manager visibility
+      OR (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'manager')
+        AND (
+          o.salesperson_id = auth.uid()
+          -- manager_salesperson_bindings
+          OR EXISTS (
+            SELECT 1 FROM manager_salesperson_bindings
+            WHERE manager_id = auth.uid() AND salesperson_id = o.salesperson_id AND active = true
+          )
+          -- manager_groups
+          OR EXISTS (
+            SELECT 1 FROM manager_groups mg
+            JOIN group_members gm ON gm.group_id = mg.id
+            WHERE mg.manager_user_id = auth.uid() AND gm.member_user_id = o.salesperson_id
+          )
+          -- legacy profiles.manager_id
+          OR EXISTS (
+            SELECT 1 FROM profiles
+            WHERE id = o.salesperson_id AND manager_id = auth.uid()
+          )
+        )
+      )
+      
+      -- Data sharing visibility (orders scope)
+      OR EXISTS (
+        SELECT 1 FROM user_data_shares
+        WHERE viewer_user_id = auth.uid()
+          AND subject_user_id = o.salesperson_id
+          AND active = true
+          AND scope_orders = true
+      )
+    )
+  );
 $function$;
-
--- 2. Reset FAILED queue items with the specific error to PENDING
--- This will trigger reprocessing
-UPDATE delivery_queue
-SET status = 'PENDING',
-    error_message = NULL,
-    retry_count = 0,
-    processed_at = NULL
-WHERE status = 'FAILED'
-  AND error_message = 'record "v_order" has no field "total_amount"';
 ```
 
 ## Files to Change
 
 | Location | Change |
 |----------|--------|
-| Database Migration | Fix `process_delivery_queue_item` trigger function |
-| Database Migration | Reset 208 FAILED queue items for reprocessing |
+| Database Migration | Update `can_access_order_items` function with missing visibility sources |
+
+## Technical Details
+
+### Visibility Source Alignment
+
+After this fix, all visibility functions will be aligned:
+
+| Source | orders RLS | order_items RLS | products RLS | get_visible_owner_ids |
+|--------|------------|-----------------|--------------|----------------------|
+| manager_salesperson_bindings | Yes | Yes (after fix) | Yes | Yes |
+| manager_groups | Yes | Yes (after fix) | Yes | Yes |
+| profiles.manager_id | Yes | Yes (after fix) | Yes | Yes |
+| user_data_shares | Yes | Yes (after fix) | Yes | Yes |
+
+### Performance Considerations
+
+The function uses indexed columns:
+- `manager_salesperson_bindings(manager_id, salesperson_id, active)`
+- `manager_groups(manager_user_id)` + `group_members(group_id, member_user_id)`
+- `profiles(manager_id)` - index exists
+- `user_data_shares(viewer_user_id, subject_user_id, active)`
+
+These indexes are already in place per the memory about unified binding visibility.
 
 ## Expected Outcome
 
-After applying the fix:
-
-1. **P013 balance**: 23 → 9 (correct)
-2. **208 orders**: Stock properly deducted, claims created
-3. **All products**: Balances corrected across the system
-4. **Future deliveries**: Will process successfully
+After applying this fix:
+1. HC and ZC will see items for Yao Xiang's orders (e.g., EL2316, JM046, JM257)
+2. All managers will see team member order items correctly
+3. Data sharing viewers with `scope_orders = true` will see order items
+4. Product names will resolve correctly in the joined query
 
 ## Verification
 
-After migration:
-- P013 should show balance = 9
-- No orders with `stock_deducted = false` and `runner_status = 'DELIVERED'`
-- No FAILED queue items with the `total_amount` error
+For manager HC viewing Yao Xiang's order EL2316:
+- Before fix: Shows "No items"
+- After fix: Shows "BWC001/BOTOX WRINKLE CREAM × 1"
