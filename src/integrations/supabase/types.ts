@@ -3624,6 +3624,17 @@ export type Database = {
         Returns: Json
       }
       reopen_rescheduled_orders: { Args: never; Returns: Json }
+      search_visible_orders: {
+        Args: { p_limit?: number; p_query: string }
+        Returns: {
+          created_at: string
+          customer_name: string
+          id: string
+          order_code: string
+          runner_status: string
+          status: string
+        }[]
+      }
       validate_invite_code: { Args: { code_text: string }; Returns: string }
     }
     Enums: {
