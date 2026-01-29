@@ -205,11 +205,11 @@ export default function ReadySales() {
 
   const columns: Column<Order>[] = [
     { 
-      key: 'order_date', 
-      header: 'Date', 
+      key: 'created_at', 
+      header: 'Imported', 
       sortable: true, 
-      width: '100px',
-      render: (o) => format(new Date(o.order_date), 'MMM dd') 
+      width: '120px',
+      render: (o) => format(new Date(o.created_at), 'MMM dd, HH:mm') 
     },
     { 
       key: 'order_code', 
@@ -561,7 +561,7 @@ export default function ReadySales() {
                     onSelectionChange={(checked) => toggleSelection(order.id, checked)}
                     onClick={() => handleRowClick(order)}
                     primaryFields={[
-                      { label: 'Date', value: format(new Date(order.order_date), 'dd MMM') },
+                      { label: 'Imported', value: format(new Date(order.created_at), 'MMM dd, HH:mm') },
                       { label: 'Items', value: displayText },
                       { label: 'Amount', value: formatBND(order.total_amount) },
                       { label: 'Runner', value: order.runner?.display_name || 'Unassigned' },

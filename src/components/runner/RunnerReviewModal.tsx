@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
@@ -61,6 +62,7 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
   const [nextDeliveryDate, setNextDeliveryDate] = useState<Date | undefined>();
   const [actionType, setActionType] = useState<ActionType | ''>('');
   const [actionDueDate, setActionDueDate] = useState<Date | undefined>();
+  const [deliveredTime, setDeliveredTime] = useState<string>('');
 
   const { data: failedReasons } = useReasons('FAILED_DELIVERY', true);
   const reviewMutation = useRunnerReviewOrder();
@@ -73,6 +75,7 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
     setNextDeliveryDate(undefined);
     setActionType('');
     setActionDueDate(undefined);
+    setDeliveredTime('');
   };
 
   const handleClose = () => {
@@ -101,6 +104,9 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
       salespersonActionRequired: shouldNotifySalesperson,
       currentRescheduleCycleNo: order.reschedule_cycle_no || 0,
       currentOperationalStatus: order.operational_status || order.driver_status || 'UNKNOWN',
+      deliveredAt: outcome === 'CONFIRM_DELIVERED' && deliveredTime 
+        ? new Date(deliveredTime).toISOString() 
+        : undefined,
     });
 
     handleClose();
@@ -223,11 +229,26 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
               </Select>
             </div>
 
-            {/* Confirm Delivered - Show accept option if pending */}
-            {outcome === 'CONFIRM_DELIVERED' && order.runner_accept_status === 'PENDING' && (
-              <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-sm">
-                <p>This will also accept the driver's delivery (currently pending acceptance).</p>
-              </div>
+            {/* Confirm Delivered - Show accept option if pending and time picker */}
+            {outcome === 'CONFIRM_DELIVERED' && (
+              <>
+                {order.runner_accept_status === 'PENDING' && (
+                  <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-sm">
+                    <p>This will also accept the driver's delivery (currently pending acceptance).</p>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Delivered Time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={deliveredTime || format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+                    onChange={(e) => setDeliveredTime(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Defaults to current time. Adjust if the delivery happened earlier.
+                  </p>
+                </div>
+              </>
             )}
 
             {/* Confirm Failed - Require reason and comment */}

@@ -13,6 +13,7 @@ interface ReviewParams {
   salespersonActionRequired?: boolean;
   currentRescheduleCycleNo?: number;
   currentOperationalStatus?: string;
+  deliveredAt?: string;  // ISO timestamp for when the delivery actually happened
 }
 
 export function useRunnerReviewOrder() {
@@ -93,9 +94,10 @@ export function useRunnerReviewOrder() {
         updateData.runner_status = runnerStatus;
       }
 
-      // If confirming delivered, also set delivered_at if not set
+      // If confirming delivered, also set delivered_at
       if (params.outcome === 'CONFIRM_DELIVERED') {
-        updateData.delivered_at = new Date().toISOString();
+        // Use provided deliveredAt or default to now
+        updateData.delivered_at = params.deliveredAt || new Date().toISOString();
         updateData.runner_accept_status = 'ACCEPTED';
       }
 
