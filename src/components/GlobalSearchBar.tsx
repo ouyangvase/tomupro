@@ -20,6 +20,13 @@ interface GlobalSearchBarProps {
   className?: string;
 }
 
+// Helper to determine display status - prioritize runner_status for final states
+const getDisplayStatus = (order: SearchResult) => {
+  if (order.runner_status === 'DELIVERED') return 'DELIVERED';
+  if (order.runner_status === 'FAILED_DELIVERY') return 'FAILED';
+  return order.status;
+};
+
 export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearchBarProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -171,15 +178,21 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                         {order.customer_name || 'No customer name'}
                       </p>
                     </div>
-                    <span className={cn(
-                      "text-xs px-2 py-0.5 rounded-full",
-                      order.status === 'BOOKING' && "bg-blue-500/10 text-blue-500",
-                      order.status === 'READY' && "bg-primary/10 text-primary",
-                      order.status === 'DELIVERED' && "bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))]",
-                      order.status === 'CANCELLED' && "bg-destructive/10 text-destructive"
-                    )}>
-                      {order.status}
-                    </span>
+                    {(() => {
+                      const displayStatus = getDisplayStatus(order);
+                      return (
+                        <span className={cn(
+                          "text-xs px-2 py-0.5 rounded-full",
+                          displayStatus === 'BOOKING' && "bg-blue-500/10 text-blue-500",
+                          displayStatus === 'READY' && "bg-primary/10 text-primary",
+                          displayStatus === 'DELIVERED' && "bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))]",
+                          displayStatus === 'FAILED' && "bg-destructive/10 text-destructive",
+                          displayStatus === 'CANCELLED' && "bg-destructive/10 text-destructive"
+                        )}>
+                          {displayStatus}
+                        </span>
+                      );
+                    })()}
                   </button>
                 ))}
               </div>
@@ -241,15 +254,21 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                       {order.customer_name || 'No customer name'}
                     </p>
                   </div>
-                  <span className={cn(
-                    "text-xs px-2.5 py-1 rounded-full font-medium",
-                    order.status === 'BOOKING' && "bg-blue-500/10 text-blue-500",
-                    order.status === 'READY' && "bg-primary/10 text-primary",
-                    order.status === 'DELIVERED' && "bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))]",
-                    order.status === 'CANCELLED' && "bg-destructive/10 text-destructive"
-                  )}>
-                    {order.status}
-                  </span>
+                  {(() => {
+                    const displayStatus = getDisplayStatus(order);
+                    return (
+                      <span className={cn(
+                        "text-xs px-2.5 py-1 rounded-full font-medium",
+                        displayStatus === 'BOOKING' && "bg-blue-500/10 text-blue-500",
+                        displayStatus === 'READY' && "bg-primary/10 text-primary",
+                        displayStatus === 'DELIVERED' && "bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))]",
+                        displayStatus === 'FAILED' && "bg-destructive/10 text-destructive",
+                        displayStatus === 'CANCELLED' && "bg-destructive/10 text-destructive"
+                      )}>
+                        {displayStatus}
+                      </span>
+                    );
+                  })()}
                 </button>
               ))}
             </div>
