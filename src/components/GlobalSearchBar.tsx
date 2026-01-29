@@ -11,6 +11,7 @@ interface SearchResult {
   order_code: string;
   customer_name: string | null;
   status: string;
+  runner_status: string | null;
   created_at: string;
 }
 
@@ -55,11 +56,10 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
       setIsLoading(true);
       try {
         const { data, error } = await supabase
-          .from('orders')
-          .select('id, order_code, customer_name, status, created_at')
-          .or(`order_code.ilike.%${query}%,customer_name.ilike.%${query}%`)
-          .order('created_at', { ascending: false })
-          .limit(8);
+          .rpc('search_visible_orders', {
+            p_query: query,
+            p_limit: 8
+          });
 
         if (error) throw error;
         setResults(data || []);
@@ -80,11 +80,19 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
     setQuery('');
     setShowDropdown(false);
     setIsOpen(false);
-    // Navigate to the appropriate page based on status
+    // Navigate to the appropriate page based on status and runner_status
     if (order.status === 'BOOKING') {
       navigate(`/sales/booking?highlight=${order.id}`);
+    } else if (order.status === 'CANCELLED') {
+      navigate(`/sales/cancelled?highlight=${order.id}`);
     } else if (order.status === 'READY') {
-      navigate(`/sales/ready?highlight=${order.id}`);
+      if (order.runner_status === 'DELIVERED') {
+        navigate(`/runner/delivered-orders?highlight=${order.id}`);
+      } else if (order.runner_status === 'FAILED_DELIVERY') {
+        navigate(`/sales/action-inbox?highlight=${order.id}`);
+      } else {
+        navigate(`/sales/ready?highlight=${order.id}`);
+      }
     } else {
       navigate(`/sales/booking?highlight=${order.id}`);
     }
