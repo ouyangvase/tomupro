@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatBND } from '@/lib/currency';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { cn } from '@/lib/utils';
+import { GlobalSearchBar } from '@/components/GlobalSearchBar';
 import {
   ShoppingCart,
   Package,
@@ -119,6 +120,9 @@ function SalespersonMobileDashboard() {
 
   return (
     <div className="p-4 space-y-6">
+      {/* Global Search Bar */}
+      <GlobalSearchBar variant="mobile" />
+
       {/* Hero Summary - Today Sales */}
       <HeroSummaryCard
         title="Today Sales"
@@ -223,6 +227,9 @@ function ManagerMobileDashboard() {
 
   return (
     <div className="p-4 space-y-6">
+      {/* Global Search Bar */}
+      <GlobalSearchBar variant="mobile" />
+
       {/* Hero - Team GMV */}
       <HeroSummaryCard
         title="Team GMV (MTD)"
@@ -296,6 +303,9 @@ function RunnerMobileDashboard() {
 
   return (
     <div className="p-4 space-y-6">
+      {/* Global Search Bar */}
+      <GlobalSearchBar variant="mobile" />
+
       {/* Hero - Assigned Jobs */}
       <HeroSummaryCard
         title="In Progress"
@@ -365,6 +375,9 @@ function DriverMobileDashboard() {
 
   return (
     <div className="p-4 space-y-6">
+      {/* Global Search Bar */}
+      <GlobalSearchBar variant="mobile" />
+
       {/* Hero */}
       <HeroSummaryCard
         title="Today's Deliveries"
@@ -400,6 +413,9 @@ function AdminMobileDashboard() {
 
   return (
     <div className="p-4 space-y-6">
+      {/* Global Search Bar */}
+      <GlobalSearchBar variant="mobile" />
+
       {/* Hero - System Overview */}
       <HeroSummaryCard
         title="Total Orders"
