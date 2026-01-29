@@ -304,7 +304,8 @@ export interface RunnerOrderLineExport {
   sku_code: string;
   sku_name: string;
   qty: number;
-  total_amount: number;
+  line_amount: number;  // Individual line item amount
+  order_total: number;  // Order's total for reference
 }
 
 export function exportRunnerOrderLines(
@@ -330,7 +331,8 @@ export function exportRunnerOrderLines(
         sku_code: 'UNKNOWN',
         sku_name: 'UNKNOWN',
         qty: 0,
-        total_amount: Number(order.total_amount) || 0,
+        line_amount: 0,
+        order_total: Number(order.total_amount) || 0,
       });
     } else {
       // Export one line per order item
@@ -352,7 +354,8 @@ export function exportRunnerOrderLines(
           sku_code: skuCode,
           sku_name: skuName,
           qty: item.qty || 0,
-          total_amount: Number(order.total_amount) || 0,
+          line_amount: Number(item.line_total) || 0,
+          order_total: Number(order.total_amount) || 0,
         });
       }
     }
@@ -370,7 +373,8 @@ export function exportRunnerOrderLines(
     { key: 'sku_code', header: 'sku_code' },
     { key: 'sku_name', header: 'sku_name' },
     { key: 'qty', header: 'qty' },
-    { key: 'total_amount', header: 'total_amount' },
+    { key: 'line_amount', header: 'line_amount' },
+    { key: 'order_total', header: 'order_total' },
   ];
 
   exportToCSV(lines as any, columns, filename);

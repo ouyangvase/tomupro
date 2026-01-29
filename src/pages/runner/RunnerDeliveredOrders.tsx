@@ -441,7 +441,7 @@ export default function RunnerDeliveredOrders() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {isAdminOrManager && (
+            {(isAdminOrManager || role === 'runner') && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
