@@ -143,6 +143,7 @@ export interface OrderLineExport {
   order_ref: string;
   order_id: string;
   order_date: string;
+  imported_timestamp: string;
   customer_name: string;
   phone: string;
   address: string;
@@ -164,7 +165,7 @@ export interface OrderLineExport {
   qty: number;
   amount: number;
   total_amount: number;
-  delivered_at: string;
+  delivered_timestamp: string;
   driver_name: string;
 }
 
@@ -185,6 +186,7 @@ export function exportOrderLines(
         order_ref: order.order_code || '',
         order_id: order.id,
         order_date: order.order_date || '',
+        imported_timestamp: order.created_at || '',
         customer_name: order.customer_name || '',
         phone: order.phone || '',
         address: order.address || '',
@@ -202,7 +204,7 @@ export function exportOrderLines(
         failed_reason: order.failed_reason || '',
         failed_remark: order.failed_remark || '',
         next_delivery_date: order.next_delivery_date || '',
-        delivered_at: order.delivered_at || order.driver_delivered_at || '',
+        delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
         sku_code: '',
         sku_name: '',
         qty: 0,
@@ -217,6 +219,7 @@ export function exportOrderLines(
           order_ref: order.order_code || '',
           order_id: order.id,
           order_date: order.order_date || '',
+          imported_timestamp: order.created_at || '',
           customer_name: order.customer_name || '',
           phone: order.phone || '',
           address: order.address || '',
@@ -234,7 +237,7 @@ export function exportOrderLines(
           failed_reason: order.failed_reason || '',
           failed_remark: order.failed_remark || '',
           next_delivery_date: order.next_delivery_date || '',
-          delivered_at: order.delivered_at || order.driver_delivered_at || '',
+          delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
           sku_code: item.product?.sku_code || '',
           sku_name: item.product?.sku_name || item.sku_label || '',
           qty: item.qty || 0,
@@ -249,6 +252,7 @@ export function exportOrderLines(
     { key: 'order_ref', header: 'order_ref' },
     { key: 'order_id', header: 'order_id' },
     { key: 'order_date', header: 'order_date' },
+    { key: 'imported_timestamp', header: 'imported_timestamp' },
     { key: 'customer_name', header: 'customer_name' },
     { key: 'phone', header: 'phone' },
     { key: 'address', header: 'address' },
@@ -266,7 +270,7 @@ export function exportOrderLines(
     { key: 'failed_reason', header: 'failed_reason' },
     { key: 'failed_remark', header: 'failed_remark' },
     { key: 'next_delivery_date', header: 'next_delivery_date' },
-    { key: 'delivered_at', header: 'delivered_at' },
+    { key: 'delivered_timestamp', header: 'delivered_timestamp' },
     { key: 'sku_code', header: 'sku_code' },
     { key: 'sku_name', header: 'sku_name' },
     { key: 'qty', header: 'qty' },

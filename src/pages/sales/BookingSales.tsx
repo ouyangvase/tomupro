@@ -73,11 +73,11 @@ export default function BookingSales() {
 
   const columns: Column<Order>[] = [
     { 
-      key: 'order_date', 
-      header: 'Date', 
+      key: 'created_at', 
+      header: 'Imported', 
       sortable: true, 
-      width: '100px',
-      render: (o) => format(new Date(o.order_date), 'MMM dd') 
+      width: '120px',
+      render: (o) => format(new Date(o.created_at), 'MMM dd, HH:mm') 
     },
     { 
       key: 'order_code', 
@@ -365,7 +365,7 @@ export default function BookingSales() {
                     primaryFields={[
                       { label: 'Customer', value: order.customer_name || '-' },
                       { label: 'Amount', value: formatBND(order.total_amount) },
-                      { label: 'Date', value: format(new Date(order.order_date), 'MMM dd') },
+                      { label: 'Imported', value: format(new Date(order.created_at), 'MMM dd, HH:mm') },
                       { label: 'Items', value: displayText },
                     ]}
                     expandedFields={[

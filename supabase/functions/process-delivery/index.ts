@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     // Use service role for database operations (bypassing RLS)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    const { orderId } = await req.json();
+    const { orderId, deliveredAt } = await req.json();
     
     if (!orderId) {
       return new Response(
@@ -71,6 +71,9 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    // Use provided deliveredAt timestamp or default to now
+    const deliveryTimestamp = deliveredAt || new Date().toISOString();
 
     // Fetch the order
     const { data: order, error: orderError } = await supabase
@@ -262,7 +265,7 @@ Deno.serve(async (req) => {
       .from('orders')
       .update({
         runner_status: 'DELIVERED',
-        delivered_at: now,
+        delivered_at: deliveryTimestamp,  // Use provided timestamp or default
         stock_deducted: true,
         inventory_deducted_at: now,
         fulfillment_warehouse_id: warehouseId, // Record which warehouse was used

@@ -672,10 +672,10 @@ export default function RunnerDeliveredOrders() {
                       }
                     }}
                     primaryFields={[
-                      { label: 'Date', value: format(new Date(order.order_date), 'dd MMM') },
+                      { label: 'Imported', value: format(new Date(order.created_at), 'MMM dd, HH:mm') },
                       { label: 'Items', value: displayText },
                       { label: 'Amount', value: formatBND(order.total_amount) },
-                      { label: 'Delivered', value: order.delivered_at ? format(new Date(order.delivered_at), 'dd MMM HH:mm') : '-' },
+                      { label: 'Delivered', value: order.delivered_at ? format(new Date(order.delivered_at), 'MMM dd, HH:mm') : '-' },
                     ]}
                     expandedFields={[
                       { label: 'Customer', value: order.customer_name || '-' },
@@ -749,7 +749,7 @@ export default function RunnerDeliveredOrders() {
                           />
                         </TableHead>
                       )}
-                      <TableHead>Date</TableHead>
+                      <TableHead>Imported</TableHead>
                       <TableHead>Order Ref</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Phone</TableHead>
@@ -761,7 +761,7 @@ export default function RunnerDeliveredOrders() {
                       <TableHead>Runner</TableHead>
                       <TableHead>Driver</TableHead>
                       <TableHead>Salesperson</TableHead>
-                      <TableHead>Delivered At</TableHead>
+                      <TableHead>Delivered</TableHead>
                       <TableHead>Claim Status</TableHead>
                       {canClaim && <TableHead>Claim Batch Ref</TableHead>}
                       {canClaim && <TableHead>Action</TableHead>}
@@ -812,7 +812,7 @@ export default function RunnerDeliveredOrders() {
                                 )}
                               </TableCell>
                             )}
-                            <TableCell>{format(new Date(order.order_date), 'dd MMM yyyy')}</TableCell>
+                            <TableCell>{format(new Date(order.created_at), 'MMM dd, HH:mm')}</TableCell>
                             <TableCell><span className="font-mono text-sm">{order.order_code}</span></TableCell>
                             <TableCell>{order.customer_name || '-'}</TableCell>
                             <TableCell><WhatsAppPhoneLink order={order} /></TableCell>
