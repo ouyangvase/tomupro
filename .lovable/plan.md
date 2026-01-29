@@ -1,89 +1,129 @@
 
-# Plan: Add Runner Export & Fix Export Amount Display
+# Plan: Fix Global Search to Respect Visibility
 
-## Overview
-Two issues need to be fixed:
-1. **Runner Export Button**: Add an "Export" button for runners on the Delivered Orders page
-2. **Export Amount Bug**: Fix the export to show correct line item amounts instead of repeating the order total for each row
+## Problem
+The global search shows "No orders found" because it directly queries the `orders` table, which is restricted by Row Level Security (RLS) policies. Users can only see orders matching specific conditions:
+- Admin: All orders
+- Runner: Orders where they are `runner_id`
+- Salesperson: Orders where they are `salesperson_id`
+- Manager: Orders where `salesperson_id` is in their team
+- Driver: Orders where they are `driver_id`
 
-## What's Currently Happening
-
-When an order has multiple items (e.g., AKO797 with 2 SKUs totaling BND 99):
-- The export creates 2 rows (one per SKU)
-- Each row shows "99" in the amount column
-- This looks like 99 + 99 = 198 total when summing the column
+The current search doesn't account for these visibility rules.
 
 ## Solution
+Create a new database function `search_visible_orders` that searches across all orders the user has access to, then update the GlobalSearchBar component to use this function.
 
-### 1. Add Export Button for Runners
-Add the Export dropdown button for runners (not just Admin/Manager) on the Delivered Orders page.
+## Changes Required
 
-### 2. Fix the Export Amount Logic
-Change the export format to show:
-- **`line_amount`**: The individual line item amount (e.g., 52 for KRILL OIL, 47 for BOSSTER OIL)
-- **`order_total`**: The order's total amount (99) shown only for context
+### 1. Database Migration - Create `search_visible_orders` RPC
 
-This way, when you sum the `line_amount` column, you get the correct total.
+Create a new RPC function that:
+- Takes a search query parameter
+- Uses the same visibility logic as existing order access
+- Searches by `order_code` and `customer_name` (case-insensitive)
+- Returns matching orders with status badges
 
-## Files to Change
+```sql
+CREATE OR REPLACE FUNCTION public.search_visible_orders(
+  p_query text,
+  p_limit integer DEFAULT 10
+)
+RETURNS TABLE(
+  id uuid,
+  order_code text,
+  customer_name text,
+  status text,
+  runner_status text,
+  created_at timestamptz
+)
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_user_id uuid;
+  v_role app_role;
+  v_visible_ids uuid[];
+BEGIN
+  v_user_id := auth.uid();
+  
+  IF v_user_id IS NULL THEN
+    RETURN;
+  END IF;
+  
+  v_role := public.get_user_role(v_user_id);
+  v_visible_ids := public.get_visible_owner_ids();
+  
+  RETURN QUERY
+  SELECT 
+    o.id,
+    o.order_code,
+    o.customer_name,
+    o.status::text,
+    o.runner_status::text,
+    o.created_at
+  FROM public.orders o
+  WHERE 
+    -- Search filter
+    (o.order_code ILIKE '%' || p_query || '%' 
+     OR o.customer_name ILIKE '%' || p_query || '%')
+    -- Visibility filter based on role
+    AND (
+      v_visible_ids IS NULL  -- Admin sees all
+      OR o.salesperson_id = ANY(v_visible_ids)  -- Visible salespersons
+      OR o.runner_id = v_user_id  -- Runner sees their assigned orders
+      OR o.driver_id = v_user_id  -- Driver sees their assigned orders
+    )
+  ORDER BY o.created_at DESC
+  LIMIT p_limit;
+END;
+$$;
+```
 
-| File | Change |
-|------|--------|
-| `src/lib/csv.ts` | Update `exportRunnerOrderLines` and `exportOrderLines` to use `line_total` for the amount column per item, rename `total_amount` to `order_total` for clarity |
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Add export button for runners (remove `isAdminOrManager` restriction) |
+### 2. Update GlobalSearchBar Component
+
+Modify `src/components/GlobalSearchBar.tsx` to:
+- Use the new `search_visible_orders` RPC instead of direct table query
+- Display `runner_status` in addition to `status` for better context
+- Improve navigation to handle all order statuses (DELIVERED, CANCELLED, etc.)
+
+| File | Changes |
+|------|---------|
+| `src/components/GlobalSearchBar.tsx` | Replace direct `orders` query with `search_visible_orders` RPC call |
+
+### 3. Navigation Improvements
+
+Update the result click handler to navigate to the correct page based on both `status` and `runner_status`:
+- BOOKING status → `/sales/booking`
+- READY status + DELIVERED runner_status → `/runner/delivered-orders`
+- READY status + FAILED_DELIVERY → `/sales/action-inbox`
+- READY status (other) → `/sales/ready`
+- CANCELLED status → `/sales/cancelled`
 
 ## Technical Details
 
-### Export Column Changes
-
-**Before (incorrect):**
-| order_ref | sku_code | qty | total_amount |
-|-----------|----------|-----|--------------|
-| AKO797 | AKO02 | 3 | 99 |
-| AKO797 | AKOG01 | 2 | 99 |
-
-**After (correct):**
-| order_ref | sku_code | qty | line_amount | order_total |
-|-----------|----------|-----|-------------|-------------|
-| AKO797 | AKO02 | 3 | 52 | 99 |
-| AKO797 | AKOG01 | 2 | 47 | 99 |
-
-Now summing `line_amount` gives the true total.
-
-### Code Changes
-
-**`src/lib/csv.ts` - Update RunnerOrderLineExport interface:**
+**Current Search (broken):**
 ```typescript
-export interface RunnerOrderLineExport {
-  // ... existing fields ...
-  qty: number;
-  line_amount: number;  // Individual item amount
-  order_total: number;  // Order's total for reference
-}
+const { data, error } = await supabase
+  .from('orders')
+  .select('id, order_code, customer_name, status, created_at')
+  .or(`order_code.ilike.%${query}%,customer_name.ilike.%${query}%`)
 ```
 
-**`src/lib/csv.ts` - Update the export logic:**
+**New Search (fixed):**
 ```typescript
-lines.push({
-  // ... existing fields ...
-  qty: item.qty || 0,
-  line_amount: Number(item.line_total) || 0,  // Use line_total
-  order_total: Number(order.total_amount) || 0,
-});
+const { data, error } = await supabase
+  .rpc('search_visible_orders', {
+    p_query: query,
+    p_limit: 8
+  });
 ```
 
-**`src/pages/runner/RunnerDeliveredOrders.tsx` - Enable export for runners:**
-```typescript
-// Change from:
-{isAdminOrManager && ( <DropdownMenu>...</DropdownMenu> )}
-
-// To:
-{(isAdminOrManager || role === 'runner') && ( 
-  <DropdownMenu>...</DropdownMenu> 
-)}
-```
-
-## Expected Outcome
-1. Runners will see an "Export" button on their Delivered Orders page
-2. Export files will show correct line-level amounts that sum correctly
-3. Order total is preserved for reference but clearly separated from line amounts
+## Expected Results
+- Runners will find orders assigned to them
+- Managers will find orders from their team members
+- Salespersons will find their own orders + shared subjects
+- Admins will find all orders
+- Search results show status badge indicating order state
+- Clicking a result navigates to the appropriate page
