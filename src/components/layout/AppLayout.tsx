@@ -4,6 +4,7 @@ import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { PushNotificationPrompt } from "@/components/notifications/PushNotificationPrompt";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useRealtimeNotifications } from "@/hooks/useNotificationSystem";
+import { GlobalSearchBar } from "@/components/GlobalSearchBar";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -23,6 +24,8 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div className="flex items-center gap-2 md:gap-4">
               <SidebarTrigger className="text-muted-foreground hover:text-foreground h-10 w-10 md:h-auto md:w-auto" />
               <h1 className="text-base md:text-lg font-semibold">Tomu</h1>
+              {/* Global Search - Desktop only */}
+              <GlobalSearchBar variant="desktop" className="hidden md:block ml-4" />
             </div>
             <div className="flex items-center gap-1 md:gap-2">
               <ThemeToggle />
