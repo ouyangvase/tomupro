@@ -82,38 +82,7 @@ export default function RunnerDeliveredOrders() {
   const isManager = role === 'manager';
   const isAdminOrManager = isAdmin || isManager;
   
-  // Fetch orders based on role and view mode:
-  // - Runner: fetch their own orders (runner_id = user.id)
-  // - Salesperson: fetch their own orders (salesperson_id = user.id)
-  // - Manager: fetch based on view mode (my data vs team data)
-  // - Admin: fetch all orders
-  const ordersFilter = useMemo(() => {
-    // Always filter for DELIVERED status at database level for performance
-    const baseFilter = { runnerStatus: 'DELIVERED' as const };
-    
-    if (role === 'runner') {
-      return { ...baseFilter, runnerId: user?.id };
-    }
-    if (role === 'salesperson') {
-      return { ...baseFilter, salespersonId: user?.id };
-    }
-    if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
-      // Use filtered salesperson IDs from team view state
-      return { ...baseFilter, salespersonIds };
-    }
-    return baseFilter; // admin - fetch all delivered
-  }, [role, user?.id, salespersonIds]);
-  
-  const { data: orders, isLoading } = useOrders(ordersFilter as any);
-  const { data: userDirectory = [] } = useUserDirectory();
-  const { data: myDrivers = [] } = useMyDrivers();
-  const { data: products = [] } = useProducts();
-  // Only fetch claim batches for runner role (they're the ones who claim)
-  const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : undefined);
-  
-  // Determine if current user can claim orders (only runners can claim)
-  const canClaim = role === 'runner';
-
+  // Filter states - declared before ordersFilter memo since salespersonFilter is used server-side
   const [searchQuery, setSearchQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('all');
   const [driverFilter, setDriverFilter] = useState('all');
@@ -124,6 +93,43 @@ export default function RunnerDeliveredOrders() {
   const [exportSelectedIds, setExportSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Fetch orders based on role and view mode:
+  // - Runner: fetch their own orders (runner_id = user.id), with optional salesperson filter
+  // - Salesperson: fetch their own orders (salesperson_id = user.id)
+  // - Manager: fetch based on view mode (my data vs team data)
+  // - Admin: fetch all orders
+  const ordersFilter = useMemo(() => {
+    // Always filter for DELIVERED status at database level for performance
+    const baseFilter = { runnerStatus: 'DELIVERED' as const };
+    
+    if (role === 'runner') {
+      // Apply salesperson filter server-side to avoid response truncation on large datasets
+      const runnerFilter = { ...baseFilter, runnerId: user?.id };
+      if (salespersonFilter !== 'all') {
+        return { ...runnerFilter, salespersonIds: [salespersonFilter] };
+      }
+      return runnerFilter;
+    }
+    if (role === 'salesperson') {
+      return { ...baseFilter, salespersonId: user?.id };
+    }
+    if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
+      // Use filtered salesperson IDs from team view state
+      return { ...baseFilter, salespersonIds };
+    }
+    return baseFilter; // admin - fetch all delivered
+  }, [role, user?.id, salespersonIds, salespersonFilter]);
+  
+  const { data: orders, isLoading } = useOrders(ordersFilter as any);
+  const { data: userDirectory = [] } = useUserDirectory();
+  const { data: myDrivers = [] } = useMyDrivers();
+  const { data: products = [] } = useProducts();
+  // Only fetch claim batches for runner role (they're the ones who claim)
+  const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : undefined);
+  
+  // Determine if current user can claim orders (only runners can claim)
+  const canClaim = role === 'runner';
   
   // Revert delivery state for admin
   const [revertDialogOpen, setRevertDialogOpen] = useState(false);
@@ -168,8 +174,8 @@ export default function RunnerDeliveredOrders() {
       filtered = filtered.filter(order => order.driver_id === driverFilter);
     }
 
-    // Apply salesperson filter
-    if (salespersonFilter !== 'all') {
+    // Apply salesperson filter (only for non-runner roles - runners use server-side filtering)
+    if (salespersonFilter !== 'all' && role !== 'runner') {
       filtered = filtered.filter(order => order.salesperson_id === salespersonFilter);
     }
 
