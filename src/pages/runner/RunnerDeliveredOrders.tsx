@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,8 @@ import { useProducts } from '@/hooks/useProducts';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
 import { formatBND } from '@/lib/currency';
+import { useDeliveredSummary } from '@/hooks/useDeliveredOrders';
+import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
@@ -127,6 +129,23 @@ export default function RunnerDeliveredOrders() {
   const { data: products = [] } = useProducts();
   // Only fetch claim batches for runner role (they're the ones who claim)
   const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : undefined);
+  
+  // Create summary params based on role for accurate server-side stats
+  const summaryParams = useMemo(() => {
+    if (role === 'runner') {
+      return { runnerId: user?.id };
+    }
+    if (role === 'salesperson') {
+      return { salespersonId: user?.id };
+    }
+    if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
+      return { salespersonIds };
+    }
+    return {}; // admin - get all
+  }, [role, user?.id, salespersonIds]);
+  
+  // Fetch accurate summary stats from server (not truncated by query limit)
+  const { data: summary, isLoading: summaryLoading } = useDeliveredSummary(summaryParams);
   
   // Determine if current user can claim orders (only runners can claim)
   const canClaim = role === 'runner';
@@ -475,14 +494,18 @@ export default function RunnerDeliveredOrders() {
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Stats - Uses server-side RPC for accurate totals */}
         <div className="grid gap-4 grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Delivered</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{deliveredOrders.length}</div>
+              {summaryLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <div className="text-2xl font-bold text-green-600">{summary?.total_delivered ?? 0}</div>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -490,9 +513,11 @@ export default function RunnerDeliveredOrders() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Pending Claim</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED').length}
-              </div>
+              {summaryLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <div className="text-2xl font-bold">{summary?.pending_claim ?? 0}</div>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -500,9 +525,11 @@ export default function RunnerDeliveredOrders() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Value</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {formatBND(deliveredOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0))}
-              </div>
+              {summaryLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <div className="text-2xl font-bold">{formatBND(summary?.total_amount ?? 0)}</div>
+              )}
             </CardContent>
           </Card>
         </div>
