@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Trash2 } from 'lucide-react';
 import { useCreateStockTransfer } from '@/hooks/useStockVisibility';
 import { useWarehouses, useStockBalance } from '@/hooks/useInventory';
-import { useProducts } from '@/hooks/useProducts';
+import { useProductsByOwner } from '@/hooks/useProductsByOwner';
 import type { TransferItemInput } from '@/types/stock-visibility';
 
 interface StockTransferDialogProps {
@@ -25,7 +25,7 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
   const [items, setItems] = useState<(TransferItemInput & { key: string })[]>([]);
   
   const { data: warehouses = [] } = useWarehouses();
-  const { data: products = [] } = useProducts();
+  const { data: products = [] } = useProductsByOwner(fromOwnerId || null);
   const { data: stockBalance = [] } = useStockBalance();
   const createTransfer = useCreateStockTransfer();
   
@@ -173,8 +173,8 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
                           <SelectTrigger>
                             <SelectValue placeholder="Select product" />
                           </SelectTrigger>
-                          <SelectContent>
-                            {products.filter(p => p.is_active).map(p => (
+                        <SelectContent>
+                            {products.map(p => (
                               <SelectItem key={p.id} value={p.id}>
                                 {p.sku_code ? `${p.sku_code} - ` : ''}{p.sku_name}
                               </SelectItem>
