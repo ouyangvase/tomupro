@@ -1,177 +1,240 @@
 
 
-# Plan: Simplify Delivered Orders Export
+# Plan: Add Pagination and Filter-Aware Summary for Delivered Orders
 
-## Overview
+## Problem Summary
 
-Update the delivered orders export to include only the specific columns requested, with delivery charges looked up based on runner + area combination.
+Two issues with the Delivered Orders page:
 
-## Requested Export Columns
+| Issue | Current Behavior | Expected Behavior |
+|-------|-----------------|-------------------|
+| **Performance (lag)** | Loads up to 2000 orders at once, causing UI lag | Load 30 orders per page, fetch on-demand |
+| **Summary cards don't respect filters** | KPI cards show global totals even when filters are active | KPI cards should show totals for filtered data only |
 
-| Column | Source |
-|--------|--------|
-| order_ref | `order.order_code` |
-| customer_name | `order.customer_name` |
-| phone | `order.phone` |
-| address | `order.address` |
-| area | `order.area` |
-| salesperson_name | `order.salesperson?.display_name` |
-| delivered_timestamp | `order.delivered_at` or `order.driver_delivered_at` |
-| sku_name | `order_item.product?.sku_name` |
-| qty | `order_item.qty` |
-| total_amount | `order.total_amount` |
-| delivery_charges | Looked up from `delivery_charges` table by runner_id + area |
+## Solution Overview
 
-## Implementation
+### 1. Client-Side Pagination (30 per page)
+- Paginate the already-fetched `deliveredOrders` array client-side
+- Show only 30 orders at a time in the table/card list
+- Provide Previous/Next buttons and page numbers
+- Filters continue to work across the full dataset before pagination
+
+### 2. Filter-Aware Summary Cards
+- When filters are active (search, area, SKU, salesperson, etc.), calculate summaries from the filtered client-side data
+- When no filters are active, use the server-side `useDeliveredSummary` hook for accurate global totals
+- This ensures KPI cards always reflect what the user is looking at
+
+## Implementation Details
 
 ### Changes Required
 
 | File | Change |
 |------|--------|
-| `src/lib/csv.ts` | Add new `exportDeliveredOrderLines` function with simplified columns + delivery charge lookup |
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Update export handlers to use the new function |
+| `src/pages/runner/RunnerDeliveredOrders.tsx` | Add pagination state, filter detection, and conditional summary logic |
 
-### Technical Details
+### Technical Implementation
 
-**1. New Export Interface (csv.ts)**
+**1. Add Pagination State**
 
 ```typescript
-export interface DeliveredOrderLineExport {
-  order_ref: string;
-  customer_name: string;
-  phone: string;
-  address: string;
-  area: string;
-  salesperson_name: string;
-  delivered_timestamp: string;
-  sku_name: string;
-  qty: number;
-  total_amount: number;
-  delivery_charges: number;
-}
+// Pagination constants and state
+const PAGE_SIZE = 30;
+const [currentPage, setCurrentPage] = useState(1);
+
+// Reset to page 1 when filters change
+useEffect(() => {
+  setCurrentPage(1);
+}, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
 ```
 
-**2. New Export Function (csv.ts)**
+**2. Calculate Paginated Data**
 
 ```typescript
-export async function exportDeliveredOrderLines(
-  orders: any[],
-  deliveryChargesMap: Map<string, number>, // key: "runnerId:area" -> charge
-  filename: string
-) {
-  const lines: DeliveredOrderLineExport[] = [];
+// Calculate pagination values
+const totalPages = Math.ceil(deliveredOrders.length / PAGE_SIZE);
+const startIndex = (currentPage - 1) * PAGE_SIZE;
+const endIndex = startIndex + PAGE_SIZE;
+const paginatedOrders = deliveredOrders.slice(startIndex, endIndex);
+```
+
+**3. Detect Active Filters**
+
+```typescript
+const hasActiveFilters = useMemo(() => {
+  return (
+    searchQuery.trim() !== '' ||
+    areaFilter !== 'all' ||
+    driverFilter !== 'all' ||
+    salespersonFilter !== 'all' ||
+    skuFilter !== 'all' ||
+    claimStatusFilter !== 'all'
+  );
+}, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
+```
+
+**4. Calculate Filtered Summary (Client-Side)**
+
+```typescript
+const filteredSummary = useMemo(() => {
+  if (!hasActiveFilters) return null;
   
-  for (const order of orders) {
-    const orderItems = order.order_items || [];
-    const chargeKey = `${order.runner_id}:${order.area || ''}`;
-    const deliveryCharge = deliveryChargesMap.get(chargeKey) || 0;
-    
-    if (orderItems.length === 0) {
-      lines.push({
-        order_ref: order.order_code || '',
-        customer_name: order.customer_name || '',
-        phone: order.phone || '',
-        address: order.address || '',
-        area: order.area || '',
-        salesperson_name: order.salesperson?.display_name || '',
-        delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
-        sku_name: '',
-        qty: 0,
-        total_amount: Number(order.total_amount) || 0,
-        delivery_charges: deliveryCharge,
-      });
-    } else {
-      for (const item of orderItems) {
-        lines.push({
-          order_ref: order.order_code || '',
-          customer_name: order.customer_name || '',
-          phone: order.phone || '',
-          address: order.address || '',
-          area: order.area || '',
-          salesperson_name: order.salesperson?.display_name || '',
-          delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
-          sku_name: item.product?.sku_name || item.sku_label || '',
-          qty: item.qty || 0,
-          total_amount: Number(order.total_amount) || 0,
-          delivery_charges: deliveryCharge,
-        });
-      }
-    }
+  const total_delivered = deliveredOrders.length;
+  const pending_claim = deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED').length;
+  const total_amount = deliveredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+  
+  return { total_delivered, pending_claim, total_amount };
+}, [hasActiveFilters, deliveredOrders]);
+```
+
+**5. Use Appropriate Summary in KPI Cards**
+
+```typescript
+// Use filtered summary when filters active, otherwise use server summary
+const displaySummary = hasActiveFilters ? filteredSummary : summary;
+const displaySummaryLoading = hasActiveFilters ? false : summaryLoading;
+```
+
+**6. Add Pagination Controls UI**
+
+```typescript
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from '@/components/ui/pagination';
+
+// Render after the table
+{totalPages > 1 && (
+  <Card className="mt-4">
+    <CardContent className="py-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Showing {startIndex + 1}-{Math.min(endIndex, deliveredOrders.length)} of {deliveredOrders.length} orders
+        </p>
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+              />
+            </PaginationItem>
+            {/* Page numbers with ellipsis logic */}
+            {getPageNumbers(currentPage, totalPages).map((page, i) => (
+              page === '...' ? (
+                <PaginationItem key={`ellipsis-${i}`}>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              ) : (
+                <PaginationItem key={page}>
+                  <PaginationLink
+                    onClick={() => setCurrentPage(page as number)}
+                    isActive={currentPage === page}
+                    className="cursor-pointer"
+                  >
+                    {page}
+                  </PaginationLink>
+                </PaginationItem>
+              )
+            ))}
+            <PaginationItem>
+              <PaginationNext
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      </div>
+    </CardContent>
+  </Card>
+)}
+```
+
+**7. Helper for Page Number Display**
+
+```typescript
+function getPageNumbers(current: number, total: number): (number | '...')[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
   }
-
-  const columns = [
-    { key: 'order_ref', header: 'order_ref' },
-    { key: 'customer_name', header: 'customer_name' },
-    { key: 'phone', header: 'phone' },
-    { key: 'address', header: 'address' },
-    { key: 'area', header: 'area' },
-    { key: 'salesperson_name', header: 'salesperson_name' },
-    { key: 'delivered_timestamp', header: 'delivered_timestamp' },
-    { key: 'sku_name', header: 'sku_name' },
-    { key: 'qty', header: 'qty' },
-    { key: 'total_amount', header: 'total_amount' },
-    { key: 'delivery_charges', header: 'delivery_charges' },
-  ];
-
-  exportToCSV(lines as any, columns, filename);
+  
+  if (current <= 3) {
+    return [1, 2, 3, 4, 5, '...', total];
+  }
+  
+  if (current >= total - 2) {
+    return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+  }
+  
+  return [1, '...', current - 1, current, current + 1, '...', total];
 }
 ```
 
-**3. Update RunnerDeliveredOrders.tsx**
-
-- Import `useActiveDeliveryCharges` hook
-- Build a delivery charges map from the active charges
-- Update export handlers to pass the map to the new export function
+**8. Update Table/Card List to Use Paginated Data**
 
 ```typescript
-// Fetch active delivery charges for the runner
-const { data: activeCharges = [] } = useActiveDeliveryCharges(
-  role === 'runner' ? user?.id : undefined
-);
+// Mobile view - use paginatedOrders instead of deliveredOrders
+{paginatedOrders.map((order) => { ... })}
 
-// Build lookup map: "runnerId:area" -> charge_amount
-const deliveryChargesMap = useMemo(() => {
-  const map = new Map<string, number>();
-  for (const charge of activeCharges) {
-    map.set(`${charge.runner_id}:${charge.area}`, charge.charge_amount);
-  }
-  return map;
-}, [activeCharges]);
-
-// Updated export handlers
-const handleExportSelected = useCallback(() => {
-  if (exportSelectedIds.size === 0) {
-    toast.error('No orders selected for export');
-    return;
-  }
-  const selectedOrders = deliveredOrders.filter(o => exportSelectedIds.has(o.id));
-  exportDeliveredOrderLines(selectedOrders, deliveryChargesMap, 'delivered_orders_selected');
-  toast.success(`Exported ${exportSelectedIds.size} order(s)`);
-}, [deliveredOrders, exportSelectedIds, deliveryChargesMap]);
-
-const handleExportAll = useCallback(() => {
-  if (deliveredOrders.length === 0) {
-    toast.error('No orders to export');
-    return;
-  }
-  exportDeliveredOrderLines(deliveredOrders, deliveryChargesMap, 'delivered_orders_all');
-  toast.success(`Exported ${deliveredOrders.length} order(s)`);
-}, [deliveredOrders, deliveryChargesMap]);
+// Desktop table - use paginatedOrders instead of deliveredOrders
+{paginatedOrders.map((order) => { ... })}
 ```
 
-## Export Output Example
+**9. Update Select All Logic**
 
-```text
-order_ref,customer_name,phone,address,area,salesperson_name,delivered_timestamp,sku_name,qty,total_amount,delivery_charges
-"ORD-001","John Doe","555-1234","123 Main St","Downtown","Alice","2024-01-15T10:30:00","Widget A",2,59.98,5.00
-"ORD-001","John Doe","555-1234","123 Main St","Downtown","Alice","2024-01-15T10:30:00","Widget B",1,59.98,5.00
-"ORD-002","Jane Smith","555-5678","456 Oak Ave","Uptown","Bob","2024-01-15T11:00:00","Premium Pack",1,99.99,8.00
+The "Select All" checkbox should still select from the full filtered dataset, not just the current page:
+
+```typescript
+// Select all claimable orders (across all pages of filtered data)
+const toggleSelectAll = useCallback(() => {
+  if (selectedIds.size === claimableOrders.length) {
+    setSelectedIds(new Set());
+  } else {
+    setSelectedIds(new Set(claimableOrders.map(o => o.id)));
+  }
+}, [claimableOrders, selectedIds.size]);
 ```
 
-## Notes
+**10. Update Export to Use Full Filtered Data**
 
-- The `total_amount` is the order total (same for all line items in an order)
-- The `delivery_charges` is looked up by runner_id + area from active approved charges
-- If no delivery charge is configured for the area, it defaults to 0
-- Each order item gets its own row with qty for that specific SKU
+Export handlers continue to use `deliveredOrders` (not paginated) so exports include all filtered records.
+
+## Visual Changes
+
+### Before (Single Long Page)
+- All 1000+ orders rendered at once
+- Summary cards always show global totals
+- Page becomes laggy with large datasets
+
+### After (Paginated with Filter-Aware Summary)
+- Only 30 orders rendered at a time
+- Pagination controls at bottom: "Showing 1-30 of 1056 orders" with Previous/Next
+- When Area="KB" selected: Summary cards update to show "Total Delivered: 127" instead of "1056"
+- Smooth, responsive UI
+
+## Edge Cases Handled
+
+| Scenario | Behavior |
+|----------|----------|
+| No filters active | Use server-side summary for accurate global totals |
+| Filters active | Calculate summary from filtered client data |
+| Filter changes | Reset to page 1 automatically |
+| Page beyond range | Clamp to valid page number |
+| Empty results | Show "No delivered orders found" message |
+| Export while paginated | Exports all filtered orders, not just current page |
+| Select All | Selects all claimable orders across all pages |
+
+## Summary
+
+| Feature | Implementation |
+|---------|---------------|
+| **Pagination** | Client-side, 30 per page, with Previous/Next/Page numbers |
+| **Filter-aware summaries** | Conditional: server-side when no filters, client-side when filters active |
+| **Performance** | Only 30 DOM rows rendered at once, reducing lag |
+| **Data integrity** | Full filtered dataset preserved for export and bulk actions |
 
