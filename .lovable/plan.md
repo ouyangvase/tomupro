@@ -1,102 +1,159 @@
 
 
-# Plan: Fix Missing Orders in Runner Delivered Orders Page
+# Plan: Fix Stock Balance Duplicates and Transfer Dialog Product Filtering
 
-## Problem Identified
-XiaoLi has **47 delivered orders** in the database, but only **9 orders** are showing in the Runner Delivered Orders page when filtering by XiaoLi. The "Total Delivered: 9" count and "Total Value: BND 522.00" exactly matches the sum of the first 9 most recent orders.
+## Overview
+
+Two related issues need to be fixed:
+
+1. **Stock Balance Duplicates**: The stock balance page shows duplicate SKU entries with incorrect balances (e.g., KRILL OIL appears twice for derrick - once with +20 and once with -51)
+2. **Transfer Dialog Shows Wrong Products**: When selecting a "From User", the product dropdown shows products from ALL users instead of only that user's products
 
 ## Root Cause Analysis
 
-The runner Yc has **1,056 delivered orders** in total. The current query fetches:
-- All orders with `runner_id = Yc` AND `runner_status = 'DELIVERED'`
-- With nested `order_items(*, product(id, sku_code, sku_name))`
-- Limited to 2,000 rows
+### Issue 1: Stock Balance Duplicates
 
-**The Problem**: With 1,056 orders and nested order items with product details, the API response becomes extremely large (potentially 6-10MB+ of JSON). The Supabase response is being truncated due to size limits, resulting in only partial data being returned to the frontend.
+**Problem**: Stock movements were created referencing products that don't belong to the warehouse owner.
 
-XiaoLi's orders are at positions 613-1056 in the result set (sorted by `created_at DESC`). After truncation, only the first ~612 rows are returned, and when filtered by XiaoLi's salesperson_id on the frontend, only 9 orders (the most recent ones before truncation) remain visible.
+For example, when stock was transferred FROM derrick TO Qi Xiu:
+- The TRANSFER_OUT movements used Qi Xiu's product IDs (e.g., `005e6ca3-...`) instead of derrick's product IDs (e.g., `e3221a91-...`)
+- This created entries in derrick's warehouse for products he doesn't own
+- Result: Same SKU code appears twice (derrick's real product vs Qi Xiu's product incorrectly added)
+
+**Current Bad Data**: 4 stock movements where product owner doesn't match warehouse owner - all from a single transfer
+
+### Issue 2: Transfer Dialog Products
+
+**Problem**: The `StockTransferDialog` uses `useProducts()` which fetches ALL products visible to admin.
+
+When selecting "From User = derrick", the dropdown should only show derrick's products, not products from Qi Xiu or others.
 
 ## Solution
 
-Increase the query efficiency and reduce payload size to ensure all orders are returned.
+### Part 1: Fix the Transfer Dialog (Prevent Future Issues)
 
-### Option A: Remove Nested Order Items from Main Query (Recommended)
+Update `StockTransferDialog.tsx` to use `useProductsByOwner(fromOwnerId)` instead of `useProducts()`.
 
-Fetch orders without the heavy nested relationships, then lazy-load order items only when needed (e.g., when expanding a row).
+| Before | After |
+|--------|-------|
+| Shows all products | Shows only products owned by selected "From User" |
+| Products visible to admin | Products filtered by `owner_user_id = fromOwnerId` |
+| Duplicates possible | No duplicates (each user has their own product records) |
 
-### Option B: Increase Query Limit and Reduce Payload
+### Part 2: Fix the Stock Balance View (Clean Display)
 
-Keep the existing structure but:
-1. Reduce nested data (only fetch essential product fields)
-2. Consider pagination for very large datasets
+Update `stock_balance_view` to only show products where the product owner matches the warehouse owner.
 
-### Option C: Use Server-Side Filtering
+This ensures that incorrectly-created stock movements (like the 4 bad ones) are hidden from the view.
 
-Pass the salesperson filter to the server instead of filtering client-side. This reduces the result set before it hits size limits.
+### Part 3: Clean Up Bad Data (One-Time Fix)
 
-## Recommended Implementation
+Delete the 4 incorrect stock movement records that reference products not owned by the warehouse owner.
 
-Implement **server-side salesperson filtering** for the delivered orders query. When a user selects a salesperson filter, pass that ID to the query instead of fetching all orders and filtering client-side.
+## Technical Implementation
 
 ### Changes Required
 
-| File | Change |
-|------|--------|
-| `src/hooks/useOrders.ts` | Add `salespersonIds` (array) parameter support for filtering |
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Pass salesperson filter to the query instead of client-side filtering |
+| Component | Change |
+|-----------|--------|
+| `src/components/inventory/StockTransferDialog.tsx` | Replace `useProducts()` with `useProductsByOwner(fromOwnerId)` |
+| Database Migration | Update `stock_balance_view` to filter by product owner = warehouse owner |
+| Database Migration | Delete the 4 bad stock movement records |
+| Database Migration | Add trigger to prevent future product/warehouse owner mismatches |
 
-### Implementation Details
+### Code Changes
 
-**1. Update `useOrders` to support salesperson array filter:**
+**StockTransferDialog.tsx** (lines 10-13, 27-29):
 
 ```typescript
-interface OrderFilters {
-  // ... existing fields
-  salespersonIds?: string[];  // NEW: Support filtering by multiple salesperson IDs
-}
+// Replace useProducts import
+import { useProductsByOwner } from '@/hooks/useProductsByOwner';
 
-// In queryFn:
-if (filters?.salespersonIds && filters.salespersonIds.length > 0) {
-  query = query.in('salesperson_id', filters.salespersonIds);
-}
+// Replace products query
+const { data: products = [] } = useProductsByOwner(fromOwnerId);
 ```
 
-**2. Update RunnerDeliveredOrders to pass filter to query:**
+**Database Migration**:
 
-Currently, the salesperson filter is applied client-side after fetching all orders. Change it to pass the filter to the query:
+```sql
+-- Fix stock_balance_view to only show products matching warehouse owner
+CREATE OR REPLACE VIEW stock_balance_view AS
+SELECT 
+  sm.warehouse_id,
+  w.name AS warehouse_name,
+  w.owner_user_id,
+  p.display_name AS owner_name,
+  sm.product_id,
+  pr.sku_code,
+  pr.sku_name,
+  sum(sm.qty_change) AS balance_qty,
+  max(sm.created_at) AS last_movement_time
+FROM stock_movements sm
+JOIN warehouses w ON w.id = sm.warehouse_id
+JOIN profiles p ON p.id = w.owner_user_id
+JOIN products pr ON pr.id = sm.product_id
+WHERE sm.product_id IS NOT NULL 
+  AND pr.sku_code IS NOT NULL 
+  AND w.is_active = true
+  AND pr.owner_user_id = w.owner_user_id  -- NEW: Only products owned by warehouse owner
+  AND (p.role = ANY (ARRAY['salesperson'::app_role, 'manager'::app_role, 'admin'::app_role]))
+GROUP BY sm.warehouse_id, w.name, w.owner_user_id, p.display_name, sm.product_id, pr.sku_code, pr.sku_name
+HAVING sum(sm.qty_change) <> 0;
 
-```typescript
-const ordersFilter = useMemo(() => {
-  const baseFilter = { runnerStatus: 'DELIVERED' as const };
+-- Delete the 4 bad stock movements
+DELETE FROM stock_movements 
+WHERE id IN (
+  '1bb08998-c90e-4397-bb02-0b8057ecdf4d',
+  'beb39a8d-1382-4a62-b787-713ffca05a90',
+  '5312f123-c330-45de-808d-a0cbc2896ddd',
+  'b18daa23-48a4-46ce-b2c1-78e54ebfc605'
+);
+
+-- Add trigger to prevent future mismatches
+CREATE OR REPLACE FUNCTION validate_stock_movement_product_owner()
+RETURNS TRIGGER AS $$
+DECLARE
+  product_owner_id UUID;
+  warehouse_owner_id UUID;
+BEGIN
+  SELECT owner_user_id INTO product_owner_id FROM products WHERE id = NEW.product_id;
+  SELECT owner_user_id INTO warehouse_owner_id FROM warehouses WHERE id = NEW.warehouse_id;
   
-  if (role === 'runner') {
-    const filter = { ...baseFilter, runnerId: user?.id };
-    // Apply salesperson filter server-side if selected
-    if (salespersonFilter !== 'all') {
-      return { ...filter, salespersonIds: [salespersonFilter] };
-    }
-    return filter;
-  }
-  // ... rest of logic
-}, [role, user?.id, salespersonFilter]);
+  IF product_owner_id != warehouse_owner_id THEN
+    RAISE EXCEPTION 'Product owner (%) does not match warehouse owner (%)', 
+      product_owner_id, warehouse_owner_id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER check_stock_movement_product_owner
+  BEFORE INSERT ON stock_movements
+  FOR EACH ROW
+  EXECUTE FUNCTION validate_stock_movement_product_owner();
 ```
 
-**3. Remove client-side salesperson filter:**
+## Expected Results
 
-In the `deliveredOrders` memo, remove the salesperson filtering since it's now done server-side.
+### Before Fix
+| SKU | Balance |
+|-----|---------|
+| AKO02 | 20 |
+| AKO02 | -51 |
+| AKOG01 | -159 |
+| AKOG01 | 147 |
 
-## Expected Outcome
+### After Fix
+| SKU | Balance |
+|-----|---------|
+| AKO02 | 20 |
+| AKOG01 | 147 |
 
-| Current Behavior | After Fix |
-|------------------|-----------|
-| Query fetches all 1,056 orders | Query fetches only orders for selected salesperson |
-| Response truncated due to size | Smaller response that fits within limits |
-| Only 9/47 orders visible | All 47 orders visible |
-| Client-side filtering causes data loss | Server-side filtering ensures complete data |
+## Summary
 
-## Technical Notes
-
-- The fix moves filtering from client-side (unreliable when data is truncated) to server-side (reliable)
-- This also improves performance by reducing data transfer
-- The change is backward-compatible - when "All Users" is selected, no salesperson filter is applied
+1. **Update Transfer Dialog**: Only show products owned by the selected "From User"
+2. **Update View Filter**: Add `pr.owner_user_id = w.owner_user_id` to the view
+3. **Clean Bad Data**: Delete 4 incorrect stock movement records
+4. **Add Validation**: Prevent future product/warehouse owner mismatches with a trigger
 
