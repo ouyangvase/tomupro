@@ -1,159 +1,92 @@
 
+# Plan: Fix Transfer Stock Product Dropdown to Show Only User's Available Stock
 
-# Plan: Fix Stock Balance Duplicates and Transfer Dialog Product Filtering
+## Problem Summary
 
-## Overview
+Based on analysis of the screenshots and database:
 
-Two related issues need to be fixed:
+1. **Transfer Dialog Products**: The product dropdown should only show products that:
+   - Belong to the selected "From User" (owner_user_id filter)
+   - Have actual stock available (balance > 0)
 
-1. **Stock Balance Duplicates**: The stock balance page shows duplicate SKU entries with incorrect balances (e.g., KRILL OIL appears twice for derrick - once with +20 and once with -51)
-2. **Transfer Dialog Shows Wrong Products**: When selecting a "From User", the product dropdown shows products from ALL users instead of only that user's products
+2. **Stock Balance**: Already verified as correct after the previous fix. The `stock_balance_view` now properly filters by `pr.owner_user_id = w.owner_user_id`.
 
-## Root Cause Analysis
+## Root Cause
 
-### Issue 1: Stock Balance Duplicates
+The current implementation uses `useProductsByOwner(fromOwnerId)` which fetches products from the `products` table filtered by owner. However, this shows ALL products owned by that user, not just products with available stock.
 
-**Problem**: Stock movements were created referencing products that don't belong to the warehouse owner.
-
-For example, when stock was transferred FROM derrick TO Qi Xiu:
-- The TRANSFER_OUT movements used Qi Xiu's product IDs (e.g., `005e6ca3-...`) instead of derrick's product IDs (e.g., `e3221a91-...`)
-- This created entries in derrick's warehouse for products he doesn't own
-- Result: Same SKU code appears twice (derrick's real product vs Qi Xiu's product incorrectly added)
-
-**Current Bad Data**: 4 stock movements where product owner doesn't match warehouse owner - all from a single transfer
-
-### Issue 2: Transfer Dialog Products
-
-**Problem**: The `StockTransferDialog` uses `useProducts()` which fetches ALL products visible to admin.
-
-When selecting "From User = derrick", the dropdown should only show derrick's products, not products from Qi Xiu or others.
+The screenshot shows:
+- FT07 products (owned by JL) appearing for derrick - this shouldn't happen with the current code
+- AKOG01 appearing twice - this could be a display bug or stale cache
 
 ## Solution
 
-### Part 1: Fix the Transfer Dialog (Prevent Future Issues)
+Improve the Transfer Stock dialog to only show products that have positive stock balance for the selected user.
 
-Update `StockTransferDialog.tsx` to use `useProductsByOwner(fromOwnerId)` instead of `useProducts()`.
+### Approach
 
-| Before | After |
-|--------|-------|
-| Shows all products | Shows only products owned by selected "From User" |
-| Products visible to admin | Products filtered by `owner_user_id = fromOwnerId` |
-| Duplicates possible | No duplicates (each user has their own product records) |
-
-### Part 2: Fix the Stock Balance View (Clean Display)
-
-Update `stock_balance_view` to only show products where the product owner matches the warehouse owner.
-
-This ensures that incorrectly-created stock movements (like the 4 bad ones) are hidden from the view.
-
-### Part 3: Clean Up Bad Data (One-Time Fix)
-
-Delete the 4 incorrect stock movement records that reference products not owned by the warehouse owner.
-
-## Technical Implementation
+Instead of using `useProductsByOwner` (which queries the products table), filter from the stock balance data which already has the correct products.
 
 ### Changes Required
 
-| Component | Change |
-|-----------|--------|
-| `src/components/inventory/StockTransferDialog.tsx` | Replace `useProducts()` with `useProductsByOwner(fromOwnerId)` |
-| Database Migration | Update `stock_balance_view` to filter by product owner = warehouse owner |
-| Database Migration | Delete the 4 bad stock movement records |
-| Database Migration | Add trigger to prevent future product/warehouse owner mismatches |
+| File | Change |
+|------|--------|
+| `src/components/inventory/StockTransferDialog.tsx` | Use stock balance data to populate product dropdown instead of products query |
+
+### Implementation Details
+
+**Current flow:**
+```
+useProductsByOwner(fromOwnerId) -> shows ALL products owned by user
+```
+
+**New flow:**
+```
+useStockBalance() -> filter by fromOwnerId -> only products with balance > 0
+```
 
 ### Code Changes
 
-**StockTransferDialog.tsx** (lines 10-13, 27-29):
-
 ```typescript
-// Replace useProducts import
-import { useProductsByOwner } from '@/hooks/useProductsByOwner';
+// StockTransferDialog.tsx
 
-// Replace products query
-const { data: products = [] } = useProductsByOwner(fromOwnerId);
+// Remove: const { data: products = [] } = useProductsByOwner(fromOwnerId || null);
+
+// Replace with: Derive products from stock balance
+const availableProducts = useMemo(() => {
+  if (!fromOwnerId) return [];
+  
+  return stockBalance
+    .filter(s => s.owner_user_id === fromOwnerId && Number(s.balance_qty) > 0)
+    .map(s => ({
+      id: s.product_id,
+      sku_code: s.sku_code,
+      sku_name: s.sku_name
+    }));
+}, [stockBalance, fromOwnerId]);
+
+// Use availableProducts in the dropdown instead of products
 ```
 
-**Database Migration**:
+### Benefits
 
-```sql
--- Fix stock_balance_view to only show products matching warehouse owner
-CREATE OR REPLACE VIEW stock_balance_view AS
-SELECT 
-  sm.warehouse_id,
-  w.name AS warehouse_name,
-  w.owner_user_id,
-  p.display_name AS owner_name,
-  sm.product_id,
-  pr.sku_code,
-  pr.sku_name,
-  sum(sm.qty_change) AS balance_qty,
-  max(sm.created_at) AS last_movement_time
-FROM stock_movements sm
-JOIN warehouses w ON w.id = sm.warehouse_id
-JOIN profiles p ON p.id = w.owner_user_id
-JOIN products pr ON pr.id = sm.product_id
-WHERE sm.product_id IS NOT NULL 
-  AND pr.sku_code IS NOT NULL 
-  AND w.is_active = true
-  AND pr.owner_user_id = w.owner_user_id  -- NEW: Only products owned by warehouse owner
-  AND (p.role = ANY (ARRAY['salesperson'::app_role, 'manager'::app_role, 'admin'::app_role]))
-GROUP BY sm.warehouse_id, w.name, w.owner_user_id, p.display_name, sm.product_id, pr.sku_code, pr.sku_name
-HAVING sum(sm.qty_change) <> 0;
+| Aspect | Before | After |
+|--------|--------|-------|
+| Products shown | All products owned by user | Only products with stock > 0 |
+| Data source | Products table | Stock balance view (already filtered correctly) |
+| Duplicates | Possible if RLS is misconfigured | Impossible (stock balance is grouped by product) |
+| User experience | May see products with 0 stock | Only sees transferable products |
 
--- Delete the 4 bad stock movements
-DELETE FROM stock_movements 
-WHERE id IN (
-  '1bb08998-c90e-4397-bb02-0b8057ecdf4d',
-  'beb39a8d-1382-4a62-b787-713ffca05a90',
-  '5312f123-c330-45de-808d-a0cbc2896ddd',
-  'b18daa23-48a4-46ce-b2c1-78e54ebfc605'
-);
+## Verification
 
--- Add trigger to prevent future mismatches
-CREATE OR REPLACE FUNCTION validate_stock_movement_product_owner()
-RETURNS TRIGGER AS $$
-DECLARE
-  product_owner_id UUID;
-  warehouse_owner_id UUID;
-BEGIN
-  SELECT owner_user_id INTO product_owner_id FROM products WHERE id = NEW.product_id;
-  SELECT owner_user_id INTO warehouse_owner_id FROM warehouses WHERE id = NEW.warehouse_id;
-  
-  IF product_owner_id != warehouse_owner_id THEN
-    RAISE EXCEPTION 'Product owner (%) does not match warehouse owner (%)', 
-      product_owner_id, warehouse_owner_id;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER check_stock_movement_product_owner
-  BEFORE INSERT ON stock_movements
-  FOR EACH ROW
-  EXECUTE FUNCTION validate_stock_movement_product_owner();
-```
-
-## Expected Results
-
-### Before Fix
-| SKU | Balance |
-|-----|---------|
-| AKO02 | 20 |
-| AKO02 | -51 |
-| AKOG01 | -159 |
-| AKOG01 | 147 |
-
-### After Fix
-| SKU | Balance |
-|-----|---------|
-| AKO02 | 20 |
-| AKOG01 | 147 |
+After implementation:
+- derrick should only see 4 products: AKO02 (20), AKOG01 (147), JP01 (139), JPGO1 (75)
+- No FT07 or other user's products should appear
+- No duplicate entries
 
 ## Summary
 
-1. **Update Transfer Dialog**: Only show products owned by the selected "From User"
-2. **Update View Filter**: Add `pr.owner_user_id = w.owner_user_id` to the view
-3. **Clean Bad Data**: Delete 4 incorrect stock movement records
-4. **Add Validation**: Prevent future product/warehouse owner mismatches with a trigger
-
+The fix changes the product dropdown data source from the products table to the stock balance view, which:
+1. Is already filtered by product owner = warehouse owner
+2. Only includes products with non-zero balance
+3. Eliminates any possibility of showing wrong products or duplicates
