@@ -339,10 +339,11 @@ export function useCreateStockTransfer() {
       
       if (transferError) throw transferError;
       
-      // Create transfer items
+      // Create transfer items - IMPORTANT: Store SOURCE product IDs (not destination)
+      // This ensures the transfer record references the original owner's products
       const itemsToInsert = data.items.map(item => ({
         transfer_id: transfer.id,
-        product_id: item.product_id,
+        product_id: item.product_id, // Source product ID from the dialog
         qty: item.qty,
       }));
       
@@ -352,15 +353,18 @@ export function useCreateStockTransfer() {
       
       if (itemsError) throw itemsError;
       
-      // Create stock movements
+      // Create stock movements with correct product IDs for each direction
       const movements = [];
       for (const item of data.items) {
+        // Source product ID - owned by from_owner, used for TRANSFER_OUT
+        const sourceProductId = item.product_id;
+        // Destination product ID - mapped to to_owner's equivalent product, used for TRANSFER_IN
         const destProductId = productIdMap[item.product_id];
         
-        // TRANSFER_OUT from source
+        // TRANSFER_OUT from source warehouse (uses SOURCE product ID)
         movements.push({
           warehouse_id: data.from_warehouse_id,
-          product_id: item.product_id,
+          product_id: sourceProductId,
           movement_type: 'TRANSFER_OUT' as const,
           qty_change: -item.qty,
           reference_type: 'STOCK_TRANSFER' as const,
@@ -368,7 +372,7 @@ export function useCreateStockTransfer() {
           created_by: user?.id,
         });
         
-        // TRANSFER_IN to destination (using mapped product ID)
+        // TRANSFER_IN to destination warehouse (uses DESTINATION product ID)
         movements.push({
           warehouse_id: data.to_warehouse_id,
           product_id: destProductId,
