@@ -22,6 +22,35 @@ import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
 import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2 } from 'lucide-react';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from '@/components/ui/pagination';
+
+// Pagination constants
+const PAGE_SIZE = 30;
+
+// Helper function for page number display
+function getPageNumbers(current: number, total: number): (number | '...')[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  
+  if (current <= 3) {
+    return [1, 2, 3, 4, 5, '...', total];
+  }
+  
+  if (current >= total - 2) {
+    return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+  }
+  
+  return [1, '...', current - 1, current, current + 1, '...', total];
+}
 import { exportDeliveredOrderLines } from '@/lib/csv';
 import { useActiveDeliveryCharges } from '@/hooks/useDeliveryCharges';
 import {
@@ -96,6 +125,7 @@ export default function RunnerDeliveredOrders() {
   const [exportSelectedIds, setExportSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   
   // Fetch orders based on role and view mode:
   // - Runner: fetch their own orders (runner_id = user.id), with optional salesperson filter
@@ -227,6 +257,51 @@ export default function RunnerDeliveredOrders() {
 
     return filtered;
   }, [orders, searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
+
+  // Detect if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    return (
+      searchQuery.trim() !== '' ||
+      areaFilter !== 'all' ||
+      driverFilter !== 'all' ||
+      salespersonFilter !== 'all' ||
+      skuFilter !== 'all' ||
+      claimStatusFilter !== 'all'
+    );
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
+
+  // Calculate client-side filtered summary when filters are active
+  const filteredSummary = useMemo(() => {
+    if (!hasActiveFilters) return null;
+    
+    const total_delivered = deliveredOrders.length;
+    const pending_claim = deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED').length;
+    const total_amount = deliveredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    
+    return { total_delivered, pending_claim, total_amount };
+  }, [hasActiveFilters, deliveredOrders]);
+
+  // Use filtered summary when filters active, otherwise use server summary
+  const displaySummary = hasActiveFilters ? filteredSummary : summary;
+  const displaySummaryLoading = hasActiveFilters ? false : summaryLoading;
+
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(deliveredOrders.length / PAGE_SIZE));
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const endIndex = startIndex + PAGE_SIZE;
+  const paginatedOrders = deliveredOrders.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
+
+  // Clamp current page if it exceeds total pages
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
   // Orders eligible for claiming (DELIVERED + NOT_CLAIMED) - only relevant for runners
   const claimableOrders = useMemo(() => {
@@ -508,41 +583,47 @@ export default function RunnerDeliveredOrders() {
           </div>
         </div>
 
-        {/* Stats - Uses server-side RPC for accurate totals */}
+        {/* Stats - Uses server-side RPC for accurate totals, or filtered client-side data when filters active */}
         <div className="grid gap-4 grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Delivered</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Delivered {hasActiveFilters && <span className="text-xs">(filtered)</span>}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              {summaryLoading ? (
+              {displaySummaryLoading ? (
                 <Skeleton className="h-8 w-16" />
               ) : (
-                <div className="text-2xl font-bold text-green-600">{summary?.total_delivered ?? 0}</div>
+                <div className="text-2xl font-bold text-green-600">{displaySummary?.total_delivered ?? 0}</div>
               )}
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Claim</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Pending Claim {hasActiveFilters && <span className="text-xs">(filtered)</span>}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              {summaryLoading ? (
+              {displaySummaryLoading ? (
                 <Skeleton className="h-8 w-16" />
               ) : (
-                <div className="text-2xl font-bold">{summary?.pending_claim ?? 0}</div>
+                <div className="text-2xl font-bold">{displaySummary?.pending_claim ?? 0}</div>
               )}
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Value</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Value {hasActiveFilters && <span className="text-xs">(filtered)</span>}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              {summaryLoading ? (
+              {displaySummaryLoading ? (
                 <Skeleton className="h-8 w-24" />
               ) : (
-                <div className="text-2xl font-bold">{formatBND(summary?.total_amount ?? 0)}</div>
+                <div className="text-2xl font-bold">{formatBND(displaySummary?.total_amount ?? 0)}</div>
               )}
             </CardContent>
           </Card>
@@ -686,7 +767,7 @@ export default function RunnerDeliveredOrders() {
                 No delivered orders found
               </div>
             ) : (
-              deliveredOrders.map((order) => {
+              paginatedOrders.map((order) => {
                 const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
                 const isSelected = selectedIds.has(order.id);
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
@@ -829,7 +910,7 @@ export default function RunnerDeliveredOrders() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      deliveredOrders.map((order) => {
+                      paginatedOrders.map((order) => {
                         const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
                         const isSelected = selectedIds.has(order.id);
                         const isExportSelected = exportSelectedIds.has(order.id);
@@ -966,6 +1047,52 @@ export default function RunnerDeliveredOrders() {
                     )}
                   </TableBody>
                 </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <Card className="mt-4">
+            <CardContent className="py-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {startIndex + 1}-{Math.min(endIndex, deliveredOrders.length)} of {deliveredOrders.length} orders
+                </p>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      />
+                    </PaginationItem>
+                    {getPageNumbers(currentPage, totalPages).map((page, i) => (
+                      page === '...' ? (
+                        <PaginationItem key={`ellipsis-${i}`}>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      ) : (
+                        <PaginationItem key={page}>
+                          <PaginationLink
+                            onClick={() => setCurrentPage(page as number)}
+                            isActive={currentPage === page}
+                            className="cursor-pointer"
+                          >
+                            {page}
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                    ))}
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
             </CardContent>
           </Card>
