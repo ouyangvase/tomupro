@@ -397,3 +397,80 @@ export function exportSelectedRunnerOrderLines(
   exportRunnerOrderLines(selectedOrders, filename);
   return true;
 }
+
+// Delivered orders export - simplified columns with delivery charges lookup
+export interface DeliveredOrderLineExport {
+  order_ref: string;
+  customer_name: string;
+  phone: string;
+  address: string;
+  area: string;
+  salesperson_name: string;
+  delivered_timestamp: string;
+  sku_name: string;
+  qty: number;
+  total_amount: number;
+  delivery_charges: number;
+}
+
+export function exportDeliveredOrderLines(
+  orders: any[],
+  deliveryChargesMap: Map<string, number>, // key: "runnerId:area" -> charge
+  filename: string
+) {
+  const lines: DeliveredOrderLineExport[] = [];
+  
+  for (const order of orders) {
+    const orderItems = order.order_items || [];
+    const chargeKey = `${order.runner_id}:${order.area || ''}`;
+    const deliveryCharge = deliveryChargesMap.get(chargeKey) || 0;
+    
+    if (orderItems.length === 0) {
+      lines.push({
+        order_ref: order.order_code || '',
+        customer_name: order.customer_name || '',
+        phone: order.phone || '',
+        address: order.address || '',
+        area: order.area || '',
+        salesperson_name: order.salesperson?.display_name || order.created_by_name_snapshot || '',
+        delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
+        sku_name: '',
+        qty: 0,
+        total_amount: Number(order.total_amount) || 0,
+        delivery_charges: deliveryCharge,
+      });
+    } else {
+      for (const item of orderItems) {
+        lines.push({
+          order_ref: order.order_code || '',
+          customer_name: order.customer_name || '',
+          phone: order.phone || '',
+          address: order.address || '',
+          area: order.area || '',
+          salesperson_name: order.salesperson?.display_name || order.created_by_name_snapshot || '',
+          delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
+          sku_name: item.product?.sku_name || item.sku_label || '',
+          qty: item.qty || 0,
+          total_amount: Number(order.total_amount) || 0,
+          delivery_charges: deliveryCharge,
+        });
+      }
+    }
+  }
+
+  const columns = [
+    { key: 'order_ref', header: 'order_ref' },
+    { key: 'customer_name', header: 'customer_name' },
+    { key: 'phone', header: 'phone' },
+    { key: 'address', header: 'address' },
+    { key: 'area', header: 'area' },
+    { key: 'salesperson_name', header: 'salesperson_name' },
+    { key: 'delivered_timestamp', header: 'delivered_timestamp' },
+    { key: 'sku_name', header: 'sku_name' },
+    { key: 'qty', header: 'qty' },
+    { key: 'total_amount', header: 'total_amount' },
+    { key: 'delivery_charges', header: 'delivery_charges' },
+  ];
+
+  exportToCSV(lines as any, columns, filename);
+}
