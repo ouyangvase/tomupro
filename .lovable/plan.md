@@ -1,179 +1,111 @@
 
-# Plan: Fix Stock Balance and Transfer Logic
+# Plan: Fix Delivered Orders Stats and Loading Issues
 
 ## Problem Summary
 
-The stock balance for derrick is showing incorrect values because:
+The "Delivered Orders" page displays incorrect statistics because it calculates them from a limited query result instead of using the existing optimized RPC function.
 
-1. **Transfer dialog used wrong product IDs** - The recent transfer from derrick to Qi Xiu incorrectly stored Qi Xiu's product IDs in `stock_transfer_items` instead of derrick's
-2. **TRANSFER_OUT movements were never created** - The validation trigger blocked the movements because the stored product ID didn't match the source warehouse owner
-3. **TRANSFER_IN movements were created using incorrect product IDs** - These bypassed validation because the product owner matched Qi Xiu's warehouse
+| Metric | Displayed | Actual (Database) | Issue |
+|--------|-----------|-------------------|-------|
+| Total Delivered | 1000 | 1056 | Truncated by query limit |
+| Pending Claim | 258 | 258 | Coincidentally correct |
+| Total Value | BND 62,780.00 | BND 66,067.00 | Sum of truncated dataset |
 
-### Current vs Expected Balances (derrick)
+## Root Cause Analysis
 
-| SKU | Current Balance | Missing Movement | Expected Balance |
-|-----|-----------------|------------------|------------------|
-| AKO02 | 20 | TRANSFER_OUT -51 | -31 |
-| AKOG01 | 147 | TRANSFER_OUT -159 | -12 |
-| JP01 | 139 | TRANSFER_OUT -144 | -5 |
-| JPGO1 | 75 | TRANSFER_OUT -77 | -2 |
+1. **Stats calculated from limited query**: The page computes stats from `deliveredOrders.length` and `deliveredOrders.reduce()` which only contains ~1000 orders (Supabase default limit)
 
-## Root Cause
+2. **Existing optimized hook not used**: The `useDeliveredSummary` hook exists in `src/hooks/useDeliveredOrders.ts` and calls the `get_delivered_summary` RPC function which returns accurate counts without limits - but the page doesn't use it
 
-In `useStockVisibility.ts`, the `useCreateStockTransfer` function:
-1. Looks up destination products and stores them in `stock_transfer_items`
-2. Tries to use source product IDs for TRANSFER_OUT but the trigger validates against the stored product ID
-3. Creates TRANSFER_IN successfully because destination products match destination warehouse
+3. **Query limit mismatch**: The `useOrders` hook sets `limit: 2000` but Supabase's default `max-rows` setting may cap it at 1000
 
 ## Solution
 
-### Part 1: Fix the Hook Logic
-
-Update `useCreateStockTransfer` to:
-1. Store SOURCE product IDs in `stock_transfer_items` (not destination)
-2. Use source product IDs for TRANSFER_OUT movements
-3. Use mapped destination product IDs only for TRANSFER_IN movements
-
-### Part 2: Clean Up Bad Data
-
-Delete incorrect movements and create correct ones:
-
-1. **Delete the wrong TRANSFER_IN movements** for Qi Xiu's warehouse (they used wrong product IDs)
-2. **Create correct TRANSFER_OUT movements** for derrick's warehouse using derrick's product IDs
-3. **Create correct TRANSFER_IN movements** for Qi Xiu's warehouse using Qi Xiu's product IDs
-4. **Update stock_transfer_items** to use correct source product IDs
-
-### Part 3: Fix Other Broken Transfers
-
-Check and fix Emily → KAIWEI transfers that are also missing movements.
-
-## Technical Implementation
+Modify `RunnerDeliveredOrders.tsx` to:
+1. Import and use `useDeliveredSummary` for accurate stats
+2. Display loading states for stats separately from the order list
+3. Keep using `useOrders` for the paginated order list display
 
 ### Changes Required
 
-| Component | Change |
-|-----------|--------|
-| `src/hooks/useStockVisibility.ts` | Fix `useCreateStockTransfer` to store source product IDs and handle movements correctly |
-| Database Migration | Delete bad movements, create correct ones, update transfer items |
+| File | Change |
+|------|--------|
+| `src/pages/runner/RunnerDeliveredOrders.tsx` | Import `useDeliveredSummary`, use for KPI cards, add loading states |
 
-### Code Changes (useStockVisibility.ts)
+### Implementation Details
+
+**1. Import the summary hook**
 
 ```typescript
-// In useCreateStockTransfer mutation:
-
-// 1. Store SOURCE product IDs in transfer items (not destination)
-const itemsToInsert = data.items.map(item => ({
-  transfer_id: transfer.id,
-  product_id: item.product_id, // This is already the source product ID from the dialog
-  qty: item.qty,
-}));
-
-// 2. Create movements with correct product IDs
-const movements = [];
-for (const item of data.items) {
-  // Source product ID (from transfer items - owned by from_owner)
-  const sourceProductId = item.product_id;
-  // Destination product ID (mapped to to_owner's product)
-  const destProductId = productIdMap[item.product_id];
-  
-  // TRANSFER_OUT from source (uses source product ID)
-  movements.push({
-    warehouse_id: data.from_warehouse_id,
-    product_id: sourceProductId, // ← Use source product ID
-    movement_type: 'TRANSFER_OUT',
-    qty_change: -item.qty,
-    reference_type: 'STOCK_TRANSFER',
-    reference_id: transfer.id,
-    created_by: user?.id,
-  });
-  
-  // TRANSFER_IN to destination (uses destination product ID)
-  movements.push({
-    warehouse_id: data.to_warehouse_id,
-    product_id: destProductId, // ← Use destination product ID
-    movement_type: 'TRANSFER_IN',
-    qty_change: item.qty,
-    reference_type: 'STOCK_TRANSFER',
-    reference_id: transfer.id,
-    created_by: user?.id,
-  });
-}
+import { useDeliveredSummary } from '@/hooks/useDeliveredOrders';
 ```
 
-### Database Migration (Data Cleanup)
+**2. Call the summary hook with appropriate filters**
 
-```sql
--- 1. Delete the incorrect TRANSFER_IN movements for derrick→Qi Xiu transfer
-DELETE FROM stock_movements 
-WHERE reference_id = 'e4e4f54b-2234-49bb-988c-ae2abe6b3302'
-  AND movement_type = 'TRANSFER_IN';
+```typescript
+// Create params for summary based on role
+const summaryParams = useMemo(() => {
+  if (role === 'runner') {
+    return { runnerId: user?.id };
+  }
+  if (role === 'salesperson') {
+    return { salespersonId: user?.id };
+  }
+  if (role === 'manager' && salespersonIds?.length > 0) {
+    return { salespersonIds };
+  }
+  return {}; // admin - get all
+}, [role, user?.id, salespersonIds]);
 
--- 2. Insert correct TRANSFER_OUT for derrick using derrick's product IDs
-INSERT INTO stock_movements (warehouse_id, product_id, movement_type, qty_change, reference_type, reference_id, created_by)
-VALUES 
-  -- AKO02: derrick's product e3221a91-..., qty -51
-  ('609314cd-1dc8-428f-95ce-cf9b151b013b', 'e3221a91-2b20-4c04-9e19-0cafd24f501c', 'TRANSFER_OUT', -51, 'STOCK_TRANSFER', 'e4e4f54b-2234-49bb-988c-ae2abe6b3302', (SELECT id FROM profiles WHERE display_name = 'Admin' LIMIT 1)),
-  -- AKOG01: derrick's product d960b39a-..., qty -159
-  ('609314cd-1dc8-428f-95ce-cf9b151b013b', 'd960b39a-5187-4869-bba4-85f487329b83', 'TRANSFER_OUT', -159, 'STOCK_TRANSFER', 'e4e4f54b-2234-49bb-988c-ae2abe6b3302', (SELECT id FROM profiles WHERE display_name = 'Admin' LIMIT 1)),
-  -- JP01: derrick's product 6a858f77-..., qty -144
-  ('609314cd-1dc8-428f-95ce-cf9b151b013b', '6a858f77-4a5e-400c-b464-b28c065def06', 'TRANSFER_OUT', -144, 'STOCK_TRANSFER', 'e4e4f54b-2234-49bb-988c-ae2abe6b3302', (SELECT id FROM profiles WHERE display_name = 'Admin' LIMIT 1)),
-  -- JPGO1: derrick's product 87857048-..., qty -77
-  ('609314cd-1dc8-428f-95ce-cf9b151b013b', '87857048-afb7-4cce-a7e7-a25807dc8190', 'TRANSFER_OUT', -77, 'STOCK_TRANSFER', 'e4e4f54b-2234-49bb-988c-ae2abe6b3302', (SELECT id FROM profiles WHERE display_name = 'Admin' LIMIT 1));
+const { data: summary, isLoading: summaryLoading } = useDeliveredSummary(summaryParams);
+```
 
--- 3. Insert correct TRANSFER_IN for Qi Xiu using Qi Xiu's product IDs
-INSERT INTO stock_movements (warehouse_id, product_id, movement_type, qty_change, reference_type, reference_id, created_by)
-SELECT 
-  (SELECT id FROM warehouses WHERE owner_user_id = '357b8426-7509-4110-b023-1f352670c8e8' AND is_active = true),
-  p.id,
-  'TRANSFER_IN',
-  CASE p.sku_code 
-    WHEN 'AKO02' THEN 51
-    WHEN 'AKOG01' THEN 159
-    WHEN 'JP01' THEN 144
-    WHEN 'JPGO1' THEN 77
-  END,
-  'STOCK_TRANSFER',
-  'e4e4f54b-2234-49bb-988c-ae2abe6b3302',
-  (SELECT id FROM profiles WHERE display_name ILIKE '%admin%' LIMIT 1)
-FROM products p
-WHERE p.owner_user_id = '357b8426-7509-4110-b023-1f352670c8e8'
-  AND p.sku_code IN ('AKO02', 'AKOG01', 'JP01', 'JPGO1');
+**3. Update the stats cards to use summary data**
 
--- 4. Update stock_transfer_items to use derrick's product IDs
-UPDATE stock_transfer_items sti
-SET product_id = (
-  SELECT dp.id 
-  FROM products dp 
-  WHERE dp.owner_user_id = 'b58df4aa-edc6-40ba-baa4-7ebc64124c13'
-    AND dp.sku_code = (SELECT sku_code FROM products WHERE id = sti.product_id)
-)
-WHERE transfer_id = 'e4e4f54b-2234-49bb-988c-ae2abe6b3302';
+```typescript
+// Before (wrong - calculated from limited query)
+<div className="text-2xl font-bold text-green-600">{deliveredOrders.length}</div>
+
+// After (correct - from database RPC)
+{summaryLoading ? (
+  <Skeleton className="h-8 w-16" />
+) : (
+  <div className="text-2xl font-bold text-green-600">{summary?.total_delivered ?? 0}</div>
+)}
+```
+
+**4. Apply same pattern to Pending Claim and Total Value**
+
+```typescript
+// Pending Claim
+<div className="text-2xl font-bold">
+  {summaryLoading ? <Skeleton className="h-8 w-16" /> : summary?.pending_claim ?? 0}
+</div>
+
+// Total Value
+<div className="text-2xl font-bold">
+  {summaryLoading ? <Skeleton className="h-8 w-24" /> : formatBND(summary?.total_amount ?? 0)}
+</div>
 ```
 
 ## Expected Results After Fix
 
-### derrick's Stock Balance
+| Metric | Before | After |
+|--------|--------|-------|
+| Total Delivered | 1000 | 1056 |
+| Pending Claim | 258 | 258 |
+| Total Value | BND 62,780.00 | BND 66,067.00 |
 
-| SKU | Inbound | Delivered | Transfer Out | Balance |
-|-----|---------|-----------|--------------|---------|
-| AKO02 | +179 | -159 | -51 | -31 |
-| AKOG01 | +210 | -63 | -159 | -12 |
-| JP01 | +145 | -6 | -144 | -5 ✓ |
-| JPGO1 | +77 | -2 | -77 | -2 |
+## Loading State Improvements
 
-### Qi Xiu's Stock Balance
+- Stats cards show skeleton loaders while `useDeliveredSummary` loads
+- Order list shows its own loading state via `isLoading` from `useOrders`
+- Both queries run in parallel for faster perceived load time
+- No infinite loading since both queries have proper completion states
 
-| SKU | Transfer In | Balance |
-|-----|-------------|---------|
-| AKO02 | +51 | 51 |
-| AKOG01 | +159 | 159 |
-| JP01 | +144 | 144 |
-| JPGO1 | +77 | 77 |
+## Technical Notes
 
-## Summary
-
-1. **Fix transfer logic** in `useCreateStockTransfer` to store source product IDs and create movements with correct IDs
-2. **Delete bad TRANSFER_IN** movements that used wrong product IDs
-3. **Insert correct TRANSFER_OUT** movements for derrick
-4. **Insert correct TRANSFER_IN** movements for Qi Xiu (using Qi Xiu's product IDs)
-5. **Update transfer items** to reference source product IDs
+- The `get_delivered_summary` RPC is a SECURITY DEFINER function that bypasses RLS for performance
+- It correctly filters by runner_id, salesperson_id, or salesperson_ids array
+- The existing `useOrders` continues to power the order list (limited to 2000 for performance)
+- Stats are independent of the order list query, providing accurate totals even when paginated
