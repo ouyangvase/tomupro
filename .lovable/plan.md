@@ -1,111 +1,177 @@
 
-# Plan: Fix Delivered Orders Stats and Loading Issues
 
-## Problem Summary
+# Plan: Simplify Delivered Orders Export
 
-The "Delivered Orders" page displays incorrect statistics because it calculates them from a limited query result instead of using the existing optimized RPC function.
+## Overview
 
-| Metric | Displayed | Actual (Database) | Issue |
-|--------|-----------|-------------------|-------|
-| Total Delivered | 1000 | 1056 | Truncated by query limit |
-| Pending Claim | 258 | 258 | Coincidentally correct |
-| Total Value | BND 62,780.00 | BND 66,067.00 | Sum of truncated dataset |
+Update the delivered orders export to include only the specific columns requested, with delivery charges looked up based on runner + area combination.
 
-## Root Cause Analysis
+## Requested Export Columns
 
-1. **Stats calculated from limited query**: The page computes stats from `deliveredOrders.length` and `deliveredOrders.reduce()` which only contains ~1000 orders (Supabase default limit)
+| Column | Source |
+|--------|--------|
+| order_ref | `order.order_code` |
+| customer_name | `order.customer_name` |
+| phone | `order.phone` |
+| address | `order.address` |
+| area | `order.area` |
+| salesperson_name | `order.salesperson?.display_name` |
+| delivered_timestamp | `order.delivered_at` or `order.driver_delivered_at` |
+| sku_name | `order_item.product?.sku_name` |
+| qty | `order_item.qty` |
+| total_amount | `order.total_amount` |
+| delivery_charges | Looked up from `delivery_charges` table by runner_id + area |
 
-2. **Existing optimized hook not used**: The `useDeliveredSummary` hook exists in `src/hooks/useDeliveredOrders.ts` and calls the `get_delivered_summary` RPC function which returns accurate counts without limits - but the page doesn't use it
-
-3. **Query limit mismatch**: The `useOrders` hook sets `limit: 2000` but Supabase's default `max-rows` setting may cap it at 1000
-
-## Solution
-
-Modify `RunnerDeliveredOrders.tsx` to:
-1. Import and use `useDeliveredSummary` for accurate stats
-2. Display loading states for stats separately from the order list
-3. Keep using `useOrders` for the paginated order list display
+## Implementation
 
 ### Changes Required
 
 | File | Change |
 |------|--------|
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Import `useDeliveredSummary`, use for KPI cards, add loading states |
+| `src/lib/csv.ts` | Add new `exportDeliveredOrderLines` function with simplified columns + delivery charge lookup |
+| `src/pages/runner/RunnerDeliveredOrders.tsx` | Update export handlers to use the new function |
 
-### Implementation Details
+### Technical Details
 
-**1. Import the summary hook**
+**1. New Export Interface (csv.ts)**
 
 ```typescript
-import { useDeliveredSummary } from '@/hooks/useDeliveredOrders';
+export interface DeliveredOrderLineExport {
+  order_ref: string;
+  customer_name: string;
+  phone: string;
+  address: string;
+  area: string;
+  salesperson_name: string;
+  delivered_timestamp: string;
+  sku_name: string;
+  qty: number;
+  total_amount: number;
+  delivery_charges: number;
+}
 ```
 
-**2. Call the summary hook with appropriate filters**
+**2. New Export Function (csv.ts)**
 
 ```typescript
-// Create params for summary based on role
-const summaryParams = useMemo(() => {
-  if (role === 'runner') {
-    return { runnerId: user?.id };
+export async function exportDeliveredOrderLines(
+  orders: any[],
+  deliveryChargesMap: Map<string, number>, // key: "runnerId:area" -> charge
+  filename: string
+) {
+  const lines: DeliveredOrderLineExport[] = [];
+  
+  for (const order of orders) {
+    const orderItems = order.order_items || [];
+    const chargeKey = `${order.runner_id}:${order.area || ''}`;
+    const deliveryCharge = deliveryChargesMap.get(chargeKey) || 0;
+    
+    if (orderItems.length === 0) {
+      lines.push({
+        order_ref: order.order_code || '',
+        customer_name: order.customer_name || '',
+        phone: order.phone || '',
+        address: order.address || '',
+        area: order.area || '',
+        salesperson_name: order.salesperson?.display_name || '',
+        delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
+        sku_name: '',
+        qty: 0,
+        total_amount: Number(order.total_amount) || 0,
+        delivery_charges: deliveryCharge,
+      });
+    } else {
+      for (const item of orderItems) {
+        lines.push({
+          order_ref: order.order_code || '',
+          customer_name: order.customer_name || '',
+          phone: order.phone || '',
+          address: order.address || '',
+          area: order.area || '',
+          salesperson_name: order.salesperson?.display_name || '',
+          delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
+          sku_name: item.product?.sku_name || item.sku_label || '',
+          qty: item.qty || 0,
+          total_amount: Number(order.total_amount) || 0,
+          delivery_charges: deliveryCharge,
+        });
+      }
+    }
   }
-  if (role === 'salesperson') {
-    return { salespersonId: user?.id };
-  }
-  if (role === 'manager' && salespersonIds?.length > 0) {
-    return { salespersonIds };
-  }
-  return {}; // admin - get all
-}, [role, user?.id, salespersonIds]);
 
-const { data: summary, isLoading: summaryLoading } = useDeliveredSummary(summaryParams);
+  const columns = [
+    { key: 'order_ref', header: 'order_ref' },
+    { key: 'customer_name', header: 'customer_name' },
+    { key: 'phone', header: 'phone' },
+    { key: 'address', header: 'address' },
+    { key: 'area', header: 'area' },
+    { key: 'salesperson_name', header: 'salesperson_name' },
+    { key: 'delivered_timestamp', header: 'delivered_timestamp' },
+    { key: 'sku_name', header: 'sku_name' },
+    { key: 'qty', header: 'qty' },
+    { key: 'total_amount', header: 'total_amount' },
+    { key: 'delivery_charges', header: 'delivery_charges' },
+  ];
+
+  exportToCSV(lines as any, columns, filename);
+}
 ```
 
-**3. Update the stats cards to use summary data**
+**3. Update RunnerDeliveredOrders.tsx**
+
+- Import `useActiveDeliveryCharges` hook
+- Build a delivery charges map from the active charges
+- Update export handlers to pass the map to the new export function
 
 ```typescript
-// Before (wrong - calculated from limited query)
-<div className="text-2xl font-bold text-green-600">{deliveredOrders.length}</div>
+// Fetch active delivery charges for the runner
+const { data: activeCharges = [] } = useActiveDeliveryCharges(
+  role === 'runner' ? user?.id : undefined
+);
 
-// After (correct - from database RPC)
-{summaryLoading ? (
-  <Skeleton className="h-8 w-16" />
-) : (
-  <div className="text-2xl font-bold text-green-600">{summary?.total_delivered ?? 0}</div>
-)}
+// Build lookup map: "runnerId:area" -> charge_amount
+const deliveryChargesMap = useMemo(() => {
+  const map = new Map<string, number>();
+  for (const charge of activeCharges) {
+    map.set(`${charge.runner_id}:${charge.area}`, charge.charge_amount);
+  }
+  return map;
+}, [activeCharges]);
+
+// Updated export handlers
+const handleExportSelected = useCallback(() => {
+  if (exportSelectedIds.size === 0) {
+    toast.error('No orders selected for export');
+    return;
+  }
+  const selectedOrders = deliveredOrders.filter(o => exportSelectedIds.has(o.id));
+  exportDeliveredOrderLines(selectedOrders, deliveryChargesMap, 'delivered_orders_selected');
+  toast.success(`Exported ${exportSelectedIds.size} order(s)`);
+}, [deliveredOrders, exportSelectedIds, deliveryChargesMap]);
+
+const handleExportAll = useCallback(() => {
+  if (deliveredOrders.length === 0) {
+    toast.error('No orders to export');
+    return;
+  }
+  exportDeliveredOrderLines(deliveredOrders, deliveryChargesMap, 'delivered_orders_all');
+  toast.success(`Exported ${deliveredOrders.length} order(s)`);
+}, [deliveredOrders, deliveryChargesMap]);
 ```
 
-**4. Apply same pattern to Pending Claim and Total Value**
+## Export Output Example
 
-```typescript
-// Pending Claim
-<div className="text-2xl font-bold">
-  {summaryLoading ? <Skeleton className="h-8 w-16" /> : summary?.pending_claim ?? 0}
-</div>
-
-// Total Value
-<div className="text-2xl font-bold">
-  {summaryLoading ? <Skeleton className="h-8 w-24" /> : formatBND(summary?.total_amount ?? 0)}
-</div>
+```text
+order_ref,customer_name,phone,address,area,salesperson_name,delivered_timestamp,sku_name,qty,total_amount,delivery_charges
+"ORD-001","John Doe","555-1234","123 Main St","Downtown","Alice","2024-01-15T10:30:00","Widget A",2,59.98,5.00
+"ORD-001","John Doe","555-1234","123 Main St","Downtown","Alice","2024-01-15T10:30:00","Widget B",1,59.98,5.00
+"ORD-002","Jane Smith","555-5678","456 Oak Ave","Uptown","Bob","2024-01-15T11:00:00","Premium Pack",1,99.99,8.00
 ```
 
-## Expected Results After Fix
+## Notes
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Total Delivered | 1000 | 1056 |
-| Pending Claim | 258 | 258 |
-| Total Value | BND 62,780.00 | BND 66,067.00 |
+- The `total_amount` is the order total (same for all line items in an order)
+- The `delivery_charges` is looked up by runner_id + area from active approved charges
+- If no delivery charge is configured for the area, it defaults to 0
+- Each order item gets its own row with qty for that specific SKU
 
-## Loading State Improvements
-
-- Stats cards show skeleton loaders while `useDeliveredSummary` loads
-- Order list shows its own loading state via `isLoading` from `useOrders`
-- Both queries run in parallel for faster perceived load time
-- No infinite loading since both queries have proper completion states
-
-## Technical Notes
-
-- The `get_delivered_summary` RPC is a SECURITY DEFINER function that bypasses RLS for performance
-- It correctly filters by runner_id, salesperson_id, or salesperson_ids array
-- The existing `useOrders` continues to power the order list (limited to 2000 for performance)
-- Stats are independent of the order list query, providing accurate totals even when paginated
