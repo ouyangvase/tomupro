@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Trash2 } from 'lucide-react';
 import { useCreateStockTransfer } from '@/hooks/useStockVisibility';
 import { useWarehouses, useStockBalance } from '@/hooks/useInventory';
-import { useProductsByOwner } from '@/hooks/useProductsByOwner';
 import type { TransferItemInput } from '@/types/stock-visibility';
 
 interface StockTransferDialogProps {
@@ -25,9 +24,22 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
   const [items, setItems] = useState<(TransferItemInput & { key: string })[]>([]);
   
   const { data: warehouses = [] } = useWarehouses();
-  const { data: products = [] } = useProductsByOwner(fromOwnerId || null);
   const { data: stockBalance = [] } = useStockBalance();
   const createTransfer = useCreateStockTransfer();
+  
+  // Derive available products from stock balance (only products with stock > 0)
+  const availableProducts = useMemo(() => {
+    if (!fromOwnerId) return [];
+    
+    return stockBalance
+      .filter(s => s.owner_user_id === fromOwnerId && Number(s.balance_qty) > 0)
+      .map(s => ({
+        id: s.product_id,
+        sku_code: s.sku_code,
+        sku_name: s.sku_name,
+        balance: Number(s.balance_qty)
+      }));
+  }, [stockBalance, fromOwnerId]);
   
   const fromWarehouse = warehouses.find(w => w.owner_user_id === fromOwnerId);
   const toWarehouse = warehouses.find(w => w.owner_user_id === toOwnerId);
@@ -174,9 +186,9 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
                             <SelectValue placeholder="Select product" />
                           </SelectTrigger>
                         <SelectContent>
-                            {products.map(p => (
+                            {availableProducts.map(p => (
                               <SelectItem key={p.id} value={p.id}>
-                                {p.sku_code ? `${p.sku_code} - ` : ''}{p.sku_name}
+                                {p.sku_code ? `${p.sku_code} - ` : ''}{p.sku_name} ({p.balance})
                               </SelectItem>
                             ))}
                           </SelectContent>
