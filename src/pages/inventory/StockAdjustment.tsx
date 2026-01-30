@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWarehouses, useStockBalance } from '@/hooks/useInventory';
-import { useProducts } from '@/hooks/useProducts';
 import { useCreateStockMovement } from '@/hooks/useStockMovements';
 import { useUploadAttachment } from '@/hooks/useAttachments';
 import { logAudit } from '@/hooks/useAuditLogs';
@@ -78,7 +77,6 @@ export default function StockAdjustment() {
   const { role, user } = useAuth();
   const { toast } = useToast();
   const { data: warehouses } = useWarehouses();
-  const { data: products } = useProducts();
   const { data: stockBalance } = useStockBalance();
   const { data: recentAdjustments } = useRecentAdjustments();
   const createMovement = useCreateStockMovement();
@@ -95,6 +93,31 @@ export default function StockAdjustment() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isAdmin = role === 'admin';
+
+  // Get selected warehouse to filter products
+  const selectedWarehouse = warehouses?.find(w => w.id === warehouseId);
+
+  // Filter products to only show those owned by the warehouse owner
+  // This uses stock balance which already joins products with correct ownership
+  const availableProducts = useMemo(() => {
+    if (!warehouseId || !selectedWarehouse) return [];
+    
+    // Get unique products from stock balance for this warehouse owner
+    const ownerProducts = new Map<string, { id: string; sku_code: string | null; sku_name: string; balance: number }>();
+    
+    stockBalance?.forEach(s => {
+      if (s.owner_user_id === selectedWarehouse.owner_user_id) {
+        ownerProducts.set(s.product_id, {
+          id: s.product_id,
+          sku_code: s.sku_code,
+          sku_name: s.sku_name,
+          balance: Number(s.balance_qty)
+        });
+      }
+    });
+    
+    return Array.from(ownerProducts.values());
+  }, [stockBalance, warehouseId, selectedWarehouse]);
 
   // Get current balance for selected product/warehouse
   const currentBalance = stockBalance?.find(
@@ -161,7 +184,7 @@ export default function StockAdjustment() {
           warehouse_id: warehouseId,
           warehouse_name: warehouses?.find(w => w.id === warehouseId)?.name,
           product_id: productId,
-          product_name: products?.find(p => p.id === productId)?.sku_name,
+          product_name: availableProducts?.find(p => p.id === productId)?.sku_name,
           qty_change: qty,
           movement_type: movementType,
           reason,
@@ -172,7 +195,7 @@ export default function StockAdjustment() {
 
       toast({ 
         title: movementType === 'RETURN' ? 'Return recorded' : 'Stock adjustment recorded',
-        description: `${qty > 0 ? '+' : ''}${qty} units for ${products?.find(p => p.id === productId)?.sku_name}`,
+        description: `${qty > 0 ? '+' : ''}${qty} units for ${availableProducts?.find(p => p.id === productId)?.sku_name}`,
       });
 
       // Reset form
@@ -189,9 +212,10 @@ export default function StockAdjustment() {
     }
   };
 
-  const getProductName = (productId: string) => {
-    const product = products?.find(p => p.id === productId);
-    return product ? `${product.sku_name}${product.sku_code ? ` (${product.sku_code})` : ''}` : '-';
+  const getProductName = (prodId: string) => {
+    // For recent adjustments, look up from stock balance which has all products
+    const stockItem = stockBalance?.find(s => s.product_id === prodId);
+    return stockItem ? `${stockItem.sku_name}${stockItem.sku_code ? ` (${stockItem.sku_code})` : ''}` : '-';
   };
 
   const getWarehouseName = (warehouseId: string) => {
@@ -232,7 +256,13 @@ export default function StockAdjustment() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Warehouse *</Label>
-                <Select value={warehouseId} onValueChange={setWarehouseId}>
+                <Select 
+                  value={warehouseId} 
+                  onValueChange={(v) => {
+                    setWarehouseId(v);
+                    setProductId(''); // Reset product when warehouse changes
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select warehouse..." />
                   </SelectTrigger>
@@ -258,7 +288,7 @@ export default function StockAdjustment() {
                     >
                       {productId
                         ? (() => {
-                            const p = products?.find((p) => p.id === productId);
+                            const p = availableProducts?.find((p) => p.id === productId);
                             return p ? `${p.sku_name}${p.sku_code ? ` • ${p.sku_code}` : ''}` : 'Select product...';
                           })()
                         : 'Select product...'}
@@ -269,9 +299,9 @@ export default function StockAdjustment() {
                     <Command>
                       <CommandInput placeholder="Search by SKU or name..." />
                       <CommandList>
-                        <CommandEmpty>No product found.</CommandEmpty>
+                        <CommandEmpty>{warehouseId ? 'No products with stock found for this warehouse owner.' : 'Select a warehouse first.'}</CommandEmpty>
                         <CommandGroup>
-                          {products?.filter(p => p.is_active).map((p) => (
+                          {availableProducts?.map((p) => (
                             <CommandItem
                               key={p.id}
                               value={`${p.sku_name} ${p.sku_code || ''}`}
@@ -287,6 +317,7 @@ export default function StockAdjustment() {
                                 )}
                               />
                               {p.sku_name} {p.sku_code && `• ${p.sku_code}`}
+                              <span className="ml-auto text-xs text-muted-foreground">({p.balance})</span>
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -436,7 +467,7 @@ export default function StockAdjustment() {
             </p>
             <p>
               <strong>Product:</strong>{' '}
-              {products?.find(p => p.id === productId)?.sku_name}
+              {availableProducts?.find(p => p.id === productId)?.sku_name}
             </p>
             <p>
               <strong>Type:</strong>{' '}
