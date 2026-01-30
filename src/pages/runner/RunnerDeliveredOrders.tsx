@@ -22,7 +22,8 @@ import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
 import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2 } from 'lucide-react';
-import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
+import { exportDeliveredOrderLines } from '@/lib/csv';
+import { useActiveDeliveryCharges } from '@/hooks/useDeliveryCharges';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -129,6 +130,20 @@ export default function RunnerDeliveredOrders() {
   const { data: products = [] } = useProducts();
   // Only fetch claim batches for runner role (they're the ones who claim)
   const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : undefined);
+  
+  // Fetch active delivery charges for runner (for export)
+  const { data: activeCharges = [] } = useActiveDeliveryCharges(
+    role === 'runner' ? user?.id : undefined
+  );
+  
+  // Build delivery charges lookup map: "runnerId:area" -> charge_amount
+  const deliveryChargesMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const charge of activeCharges) {
+      map.set(`${charge.runner_id}:${charge.area}`, charge.charge_amount);
+    }
+    return map;
+  }, [activeCharges]);
   
   // Create summary params based on role for accurate server-side stats
   const summaryParams = useMemo(() => {
@@ -273,20 +288,19 @@ export default function RunnerDeliveredOrders() {
       toast.error('No orders selected for export');
       return;
     }
-    const success = exportSelectedOrderLines(deliveredOrders, Array.from(exportSelectedIds), 'delivered_orders_selected');
-    if (success) {
-      toast.success(`Exported ${exportSelectedIds.size} order(s)`);
-    }
-  }, [deliveredOrders, exportSelectedIds]);
+    const selectedOrders = deliveredOrders.filter(o => exportSelectedIds.has(o.id));
+    exportDeliveredOrderLines(selectedOrders, deliveryChargesMap, 'delivered_orders_selected');
+    toast.success(`Exported ${exportSelectedIds.size} order(s)`);
+  }, [deliveredOrders, exportSelectedIds, deliveryChargesMap]);
 
   const handleExportAll = useCallback(() => {
     if (deliveredOrders.length === 0) {
       toast.error('No orders to export');
       return;
     }
-    exportOrderLines(deliveredOrders, 'delivered_orders_all');
+    exportDeliveredOrderLines(deliveredOrders, deliveryChargesMap, 'delivered_orders_all');
     toast.success(`Exported ${deliveredOrders.length} order(s)`);
-  }, [deliveredOrders]);
+  }, [deliveredOrders, deliveryChargesMap]);
 
   // Handle bulk claim submission
   const handleBulkClaimSubmit = async (exchangeRate: number, note?: string) => {
