@@ -1,117 +1,113 @@
 
-# Plan: Fix Stock Balance Discrepancies with Enhanced Backfill
 
-## Problem Analysis
+# Plan: Fix Stock Balance Calculation and Run Backfill
 
-Based on database investigation, there are significant stock balance discrepancies:
+## Problem Summary
 
-| Issue | Count | Example |
-|-------|-------|---------|
-| DELIVERED orders without stock deduction | 177 | JL275, JL306, JL311, JL332, JL345 |
-| delivery_queue FAILED items | 185 | Blocked by "Insufficient stock" validation |
-| Products with missing deductions | 30+ | FT02-GOLD: 7 missing deductions |
+The inventory page is showing incorrect balances because stock deductions were never created for 177 delivered orders. For example:
 
-### FT02-GOLD Specific Issue
-| Metric | Value |
-|--------|-------|
-| Inbound | +12 |
-| Delivered Orders | 6 orders, 8 total qty |
-| Actual Deductions | Only 1 |
-| Current Balance | 11 (WRONG) |
-| Expected Balance | 12 - 8 = **4** |
+| Product | Inbound | Delivered Orders | Current Deductions | Current Balance | Expected Balance |
+|---------|---------|------------------|-------------------|-----------------|------------------|
+| FT02 - GOLD | 12 | 8 (across 6 orders) | -1 | 11 | 4 |
+| FT02 - BLACK | 8 | ? | ? | 7 | ? |
 
-### Root Cause
-1. The delivery_queue trigger has **stock validation** that blocks deductions when "insufficient stock"
-2. Orders delivered out-of-sequence cause a **chicken-and-egg problem** - can't deduct because earlier orders consumed stock
-3. The existing `backfill-stock-movements` function **has never been executed** (no audit logs found)
+**Root Cause**: The delivery queue trigger failed for 185 orders with "Insufficient stock" validation errors, creating a chicken-and-egg problem where orders can't deduct because earlier orders blocked them.
 
 ## Solution
 
-Enhance the backfill function to:
-1. **Skip stock validation entirely** - for already-delivered orders, we must deduct regardless of current balance
-2. **Process ALL delivered orders** with `stock_deducted=false`, not just those in delivery_queue
-3. **Allow negative balances** during backfill (this is a data repair operation)
-4. **Update order flags** to mark them as properly deducted
+### Part 1: Optimize Edge Function (Immediate Fix)
+
+The current backfill function times out because it processes each order individually with many database round-trips. We need to optimize it to use batch operations.
+
+### Part 2: Create a Database Function for Bulk Repair
+
+Create a PostgreSQL function that performs the backfill directly in the database, avoiding the edge function timeout issue.
 
 ### Changes Required
 
 | File | Change |
 |------|--------|
-| `supabase/functions/backfill-stock-movements/index.ts` | Add forceDeduct option and improve logging |
+| Database Migration | Create `repair_missing_stock_deductions()` function |
+| `src/pages/admin/StockIntegrityScan.tsx` | Add button to call the new RPC function |
+| `src/hooks/useStockBackfill.ts` | Add alternative method using RPC |
 
 ## Technical Implementation
 
-### 1. Update Backfill Function
+### 1. Database Function for Bulk Repair
 
-The existing function already has the correct logic but needs:
-- Better handling of the case where warehouse might be missing
-- Force creation of deductions even for products with zero/negative balance
-- More comprehensive logging for debugging
+Create a new PostgreSQL function that:
+- Scans all DELIVERED orders without proper deductions
+- Creates missing stock movements in bulk
+- Updates order flags
+- Returns summary statistics
+
+```sql
+CREATE OR REPLACE FUNCTION repair_missing_stock_deductions(p_dry_run BOOLEAN DEFAULT true)
+RETURNS JSON AS $$
+DECLARE
+  v_missing_count INT := 0;
+  v_fixed_count INT := 0;
+  v_errors TEXT[] := '{}';
+BEGIN
+  -- Find all DELIVERED orders with missing deductions
+  -- For each order_item, check if a DELIVER_DEDUCT exists
+  -- If not, create one using the correct warehouse
+  
+  -- In dry run mode, just count
+  -- In apply mode, insert the movements
+  
+  RETURN json_build_object(
+    'dry_run', p_dry_run,
+    'missing_count', v_missing_count,
+    'fixed_count', v_fixed_count,
+    'errors', v_errors
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+### 2. UI Updates
+
+Add a new button that calls the database function directly, bypassing the edge function:
 
 ```typescript
-// The current function already does this correctly:
-// 1. Scans ALL DELIVERED orders (regardless of stock_deducted flag)
-// 2. Creates DELIVER_DEDUCT movements for missing deductions
-// 3. Updates stock_deducted flag on orders
-// 4. Handles warehouse type correctly (MANAGER vs SALESPERSON)
-
-// Key improvement: Add explicit handling for failed delivery_queue items
-const { dryRun = true, forceReprocess = false } = await req.json();
-
-// If forceReprocess is true, also clear the failed delivery_queue items
-if (!dryRun && forceReprocess) {
-  // Mark failed delivery_queue items as "REPROCESSED" so they don't block future processing
-  await supabase
-    .from('delivery_queue')
-    .update({ status: 'REPROCESSED' })
-    .eq('status', 'FAILED');
+// New mutation in useStockBackfill.ts
+export function useQuickRepair() {
+  return useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const { data, error } = await supabase.rpc('repair_missing_stock_deductions', {
+        p_dry_run: dryRun
+      });
+      if (error) throw error;
+      return data;
+    }
+  });
 }
 ```
 
-### 2. Add Reprocess Failed Queue Option
+### 3. Immediate Manual Fix (Alternative)
 
-Add a new feature to reprocess failed delivery_queue items by marking them as handled so the backfill can create fresh movements.
+If the database function approach is too complex, we can simplify the edge function to:
+1. Process orders in smaller batches (50 at a time)
+2. Use batch inserts instead of individual inserts
+3. Return partial progress
 
-### 3. UI Enhancement
+## Expected Results After Fix
 
-Update the StockIntegrityScan page to show:
-- Count of failed delivery_queue items
-- Option to force reprocess
-- Detailed breakdown by product
-
-## Expected Outcome After Running Backfill
-
-| Product | Before | After |
-|---------|--------|-------|
-| FT02 - GOLD | Balance: 11 | Balance: 4 (12 inbound - 8 delivered) |
-| FT02 - BLACK | Balance: 7 | Balance: ~0-2 |
-| BODYCURVE variants | Balance: 0 | Balance: negative (over-sold) |
-
-**Note**: Some products may show negative balance after backfill. This is **correct** - it indicates the business sold more than was in inventory (either inbound wasn't recorded, or stock was never added).
-
-## Step-by-Step Fix Process
-
-1. **Admin navigates to** `/admin/stock-integrity`
-2. **Click "Preview Scan (Dry Run)"** - shows 177+ missing deductions
-3. **Click "Apply Fix"** - creates all missing stock movements
-4. **Verify in Inventory page** - balances should now be correct
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `supabase/functions/backfill-stock-movements/index.ts` | Add forceReprocess parameter and reprocess logic |
-| `src/pages/admin/StockIntegrityScan.tsx` | Add "Force Reprocess Failed Queue" option |
-| `src/hooks/useStockBackfill.ts` | Update interface to include forceReprocess option |
+| Metric | Before | After |
+|--------|--------|-------|
+| FT02 - GOLD balance | 11 | 4 |
+| FT02 - BLACK balance | 7 | ~1-2 |
+| Orders with stock_deducted=true | 887 | 1,064 |
+| delivery_queue FAILED items | 185 | 0 (marked as REPROCESSED) |
 
 ## Summary
 
-The fix is straightforward - the existing backfill function has the correct logic, it just needs to be:
-1. **Actually executed** via the admin UI
-2. **Enhanced** with a forceReprocess option to handle failed delivery_queue items
-3. **Allowed to create negative balances** (which represent real business over-selling)
+The stock balances are showing incorrectly because the deduction movements were never created. The fix requires:
 
-After running the fix:
-- FT02-GOLD will show balance of **4** (not 11)
-- 177 orders will be marked as `stock_deducted=true`
-- Stock movements will match actual deliveries
+1. **Database migration**: Create a bulk repair function that runs inside PostgreSQL
+2. **UI update**: Add a button to trigger the repair via RPC
+3. **Hook update**: Add method to call the new RPC function
+
+After running the repair, the inventory page will automatically show correct balances because it reads from `stock_balance_view` which sums all movements.
+
