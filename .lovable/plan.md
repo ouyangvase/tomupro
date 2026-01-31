@@ -1,263 +1,117 @@
 
+# Plan: Fix Stock Balance Discrepancies with Enhanced Backfill
 
-# Plan: Stock Balance Scan and Repair System
+## Problem Analysis
 
-## Problem Summary
+Based on database investigation, there are significant stock balance discrepancies:
 
-Based on database analysis, there are significant stock inconsistencies:
+| Issue | Count | Example |
+|-------|-------|---------|
+| DELIVERED orders without stock deduction | 177 | JL275, JL306, JL311, JL332, JL345 |
+| delivery_queue FAILED items | 185 | Blocked by "Insufficient stock" validation |
+| Products with missing deductions | 30+ | FT02-GOLD: 7 missing deductions |
 
-| Status | Count | Issue |
-|--------|-------|-------|
-| DELIVERED orders with `stock_deducted=true` | 887 | Correct |
-| DELIVERED orders with `stock_deducted=false` | 177 | Missing deductions |
-| delivery_queue FAILED items | 185 | Blocked due to validation errors |
-| Total stock movements | 1,353 | Inconsistent with order count |
+### FT02-GOLD Specific Issue
+| Metric | Value |
+|--------|-------|
+| Inbound | +12 |
+| Delivered Orders | 6 orders, 8 total qty |
+| Actual Deductions | Only 1 |
+| Current Balance | 11 (WRONG) |
+| Expected Balance | 12 - 8 = **4** |
 
-**Example**: FT02 - GOLD (LUXECARVE BANGLE) has:
-- Inbound: +12 units
-- Deductions: Only -1 (SALE_DEDUCT)
-- Current balance: 11 units
-- Actual delivered via orders: 8 units
-- **Missing deductions: ~7 units**
+### Root Cause
+1. The delivery_queue trigger has **stock validation** that blocks deductions when "insufficient stock"
+2. Orders delivered out-of-sequence cause a **chicken-and-egg problem** - can't deduct because earlier orders consumed stock
+3. The existing `backfill-stock-movements` function **has never been executed** (no audit logs found)
 
-## Solution Overview
+## Solution
 
-Create an admin-accessible Stock Integrity Scan feature that:
-1. Runs a full inventory audit via the existing `backfill-stock-movements` edge function
-2. Provides dry-run capability to preview changes before applying
-3. Shows detailed results in the admin UI
-4. Allows triggering the repair with one click
+Enhance the backfill function to:
+1. **Skip stock validation entirely** - for already-delivered orders, we must deduct regardless of current balance
+2. **Process ALL delivered orders** with `stock_deducted=false`, not just those in delivery_queue
+3. **Allow negative balances** during backfill (this is a data repair operation)
+4. **Update order flags** to mark them as properly deducted
 
 ### Changes Required
 
 | File | Change |
 |------|--------|
-| `src/pages/admin/ReconciliationAdmin.tsx` | Add "Stock Integrity Scan" section with scan/repair buttons |
-| `src/hooks/useStockBackfill.ts` (new) | Hook to call backfill edge function with dry-run toggle |
+| `supabase/functions/backfill-stock-movements/index.ts` | Add forceDeduct option and improve logging |
 
-## Implementation Details
+## Technical Implementation
 
-### 1. New Hook: useStockBackfill
+### 1. Update Backfill Function
+
+The existing function already has the correct logic but needs:
+- Better handling of the case where warehouse might be missing
+- Force creation of deductions even for products with zero/negative balance
+- More comprehensive logging for debugging
 
 ```typescript
-// src/hooks/useStockBackfill.ts
-import { useMutation } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+// The current function already does this correctly:
+// 1. Scans ALL DELIVERED orders (regardless of stock_deducted flag)
+// 2. Creates DELIVER_DEDUCT movements for missing deductions
+// 3. Updates stock_deducted flag on orders
+// 4. Handles warehouse type correctly (MANAGER vs SALESPERSON)
 
-interface BackfillResult {
-  success: boolean;
-  dryRun: boolean;
-  message: string;
-  results: {
-    deliveredOrdersScanned: number;
-    deliveredNotDeductedFixed: number;
-    missingDeductionsCreated: number;
-    duplicateDeductionsReversed: number;
-    failedOrdersScanned: number;
-    missingReturnsCreated: number;
-    duplicateReturnsReversed: number;
-    warehouseTypeMismatches: number;
-    errors: string[];
-    fixedOrders: string[];
-  };
-}
+// Key improvement: Add explicit handling for failed delivery_queue items
+const { dryRun = true, forceReprocess = false } = await req.json();
 
-export function useStockBackfill() {
-  return useMutation({
-    mutationFn: async (dryRun: boolean = true): Promise<BackfillResult> => {
-      const { data, error } = await supabase.functions.invoke('backfill-stock-movements', {
-        body: { dryRun }
-      });
-      
-      if (error) throw new Error(error.message);
-      return data as BackfillResult;
-    },
-    onSuccess: (data) => {
-      if (data.dryRun) {
-        toast.info(`Dry run complete. Found ${data.results.missingDeductionsCreated} missing deductions.`);
-      } else {
-        toast.success(`Repair complete. Fixed ${data.results.missingDeductionsCreated} deductions.`);
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(`Stock scan failed: ${error.message}`);
-    },
-  });
+// If forceReprocess is true, also clear the failed delivery_queue items
+if (!dryRun && forceReprocess) {
+  // Mark failed delivery_queue items as "REPROCESSED" so they don't block future processing
+  await supabase
+    .from('delivery_queue')
+    .update({ status: 'REPROCESSED' })
+    .eq('status', 'FAILED');
 }
 ```
 
-### 2. Update ReconciliationAdmin.tsx
+### 2. Add Reprocess Failed Queue Option
 
-Add a new "Stock Integrity" section with:
+Add a new feature to reprocess failed delivery_queue items by marking them as handled so the backfill can create fresh movements.
 
-```typescript
-// New UI section in ReconciliationAdmin.tsx
+### 3. UI Enhancement
 
-// State
-const [scanResults, setScanResults] = useState<BackfillResult | null>(null);
-const { mutate: runBackfill, isPending: isScanning } = useStockBackfill();
+Update the StockIntegrityScan page to show:
+- Count of failed delivery_queue items
+- Option to force reprocess
+- Detailed breakdown by product
 
-// Handlers
-const handleDryRun = () => {
-  runBackfill(true, {
-    onSuccess: (data) => setScanResults(data)
-  });
-};
+## Expected Outcome After Running Backfill
 
-const handleApplyFix = () => {
-  runBackfill(false, {
-    onSuccess: (data) => {
-      setScanResults(data);
-      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
-      queryClient.invalidateQueries({ queryKey: ['filtered-stock-balance'] });
-    }
-  });
-};
+| Product | Before | After |
+|---------|--------|-------|
+| FT02 - GOLD | Balance: 11 | Balance: 4 (12 inbound - 8 delivered) |
+| FT02 - BLACK | Balance: 7 | Balance: ~0-2 |
+| BODYCURVE variants | Balance: 0 | Balance: negative (over-sold) |
 
-// UI Component
-<Card>
-  <CardHeader>
-    <CardTitle className="flex items-center gap-2">
-      <Database className="h-5 w-5" />
-      Stock Integrity Scan
-    </CardTitle>
-    <CardDescription>
-      Scan all delivered orders and ensure stock movements are correctly recorded
-    </CardDescription>
-  </CardHeader>
-  <CardContent className="space-y-4">
-    <div className="flex gap-2">
-      <Button 
-        variant="outline" 
-        onClick={handleDryRun}
-        disabled={isScanning}
-      >
-        <Search className="h-4 w-4 mr-2" />
-        {isScanning ? 'Scanning...' : 'Preview Scan (Dry Run)'}
-      </Button>
-      
-      {scanResults && !scanResults.dryRun && (
-        <Badge variant="success">
-          Last repair: {scanResults.results.missingDeductionsCreated} fixed
-        </Badge>
-      )}
-    </div>
-    
-    {/* Results Display */}
-    {scanResults && (
-      <div className="border rounded-lg p-4 space-y-4 bg-muted/50">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <p className="text-sm text-muted-foreground">Orders Scanned</p>
-            <p className="text-2xl font-bold">{scanResults.results.deliveredOrdersScanned}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Missing Deductions</p>
-            <p className="text-2xl font-bold text-orange-500">
-              {scanResults.results.missingDeductionsCreated}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Duplicates Found</p>
-            <p className="text-2xl font-bold">
-              {scanResults.results.duplicateDeductionsReversed}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Warehouse Mismatches</p>
-            <p className="text-2xl font-bold">
-              {scanResults.results.warehouseTypeMismatches}
-            </p>
-          </div>
-        </div>
-        
-        {/* Errors */}
-        {scanResults.results.errors.length > 0 && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Errors Found ({scanResults.results.errors.length})</AlertTitle>
-            <AlertDescription>
-              <ul className="text-xs mt-2 space-y-1 max-h-32 overflow-y-auto">
-                {scanResults.results.errors.slice(0, 10).map((err, i) => (
-                  <li key={i}>{err}</li>
-                ))}
-                {scanResults.results.errors.length > 10 && (
-                  <li>...and {scanResults.results.errors.length - 10} more</li>
-                )}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
-        
-        {/* Apply Fix Button */}
-        {scanResults.dryRun && scanResults.results.missingDeductionsCreated > 0 && (
-          <Button 
-            variant="destructive" 
-            onClick={handleApplyFix}
-            disabled={isScanning}
-          >
-            <Wrench className="h-4 w-4 mr-2" />
-            Apply Fix ({scanResults.results.missingDeductionsCreated} deductions)
-          </Button>
-        )}
-        
-        {!scanResults.dryRun && (
-          <Alert>
-            <CheckCircle className="h-4 w-4" />
-            <AlertTitle>Repair Complete</AlertTitle>
-            <AlertDescription>
-              Stock balance has been updated. Refresh the inventory page to see changes.
-            </AlertDescription>
-          </Alert>
-        )}
-      </div>
-    )}
-  </CardContent>
-</Card>
-```
+**Note**: Some products may show negative balance after backfill. This is **correct** - it indicates the business sold more than was in inventory (either inbound wasn't recorded, or stock was never added).
 
-## Visual Flow
+## Step-by-Step Fix Process
 
-```text
-+--------------------------------------------------+
-|  Stock Integrity Scan                             |
-|  Scan all delivered orders and verify stock       |
-|                                                   |
-|  [Preview Scan (Dry Run)]                         |
-|                                                   |
-|  +----------------------------------------------+ |
-|  | Orders Scanned: 1,064                        | |
-|  | Missing Deductions: 177                      | |
-|  | Duplicates Found: 0                          | |
-|  | Warehouse Mismatches: 12                     | |
-|  |                                              | |
-|  | [Apply Fix (177 deductions)]                 | |
-|  +----------------------------------------------+ |
-+--------------------------------------------------+
-```
+1. **Admin navigates to** `/admin/stock-integrity`
+2. **Click "Preview Scan (Dry Run)"** - shows 177+ missing deductions
+3. **Click "Apply Fix"** - creates all missing stock movements
+4. **Verify in Inventory page** - balances should now be correct
 
-## Technical Notes
+## Files to Modify
 
-1. **Edge Function**: The `backfill-stock-movements` function already exists and handles:
-   - Scanning all DELIVERED orders for missing deductions
-   - Creating DELIVER_DEDUCT movements for any missing
-   - Reversing duplicate deductions
-   - Fixing warehouse type mismatches
-   - Scanning FAILED/CANCELLED orders for missing returns
-   - Logging all changes to audit_logs
+| File | Change |
+|------|--------|
+| `supabase/functions/backfill-stock-movements/index.ts` | Add forceReprocess parameter and reprocess logic |
+| `src/pages/admin/StockIntegrityScan.tsx` | Add "Force Reprocess Failed Queue" option |
+| `src/hooks/useStockBackfill.ts` | Update interface to include forceReprocess option |
 
-2. **Dry Run Mode**: When `dryRun=true`, the function calculates what would change but makes no modifications
+## Summary
 
-3. **Idempotency**: The function handles concurrent runs gracefully via unique constraints
+The fix is straightforward - the existing backfill function has the correct logic, it just needs to be:
+1. **Actually executed** via the admin UI
+2. **Enhanced** with a forceReprocess option to handle failed delivery_queue items
+3. **Allowed to create negative balances** (which represent real business over-selling)
 
-4. **Role-Aware**: Uses `get_stock_owner_warehouse` RPC to ensure stock is deducted from the correct warehouse type (MANAGER vs SALESPERSON)
-
-## Expected Results After Running
-
-| Metric | Before | After |
-|--------|--------|-------|
-| DELIVERED orders with proper deduction | 887 | 1,064 |
-| FT02 - GOLD balance | 11 | 3 (12 inbound - 8 delivered - 1 other) |
-| Stock movements accuracy | ~60% | 100% |
-
+After running the fix:
+- FT02-GOLD will show balance of **4** (not 11)
+- 177 orders will be marked as `stock_deducted=true`
+- Stock movements will match actual deliveries
