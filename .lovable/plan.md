@@ -1,240 +1,263 @@
 
 
-# Plan: Add Pagination and Filter-Aware Summary for Delivered Orders
+# Plan: Stock Balance Scan and Repair System
 
 ## Problem Summary
 
-Two issues with the Delivered Orders page:
+Based on database analysis, there are significant stock inconsistencies:
 
-| Issue | Current Behavior | Expected Behavior |
-|-------|-----------------|-------------------|
-| **Performance (lag)** | Loads up to 2000 orders at once, causing UI lag | Load 30 orders per page, fetch on-demand |
-| **Summary cards don't respect filters** | KPI cards show global totals even when filters are active | KPI cards should show totals for filtered data only |
+| Status | Count | Issue |
+|--------|-------|-------|
+| DELIVERED orders with `stock_deducted=true` | 887 | Correct |
+| DELIVERED orders with `stock_deducted=false` | 177 | Missing deductions |
+| delivery_queue FAILED items | 185 | Blocked due to validation errors |
+| Total stock movements | 1,353 | Inconsistent with order count |
+
+**Example**: FT02 - GOLD (LUXECARVE BANGLE) has:
+- Inbound: +12 units
+- Deductions: Only -1 (SALE_DEDUCT)
+- Current balance: 11 units
+- Actual delivered via orders: 8 units
+- **Missing deductions: ~7 units**
 
 ## Solution Overview
 
-### 1. Client-Side Pagination (30 per page)
-- Paginate the already-fetched `deliveredOrders` array client-side
-- Show only 30 orders at a time in the table/card list
-- Provide Previous/Next buttons and page numbers
-- Filters continue to work across the full dataset before pagination
-
-### 2. Filter-Aware Summary Cards
-- When filters are active (search, area, SKU, salesperson, etc.), calculate summaries from the filtered client-side data
-- When no filters are active, use the server-side `useDeliveredSummary` hook for accurate global totals
-- This ensures KPI cards always reflect what the user is looking at
-
-## Implementation Details
+Create an admin-accessible Stock Integrity Scan feature that:
+1. Runs a full inventory audit via the existing `backfill-stock-movements` edge function
+2. Provides dry-run capability to preview changes before applying
+3. Shows detailed results in the admin UI
+4. Allows triggering the repair with one click
 
 ### Changes Required
 
 | File | Change |
 |------|--------|
-| `src/pages/runner/RunnerDeliveredOrders.tsx` | Add pagination state, filter detection, and conditional summary logic |
+| `src/pages/admin/ReconciliationAdmin.tsx` | Add "Stock Integrity Scan" section with scan/repair buttons |
+| `src/hooks/useStockBackfill.ts` (new) | Hook to call backfill edge function with dry-run toggle |
 
-### Technical Implementation
+## Implementation Details
 
-**1. Add Pagination State**
-
-```typescript
-// Pagination constants and state
-const PAGE_SIZE = 30;
-const [currentPage, setCurrentPage] = useState(1);
-
-// Reset to page 1 when filters change
-useEffect(() => {
-  setCurrentPage(1);
-}, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
-```
-
-**2. Calculate Paginated Data**
+### 1. New Hook: useStockBackfill
 
 ```typescript
-// Calculate pagination values
-const totalPages = Math.ceil(deliveredOrders.length / PAGE_SIZE);
-const startIndex = (currentPage - 1) * PAGE_SIZE;
-const endIndex = startIndex + PAGE_SIZE;
-const paginatedOrders = deliveredOrders.slice(startIndex, endIndex);
-```
+// src/hooks/useStockBackfill.ts
+import { useMutation } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
-**3. Detect Active Filters**
+interface BackfillResult {
+  success: boolean;
+  dryRun: boolean;
+  message: string;
+  results: {
+    deliveredOrdersScanned: number;
+    deliveredNotDeductedFixed: number;
+    missingDeductionsCreated: number;
+    duplicateDeductionsReversed: number;
+    failedOrdersScanned: number;
+    missingReturnsCreated: number;
+    duplicateReturnsReversed: number;
+    warehouseTypeMismatches: number;
+    errors: string[];
+    fixedOrders: string[];
+  };
+}
 
-```typescript
-const hasActiveFilters = useMemo(() => {
-  return (
-    searchQuery.trim() !== '' ||
-    areaFilter !== 'all' ||
-    driverFilter !== 'all' ||
-    salespersonFilter !== 'all' ||
-    skuFilter !== 'all' ||
-    claimStatusFilter !== 'all'
-  );
-}, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
-```
-
-**4. Calculate Filtered Summary (Client-Side)**
-
-```typescript
-const filteredSummary = useMemo(() => {
-  if (!hasActiveFilters) return null;
-  
-  const total_delivered = deliveredOrders.length;
-  const pending_claim = deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED').length;
-  const total_amount = deliveredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-  
-  return { total_delivered, pending_claim, total_amount };
-}, [hasActiveFilters, deliveredOrders]);
-```
-
-**5. Use Appropriate Summary in KPI Cards**
-
-```typescript
-// Use filtered summary when filters active, otherwise use server summary
-const displaySummary = hasActiveFilters ? filteredSummary : summary;
-const displaySummaryLoading = hasActiveFilters ? false : summaryLoading;
-```
-
-**6. Add Pagination Controls UI**
-
-```typescript
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-  PaginationEllipsis,
-} from '@/components/ui/pagination';
-
-// Render after the table
-{totalPages > 1 && (
-  <Card className="mt-4">
-    <CardContent className="py-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Showing {startIndex + 1}-{Math.min(endIndex, deliveredOrders.length)} of {deliveredOrders.length} orders
-        </p>
-        <Pagination>
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-              />
-            </PaginationItem>
-            {/* Page numbers with ellipsis logic */}
-            {getPageNumbers(currentPage, totalPages).map((page, i) => (
-              page === '...' ? (
-                <PaginationItem key={`ellipsis-${i}`}>
-                  <PaginationEllipsis />
-                </PaginationItem>
-              ) : (
-                <PaginationItem key={page}>
-                  <PaginationLink
-                    onClick={() => setCurrentPage(page as number)}
-                    isActive={currentPage === page}
-                    className="cursor-pointer"
-                  >
-                    {page}
-                  </PaginationLink>
-                </PaginationItem>
-              )
-            ))}
-            <PaginationItem>
-              <PaginationNext
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      </div>
-    </CardContent>
-  </Card>
-)}
-```
-
-**7. Helper for Page Number Display**
-
-```typescript
-function getPageNumbers(current: number, total: number): (number | '...')[] {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-  
-  if (current <= 3) {
-    return [1, 2, 3, 4, 5, '...', total];
-  }
-  
-  if (current >= total - 2) {
-    return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
-  }
-  
-  return [1, '...', current - 1, current, current + 1, '...', total];
+export function useStockBackfill() {
+  return useMutation({
+    mutationFn: async (dryRun: boolean = true): Promise<BackfillResult> => {
+      const { data, error } = await supabase.functions.invoke('backfill-stock-movements', {
+        body: { dryRun }
+      });
+      
+      if (error) throw new Error(error.message);
+      return data as BackfillResult;
+    },
+    onSuccess: (data) => {
+      if (data.dryRun) {
+        toast.info(`Dry run complete. Found ${data.results.missingDeductionsCreated} missing deductions.`);
+      } else {
+        toast.success(`Repair complete. Fixed ${data.results.missingDeductionsCreated} deductions.`);
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Stock scan failed: ${error.message}`);
+    },
+  });
 }
 ```
 
-**8. Update Table/Card List to Use Paginated Data**
+### 2. Update ReconciliationAdmin.tsx
+
+Add a new "Stock Integrity" section with:
 
 ```typescript
-// Mobile view - use paginatedOrders instead of deliveredOrders
-{paginatedOrders.map((order) => { ... })}
+// New UI section in ReconciliationAdmin.tsx
 
-// Desktop table - use paginatedOrders instead of deliveredOrders
-{paginatedOrders.map((order) => { ... })}
+// State
+const [scanResults, setScanResults] = useState<BackfillResult | null>(null);
+const { mutate: runBackfill, isPending: isScanning } = useStockBackfill();
+
+// Handlers
+const handleDryRun = () => {
+  runBackfill(true, {
+    onSuccess: (data) => setScanResults(data)
+  });
+};
+
+const handleApplyFix = () => {
+  runBackfill(false, {
+    onSuccess: (data) => {
+      setScanResults(data);
+      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['filtered-stock-balance'] });
+    }
+  });
+};
+
+// UI Component
+<Card>
+  <CardHeader>
+    <CardTitle className="flex items-center gap-2">
+      <Database className="h-5 w-5" />
+      Stock Integrity Scan
+    </CardTitle>
+    <CardDescription>
+      Scan all delivered orders and ensure stock movements are correctly recorded
+    </CardDescription>
+  </CardHeader>
+  <CardContent className="space-y-4">
+    <div className="flex gap-2">
+      <Button 
+        variant="outline" 
+        onClick={handleDryRun}
+        disabled={isScanning}
+      >
+        <Search className="h-4 w-4 mr-2" />
+        {isScanning ? 'Scanning...' : 'Preview Scan (Dry Run)'}
+      </Button>
+      
+      {scanResults && !scanResults.dryRun && (
+        <Badge variant="success">
+          Last repair: {scanResults.results.missingDeductionsCreated} fixed
+        </Badge>
+      )}
+    </div>
+    
+    {/* Results Display */}
+    {scanResults && (
+      <div className="border rounded-lg p-4 space-y-4 bg-muted/50">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-sm text-muted-foreground">Orders Scanned</p>
+            <p className="text-2xl font-bold">{scanResults.results.deliveredOrdersScanned}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Missing Deductions</p>
+            <p className="text-2xl font-bold text-orange-500">
+              {scanResults.results.missingDeductionsCreated}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Duplicates Found</p>
+            <p className="text-2xl font-bold">
+              {scanResults.results.duplicateDeductionsReversed}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Warehouse Mismatches</p>
+            <p className="text-2xl font-bold">
+              {scanResults.results.warehouseTypeMismatches}
+            </p>
+          </div>
+        </div>
+        
+        {/* Errors */}
+        {scanResults.results.errors.length > 0 && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Errors Found ({scanResults.results.errors.length})</AlertTitle>
+            <AlertDescription>
+              <ul className="text-xs mt-2 space-y-1 max-h-32 overflow-y-auto">
+                {scanResults.results.errors.slice(0, 10).map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+                {scanResults.results.errors.length > 10 && (
+                  <li>...and {scanResults.results.errors.length - 10} more</li>
+                )}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {/* Apply Fix Button */}
+        {scanResults.dryRun && scanResults.results.missingDeductionsCreated > 0 && (
+          <Button 
+            variant="destructive" 
+            onClick={handleApplyFix}
+            disabled={isScanning}
+          >
+            <Wrench className="h-4 w-4 mr-2" />
+            Apply Fix ({scanResults.results.missingDeductionsCreated} deductions)
+          </Button>
+        )}
+        
+        {!scanResults.dryRun && (
+          <Alert>
+            <CheckCircle className="h-4 w-4" />
+            <AlertTitle>Repair Complete</AlertTitle>
+            <AlertDescription>
+              Stock balance has been updated. Refresh the inventory page to see changes.
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
+    )}
+  </CardContent>
+</Card>
 ```
 
-**9. Update Select All Logic**
+## Visual Flow
 
-The "Select All" checkbox should still select from the full filtered dataset, not just the current page:
-
-```typescript
-// Select all claimable orders (across all pages of filtered data)
-const toggleSelectAll = useCallback(() => {
-  if (selectedIds.size === claimableOrders.length) {
-    setSelectedIds(new Set());
-  } else {
-    setSelectedIds(new Set(claimableOrders.map(o => o.id)));
-  }
-}, [claimableOrders, selectedIds.size]);
+```text
++--------------------------------------------------+
+|  Stock Integrity Scan                             |
+|  Scan all delivered orders and verify stock       |
+|                                                   |
+|  [Preview Scan (Dry Run)]                         |
+|                                                   |
+|  +----------------------------------------------+ |
+|  | Orders Scanned: 1,064                        | |
+|  | Missing Deductions: 177                      | |
+|  | Duplicates Found: 0                          | |
+|  | Warehouse Mismatches: 12                     | |
+|  |                                              | |
+|  | [Apply Fix (177 deductions)]                 | |
+|  +----------------------------------------------+ |
++--------------------------------------------------+
 ```
 
-**10. Update Export to Use Full Filtered Data**
+## Technical Notes
 
-Export handlers continue to use `deliveredOrders` (not paginated) so exports include all filtered records.
+1. **Edge Function**: The `backfill-stock-movements` function already exists and handles:
+   - Scanning all DELIVERED orders for missing deductions
+   - Creating DELIVER_DEDUCT movements for any missing
+   - Reversing duplicate deductions
+   - Fixing warehouse type mismatches
+   - Scanning FAILED/CANCELLED orders for missing returns
+   - Logging all changes to audit_logs
 
-## Visual Changes
+2. **Dry Run Mode**: When `dryRun=true`, the function calculates what would change but makes no modifications
 
-### Before (Single Long Page)
-- All 1000+ orders rendered at once
-- Summary cards always show global totals
-- Page becomes laggy with large datasets
+3. **Idempotency**: The function handles concurrent runs gracefully via unique constraints
 
-### After (Paginated with Filter-Aware Summary)
-- Only 30 orders rendered at a time
-- Pagination controls at bottom: "Showing 1-30 of 1056 orders" with Previous/Next
-- When Area="KB" selected: Summary cards update to show "Total Delivered: 127" instead of "1056"
-- Smooth, responsive UI
+4. **Role-Aware**: Uses `get_stock_owner_warehouse` RPC to ensure stock is deducted from the correct warehouse type (MANAGER vs SALESPERSON)
 
-## Edge Cases Handled
+## Expected Results After Running
 
-| Scenario | Behavior |
-|----------|----------|
-| No filters active | Use server-side summary for accurate global totals |
-| Filters active | Calculate summary from filtered client data |
-| Filter changes | Reset to page 1 automatically |
-| Page beyond range | Clamp to valid page number |
-| Empty results | Show "No delivered orders found" message |
-| Export while paginated | Exports all filtered orders, not just current page |
-| Select All | Selects all claimable orders across all pages |
-
-## Summary
-
-| Feature | Implementation |
-|---------|---------------|
-| **Pagination** | Client-side, 30 per page, with Previous/Next/Page numbers |
-| **Filter-aware summaries** | Conditional: server-side when no filters, client-side when filters active |
-| **Performance** | Only 30 DOM rows rendered at once, reducing lag |
-| **Data integrity** | Full filtered dataset preserved for export and bulk actions |
+| Metric | Before | After |
+|--------|--------|-------|
+| DELIVERED orders with proper deduction | 887 | 1,064 |
+| FT02 - GOLD balance | 11 | 3 (12 inbound - 8 delivered - 1 other) |
+| Stock movements accuracy | ~60% | 100% |
 
