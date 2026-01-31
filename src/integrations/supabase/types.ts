@@ -3624,6 +3624,10 @@ export type Database = {
         Returns: Json
       }
       reopen_rescheduled_orders: { Args: never; Returns: Json }
+      repair_missing_stock_deductions: {
+        Args: { p_dry_run?: boolean }
+        Returns: Json
+      }
       search_visible_orders: {
         Args: { p_limit?: number; p_query: string }
         Returns: {
