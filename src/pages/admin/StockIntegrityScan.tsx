@@ -5,22 +5,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Database, Search, Wrench, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Database, Search, Wrench, CheckCircle, AlertCircle, RefreshCw, Trash2 } from 'lucide-react';
 import { useStockBackfill, BackfillResult } from '@/hooks/useStockBackfill';
 
 export default function StockIntegrityScan() {
   const queryClient = useQueryClient();
   const [scanResults, setScanResults] = useState<BackfillResult | null>(null);
+  const [forceReprocess, setForceReprocess] = useState(true);
   const { mutate: runBackfill, isPending: isScanning } = useStockBackfill();
 
   const handleDryRun = () => {
-    runBackfill(true, {
+    runBackfill({ dryRun: true, forceReprocess }, {
       onSuccess: (data) => setScanResults(data)
     });
   };
 
   const handleApplyFix = () => {
-    runBackfill(false, {
+    runBackfill({ dryRun: false, forceReprocess }, {
       onSuccess: (data) => {
         setScanResults(data);
         queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
@@ -53,6 +56,24 @@ export default function StockIntegrityScan() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Force Reprocess Option */}
+            <div className="flex items-center space-x-3 p-3 rounded-lg bg-muted/50 border">
+              <Switch
+                id="force-reprocess"
+                checked={forceReprocess}
+                onCheckedChange={setForceReprocess}
+              />
+              <div className="flex-1">
+                <Label htmlFor="force-reprocess" className="font-medium flex items-center gap-2">
+                  <Trash2 className="h-4 w-4" />
+                  Clear Failed Queue Items
+                </Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Marks blocked delivery_queue items as REPROCESSED so fresh deductions can be created
+                </p>
+              </div>
+            </div>
+
             <div className="flex gap-2 flex-wrap">
               <Button 
                 variant="outline" 
@@ -80,7 +101,7 @@ export default function StockIntegrityScan() {
                   <span className="text-sm text-muted-foreground">{scanResults.message}</span>
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="p-3 rounded-lg bg-background">
                     <p className="text-sm text-muted-foreground">Orders Scanned</p>
                     <p className="text-2xl font-bold">{scanResults.results.deliveredOrdersScanned}</p>
@@ -101,6 +122,12 @@ export default function StockIntegrityScan() {
                     <p className="text-sm text-muted-foreground">Warehouse Mismatches</p>
                     <p className="text-2xl font-bold">
                       {scanResults.results.warehouseTypeMismatches}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-background">
+                    <p className="text-sm text-muted-foreground">Failed Queue Cleared</p>
+                    <p className="text-2xl font-bold text-blue-500">
+                      {scanResults.results.failedQueueCleared || 0}
                     </p>
                   </div>
                 </div>

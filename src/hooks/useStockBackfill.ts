@@ -5,8 +5,10 @@ import { toast } from 'sonner';
 export interface BackfillResult {
   success: boolean;
   dryRun: boolean;
+  forceReprocess?: boolean;
   message: string;
   results: {
+    failedQueueCleared: number;
     deliveredOrdersScanned: number;
     deliveredNotDeductedFixed: number;
     missingDeductionsCreated: number;
@@ -20,11 +22,16 @@ export interface BackfillResult {
   };
 }
 
+export interface BackfillOptions {
+  dryRun: boolean;
+  forceReprocess?: boolean;
+}
+
 export function useStockBackfill() {
   return useMutation({
-    mutationFn: async (dryRun: boolean = true): Promise<BackfillResult> => {
+    mutationFn: async (options: BackfillOptions): Promise<BackfillResult> => {
       const { data, error } = await supabase.functions.invoke('backfill-stock-movements', {
-        body: { dryRun }
+        body: { dryRun: options.dryRun, forceReprocess: options.forceReprocess ?? false }
       });
       
       if (error) throw new Error(error.message);
@@ -32,7 +39,11 @@ export function useStockBackfill() {
     },
     onSuccess: (data) => {
       if (data.dryRun) {
-        toast.info(`Dry run complete. Found ${data.results.missingDeductionsCreated} missing deductions.`);
+        const issues = data.results.missingDeductionsCreated + 
+                       data.results.duplicateDeductionsReversed + 
+                       data.results.warehouseTypeMismatches +
+                       data.results.failedQueueCleared;
+        toast.info(`Dry run complete. Found ${issues} issues to fix.`);
       } else {
         toast.success(`Repair complete. Fixed ${data.results.missingDeductionsCreated} deductions.`);
       }
