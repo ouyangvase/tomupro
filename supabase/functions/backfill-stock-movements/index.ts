@@ -66,9 +66,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { dryRun = true } = await req.json();
+    const { dryRun = true, forceReprocess = false } = await req.json();
     
     const results = {
+      failedQueueCleared: 0,
       deliveredOrdersScanned: 0,
       deliveredNotDeductedFixed: 0,
       missingDeductionsCreated: 0,
@@ -102,6 +103,35 @@ Deno.serve(async (req) => {
         .single();
       
       return warehouse ? { id: warehouse.id, type: warehouse.warehouse_type } : null;
+    }
+
+    // PART 0: Clear failed delivery_queue items if requested
+    if (forceReprocess) {
+      console.log('Clearing failed delivery_queue items...');
+      
+      const { data: failedItems, error: countError } = await supabase
+        .from('delivery_queue')
+        .select('id')
+        .eq('status', 'FAILED');
+      
+      const failedCount = failedItems?.length || 0;
+      
+      if (!dryRun && failedCount > 0) {
+        const { error: clearError } = await supabase
+          .from('delivery_queue')
+          .update({ status: 'REPROCESSED' })
+          .eq('status', 'FAILED');
+        
+        if (clearError) {
+          results.errors.push(`Failed to clear queue: ${clearError.message}`);
+        } else {
+          results.failedQueueCleared = failedCount;
+          console.log(`Cleared ${failedCount} failed delivery_queue items`);
+        }
+      } else {
+        results.failedQueueCleared = failedCount;
+        console.log(`Would clear ${failedCount} failed delivery_queue items`);
+      }
     }
 
     // PART 1: Process ALL DELIVERED orders (including those with stock_deducted = false)
@@ -415,6 +445,7 @@ Deno.serve(async (req) => {
       actor_id: user.id,
       after_json: {
         dry_run: dryRun,
+        force_reprocess: forceReprocess,
         results,
       },
     });
@@ -423,6 +454,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         dryRun,
+        forceReprocess,
         message: dryRun ? 'Dry run completed - no changes made' : 'Backfill completed',
         results,
       }),
