@@ -16,7 +16,7 @@ import type { Product } from '@/types/database';
  */
 export function useProducts(includeInactive = false) {
   const { user, role } = useAuth();
-  const { visibleUserIds, dataViewMode } = useVisibleUserIds('products');
+  const { visibleUserIds, dataViewMode, isLoading: visibilityLoading } = useVisibleUserIds('products');
   
   return useQuery({
     queryKey: ['products', includeInactive, role, user?.id, visibleUserIds, dataViewMode],
@@ -34,8 +34,9 @@ export function useProducts(includeInactive = false) {
         query = query.eq('is_active', true);
       }
       
-      // Apply strict visibility filter based on role
-      if (visibleUserIds && visibleUserIds.length > 0) {
+      // ONLY filter if visibleUserIds is an array with items
+      // undefined = admin (no filter), null or [] = don't filter yet
+      if (Array.isArray(visibleUserIds) && visibleUserIds.length > 0) {
         query = query.in('owner_user_id', visibleUserIds);
       }
       // Admin: visibleUserIds is undefined, no filter applied
@@ -47,7 +48,8 @@ export function useProducts(includeInactive = false) {
         owner?: { id: string; display_name: string };
       })[];
     },
-    enabled: !!user?.id || role === 'admin',
+    // Wait for visibility to resolve for non-admin users
+    enabled: (!!user?.id || role === 'admin') && !visibilityLoading,
   });
 }
 

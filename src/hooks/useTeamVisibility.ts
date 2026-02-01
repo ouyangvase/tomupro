@@ -115,6 +115,9 @@ export function useVisibleUserIds(scope: DataScope = 'orders') {
   const visibleUserIds = useMemo<string[] | undefined>(() => {
     if (!user?.id) return [];
 
+    // Admin ALWAYS gets undefined (no filter) - don't wait for server
+    if (role === 'admin') return undefined;
+
     // Use server-side RPC result if available
     if (serverVisibleIds !== undefined) {
       // null from server means admin (no filter)
@@ -134,9 +137,6 @@ export function useVisibleUserIds(scope: DataScope = 'orders') {
     }
 
     // Fallback to client-side logic while server loads
-    // Admin can see all - no filter
-    if (role === 'admin') return undefined;
-
     // Salesperson can only see their own data
     if (role === 'salesperson') return [user.id];
 
