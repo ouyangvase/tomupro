@@ -243,10 +243,15 @@ export default function RunnerDeliveredOrders() {
       filtered = filtered.filter(order => order.salesperson_id === salespersonFilter);
     }
 
-    // Apply SKU filter
+    // Apply SKU filter (by SKU code, not product ID)
     if (skuFilter !== 'all') {
+      const normalizedFilter = skuFilter.trim().toUpperCase();
       filtered = filtered.filter(order => 
-        order.order_items?.some(item => item.product_id === skuFilter)
+        order.order_items?.some(item => {
+          // Get SKU code from product or extract from sku_label
+          const itemCode = (item.product?.sku_code || item.sku_label?.split(/[\/-]/)[0] || '').trim().toUpperCase();
+          return itemCode === normalizedFilter;
+        })
       );
     }
 
@@ -482,25 +487,96 @@ export default function RunnerDeliveredOrders() {
     }));
   }, [myDrivers]);
 
-  // SKU filter options (for all roles)
-  const skuOptions = useMemo(() => {
-    return products.map(p => ({
-      label: `${p.sku_code || ''}${p.sku_code ? ' / ' : ''}${p.sku_name}`,
-      value: p.id,
-      searchLabel: `${p.sku_code || ''} ${p.sku_name}`,
-    }));
-  }, [products]);
+  // --- SKU Code Helpers ---
+  // Normalize SKU code for consistent comparison
+  const normalizeSku = useCallback((code: string | null | undefined): string => {
+    return (code || '').trim().toUpperCase();
+  }, []);
 
-  // SKU Summary - calculate total delivered qty for selected SKU
+  // Extract SKU code from sku_label like "TY01/ROSE" -> "TY01"
+  const extractSkuCodeFromLabel = useCallback((label: string | null | undefined): string => {
+    if (!label) return '';
+    // Split by "/" or " / " or " - " and take first part
+    const parts = label.split(/[\/-]/);
+    return parts[0]?.trim() || label.trim();
+  }, []);
+
+  // Get normalized SKU code from an order item
+  const getItemSkuCode = useCallback((item: any): string => {
+    // Prefer product.sku_code, fallback to extracting from sku_label
+    const code = item.product?.sku_code || extractSkuCodeFromLabel(item.sku_label);
+    return normalizeSku(code);
+  }, [normalizeSku, extractSkuCodeFromLabel]);
+
+  // Build SKU code -> display name map from products AND delivered order items
+  const skuCodeMap = useMemo(() => {
+    const map = new Map<string, string>(); // skuCode -> display name
+
+    // Add from products catalog
+    products.forEach(p => {
+      const code = normalizeSku(p.sku_code);
+      if (code && !map.has(code)) {
+        map.set(code, p.sku_name || code);
+      }
+    });
+
+    // Also extract from delivered order items (in case product not in catalog)
+    orders?.filter(o => o.runner_status === 'DELIVERED').forEach(order => {
+      order.order_items?.forEach(item => {
+        const code = getItemSkuCode(item);
+        if (code && !map.has(code)) {
+          // Use sku_label as display name if available
+          map.set(code, item.sku_label || code);
+        }
+      });
+    });
+
+    return map;
+  }, [products, orders, normalizeSku, getItemSkuCode]);
+
+  // SKU filter options - deduped by SKU code (not product ID)
+  const skuOptions = useMemo(() => {
+    const options: { label: string; value: string; searchLabel: string }[] = [];
+    
+    skuCodeMap.forEach((displayName, skuCode) => {
+      options.push({
+        label: `${skuCode}${displayName && displayName !== skuCode ? ' / ' + displayName : ''}`,
+        value: skuCode, // Use SKU code as value, not UUID
+        searchLabel: `${skuCode} ${displayName}`,
+      });
+    });
+
+    // Sort by SKU code
+    return options.sort((a, b) => a.value.localeCompare(b.value));
+  }, [skuCodeMap]);
+
+  // Auto-reset invalid SKU filter (e.g., old UUID from previous session)
+  useEffect(() => {
+    if (skuFilter !== 'all' && skuOptions.length > 0) {
+      const normalizedFilter = normalizeSku(skuFilter);
+      const isValidOption = skuOptions.some(opt => opt.value === normalizedFilter);
+      
+      // If filter looks like a UUID (36 chars) or not in options, reset it
+      const looksLikeUUID = skuFilter.length === 36 && skuFilter.includes('-');
+      if (!isValidOption || looksLikeUUID) {
+        setSkuFilter('all');
+      }
+    }
+  }, [skuFilter, skuOptions, normalizeSku]);
+
+  // SKU Summary - calculate total delivered qty for selected SKU (by SKU code)
   const skuSummary = useMemo(() => {
     if (skuFilter === 'all') return null;
     
+    const normalizedFilter = normalizeSku(skuFilter);
     let totalQty = 0;
     let totalOrders = 0;
     let totalAmount = 0;
     
     deliveredOrders.forEach(order => {
-      const matchingItems = order.order_items?.filter(item => item.product_id === skuFilter) || [];
+      const matchingItems = order.order_items?.filter(item => 
+        getItemSkuCode(item) === normalizedFilter
+      ) || [];
       if (matchingItems.length > 0) {
         totalOrders++;
         matchingItems.forEach(item => {
@@ -510,15 +586,15 @@ export default function RunnerDeliveredOrders() {
       }
     });
     
-    const selectedProduct = products.find(p => p.id === skuFilter);
+    const displayName = skuCodeMap.get(normalizedFilter);
     
     return {
-      skuName: selectedProduct ? `${selectedProduct.sku_code || selectedProduct.sku_name}` : 'Selected SKU',
+      skuName: displayName ? `${normalizedFilter} / ${displayName}` : normalizedFilter,
       totalQty,
       totalOrders,
       totalAmount,
     };
-  }, [skuFilter, deliveredOrders, products]);
+  }, [skuFilter, deliveredOrders, skuCodeMap, normalizeSku, getItemSkuCode]);
 
   const allClaimableSelected = claimableOrders.length > 0 && selectedIds.size === claimableOrders.length;
 
