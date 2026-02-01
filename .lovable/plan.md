@@ -1,113 +1,122 @@
 
 
-# Plan: Fix Stock Balance Calculation and Run Backfill
+# Plan: Fix CSV Parser to Handle Multi-Line Quoted Fields
 
-## Problem Summary
+## Problem Identified
 
-The inventory page is showing incorrect balances because stock deductions were never created for 177 delivered orders. For example:
+Your CSV file contains **addresses with newline characters inside quoted fields** - this is valid CSV format according to RFC 4180. However, the current CSV parser in `src/lib/csv.ts` incorrectly splits on ALL newlines, breaking rows that have multi-line quoted values.
 
-| Product | Inbound | Delivered Orders | Current Deductions | Current Balance | Expected Balance |
-|---------|---------|------------------|-------------------|-----------------|------------------|
-| FT02 - GOLD | 12 | 8 (across 6 orders) | -1 | 11 | 4 |
-| FT02 - BLACK | 8 | ? | ? | 7 | ? |
+**Examples from your file:**
+```csv
+KD8,21/12/2025,Nursheena,7126940,"Jln Laila Wijaya. 
+kg Perpindahan Mata2,Gadong B, BSB, Brunei",BM,Whatsapp,COD,2/2/2026,,K4,2,39
+```
 
-**Root Cause**: The delivery queue trigger failed for 185 orders with "Insufficient stock" validation errors, creating a chicken-and-egg problem where orders can't deduct because earlier orders blocked them.
+The parser sees this as 2 separate rows:
+- Row 1: `KD8,21/12/2025,Nursheena,7126940,"Jln Laila Wijaya.` (incomplete - no SKU)
+- Row 2: `kg Perpindahan Mata2,Gadong B...` (garbage row)
+
+This causes the "SKU code is required" error for Row 5, 6, 8, 9, etc.
 
 ## Solution
 
-### Part 1: Optimize Edge Function (Immediate Fix)
+Rewrite the CSV parsing functions to properly handle quoted fields that span multiple lines.
 
-The current backfill function times out because it processes each order individually with many database round-trips. We need to optimize it to use batch operations.
-
-### Part 2: Create a Database Function for Bulk Repair
-
-Create a PostgreSQL function that performs the backfill directly in the database, avoiding the edge function timeout issue.
-
-### Changes Required
+### Files to Modify
 
 | File | Change |
 |------|--------|
-| Database Migration | Create `repair_missing_stock_deductions()` function |
-| `src/pages/admin/StockIntegrityScan.tsx` | Add button to call the new RPC function |
-| `src/hooks/useStockBackfill.ts` | Add alternative method using RPC |
+| `src/lib/csv.ts` | Replace `parseCSV` and `parseCSVRaw` with RFC-4180 compliant parser |
 
 ## Technical Implementation
 
-### 1. Database Function for Bulk Repair
-
-Create a new PostgreSQL function that:
-- Scans all DELIVERED orders without proper deductions
-- Creates missing stock movements in bulk
-- Updates order flags
-- Returns summary statistics
-
-```sql
-CREATE OR REPLACE FUNCTION repair_missing_stock_deductions(p_dry_run BOOLEAN DEFAULT true)
-RETURNS JSON AS $$
-DECLARE
-  v_missing_count INT := 0;
-  v_fixed_count INT := 0;
-  v_errors TEXT[] := '{}';
-BEGIN
-  -- Find all DELIVERED orders with missing deductions
-  -- For each order_item, check if a DELIVER_DEDUCT exists
-  -- If not, create one using the correct warehouse
-  
-  -- In dry run mode, just count
-  -- In apply mode, insert the movements
-  
-  RETURN json_build_object(
-    'dry_run', p_dry_run,
-    'missing_count', v_missing_count,
-    'fixed_count', v_fixed_count,
-    'errors', v_errors
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-```
-
-### 2. UI Updates
-
-Add a new button that calls the database function directly, bypassing the edge function:
+### Updated CSV Parser Logic
 
 ```typescript
-// New mutation in useStockBackfill.ts
-export function useQuickRepair() {
-  return useMutation({
-    mutationFn: async (dryRun: boolean) => {
-      const { data, error } = await supabase.rpc('repair_missing_stock_deductions', {
-        p_dry_run: dryRun
-      });
-      if (error) throw error;
-      return data;
+/**
+ * RFC-4180 compliant CSV parser that handles:
+ * - Quoted fields with embedded newlines
+ * - Escaped quotes (doubled quotes)
+ * - Mixed quoted/unquoted fields
+ */
+function parseCSVContent(csvText: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    const nextChar = csvText[i + 1];
+    
+    if (inQuotes) {
+      if (char === '"') {
+        if (nextChar === '"') {
+          // Escaped quote
+          currentField += '"';
+          i++;
+        } else {
+          // End of quoted field
+          inQuotes = false;
+        }
+      } else {
+        // Any character inside quotes (including newlines)
+        currentField += char;
+      }
+    } else {
+      if (char === '"') {
+        // Start of quoted field
+        inQuotes = true;
+      } else if (char === ',') {
+        // Field separator
+        currentRow.push(currentField.trim());
+        currentField = '';
+      } else if (char === '\n' || (char === '\r' && nextChar === '\n')) {
+        // Row separator (handle \r\n)
+        if (char === '\r') i++; // Skip \n
+        currentRow.push(currentField.trim());
+        if (currentRow.length > 0 && currentRow.some(f => f)) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        currentField = '';
+      } else if (char !== '\r') {
+        currentField += char;
+      }
     }
-  });
+  }
+  
+  // Handle last field/row
+  currentRow.push(currentField.trim());
+  if (currentRow.length > 0 && currentRow.some(f => f)) {
+    rows.push(currentRow);
+  }
+  
+  return rows;
 }
 ```
 
-### 3. Immediate Manual Fix (Alternative)
+### Key Improvements
 
-If the database function approach is too complex, we can simplify the edge function to:
-1. Process orders in smaller batches (50 at a time)
-2. Use batch inserts instead of individual inserts
-3. Return partial progress
+1. **Character-by-character parsing** - Instead of splitting on newlines first, we scan each character
+2. **Quote state tracking** - Track when we're inside a quoted field and treat embedded newlines as part of the value
+3. **Proper quote escaping** - Handle `""` as an escaped quote character
+4. **Preserve all data** - Multi-line addresses stay intact as single field values
 
 ## Expected Results After Fix
 
-| Metric | Before | After |
-|--------|--------|-------|
-| FT02 - GOLD balance | 11 | 4 |
-| FT02 - BLACK balance | 7 | ~1-2 |
-| Orders with stock_deducted=true | 887 | 1,064 |
-| delivery_queue FAILED items | 185 | 0 (marked as REPROCESSED) |
+| Before | After |
+|--------|-------|
+| 60 validation errors | 0 errors |
+| 144 "valid" rows parsed | 203 valid rows parsed |
+| KD8 address broken | KD8 address intact: "Jln Laila Wijaya.\nkg Perpindahan Mata2,Gadong B, BSB, Brunei" |
+| "SKU code is required" false errors | All SKU codes detected correctly |
 
-## Summary
+## Validation
 
-The stock balances are showing incorrectly because the deduction movements were never created. The fix requires:
-
-1. **Database migration**: Create a bulk repair function that runs inside PostgreSQL
-2. **UI update**: Add a button to trigger the repair via RPC
-3. **Hook update**: Add method to call the new RPC function
-
-After running the repair, the inventory page will automatically show correct balances because it reads from `stock_balance_view` which sums all movements.
+After implementing:
+1. Upload the same CSV file
+2. All 203 orders should parse correctly
+3. Column mapping should show all data properly aligned
+4. Import should succeed with all orders created
 
