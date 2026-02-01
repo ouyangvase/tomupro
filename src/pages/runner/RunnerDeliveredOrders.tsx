@@ -296,6 +296,16 @@ export default function RunnerDeliveredOrders() {
     setCurrentPage(1);
   }, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
 
+  // Clear filters helper
+  const clearAllFilters = useCallback(() => {
+    setSearchQuery('');
+    setAreaFilter('all');
+    setDriverFilter('all');
+    setSalespersonFilter('all');
+    setSkuFilter('all');
+    setClaimStatusFilter('all');
+  }, []);
+
   // Clamp current page if it exceeds total pages
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -906,7 +916,18 @@ export default function RunnerDeliveredOrders() {
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8 text-muted-foreground">
-                          No delivered orders found
+                          <div className="flex flex-col items-center gap-2">
+                            <span>No delivered orders found</span>
+                            {hasActiveFilters && (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={clearAllFilters}
+                              >
+                                Clear All Filters
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ) : (
