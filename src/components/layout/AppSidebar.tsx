@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award, Ticket, History, ClipboardCheck, Share2, Loader2 } from "lucide-react";
+import { Package, ShoppingCart, FileCheck, Warehouse as WarehouseIcon, BarChart3, Settings, AlertTriangle, PackageCheck, ClipboardList, X, Users, Inbox, Receipt, Wrench, LayoutDashboard, DollarSign, FileText, Truck, RotateCcw, Trophy, Navigation, Target, MapPin, Layers, AlertCircle, LogOut, CheckCircle, Award, Ticket, History, ClipboardCheck, Share2, Loader2, Database, ShieldCheck } from "lucide-react";
 import tomuLogo from "@/assets/tomu-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -261,6 +261,17 @@ const inventoryItems: NavItem[] = [{
   roles: ['admin', 'manager', 'salesperson']
 }];
 
+const dataIntegrityItems: NavItem[] = [{
+  title: "Stock Integrity Audit",
+  url: "/admin/stock-audit",
+  icon: Database,
+  roles: ['admin']
+}, {
+  title: "Quick Repair",
+  url: "/admin/stock-integrity",
+  icon: ShieldCheck,
+  roles: ['admin']
+}];
 
 const settingsItems: NavItem[] = [{
   title: "Profile",
@@ -550,6 +561,19 @@ export function AppSidebar() {
             )}
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">{renderMenuItems(reconciliationItems)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {filterItems(dataIntegrityItems).length > 0 && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Data Integrity
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu className="space-y-1">{renderMenuItems(dataIntegrityItems)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         )}

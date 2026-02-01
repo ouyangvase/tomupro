@@ -2744,6 +2744,7 @@ export type Database = {
           qty_change: number
           reference_id: string | null
           reference_type: Database["public"]["Enums"]["reference_type"]
+          unique_key: string | null
           warehouse_id: string
         }
         Insert: {
@@ -2756,6 +2757,7 @@ export type Database = {
           qty_change: number
           reference_id?: string | null
           reference_type: Database["public"]["Enums"]["reference_type"]
+          unique_key?: string | null
           warehouse_id: string
         }
         Update: {
@@ -2768,6 +2770,7 @@ export type Database = {
           qty_change?: number
           reference_id?: string | null
           reference_type?: Database["public"]["Enums"]["reference_type"]
+          unique_key?: string | null
           warehouse_id?: string
         }
         Relationships: [
@@ -3316,6 +3319,30 @@ export type Database = {
         Args: { p_approver_id: string; p_transfer_id: string }
         Returns: Json
       }
+      audit_stock_integrity: {
+        Args: { p_owner_filter?: string }
+        Returns: {
+          adjustment_qty: number
+          computed_balance: number
+          delivered_qty: number
+          diff: number
+          duplicate_deduct_count: number
+          duplicate_inbound_count: number
+          inbound_qty: number
+          owner_name: string
+          owner_user_id: string
+          product_id: string
+          sku_code: string
+          sku_name: string
+          status: string
+          stored_balance: number
+          suspected_issue: string
+          transfer_in_qty: number
+          transfer_out_qty: number
+          warehouse_id: string
+          warehouse_name: string
+        }[]
+      }
       can_access_order_items: { Args: { p_order_id: string }; Returns: boolean }
       can_access_order_v2: {
         Args: { p_order_runner_id?: string; p_order_salesperson_id: string }
@@ -3492,6 +3519,21 @@ export type Database = {
           scope_orders: boolean
           scope_products: boolean
           scope_stock_balance: boolean
+        }[]
+      }
+      get_sku_movement_drilldown: {
+        Args: { p_product_id: string; p_warehouse_id: string }
+        Returns: {
+          created_at: string
+          created_by_name: string
+          id: string
+          inbound_tracking: string
+          movement_type: string
+          order_code: string
+          order_id: string
+          qty_change: number
+          reference_id: string
+          reference_type: string
         }[]
       }
       get_stock_balance: {
