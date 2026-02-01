@@ -59,16 +59,79 @@ function normalizeHeader(header: string): string {
   return normalized.replace(/\s+/g, '_');
 }
 
-export function parseCSV(csvText: string): Record<string, string>[] {
-  const lines = csvText.split('\n').filter(line => line.trim());
-  if (lines.length < 2) return [];
+/**
+ * RFC-4180 compliant CSV parser that handles:
+ * - Quoted fields with embedded newlines
+ * - Escaped quotes (doubled quotes)
+ * - Mixed quoted/unquoted fields
+ */
+function parseCSVContent(csvText: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    const nextChar = csvText[i + 1];
+    
+    if (inQuotes) {
+      if (char === '"') {
+        if (nextChar === '"') {
+          // Escaped quote ""
+          currentField += '"';
+          i++;
+        } else {
+          // End of quoted field
+          inQuotes = false;
+        }
+      } else {
+        // Any character inside quotes (including newlines)
+        currentField += char;
+      }
+    } else {
+      if (char === '"') {
+        // Start of quoted field
+        inQuotes = true;
+      } else if (char === ',') {
+        // Field separator
+        currentRow.push(currentField.trim());
+        currentField = '';
+      } else if (char === '\n' || (char === '\r' && nextChar === '\n')) {
+        // Row separator (handle \r\n)
+        if (char === '\r') i++; // Skip \n in \r\n
+        currentRow.push(currentField.trim());
+        if (currentRow.length > 0 && currentRow.some(f => f)) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        currentField = '';
+      } else if (char !== '\r') {
+        // Regular character (ignore lone \r)
+        currentField += char;
+      }
+    }
+  }
+  
+  // Handle last field/row if file doesn't end with newline
+  currentRow.push(currentField.trim());
+  if (currentRow.length > 0 && currentRow.some(f => f)) {
+    rows.push(currentRow);
+  }
+  
+  return rows;
+}
 
-  const rawHeaders = parseCSVLine(lines[0]);
+export function parseCSV(csvText: string): Record<string, string>[] {
+  const allRows = parseCSVContent(csvText);
+  if (allRows.length < 2) return [];
+
+  const rawHeaders = allRows[0];
   const headers = rawHeaders.map(normalizeHeader);
   const rows: Record<string, string>[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
+  for (let i = 1; i < allRows.length; i++) {
+    const values = allRows[i];
     const row: Record<string, string> = {};
     headers.forEach((header, index) => {
       row[header] = values[index] || '';
@@ -81,14 +144,14 @@ export function parseCSV(csvText: string): Record<string, string>[] {
 
 // Parse CSV without normalizing headers - returns raw headers and rows
 export function parseCSVRaw(csvText: string): { headers: string[]; rows: Record<string, string>[] } {
-  const lines = csvText.split('\n').filter(line => line.trim());
-  if (lines.length < 2) return { headers: [], rows: [] };
+  const allRows = parseCSVContent(csvText);
+  if (allRows.length < 2) return { headers: [], rows: [] };
 
-  const headers = parseCSVLine(lines[0]);
+  const headers = allRows[0];
   const rows: Record<string, string>[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
+  for (let i = 1; i < allRows.length; i++) {
+    const values = allRows[i];
     const row: Record<string, string> = {};
     headers.forEach((header, index) => {
       row[header] = values[index] || '';
@@ -99,6 +162,7 @@ export function parseCSVRaw(csvText: string): { headers: string[]; rows: Record<
   return { headers, rows };
 }
 
+// Keep for single-line parsing (used in exports)
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
