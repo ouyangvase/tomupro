@@ -21,7 +21,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2 } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2, AlertTriangle, Shield } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Pagination,
   PaginationContent,
@@ -126,12 +127,14 @@ export default function RunnerDeliveredOrders() {
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
   
   // Fetch orders based on role and view mode:
   // - Runner: fetch their own orders (runner_id = user.id), with optional salesperson filter
   // - Salesperson: fetch their own orders (salesperson_id = user.id)
   // - Manager: fetch based on view mode (my data vs team data)
-  // - Admin: fetch all orders
+  // - Admin: fetch all orders, with optional salesperson filter applied SERVER-SIDE
+  // CRITICAL: Admin must filter server-side to avoid 2000 row truncation bug
   const ordersFilter = useMemo(() => {
     // Always filter for DELIVERED status at database level for performance
     const baseFilter = { runnerStatus: 'DELIVERED' as const };
@@ -147,11 +150,21 @@ export default function RunnerDeliveredOrders() {
     if (role === 'salesperson') {
       return { ...baseFilter, salespersonId: user?.id };
     }
-    if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
-      // Use filtered salesperson IDs from team view state
-      return { ...baseFilter, salespersonIds };
+    if (role === 'manager') {
+      // Manager: filter by team or specific salesperson
+      if (salespersonFilter !== 'all') {
+        return { ...baseFilter, salespersonIds: [salespersonFilter] };
+      }
+      if (salespersonIds && salespersonIds.length > 0) {
+        return { ...baseFilter, salespersonIds };
+      }
+      return baseFilter;
     }
-    return baseFilter; // admin - fetch all delivered
+    // Admin: apply salesperson filter SERVER-SIDE to avoid truncation bug
+    if (role === 'admin' && salespersonFilter !== 'all') {
+      return { ...baseFilter, salespersonIds: [salespersonFilter] };
+    }
+    return baseFilter; // admin no filter - fetch all delivered
   }, [role, user?.id, salespersonIds, salespersonFilter]);
   
   const { data: orders, isLoading } = useOrders(ordersFilter as any);
@@ -176,18 +189,33 @@ export default function RunnerDeliveredOrders() {
   }, [activeCharges]);
   
   // Create summary params based on role for accurate server-side stats
+  // CRITICAL: Must match the server-side filtering logic in ordersFilter
   const summaryParams = useMemo(() => {
     if (role === 'runner') {
-      return { runnerId: user?.id };
+      const params: { runnerId?: string; salespersonIds?: string[] } = { runnerId: user?.id };
+      if (salespersonFilter !== 'all') {
+        params.salespersonIds = [salespersonFilter];
+      }
+      return params;
     }
     if (role === 'salesperson') {
       return { salespersonId: user?.id };
     }
-    if (role === 'manager' && salespersonIds && salespersonIds.length > 0) {
-      return { salespersonIds };
+    if (role === 'manager') {
+      if (salespersonFilter !== 'all') {
+        return { salespersonIds: [salespersonFilter] };
+      }
+      if (salespersonIds && salespersonIds.length > 0) {
+        return { salespersonIds };
+      }
+      return {};
+    }
+    // Admin: apply salesperson filter to summary too
+    if (role === 'admin' && salespersonFilter !== 'all') {
+      return { salespersonIds: [salespersonFilter] };
     }
     return {}; // admin - get all
-  }, [role, user?.id, salespersonIds]);
+  }, [role, user?.id, salespersonIds, salespersonFilter]);
   
   // Fetch accurate summary stats from server (not truncated by query limit)
   const { data: summary, isLoading: summaryLoading } = useDeliveredSummary(summaryParams);
@@ -238,8 +266,9 @@ export default function RunnerDeliveredOrders() {
       filtered = filtered.filter(order => order.driver_id === driverFilter);
     }
 
-    // Apply salesperson filter (only for non-runner roles - runners use server-side filtering)
-    if (salespersonFilter !== 'all' && role !== 'runner') {
+    // Apply salesperson filter client-side ONLY for runner role
+    // (admin and manager now filter server-side to avoid truncation)
+    if (salespersonFilter !== 'all' && role === 'runner') {
       filtered = filtered.filter(order => order.salesperson_id === salespersonFilter);
     }
 
@@ -612,6 +641,33 @@ export default function RunnerDeliveredOrders() {
     return map;
   }, [claimBatches]);
 
+  // Admin Integrity Check - count orders with missing salesperson_id
+  const integrityStats = useMemo(() => {
+    if (role !== 'admin' || !orders) return null;
+    
+    const allDelivered = orders.filter(o => o.runner_status === 'DELIVERED');
+    const missingLink = allDelivered.filter(o => !o.salesperson_id);
+    
+    // Calculate what filter should return
+    let selectedUserName = 'All Users';
+    let expectedCount = allDelivered.length;
+    
+    if (salespersonFilter !== 'all') {
+      const selectedUser = salespersonOptions.find(sp => sp.value === salespersonFilter);
+      selectedUserName = selectedUser?.label || salespersonFilter;
+      expectedCount = allDelivered.filter(o => o.salesperson_id === salespersonFilter).length;
+    }
+    
+    return {
+      totalDelivered: allDelivered.length,
+      missingLink: missingLink.length,
+      filteredCount: deliveredOrders.length,
+      expectedCount,
+      selectedUserName,
+      isMatch: deliveredOrders.length === expectedCount,
+    };
+  }, [role, orders, salespersonFilter, salespersonOptions, deliveredOrders]);
+
   const isMobile = useIsMobile();
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
@@ -805,6 +861,74 @@ export default function RunnerDeliveredOrders() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Admin Data Integrity Panel - Only for Admin role */}
+        {isAdmin && integrityStats && (
+          <Collapsible open={integrityPanelOpen} onOpenChange={setIntegrityPanelOpen}>
+            <Card className={`border ${integrityStats.missingLink > 0 ? 'border-destructive/50 bg-destructive/5' : 'border-muted'}`}>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50 transition-colors">
+                  <CardTitle className="flex items-center justify-between text-sm font-medium">
+                    <span className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Data Integrity Check
+                      {integrityStats.missingLink > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          {integrityStats.missingLink} unlinked
+                        </Badge>
+                      )}
+                    </span>
+                    {integrityPanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </CardTitle>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Total Delivered (DB)</p>
+                      <p className="text-lg font-semibold">{integrityStats.totalDelivered}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Missing salesperson_id</p>
+                      <p className={`text-lg font-semibold ${integrityStats.missingLink > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                        {integrityStats.missingLink}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Filter: {integrityStats.selectedUserName}</p>
+                      <p className="text-lg font-semibold">{integrityStats.filteredCount} orders</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Filter Status</p>
+                      {integrityStats.isMatch ? (
+                        <p className="text-lg font-semibold text-green-600 flex items-center gap-1">
+                          <CheckCircle className="h-4 w-4" /> Match
+                        </p>
+                      ) : (
+                        <p className="text-lg font-semibold text-destructive flex items-center gap-1">
+                          <AlertTriangle className="h-4 w-4" /> Mismatch
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {integrityStats.missingLink > 0 && (
+                    <div className="mt-4 p-3 bg-destructive/10 rounded-md flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                      <div className="text-sm">
+                        <p className="font-medium text-destructive">Unlinked orders detected</p>
+                        <p className="text-muted-foreground">
+                          {integrityStats.missingLink} delivered order(s) are missing salesperson_id. 
+                          These orders may not appear correctly when filtering by user.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         )}
 
         {/* Action Bar - only for runners who can claim */}
