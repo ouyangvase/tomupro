@@ -70,6 +70,7 @@ import LeaderboardPage from "./pages/leaderboard/LeaderboardPage";
 import InviteCodesAdmin from "./pages/admin/InviteCodesAdmin";
 import DataSharingAdmin from "./pages/admin/DataSharingAdmin";
 import StockIntegrityScan from "./pages/admin/StockIntegrityScan";
+import StockIntegrityAudit from "./pages/admin/StockIntegrityAudit";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -204,6 +205,7 @@ function AppRoutes() {
       <Route path="/admin/data-sharing" element={<ProtectedRoute><DataSharingAdmin /></ProtectedRoute>} />
       <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/admin/stock-integrity" element={<ProtectedRoute><StockIntegrityScan /></ProtectedRoute>} />
+      <Route path="/admin/stock-audit" element={<ProtectedRoute><StockIntegrityAudit /></ProtectedRoute>} />
       
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
