@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import LocationTracker from '@/components/driver/LocationTracker';
 import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
@@ -43,6 +43,7 @@ export default function DriverInbox() {
   const [failedRemark, setFailedRemark] = useState('');
   const [nextDeliveryDate, setNextDeliveryDate] = useState('');
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
   // Filter orders assigned to this driver
   const myOrders = useMemo(() => {
     return orders.filter(order => order.driver_id === profile?.id);
@@ -56,13 +57,23 @@ export default function DriverInbox() {
     return new Date();
   };
 
-  // Get ALL assigned driver orders (no date filtering)
+  // Get ALL assigned driver orders (no date filtering) with search
   const filteredOrders = useMemo(() => {
-    return myOrders.filter(order => {
+    const statusFiltered = myOrders.filter(order => {
       // Only show orders with active driver statuses
       return ['ASSIGNED', 'OUT_FOR_DELIVERY', 'DRIVER_DELIVERED', 'DRIVER_FAILED'].includes(order.driver_status || '');
     });
-  }, [myOrders]);
+    
+    // Apply search filter if query exists
+    if (!searchQuery.trim()) return statusFiltered;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return statusFiltered.filter(order => {
+      const orderCode = (order.order_code || '').toLowerCase();
+      const customerName = (order.customer_name || '').toLowerCase();
+      return orderCode.includes(query) || customerName.includes(query);
+    });
+  }, [myOrders, searchQuery]);
 
   // Open Google Maps with address
   const openGoogleMaps = (address: string) => {
@@ -197,6 +208,28 @@ export default function DriverInbox() {
             <div className="text-2xl font-bold text-center text-red-600">{failedOrdersList.length}</div>
             <div className="text-xs text-center text-muted-foreground">Failed</div>
           </Card>
+        </div>
+
+        {/* Search Bar */}
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search by order ref or customer name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 h-10"
+          />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+              onClick={() => setSearchQuery('')}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         {/* Pending Orders */}
