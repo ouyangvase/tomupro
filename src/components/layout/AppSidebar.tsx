@@ -100,6 +100,11 @@ const runnerItems: NavItem[] = [{
   icon: Receipt,
   roles: ['runner']
 }, {
+  title: "Cash Settlement",
+  url: "/runner/cash-settlement",
+  icon: DollarSign,
+  roles: ['runner']
+}, {
   title: "Delivery Charges",
   url: "/runner/delivery-charges",
   icon: DollarSign,
@@ -222,6 +227,11 @@ const reconciliationItems: NavItem[] = [{
   url: "/disputes",
   icon: AlertTriangle,
   roles: ['admin', 'manager']
+}, {
+  title: "Cash Liabilities",
+  url: "/admin/cash-liabilities",
+  icon: DollarSign,
+  roles: ['admin']
 }, {
   title: "Admin Overview",
   url: "/admin/overview",
