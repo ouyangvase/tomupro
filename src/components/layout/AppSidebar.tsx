@@ -105,6 +105,11 @@ const runnerItems: NavItem[] = [{
   icon: DollarSign,
   roles: ['runner']
 }, {
+  title: "Cash Driver",
+  url: "/runner/cash-driver",
+  icon: Truck,
+  roles: ['runner']
+}, {
   title: "Delivery Charges",
   url: "/runner/delivery-charges",
   icon: DollarSign,

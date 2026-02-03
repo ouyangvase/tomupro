@@ -72,6 +72,7 @@ import DataSharingAdmin from "./pages/admin/DataSharingAdmin";
 import StockIntegrityScan from "./pages/admin/StockIntegrityScan";
 import StockIntegrityAudit from "./pages/admin/StockIntegrityAudit";
 import RunnerCashSettlement from "./pages/runner/RunnerCashSettlement";
+import RunnerCashDriver from "./pages/runner/RunnerCashDriver";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -208,6 +209,7 @@ function AppRoutes() {
       <Route path="/admin/stock-integrity" element={<ProtectedRoute><StockIntegrityScan /></ProtectedRoute>} />
       <Route path="/admin/stock-audit" element={<ProtectedRoute><StockIntegrityAudit /></ProtectedRoute>} />
       <Route path="/runner/cash-settlement" element={<ProtectedRoute><RunnerCashSettlement /></ProtectedRoute>} />
+      <Route path="/runner/cash-driver" element={<ProtectedRoute><RunnerCashDriver /></ProtectedRoute>} />
       
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
