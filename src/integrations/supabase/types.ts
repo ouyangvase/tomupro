@@ -339,6 +339,121 @@ export type Database = {
         }
         Relationships: []
       }
+      cash_liabilities: {
+        Row: {
+          cash_amount: number
+          created_at: string
+          customer_name: string | null
+          delivered_at: string
+          id: string
+          order_code: string
+          order_id: string
+          runner_id: string
+          settled_at: string | null
+          settlement_batch_id: string | null
+          status: string
+        }
+        Insert: {
+          cash_amount: number
+          created_at?: string
+          customer_name?: string | null
+          delivered_at: string
+          id?: string
+          order_code: string
+          order_id: string
+          runner_id: string
+          settled_at?: string | null
+          settlement_batch_id?: string | null
+          status?: string
+        }
+        Update: {
+          cash_amount?: number
+          created_at?: string
+          customer_name?: string | null
+          delivered_at?: string
+          id?: string
+          order_code?: string
+          order_id?: string
+          runner_id?: string
+          settled_at?: string | null
+          settlement_batch_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_liabilities_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_liabilities_runner_id_fkey"
+            columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_liabilities_settlement_batch_id_fkey"
+            columns: ["settlement_batch_id"]
+            isOneToOne: false
+            referencedRelation: "cash_settlement_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_settlement_batches: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          order_count: number
+          runner_id: string
+          settled_at: string
+          settled_by: string
+          status: string
+          total_amount: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          order_count: number
+          runner_id: string
+          settled_at?: string
+          settled_by: string
+          status?: string
+          total_amount: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          order_count?: number
+          runner_id?: string
+          settled_at?: string
+          settled_by?: string
+          status?: string
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_settlement_batches_runner_id_fkey"
+            columns: ["runner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_settlement_batches_settled_by_fkey"
+            columns: ["settled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       claim_batch_items: {
         Row: {
           batch_id: string

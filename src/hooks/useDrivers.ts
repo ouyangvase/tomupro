@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { RunnerDriver, Profile } from '@/types/database';
+import { createCashLiability } from '@/hooks/useCashLiabilities';
 
 // Get drivers for a runner (with driver_code)
 export function useRunnerDrivers(runnerId?: string) {
@@ -357,6 +358,16 @@ export function useRunnerAcceptDelivery() {
   
   return useMutation({
     mutationFn: async (orderId: string) => {
+      // First get the order to check payment method
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select('id, order_code, customer_name, payment_method, runner_id, total_amount')
+        .eq('id', orderId)
+        .single();
+      
+      if (orderError) throw orderError;
+      
+      // Update order status
       const { data, error } = await supabase
         .from('orders')
         .update({
@@ -369,10 +380,28 @@ export function useRunnerAcceptDelivery() {
         .single();
       
       if (error) throw error;
+      
+      // Create cash liability for COD orders
+      if (order.payment_method === 'COD' && order.runner_id) {
+        try {
+          await createCashLiability({
+            runnerId: order.runner_id,
+            orderId: order.id,
+            orderCode: order.order_code,
+            customerName: order.customer_name,
+            cashAmount: Number(order.total_amount),
+          });
+        } catch (liabilityError) {
+          // Log but don't fail the main operation
+          console.warn('Failed to create cash liability:', liabilityError);
+        }
+      }
+      
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       toast.success('Delivery accepted');
     },
     onError: (error: Error) => {
