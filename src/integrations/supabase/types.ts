@@ -345,6 +345,7 @@ export type Database = {
           created_at: string
           customer_name: string | null
           delivered_at: string
+          driver_id: string | null
           id: string
           order_code: string
           order_id: string
@@ -358,6 +359,7 @@ export type Database = {
           created_at?: string
           customer_name?: string | null
           delivered_at: string
+          driver_id?: string | null
           id?: string
           order_code: string
           order_id: string
@@ -371,6 +373,7 @@ export type Database = {
           created_at?: string
           customer_name?: string | null
           delivered_at?: string
+          driver_id?: string | null
           id?: string
           order_code?: string
           order_id?: string
@@ -380,6 +383,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cash_liabilities_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cash_liabilities_order_id_fkey"
             columns: ["order_id"]
@@ -2099,6 +2109,7 @@ export type Database = {
           driver_failed_remark: string | null
           driver_id: string | null
           driver_next_delivery_date: string | null
+          driver_payment_method: string | null
           driver_status: string | null
           expected_pickup_date: string | null
           failed_next_step:
@@ -2167,6 +2178,7 @@ export type Database = {
           driver_failed_remark?: string | null
           driver_id?: string | null
           driver_next_delivery_date?: string | null
+          driver_payment_method?: string | null
           driver_status?: string | null
           expected_pickup_date?: string | null
           failed_next_step?:
@@ -2235,6 +2247,7 @@ export type Database = {
           driver_failed_remark?: string | null
           driver_id?: string | null
           driver_next_delivery_date?: string | null
+          driver_payment_method?: string | null
           driver_status?: string | null
           expected_pickup_date?: string | null
           failed_next_step?:
