@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { RunnerDriver, Profile } from '@/types/database';
-import { createCashLiability } from '@/hooks/useCashLiabilities';
+import { createDriverCashLiability } from '@/hooks/useCashLiabilities';
 
 // Get drivers for a runner (with driver_code)
 export function useRunnerDrivers(runnerId?: string) {
@@ -281,17 +281,38 @@ export function useBulkAssignOrdersToDriver() {
   });
 }
 
-// Driver marks order as delivered
+// Driver marks order as delivered with payment method
 export function useDriverMarkDelivered() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (orderId: string) => {
+    mutationFn: async ({ 
+      orderId, 
+      paymentMethod 
+    }: { 
+      orderId: string; 
+      paymentMethod: 'CASH' | 'TRANSFER' 
+    }) => {
+      // Get current user (driver)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Get order details including runner_id
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select('runner_id, order_code, customer_name, total_amount')
+        .eq('id', orderId)
+        .single();
+      
+      if (orderError) throw orderError;
+
+      // Update order with driver-reported payment method
       const { data, error } = await supabase
         .from('orders')
         .update({
           driver_status: 'DRIVER_DELIVERED',
           driver_delivered_at: new Date().toISOString(),
+          driver_payment_method: paymentMethod,
           runner_accept_status: 'PENDING',
         })
         .eq('id', orderId)
@@ -299,11 +320,33 @@ export function useDriverMarkDelivered() {
         .single();
       
       if (error) throw error;
+
+      // If CASH, create liability immediately
+      if (paymentMethod === 'CASH' && order.runner_id) {
+        try {
+          await createDriverCashLiability({
+            driverId: user.id,
+            runnerId: order.runner_id,
+            orderId,
+            orderCode: order.order_code,
+            customerName: order.customer_name,
+            cashAmount: Number(order.total_amount),
+          });
+        } catch (liabilityError) {
+          // Log but don't fail the main operation
+          console.warn('Failed to create cash liability:', liabilityError);
+        }
+      }
+      
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, { paymentMethod }) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('Marked as delivered, awaiting runner acceptance');
+      queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+      const msg = paymentMethod === 'CASH' 
+        ? 'Delivered (Cash recorded), awaiting runner acceptance'
+        : 'Delivered (Transfer), awaiting runner acceptance';
+      toast.success(msg);
     },
     onError: (error: Error) => {
       toast.error(`Failed to mark delivered: ${error.message}`);
@@ -353,20 +396,12 @@ export function useDriverMarkFailed() {
 }
 
 // Runner accepts driver delivery
+// Note: Cash liability is now created by the driver at delivery time, not on runner acceptance
 export function useRunnerAcceptDelivery() {
   const queryClient = useQueryClient();
   
   return useMutation({
     mutationFn: async (orderId: string) => {
-      // First get the order to check payment method
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .select('id, order_code, customer_name, payment_method, runner_id, total_amount')
-        .eq('id', orderId)
-        .single();
-      
-      if (orderError) throw orderError;
-      
       // Update order status
       const { data, error } = await supabase
         .from('orders')
@@ -380,22 +415,6 @@ export function useRunnerAcceptDelivery() {
         .single();
       
       if (error) throw error;
-      
-      // Create cash liability for COD orders
-      if (order.payment_method === 'COD' && order.runner_id) {
-        try {
-          await createCashLiability({
-            runnerId: order.runner_id,
-            orderId: order.id,
-            orderCode: order.order_code,
-            customerName: order.customer_name,
-            cashAmount: Number(order.total_amount),
-          });
-        } catch (liabilityError) {
-          // Log but don't fail the main operation
-          console.warn('Failed to create cash liability:', liabilityError);
-        }
-      }
       
       return data;
     },

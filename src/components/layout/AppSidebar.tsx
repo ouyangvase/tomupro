@@ -228,11 +228,6 @@ const reconciliationItems: NavItem[] = [{
   icon: AlertTriangle,
   roles: ['admin', 'manager']
 }, {
-  title: "Cash Liabilities",
-  url: "/admin/cash-liabilities",
-  icon: DollarSign,
-  roles: ['admin']
-}, {
   title: "Admin Overview",
   url: "/admin/overview",
   icon: BarChart3,

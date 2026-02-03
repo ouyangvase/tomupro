@@ -71,7 +71,6 @@ import InviteCodesAdmin from "./pages/admin/InviteCodesAdmin";
 import DataSharingAdmin from "./pages/admin/DataSharingAdmin";
 import StockIntegrityScan from "./pages/admin/StockIntegrityScan";
 import StockIntegrityAudit from "./pages/admin/StockIntegrityAudit";
-import CashLiabilityAdmin from "./pages/admin/CashLiabilityAdmin";
 import RunnerCashSettlement from "./pages/runner/RunnerCashSettlement";
 import NotFound from "./pages/NotFound";
 
@@ -208,7 +207,6 @@ function AppRoutes() {
       <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
       <Route path="/admin/stock-integrity" element={<ProtectedRoute><StockIntegrityScan /></ProtectedRoute>} />
       <Route path="/admin/stock-audit" element={<ProtectedRoute><StockIntegrityAudit /></ProtectedRoute>} />
-      <Route path="/admin/cash-liabilities" element={<ProtectedRoute><CashLiabilityAdmin /></ProtectedRoute>} />
       <Route path="/runner/cash-settlement" element={<ProtectedRoute><RunnerCashSettlement /></ProtectedRoute>} />
       
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import LocationTracker from '@/components/driver/LocationTracker';
+import { DeliveryPaymentDialog } from '@/components/driver/DeliveryPaymentDialog';
 import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { formatBND } from '@/lib/currency';
@@ -106,8 +107,8 @@ export default function DriverInbox() {
   );
   const failedOrdersList = filteredOrders.filter(o => o.driver_status === 'DRIVER_FAILED');
 
-  const handleMarkDelivered = async (orderId: string) => {
-    await markDelivered.mutateAsync(orderId);
+  const handleMarkDelivered = async (orderId: string, paymentMethod: 'CASH' | 'TRANSFER') => {
+    await markDelivered.mutateAsync({ orderId, paymentMethod });
     setDeliveredDialogOpen(false);
     setSelectedOrder(null);
     setSelectedOrderDetails(null);
@@ -484,34 +485,19 @@ export default function DriverInbox() {
           </div>
         )}
 
-        {/* Delivered Confirmation Sheet */}
-        <MobileActionSheet
+        {/* Delivered Confirmation Dialog with Payment Method Selection */}
+        <DeliveryPaymentDialog
           open={deliveredDialogOpen}
           onOpenChange={setDeliveredDialogOpen}
-          title="Confirm Delivery"
-          description={selectedOrderDetails ? `Mark ${selectedOrderDetails.order_code} as delivered?` : 'Confirm delivery'}
-          confirmLabel={markDelivered.isPending ? 'Marking...' : 'Confirm Delivered'}
-          confirmVariant="default"
-          onConfirm={() => selectedOrder && handleMarkDelivered(selectedOrder)}
-          isLoading={markDelivered.isPending}
-        >
-          {selectedOrderDetails && (
-            <div className="space-y-3 py-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Customer</span>
-                <span className="font-medium">{selectedOrderDetails.customer_name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Amount</span>
-                <span className="font-medium">{formatBND(selectedOrderDetails.total_amount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Payment</span>
-                <Badge variant="outline">{selectedOrderDetails.payment_method}</Badge>
-              </div>
-            </div>
-          )}
-        </MobileActionSheet>
+          order={selectedOrderDetails ? {
+            id: selectedOrderDetails.id,
+            order_code: selectedOrderDetails.order_code,
+            customer_name: selectedOrderDetails.customer_name,
+            total_amount: selectedOrderDetails.total_amount,
+          } : null}
+          onConfirm={handleMarkDelivered}
+          isPending={markDelivered.isPending}
+        />
 
         {/* Failed Dialog - Bottom Sheet on Mobile */}
         <MobileActionSheet
