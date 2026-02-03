@@ -2,7 +2,58 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLogs';
-import { format, isToday, parseISO } from 'date-fns';
+import { format, isToday, parseISO, startOfDay } from 'date-fns';
+
+// ============== Driver Deliveries Today Hook ==============
+// Used by RunnerCashDriver page to show Excel-style list of today's deliveries
+
+export interface DriverDeliveryToday {
+  id: string;
+  order_code: string;
+  customer_name: string | null;
+  total_amount: number;
+  driver_id: string | null;
+  driver_payment_method: string | null;
+  driver_delivered_at: string | null;
+  driver: { display_name: string } | null;
+}
+
+export function useDriverDeliveriesToday(driverFilter?: string) {
+  return useQuery({
+    queryKey: ['driver-deliveries-today', driverFilter],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const today = format(new Date(), 'yyyy-MM-dd');
+      
+      let query = supabase
+        .from('orders')
+        .select(`
+          id,
+          order_code,
+          customer_name,
+          total_amount,
+          driver_id,
+          driver_payment_method,
+          driver_delivered_at,
+          driver:profiles!orders_driver_id_fkey(display_name)
+        `)
+        .eq('runner_id', user.id)
+        .eq('driver_status', 'DRIVER_DELIVERED')
+        .gte('driver_delivered_at', today)
+        .order('driver_delivered_at', { ascending: false });
+      
+      if (driverFilter && driverFilter !== 'all') {
+        query = query.eq('driver_id', driverFilter);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []) as DriverDeliveryToday[];
+    },
+  });
+}
 
 export interface CashLiability {
   id: string;
