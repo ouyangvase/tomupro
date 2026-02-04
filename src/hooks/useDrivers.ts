@@ -429,6 +429,39 @@ export function useRunnerAcceptDelivery() {
   });
 }
 
+// Runner bulk accepts multiple driver deliveries
+export function useBulkRunnerAcceptDelivery() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (orderIds: string[]) => {
+      if (orderIds.length === 0) throw new Error('No orders selected');
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .update({
+          runner_accept_status: 'ACCEPTED',
+          runner_status: 'DELIVERED',
+          delivered_at: new Date().toISOString(),
+        })
+        .in('id', orderIds)
+        .select();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+      toast.success(`${data.length} deliveries accepted`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to bulk accept: ${error.message}`);
+    },
+  });
+}
+
 // Runner rejects driver delivery
 export function useRunnerRejectDelivery() {
   const queryClient = useQueryClient();

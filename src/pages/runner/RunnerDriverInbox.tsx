@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { useRunnerDriverOrders, useMyDrivers, useBulkAssignOrdersToDriver, useUnassignDriverFromOrder, useRunnerAcceptDelivery, useRunnerRejectDelivery, useDriverOrderCount } from '@/hooks/useDrivers';
+import { useRunnerDriverOrders, useMyDrivers, useBulkAssignOrdersToDriver, useUnassignDriverFromOrder, useRunnerAcceptDelivery, useRunnerRejectDelivery, useBulkRunnerAcceptDelivery, useDriverOrderCount } from '@/hooks/useDrivers';
 import { useManualReopenOrder } from '@/hooks/useRescheduleHistory';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,10 +57,12 @@ export default function RunnerDriverInbox() {
   const unassignDriver = useUnassignDriverFromOrder();
   const acceptDelivery = useRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
+  const bulkAcceptDelivery = useBulkRunnerAcceptDelivery();
   const manualReopen = useManualReopenOrder();
   const revertDelivery = useRevertDelivery();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [selectedPendingRows, setSelectedPendingRows] = useState<string[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<string>('');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectOrderId, setRejectOrderId] = useState<string | null>(null);
@@ -191,6 +193,31 @@ export default function RunnerDriverInbox() {
       { orderIds: selectedRows, driverId: selectedDriver },
       { onSuccess: () => setSelectedRows([]) }
     );
+  };
+
+  // Handle pending accept row selection
+  const handleSelectAllPending = (checked: boolean) => {
+    if (checked) {
+      setSelectedPendingRows(pendingAcceptanceOrders.map(o => o.id));
+    } else {
+      setSelectedPendingRows([]);
+    }
+  };
+
+  const handleSelectPendingRow = (orderId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedPendingRows([...selectedPendingRows, orderId]);
+    } else {
+      setSelectedPendingRows(selectedPendingRows.filter(id => id !== orderId));
+    }
+  };
+
+  // Handle bulk accept
+  const handleBulkAccept = () => {
+    if (selectedPendingRows.length === 0) return;
+    bulkAcceptDelivery.mutate(selectedPendingRows, {
+      onSuccess: () => setSelectedPendingRows([]),
+    });
   };
 
   // Handle accept delivery
@@ -733,8 +760,51 @@ export default function RunnerDriverInbox() {
             </Card>
           </TabsContent>
 
-          {/* TAB C: Pending Acceptance */}
+          {/* TAB C: Pending Acceptance - Excel Table View */}
           <TabsContent value="pending" className="space-y-4">
+            {/* Bulk Actions */}
+            {pendingAcceptanceOrders.length > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={selectedPendingRows.length === pendingAcceptanceOrders.length && pendingAcceptanceOrders.length > 0}
+                        onCheckedChange={handleSelectAllPending}
+                      />
+                      <span className="text-sm font-medium">
+                        {selectedPendingRows.length > 0 
+                          ? `${selectedPendingRows.length} selected` 
+                          : 'Select All'
+                        }
+                      </span>
+                    </div>
+                    <Button
+                      onClick={handleBulkAccept}
+                      disabled={selectedPendingRows.length === 0 || bulkAcceptDelivery.isPending}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {bulkAcceptDelivery.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                      )}
+                      Accept {selectedPendingRows.length > 0 ? `(${selectedPendingRows.length})` : 'Selected'}
+                    </Button>
+                    {selectedPendingRows.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedPendingRows([])}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {pendingAcceptanceOrders.length === 0 ? (
               <Card>
                 <CardContent className="p-8 text-center text-muted-foreground">
@@ -743,63 +813,106 @@ export default function RunnerDriverInbox() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {pendingAcceptanceOrders.map(order => (
-                  <Card key={order.id} className="border-amber-200 bg-amber-50/50 dark:bg-amber-900/10">
-                    <CardHeader className="pb-2">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <CardTitle className="text-lg">{order.order_code}</CardTitle>
-                          <p className="text-sm text-muted-foreground">
-                            Driver: {order.driver?.display_name}
-                          </p>
-                        </div>
-                        <Badge className="bg-amber-100 text-amber-800">
-                          Awaiting Accept
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        {order.customer_name}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                        {order.area || 'No area'}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                        {order.order_items?.length || 0} items · BND {Number(order.total_amount).toFixed(2)}
-                      </div>
-                      {order.driver_delivered_at && (
-                        <div className="text-xs text-muted-foreground">
-                          Delivered at: {format(parseISO(order.driver_delivered_at), 'dd MMM HH:mm')}
-                        </div>
-                      )}
-
-                      <div className="flex gap-2 pt-2">
-                        <Button
-                          className="flex-1"
-                          onClick={() => handleAccept(order.id)}
-                          disabled={acceptDelivery.isPending}
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={selectedPendingRows.length === pendingAcceptanceOrders.length && pendingAcceptanceOrders.length > 0}
+                            onCheckedChange={handleSelectAllPending}
+                          />
+                        </TableHead>
+                        <TableHead>Order Ref</TableHead>
+                        <TableHead>Driver</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Area</TableHead>
+                        <TableHead>Items</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Payment</TableHead>
+                        <TableHead>Delivered At</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingAcceptanceOrders.map(order => (
+                        <TableRow 
+                          key={order.id} 
+                          className={selectedPendingRows.includes(order.id) ? 'bg-primary/5' : ''}
                         >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Accept
-                        </Button>
-                        <Button
-                          className="flex-1"
-                          variant="destructive"
-                          onClick={() => handleOpenRejectDialog(order.id)}
-                        >
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Reject
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedPendingRows.includes(order.id)}
+                              onCheckedChange={(checked) => handleSelectPendingRow(order.id, !!checked)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-mono text-sm font-medium">{order.order_code}</TableCell>
+                          <TableCell>{order.driver?.display_name || '-'}</TableCell>
+                          <TableCell>{order.customer_name}</TableCell>
+                          <TableCell>
+                            <WhatsAppPhoneLink order={order} />
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{order.area || '-'}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
+                              return (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                                        {displayText}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[400px]">
+                                      <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell className="font-medium">BND {Number(order.total_amount).toFixed(2)}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{order.payment_method}</Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {order.driver_delivered_at 
+                              ? format(parseISO(order.driver_delivered_at), 'dd MMM HH:mm') 
+                              : '-'
+                            }
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                onClick={() => handleAccept(order.id)}
+                                disabled={acceptDelivery.isPending}
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => handleOpenRejectDialog(order.id)}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
         </Tabs>
