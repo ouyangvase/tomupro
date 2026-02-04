@@ -1,27 +1,34 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { logAudit } from './useAuditLogs';
 
 /**
  * Hook to force a password reset for a user.
- * Admin can trigger this to send a password reset email to the user.
- * The user will need to reset their password on next login.
+ * Sets a flag on the user's profile so they must change password on next login.
  */
 export function useForcePasswordReset() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async ({ userId, email, displayName }: { 
       userId: string; 
       email: string; 
       displayName: string;
     }) => {
-      // Get the base URL for the redirect
-      const redirectUrl = `${window.location.origin}/auth`;
-      
-      // Use Supabase's built-in password reset
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectUrl,
-      });
+      // Get current admin user
+      const { data: { user: adminUser } } = await supabase.auth.getUser();
+      if (!adminUser) throw new Error('Not authenticated');
+
+      // Set the force_password_reset flag on the user's profile
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          force_password_reset: true,
+          force_password_reset_at: new Date().toISOString(),
+          force_password_reset_by: adminUser.id,
+        })
+        .eq('id', userId);
       
       if (error) {
         throw error;
@@ -36,21 +43,24 @@ export function useForcePasswordReset() {
           email,
           display_name: displayName,
           triggered_at: new Date().toISOString(),
+          triggered_by: adminUser.id,
         },
       });
       
       return { email, displayName };
     },
-    onSuccess: ({ displayName, email }) => {
-      toast.success(`Password reset email sent to ${displayName}`, {
-        description: `An email has been sent to ${email} with instructions to reset their password.`,
+    onSuccess: ({ displayName }) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success(`Password reset required for ${displayName}`, {
+        description: 'They will need to set a new password on their next login.',
       });
     },
     onError: (error) => {
-      console.error('Password reset error:', error);
-      toast.error('Failed to send password reset email', {
+      console.error('Force password reset error:', error);
+      toast.error('Failed to force password reset', {
         description: error.message,
       });
     },
   });
 }
+
