@@ -1,44 +1,49 @@
 # Stock Integrity System - Fixed
 
-## Problem Solved
+## Latest Fix: Single Source of Truth (Feb 4, 2026)
+
+### Problem Solved
+Stock Balance page and Detailed SKU Audit were showing different balance values for the same SKU:
+- TY02: Audit showed 0, Stock Balance showed -8
+
+**Root cause**: Two different data sources:
+1. `stock_balance_view` summed ALL stock_movements (including duplicate deductions)
+2. `full_stock_integrity_audit` used canonical `v_delivered_order_lines`
+
+### Solution: Single Canonical Computed View
+
+Created `v_stock_balance_computed` as the SINGLE source of truth:
+
+```sql
+balance_qty = inbound + adjust + transfer_in - transfer_out - delivered
+```
+
+Where `delivered` comes from `v_delivered_order_lines` (same as Delivered Orders page).
+
+### Components Updated
+1. **v_stock_balance_computed** - Master computed view with full breakdown
+2. **stock_balance_view** - Backward-compatible alias pointing to computed view
+3. **get_stock_balance()** - Stock Balance page now reads from computed view
+4. **full_stock_integrity_audit()** - Audit page reads from same computed view
+5. **get_stock_integrity_summary()** - Summary stats from computed view
+6. **debug_compare_balance_sources(sku_code)** - Admin debug tool
+
+### Verification (TY02)
+- Inbound: 25
+- Delivered (canonical): 25
+- Balance: 0 ✓
+- Both pages now show identical values
+
+### Previous Fix: Enum Error Resolution
 
 The stock rebuild was failing with `invalid input value for enum order_status: "delivered"` because:
 - The `order_status` enum only has: `BOOKING`, `CANCELLED`, `READY`
 - Delivery is tracked via the `runner_status` TEXT field (value: `'DELIVERED'`)
-- The repair function was incorrectly checking `orders.status = 'delivered'`
 
-## Solution Implemented
+**Solution**: Use `runner_status = 'DELIVERED'` and text comparison `lower(status::text) != 'cancelled'`
 
-### A) Created Canonical View `v_delivered_order_lines`
-A single source of truth for what counts as "delivered":
+### Canonical View `v_delivered_order_lines`
+Single source of truth for "delivered" orders:
 ```sql
 WHERE o.runner_status = 'DELIVERED' AND o.status != 'CANCELLED'
 ```
-
-### B) Fixed `repair_missing_stock_deductions`
-- Uses `runner_status` instead of `status` enum
-- References the canonical view for consistency
-- Bulk SQL operations (no loops)
-- Idempotent with `ON CONFLICT DO NOTHING`
-
-### C) Added Debug Function
-`debug_delivered_qty_comparison(sku_code)` compares:
-- Delivered qty from orders (canonical view)
-- Delivered qty from stock movements
-- Shows MATCH/MISMATCH status
-
-### D) Enhanced `apply_full_stock_rebuild`
-- Returns total delivered lines counted
-- Includes sample SKU debug info
-- No enum casting errors
-
-## Verification
-- AKO02: Delivered Orders shows 207 qty
-- Stock Audit should now match after rebuild
-
-## Files Changed
-- New migration applied to fix database functions
-- Created `v_delivered_order_lines` view
-- Updated `repair_missing_stock_deductions` function
-- Updated `apply_full_stock_rebuild` function
-- Added `debug_delivered_qty_comparison` function
