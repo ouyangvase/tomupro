@@ -8,10 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  Database, Search, CheckCircle, AlertCircle, RefreshCw, 
-  ChevronDown, ChevronRight, ArrowUpDown, Package, Warehouse, TrendingDown, TrendingUp
+  Database, CheckCircle, AlertCircle, RefreshCw, Package
 } from 'lucide-react';
-import { useStockIntegrityAudit, useMovementDrilldown, useStockIntegritySummary, StockIntegrityRow } from '@/hooks/useStockIntegrity';
+import { useMovementDrilldown } from '@/hooks/useStockIntegrity';
+import { 
+  useFullStockIntegrityAudit, 
+  useStockIntegritySummary,
+  computeIntegritySummary,
+  FullStockIntegrityRow
+} from '@/hooks/useFullStockIntegrity';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
@@ -22,11 +27,14 @@ export default function StockIntegrityAudit() {
   const { data: users = [] } = useUsers();
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'error' | 'negative'>('all');
-  const [selectedRow, setSelectedRow] = useState<StockIntegrityRow | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'MISMATCH' | 'NEGATIVE' | 'OK'>('all');
+  const [selectedRow, setSelectedRow] = useState<FullStockIntegrityRow | null>(null);
   
-  const { data: auditData = [], isLoading, refetch } = useStockIntegrityAudit(ownerFilter);
-  const summary = useStockIntegritySummary(auditData);
+  const { data: summaryData } = useStockIntegritySummary();
+  const { data: auditData = [], isLoading, refetch } = useFullStockIntegrityAudit(
+    ownerFilter === 'all' ? null : ownerFilter,
+    statusFilter === 'all' ? null : statusFilter
+  );
   
   // Filter options - only users with stock
   const ownerOptions = useMemo(() => {
@@ -34,27 +42,19 @@ export default function StockIntegrityAudit() {
     return users.filter(u => ownerIds.has(u.id) || u.role === 'salesperson' || u.role === 'manager');
   }, [users, auditData]);
   
-  // Apply local filters
+  // Apply local search filter
   const filteredData = useMemo(() => {
-    let result = auditData;
+    if (!searchQuery.trim()) return auditData;
     
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(r => 
-        r.sku_code?.toLowerCase().includes(q) ||
-        r.sku_name?.toLowerCase().includes(q) ||
-        r.owner_name?.toLowerCase().includes(q)
-      );
-    }
-    
-    if (statusFilter === 'error') {
-      result = result.filter(r => r.status === 'ERROR');
-    } else if (statusFilter === 'negative') {
-      result = result.filter(r => r.computed_balance < 0);
-    }
-    
-    return result;
-  }, [auditData, searchQuery, statusFilter]);
+    const q = searchQuery.toLowerCase();
+    return auditData.filter(r => 
+      r.sku_code?.toLowerCase().includes(q) ||
+      r.sku_name?.toLowerCase().includes(q) ||
+      r.owner_name?.toLowerCase().includes(q)
+    );
+  }, [auditData, searchQuery]);
+  
+  const localSummary = computeIntegritySummary(filteredData);
   
   // Restrict to admin only
   if (profile?.role !== 'admin') {
@@ -90,31 +90,31 @@ export default function StockIntegrityAudit() {
           <Card>
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Total SKUs</p>
-              <p className="text-2xl font-bold">{summary.totalSkus}</p>
+              <p className="text-2xl font-bold">{summaryData?.total_skus ?? filteredData.length}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Healthy</p>
-              <p className="text-2xl font-bold text-green-500">{summary.healthyCount}</p>
+              <p className="text-2xl font-bold text-primary">{summaryData?.healthy_count ?? localSummary.healthyCount}</p>
             </CardContent>
           </Card>
-          <Card className={summary.errorCount > 0 ? 'border-yellow-500/50' : ''}>
+          <Card className={(summaryData?.mismatch_count ?? 0) > 0 ? 'border-warning/50' : ''}>
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Issues</p>
-              <p className="text-2xl font-bold text-yellow-500">{summary.errorCount}</p>
+              <p className="text-2xl font-bold text-warning">{summaryData?.mismatch_count ?? localSummary.mismatchCount}</p>
             </CardContent>
           </Card>
-          <Card className={summary.negativeBalanceCount > 0 ? 'border-destructive/50' : ''}>
+          <Card className={(summaryData?.negative_count ?? 0) > 0 ? 'border-destructive/50' : ''}>
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Negative Balance</p>
-              <p className="text-2xl font-bold text-destructive">{summary.negativeBalanceCount}</p>
+              <p className="text-2xl font-bold text-destructive">{summaryData?.negative_count ?? localSummary.negativeCount}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Health %</p>
-              <p className="text-2xl font-bold">{summary.healthPercentage}%</p>
+              <p className="text-2xl font-bold">{summaryData?.health_percentage ?? localSummary.healthPercentage}%</p>
             </CardContent>
           </Card>
         </div>
@@ -144,14 +144,15 @@ export default function StockIntegrityAudit() {
                 </SelectContent>
               </Select>
               
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
                 <SelectTrigger className="w-[160px] h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="error">Issues Only</SelectItem>
-                  <SelectItem value="negative">Negative Balance</SelectItem>
+                  <SelectItem value="MISMATCH">Mismatch</SelectItem>
+                  <SelectItem value="NEGATIVE">Negative Balance</SelectItem>
+                  <SelectItem value="OK">OK Only</SelectItem>
                 </SelectContent>
               </Select>
               
@@ -191,9 +192,9 @@ export default function StockIntegrityAudit() {
                       </td>
                     </tr>
                   )}
-                  {filteredData.map((row) => (
+                  {filteredData.map((row, idx) => (
                     <tr 
-                      key={`${row.warehouse_id}-${row.product_id}`}
+                      key={`${row.warehouse_id}-${row.product_id}-${idx}`}
                       className={cn(
                         "border-b hover:bg-muted/30 cursor-pointer transition-colors",
                         row.computed_balance < 0 && "bg-destructive/5"
@@ -210,17 +211,17 @@ export default function StockIntegrityAudit() {
                           <span className="text-xs text-muted-foreground">{row.sku_name}</span>
                         </div>
                       </td>
-                      <td className="p-3 text-right font-mono text-green-600">
+                      <td className="p-3 text-right font-mono text-primary">
                         +{row.inbound_qty}
                       </td>
                       <td className="p-3 text-right font-mono text-muted-foreground">
                         {row.adjustment_qty >= 0 ? '+' : ''}{row.adjustment_qty}
                       </td>
-                      <td className="p-3 text-right font-mono text-blue-500">
+                      <td className="p-3 text-right font-mono text-primary">
                         +{row.transfer_in_qty}
                       </td>
-                      <td className="p-3 text-right font-mono text-orange-500">
-                        {row.transfer_out_qty}
+                      <td className="p-3 text-right font-mono text-warning">
+                        -{row.transfer_out_qty}
                       </td>
                       <td className="p-3 text-right font-mono text-destructive">
                         -{row.delivered_qty}
@@ -231,15 +232,17 @@ export default function StockIntegrityAudit() {
                         </Badge>
                       </td>
                       <td className="p-3 text-center">
-                        {row.computed_balance < 0 ? (
+                        {row.status === 'NEGATIVE' ? (
                           <AlertCircle className="h-4 w-4 text-destructive inline" />
+                        ) : row.status === 'MISMATCH' ? (
+                          <AlertCircle className="h-4 w-4 text-warning inline" />
                         ) : (
-                          <CheckCircle className="h-4 w-4 text-green-500 inline" />
+                          <CheckCircle className="h-4 w-4 text-primary inline" />
                         )}
                       </td>
                       <td className="p-3">
-                        {row.suspected_issue && (
-                          <span className="text-xs text-yellow-600">{row.suspected_issue}</span>
+                        {row.issue_label && (
+                          <span className="text-xs text-warning">{row.issue_label}</span>
                         )}
                       </td>
                     </tr>
@@ -260,7 +263,7 @@ export default function StockIntegrityAudit() {
   );
 }
 
-function DrilldownDialog({ row, onClose }: { row: StockIntegrityRow | null; onClose: () => void }) {
+function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; onClose: () => void }) {
   const { data: movements = [], isLoading } = useMovementDrilldown(row?.warehouse_id, row?.product_id);
   
   if (!row) return null;
@@ -278,9 +281,9 @@ function DrilldownDialog({ row, onClose }: { row: StockIntegrityRow | null; onCl
         <div className="space-y-4">
           {/* Summary */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+            <div className="p-3 rounded-lg bg-primary/10 border border-primary/30">
               <p className="text-xs text-muted-foreground">Inbound</p>
-              <p className="text-xl font-bold text-green-500">+{row.inbound_qty}</p>
+              <p className="text-xl font-bold text-primary">+{row.inbound_qty}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted border">
               <p className="text-xs text-muted-foreground">Adjustments</p>
@@ -341,7 +344,7 @@ function DrilldownDialog({ row, onClose }: { row: StockIntegrityRow | null; onCl
                     </td>
                     <td className={cn(
                       "p-2 text-right font-mono",
-                      m.qty_change > 0 ? "text-green-600" : "text-destructive"
+                      m.qty_change > 0 ? "text-primary" : "text-destructive"
                     )}>
                       {m.qty_change > 0 ? '+' : ''}{m.qty_change}
                     </td>

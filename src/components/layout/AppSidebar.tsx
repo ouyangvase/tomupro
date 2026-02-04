@@ -277,7 +277,7 @@ const dataIntegrityItems: NavItem[] = [{
   icon: Database,
   roles: ['admin']
 }, {
-  title: "Quick Repair",
+  title: "Stock Rebuild",
   url: "/admin/stock-integrity",
   icon: ShieldCheck,
   roles: ['admin']

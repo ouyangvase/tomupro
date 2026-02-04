@@ -27,15 +27,9 @@ export interface BackfillOptions {
   forceReprocess?: boolean;
 }
 
-export interface QuickRepairResult {
-  success: boolean;
-  dry_run: boolean;
-  missing_deductions: number;
-  fixed_deductions: number;
-  queue_cleared: number;
-  errors: string[];
-  fixed_orders: string[];
-}
+// QuickRepairResult is now in useFullStockIntegrity.ts
+// Re-export for backward compatibility
+export type { QuickRepairResult } from './useFullStockIntegrity';
 
 export function useStockBackfill() {
   return useMutation({
@@ -64,26 +58,5 @@ export function useStockBackfill() {
   });
 }
 
-// Fast database-level repair function (no edge function timeout issues)
-export function useQuickRepair() {
-  return useMutation({
-    mutationFn: async (dryRun: boolean): Promise<QuickRepairResult> => {
-      const { data, error } = await supabase.rpc('repair_missing_stock_deductions', {
-        p_dry_run: dryRun
-      });
-      
-      if (error) throw new Error(error.message);
-      return data as unknown as QuickRepairResult;
-    },
-    onSuccess: (data) => {
-      if (data.dry_run) {
-        toast.info(`Preview: Found ${data.missing_deductions} missing deductions, ${data.queue_cleared} failed queue items`);
-      } else {
-        toast.success(`Repair complete! Fixed ${data.fixed_deductions} deductions, cleared ${data.queue_cleared} queue items`);
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(`Quick repair failed: ${error.message}`);
-    },
-  });
-}
+// Re-export from the new hook for backward compatibility
+export { useQuickRepair } from './useFullStockIntegrity';

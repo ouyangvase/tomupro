@@ -3459,6 +3459,7 @@ export type Database = {
         Args: { p_shipment_id: string }
         Returns: Json
       }
+      apply_full_stock_rebuild: { Args: { p_dry_run?: boolean }; Returns: Json }
       apply_stock_transfer: {
         Args: { p_approver_id: string; p_transfer_id: string }
         Returns: Json
@@ -3541,6 +3542,30 @@ export type Database = {
         Returns: boolean
       }
       debug_team_visibility: { Args: never; Returns: Json }
+      full_stock_integrity_audit: {
+        Args: { p_owner_filter?: string; p_status_filter?: string }
+        Returns: {
+          adjustment_qty: number
+          computed_balance: number
+          delivered_qty: number
+          delta: number
+          driver_allocate_qty: number
+          driver_return_qty: number
+          inbound_qty: number
+          issue_label: string
+          owner_name: string
+          owner_user_id: string
+          product_id: string
+          sku_code: string
+          sku_name: string
+          status: string
+          stored_balance: number
+          transfer_in_qty: number
+          transfer_out_qty: number
+          warehouse_id: string
+          warehouse_name: string
+        }[]
+      }
       generate_driver_code: { Args: { p_driver_id: string }; Returns: Json }
       get_accessible_owner_ids:
         | { Args: { p_include_shares?: boolean }; Returns: string[] }
@@ -3692,6 +3717,16 @@ export type Database = {
           sku_name: string
           warehouse_id: string
           warehouse_name: string
+        }[]
+      }
+      get_stock_integrity_summary: {
+        Args: never
+        Returns: {
+          health_percentage: number
+          healthy_count: number
+          mismatch_count: number
+          negative_count: number
+          total_skus: number
         }[]
       }
       get_stock_owner_warehouse: {
