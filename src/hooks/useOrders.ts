@@ -11,6 +11,8 @@ interface OrderFilters {
   runnerStatus?: RunnerStatus;
   reconciliationStatus?: ReconciliationStatus;
   excludeDeliveredAndFailed?: boolean;
+  searchQuery?: string; // Server-side search on order_code, customer_name, or area
+  areaFilter?: string; // Server-side exact match on area
 }
 
 export function useOrders(filters?: OrderFilters) {
@@ -60,6 +62,18 @@ export function useOrders(filters?: OrderFilters) {
       if (filters?.excludeDeliveredAndFailed) {
         query = query.neq('runner_status', 'DELIVERED');
         query = query.neq('runner_status', 'FAILED_DELIVERY');
+      }
+      
+      // Server-side search filter for better performance on large datasets
+      // Searches order_code, customer_name, and area
+      if (filters?.searchQuery && filters.searchQuery.trim()) {
+        const searchTerm = `%${filters.searchQuery.trim()}%`;
+        query = query.or(`order_code.ilike.${searchTerm},customer_name.ilike.${searchTerm},area.ilike.${searchTerm}`);
+      }
+      
+      // Server-side exact area filter
+      if (filters?.areaFilter && filters.areaFilter !== 'all') {
+        query = query.eq('area', filters.areaFilter);
       }
 
       const { data: ordersData, error: ordersError } = await query;
