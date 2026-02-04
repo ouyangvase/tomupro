@@ -42,7 +42,7 @@ export function useRecentAdjustments({ page, pageSize, skuFilter, userFilter }: 
           reference_type,
           products!inner(sku_code, sku_name),
           warehouses!inner(name),
-          profiles!stock_movements_created_by_fkey(full_name)
+          profiles!stock_movements_created_by_fkey(display_name)
         `, { count: 'exact' })
         .in('movement_type', ['RETURN', 'ADJUSTMENT'])
         .eq('reference_type', 'MANUAL')
@@ -80,7 +80,7 @@ export function useRecentAdjustments({ page, pageSize, skuFilter, userFilter }: 
         sku_code: row.products?.sku_code || null,
         sku_name: row.products?.sku_name || 'Unknown',
         warehouse_name: row.warehouses?.name || 'Unknown',
-        created_by_name: row.profiles?.full_name || 'Unknown',
+        created_by_name: row.profiles?.display_name || 'Unknown',
       }));
 
       return {
@@ -99,7 +99,7 @@ export function useAdjustmentUsers() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('stock_movements')
-        .select('created_by, profiles!stock_movements_created_by_fkey(full_name)')
+        .select('created_by, profiles!stock_movements_created_by_fkey(display_name)')
         .in('movement_type', ['RETURN', 'ADJUSTMENT'])
         .eq('reference_type', 'MANUAL');
       
@@ -109,7 +109,7 @@ export function useAdjustmentUsers() {
       const uniqueUsers = new Map<string, string>();
       (data || []).forEach((row: any) => {
         if (row.created_by && !uniqueUsers.has(row.created_by)) {
-          uniqueUsers.set(row.created_by, row.profiles?.full_name || 'Unknown');
+          uniqueUsers.set(row.created_by, row.profiles?.display_name || 'Unknown');
         }
       });
 
