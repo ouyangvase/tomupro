@@ -43,6 +43,7 @@ import {
   deactivateWarehousesForUser,
 } from '@/hooks/useUsers';
 import { useReenableUser, ExtendedProfile } from '@/hooks/useOffboarding';
+import { useForcePasswordReset } from '@/hooks/useForcePasswordReset';
 import { useManagers } from '@/hooks/useTeamMembers';
 import { 
   Users, 
@@ -55,7 +56,8 @@ import {
   Package,
   RefreshCw,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  KeyRound
 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Profile, AppRole } from '@/types/database';
@@ -87,6 +89,7 @@ export default function UsersSettings() {
   const { data: managers = [] } = useManagers();
   const updateUser = useUpdateUser();
   const reenableUser = useReenableUser();
+  const forcePasswordReset = useForcePasswordReset();
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
@@ -98,6 +101,7 @@ export default function UsersSettings() {
   const [disableDialogOpen, setDisableDialogOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [reenableDialogOpen, setReenableDialogOpen] = useState(false);
+  const [passwordResetDialogOpen, setPasswordResetDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<ExtendedProfile | null>(null);
 
   // Filters
@@ -198,10 +202,26 @@ export default function UsersSettings() {
     setReenableDialogOpen(true);
   };
 
+  const handleOpenPasswordReset = (user: Profile) => {
+    setSelectedUser(user as ExtendedProfile);
+    setPasswordResetDialogOpen(true);
+  };
+
   const handleReenable = async () => {
     if (!selectedUser) return;
     await reenableUser.mutateAsync(selectedUser.id);
     setReenableDialogOpen(false);
+    setSelectedUser(null);
+  };
+
+  const handlePasswordReset = async () => {
+    if (!selectedUser) return;
+    await forcePasswordReset.mutateAsync({
+      userId: selectedUser.id,
+      email: selectedUser.email,
+      displayName: selectedUser.display_name,
+    });
+    setPasswordResetDialogOpen(false);
     setSelectedUser(null);
   };
 
@@ -313,6 +333,13 @@ export default function UsersSettings() {
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit User
               </DropdownMenuItem>
+              
+              {isActive && (
+                <DropdownMenuItem onClick={() => handleOpenPasswordReset(user)}>
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Force Password Reset
+                </DropdownMenuItem>
+              )}
               
               <DropdownMenuSeparator />
               
@@ -530,6 +557,25 @@ export default function UsersSettings() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleReenable} disabled={reenableUser.isPending}>
               {reenableUser.isPending ? 'Re-enabling...' : 'Re-enable Account'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Password Reset Confirmation Dialog */}
+      <AlertDialog open={passwordResetDialogOpen} onOpenChange={setPasswordResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Force Password Reset</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will send a password reset email to <strong>{selectedUser?.display_name}</strong> ({selectedUser?.email}).
+              They will need to reset their password before logging in again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handlePasswordReset} disabled={forcePasswordReset.isPending}>
+              {forcePasswordReset.isPending ? 'Sending...' : 'Send Reset Email'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
