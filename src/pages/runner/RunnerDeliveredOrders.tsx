@@ -135,9 +135,26 @@ export default function RunnerDeliveredOrders() {
   // - Manager: fetch based on view mode (my data vs team data)
   // - Admin: fetch all orders, with optional salesperson filter applied SERVER-SIDE
   // CRITICAL: Admin must filter server-side to avoid 2000 row truncation bug
+  // NOTE: Search and area are now applied server-side to work across all orders, not just first 2000
   const ordersFilter = useMemo(() => {
     // Always filter for DELIVERED status at database level for performance
-    const baseFilter = { runnerStatus: 'DELIVERED' as const };
+    const baseFilter: { 
+      runnerStatus: 'DELIVERED'; 
+      searchQuery?: string;
+      areaFilter?: string;
+    } = { 
+      runnerStatus: 'DELIVERED' as const 
+    };
+    
+    // Apply search server-side for better filtering on large datasets
+    if (searchQuery.trim()) {
+      baseFilter.searchQuery = searchQuery.trim();
+    }
+    
+    // Apply area filter server-side
+    if (areaFilter !== 'all') {
+      baseFilter.areaFilter = areaFilter;
+    }
     
     if (role === 'runner') {
       // Apply salesperson filter server-side to avoid response truncation on large datasets
@@ -165,7 +182,7 @@ export default function RunnerDeliveredOrders() {
       return { ...baseFilter, salespersonIds: [salespersonFilter] };
     }
     return baseFilter; // admin no filter - fetch all delivered
-  }, [role, user?.id, salespersonIds, salespersonFilter]);
+  }, [role, user?.id, salespersonIds, salespersonFilter, searchQuery, areaFilter]);
   
   const { data: orders, isLoading } = useOrders(ordersFilter as any);
   const { data: userDirectory = [] } = useUserDirectory();
@@ -239,6 +256,7 @@ export default function RunnerDeliveredOrders() {
   };
 
   // Filter to only delivered orders
+  // NOTE: Search and area filters are now server-side for performance
   const deliveredOrders = useMemo(() => {
     if (!orders) return [];
     
@@ -246,22 +264,9 @@ export default function RunnerDeliveredOrders() {
       order.runner_status === 'DELIVERED' && order.status !== 'CANCELLED'
     );
 
-    // Apply search
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(order =>
-        order.order_code.toLowerCase().includes(query) ||
-        order.customer_name?.toLowerCase().includes(query) ||
-        order.area?.toLowerCase().includes(query)
-      );
-    }
+    // Search and area are now filtered server-side - no need to duplicate here
 
-    // Apply area filter
-    if (areaFilter !== 'all') {
-      filtered = filtered.filter(order => order.area === areaFilter);
-    }
-
-    // Apply driver filter
+    // Apply driver filter (still client-side as it's less critical)
     if (driverFilter !== 'all') {
       filtered = filtered.filter(order => order.driver_id === driverFilter);
     }
@@ -273,6 +278,7 @@ export default function RunnerDeliveredOrders() {
     }
 
     // Apply SKU filter (by SKU code, not product ID)
+    // Note: SKU filter is still client-side as it requires order_items join
     if (skuFilter !== 'all') {
       const normalizedFilter = skuFilter.trim().toUpperCase();
       filtered = filtered.filter(order => 
@@ -290,7 +296,7 @@ export default function RunnerDeliveredOrders() {
     }
 
     return filtered;
-  }, [orders, searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
+  }, [orders, driverFilter, salespersonFilter, skuFilter, claimStatusFilter, role]);
 
   // Detect if any filters are active
   const hasActiveFilters = useMemo(() => {
@@ -859,6 +865,15 @@ export default function RunnerDeliveredOrders() {
                   <p className="text-2xl font-bold">{formatBND(skuSummary.totalAmount)}</p>
                 </div>
               </div>
+              {/* Warning when no results found and no user selected - SKU filter is client-side limited */}
+              {skuSummary.totalOrders === 0 && salespersonFilter === 'all' && isAdminOrManager && (
+                <div className="mt-4 flex items-start gap-2 p-3 rounded-md bg-amber-500/10 border border-amber-500/30 text-sm">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                  <span className="text-muted-foreground">
+                    No matching orders found in current view. Try selecting a specific user to see their orders with this SKU.
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
