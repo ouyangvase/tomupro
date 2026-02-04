@@ -614,9 +614,11 @@ export default function ReadySales() {
                       <Button size="sm" variant="outline" onClick={handleExportSelected}>
                         Export Selected
                       </Button>
-                      <Button size="sm" variant="outline" onClick={handleDispute}>
-                        Mark Dispute
-                      </Button>
+                      {role !== 'manager' && role !== 'salesperson' && (
+                        <Button size="sm" variant="outline" onClick={handleDispute}>
+                          Mark Dispute
+                        </Button>
+                      )}
                       {canCancel ? (
                         <Button 
                           size="sm" 
