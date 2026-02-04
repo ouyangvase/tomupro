@@ -34,14 +34,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWarehouses, useStockBalance } from '@/hooks/useInventory';
@@ -49,36 +41,15 @@ import { useCreateStockMovement } from '@/hooks/useStockMovements';
 import { useUploadAttachment } from '@/hooks/useAttachments';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { Wrench, Upload, X } from 'lucide-react';
 import type { MovementType } from '@/types/database';
-
-// Fetch recent adjustments
-function useRecentAdjustments() {
-  return useQuery({
-    queryKey: ['recent-adjustments'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('stock_movements')
-        .select('*')
-        .in('movement_type', ['RETURN', 'ADJUSTMENT'])
-        .eq('reference_type', 'MANUAL')
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return data;
-    },
-  });
-}
+import { RecentAdjustmentsTable } from '@/components/inventory/RecentAdjustmentsTable';
 
 export default function StockAdjustment() {
   const { role, user } = useAuth();
   const { toast } = useToast();
   const { data: warehouses } = useWarehouses();
   const { data: stockBalance } = useStockBalance();
-  const { data: recentAdjustments } = useRecentAdjustments();
   const createMovement = useCreateStockMovement();
   const uploadAttachment = useUploadAttachment();
 
@@ -212,15 +183,6 @@ export default function StockAdjustment() {
     }
   };
 
-  const getProductName = (prodId: string) => {
-    // For recent adjustments, look up from stock balance which has all products
-    const stockItem = stockBalance?.find(s => s.product_id === prodId);
-    return stockItem ? `${stockItem.sku_name}${stockItem.sku_code ? ` (${stockItem.sku_code})` : ''}` : '-';
-  };
-
-  const getWarehouseName = (warehouseId: string) => {
-    return warehouses?.find(w => w.id === warehouseId)?.name || '-';
-  };
 
   if (!isAdmin) {
     return (
@@ -405,52 +367,8 @@ export default function StockAdjustment() {
             </CardContent>
           </Card>
 
-          {/* Recent Adjustments */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Adjustments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {recentAdjustments && recentAdjustments.length > 0 ? (
-                <div className="border rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead>Date</TableHead>
-                        <TableHead>Product</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead className="text-right">Qty</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {recentAdjustments.map((adj) => (
-                        <TableRow key={adj.id}>
-                          <TableCell className="text-sm">
-                            {format(new Date(adj.created_at), 'MMM dd, HH:mm')}
-                          </TableCell>
-                          <TableCell className="text-sm truncate max-w-[150px]">
-                            {getProductName(adj.product_id)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={adj.movement_type === 'RETURN' ? 'secondary' : 'outline'}>
-                              {adj.movement_type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className={`text-right font-medium ${adj.qty_change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {adj.qty_change > 0 ? '+' : ''}{adj.qty_change}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No recent adjustments
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          {/* Recent Adjustments - Full Table with Pagination */}
+          <RecentAdjustmentsTable />
         </div>
       </div>
 
