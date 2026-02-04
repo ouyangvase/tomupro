@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, Loader2, LogOut, RefreshCw, UserX, ShieldAlert } from "lucide-react";
+import ForcePasswordChange from "@/pages/auth/ForcePasswordChange";
 
 /**
  * Profile loading states - strict state machine.
@@ -12,14 +13,16 @@ import { AlertTriangle, Loader2, LogOut, RefreshCw, UserX, ShieldAlert } from "l
  * - 'ready': Profile loaded successfully, role verified
  * - 'error': Profile fetch failed (network/database error)
  * - 'missing': No profile row exists for authenticated user
+ * - 'password_reset_required': User must change password before continuing
  */
-export type ProfileStatus = 'idle' | 'loading' | 'ready' | 'error' | 'missing';
+export type ProfileStatus = 'idle' | 'loading' | 'ready' | 'error' | 'missing' | 'password_reset_required';
 
 interface ProfileGateProps {
   profileStatus: ProfileStatus;
   profileError: string | null;
   onRetry: () => void;
   onResetSession: () => void;
+  onPasswordChanged?: () => void;
   children: React.ReactNode;
 }
 
@@ -42,8 +45,14 @@ export function ProfileGate({
   profileError, 
   onRetry, 
   onResetSession, 
+  onPasswordChanged,
   children 
 }: ProfileGateProps) {
+  // PASSWORD RESET REQUIRED: User must change password first
+  if (profileStatus === 'password_reset_required') {
+    return <ForcePasswordChange onComplete={onPasswordChanged || onRetry} />;
+  }
+
   // SUCCESS: Profile is ready - render app
   if (profileStatus === 'ready') {
     return <>{children}</>;

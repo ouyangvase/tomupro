@@ -2610,6 +2610,9 @@ export type Database = {
           display_name: string
           driver_code: string | null
           email: string
+          force_password_reset: boolean
+          force_password_reset_at: string | null
+          force_password_reset_by: string | null
           id: string
           is_active: boolean
           manager_id: string | null
@@ -2628,6 +2631,9 @@ export type Database = {
           display_name: string
           driver_code?: string | null
           email: string
+          force_password_reset?: boolean
+          force_password_reset_at?: string | null
+          force_password_reset_by?: string | null
           id: string
           is_active?: boolean
           manager_id?: string | null
@@ -2646,6 +2652,9 @@ export type Database = {
           display_name?: string
           driver_code?: string | null
           email?: string
+          force_password_reset?: boolean
+          force_password_reset_at?: string | null
+          force_password_reset_by?: string | null
           id?: string
           is_active?: boolean
           manager_id?: string | null
@@ -2659,6 +2668,13 @@ export type Database = {
           {
             foreignKeyName: "profiles_disabled_by_fkey"
             columns: ["disabled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_force_password_reset_by_fkey"
+            columns: ["force_password_reset_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]

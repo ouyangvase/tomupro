@@ -13,6 +13,9 @@ interface ExtendedProfile extends Profile {
   disabled_at?: string | null;
   disabled_reason?: string | null;
   disabled_by?: string | null;
+  force_password_reset?: boolean;
+  force_password_reset_at?: string | null;
+  force_password_reset_by?: string | null;
 }
 
 interface AuthContextType {
@@ -183,6 +186,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? 'Your account has been marked as resigned. Please contact admin.'
           : 'Your account has been disabled. Please contact admin.'
       );
+      return;
+    }
+    
+    // Check if password reset is required
+    if (newProfile.force_password_reset) {
+      console.log('[Auth] Password reset required for user');
+      setPreviousRole(newProfile.role);
+      setProfile(newProfile);
+      setProfileStatus('password_reset_required');
+      setProfileError(null);
       return;
     }
     

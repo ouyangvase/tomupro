@@ -99,7 +99,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   // Step 3: User exists but profile is not ready - show ProfileGate
-  // This handles: loading, error, missing states with recovery actions
+  // This handles: loading, error, missing, password_reset_required states with recovery actions
   if (profileStatus !== 'ready') {
     return (
       <ProfileGate
@@ -107,6 +107,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         profileError={profileError}
         onRetry={retryProfile}
         onResetSession={resetSession}
+        onPasswordChanged={retryProfile}
       >
         {children}
       </ProfileGate>

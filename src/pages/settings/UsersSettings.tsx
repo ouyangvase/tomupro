@@ -568,14 +568,14 @@ export default function UsersSettings() {
           <AlertDialogHeader>
             <AlertDialogTitle>Force Password Reset</AlertDialogTitle>
             <AlertDialogDescription>
-              This will send a password reset email to <strong>{selectedUser?.display_name}</strong> ({selectedUser?.email}).
-              They will need to reset their password before logging in again.
+              This will require <strong>{selectedUser?.display_name}</strong> to set a new password on their next login.
+              They will not be able to access the application until they change their password.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handlePasswordReset} disabled={forcePasswordReset.isPending}>
-              {forcePasswordReset.isPending ? 'Sending...' : 'Send Reset Email'}
+              {forcePasswordReset.isPending ? 'Processing...' : 'Require Password Reset'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
