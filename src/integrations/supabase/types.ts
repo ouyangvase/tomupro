@@ -200,6 +200,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "attachments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
+          },
+          {
             foreignKeyName: "attachments_uploaded_by_fkey"
             columns: ["uploaded_by"]
             isOneToOne: false
@@ -398,6 +405,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_liabilities_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
+          },
+          {
             foreignKeyName: "cash_liabilities_runner_id_fkey"
             columns: ["runner_id"]
             isOneToOne: false
@@ -497,6 +511,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claim_batch_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -629,6 +650,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claims_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -830,6 +858,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "commission_snapshots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
+          },
+          {
             foreignKeyName: "commission_snapshots_salesperson_id_fkey"
             columns: ["salesperson_id"]
             isOneToOne: false
@@ -1005,6 +1040,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -1288,6 +1330,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expected_date_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -2079,6 +2128,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
+          },
+          {
             foreignKeyName: "order_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
@@ -2775,6 +2831,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "reschedule_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
+          },
+          {
             foreignKeyName: "reschedule_history_reason_id_fkey"
             columns: ["reason_id"]
             isOneToOne: false
@@ -2931,6 +2994,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "stock_movements_product_id_fkey"
@@ -3417,6 +3487,45 @@ export type Database = {
           },
         ]
       }
+      v_delivered_order_lines: {
+        Row: {
+          delivered_at: string | null
+          line_total: number | null
+          order_code: string | null
+          order_id: string | null
+          order_item_id: string | null
+          owner_id: string | null
+          price: number | null
+          product_id: string | null
+          product_owner_id: string | null
+          qty_delivered: number | null
+          sku_code: string | null
+          sku_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_salesperson_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_owner_user_id_fkey"
+            columns: ["product_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_my_packages: {
         Row: {
           batch_id: string | null
@@ -3540,6 +3649,16 @@ export type Database = {
           p_warehouse_id: string
         }
         Returns: boolean
+      }
+      debug_delivered_qty_comparison: {
+        Args: { p_sku_code?: string }
+        Returns: {
+          delivered_from_movements: number
+          delivered_from_orders: number
+          difference: number
+          match_status: string
+          sku_code: string
+        }[]
       }
       debug_team_visibility: { Args: never; Returns: Json }
       full_stock_integrity_audit: {
