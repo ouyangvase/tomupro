@@ -1,53 +1,44 @@
+# Stock Integrity System - Fixed
 
+## Problem Solved
 
-# Fix Stock Integrity Rebuild Error: Column Name Mismatch
+The stock rebuild was failing with `invalid input value for enum order_status: "delivered"` because:
+- The `order_status` enum only has: `BOOKING`, `CANCELLED`, `READY`
+- Delivery is tracked via the `runner_status` TEXT field (value: `'DELIVERED'`)
+- The repair function was incorrectly checking `orders.status = 'delivered'`
 
-## Problem Identified
+## Solution Implemented
 
-The "Apply Full Rebuild" button fails with error: **"column w.owner_id does not exist"**
-
-**Root Cause**: Migration `20260204105833` contains incorrect column names:
-- Line 25: `p.owner_id` should be `p.owner_user_id` (products table)
-- Line 30: `w.owner_id` should be `w.owner_user_id` (warehouses table)
-
-These incorrect column references are in the `repair_missing_stock_deductions` function which is called by `apply_full_stock_rebuild`.
-
-## Solution
-
-Create a new SQL migration to fix the column references in the `repair_missing_stock_deductions` function.
-
-### Changes Required
-
-**New Migration**: Fix the `repair_missing_stock_deductions` function with correct column names
-
+### A) Created Canonical View `v_delivered_order_lines`
+A single source of truth for what counts as "delivered":
 ```sql
-CREATE OR REPLACE FUNCTION repair_missing_stock_deductions(p_dry_run boolean DEFAULT true)
--- Change line 25: p.owner_id → p.owner_user_id
--- Change line 30: w.owner_id → w.owner_user_id  
+WHERE o.runner_status = 'DELIVERED' AND o.status != 'CANCELLED'
 ```
 
-**Key fixes**:
-1. `p.owner_id as product_owner_id` → `p.owner_user_id as product_owner_id`
-2. `w.owner_id = p.owner_id` → `w.owner_user_id = p.owner_user_id`
+### B) Fixed `repair_missing_stock_deductions`
+- Uses `runner_status` instead of `status` enum
+- References the canonical view for consistency
+- Bulk SQL operations (no loops)
+- Idempotent with `ON CONFLICT DO NOTHING`
 
-### Technical Details
+### C) Added Debug Function
+`debug_delivered_qty_comparison(sku_code)` compares:
+- Delivered qty from orders (canonical view)
+- Delivered qty from stock movements
+- Shows MATCH/MISMATCH status
 
-The corrected function will:
-- Find DELIVERED orders missing stock deductions
-- Match products to warehouses using `owner_user_id` (the correct column)
-- Insert missing SALE_DEDUCT movements with ON CONFLICT handling for idempotency
-- Clear stale delivery queue items
+### D) Enhanced `apply_full_stock_rebuild`
+- Returns total delivered lines counted
+- Includes sample SKU debug info
+- No enum casting errors
 
-### Files to Modify
+## Verification
+- AKO02: Delivered Orders shows 207 qty
+- Stock Audit should now match after rebuild
 
-| File | Change |
-|------|--------|
-| New migration | Fix column references in `repair_missing_stock_deductions` function |
-
-### Expected Outcome
-
-After applying this fix:
-- "Apply Full Rebuild" button will work correctly
-- Missing stock deductions will be created
-- Negative balances (as noted, these are acceptable) will remain but no more errors
-
+## Files Changed
+- New migration applied to fix database functions
+- Created `v_delivered_order_lines` view
+- Updated `repair_missing_stock_deductions` function
+- Updated `apply_full_stock_rebuild` function
+- Added `debug_delivered_qty_comparison` function
