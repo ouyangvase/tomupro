@@ -23,6 +23,7 @@ import { AddressActions } from '@/components/driver/AddressActions';
 import { RouteSuggestionBadge } from '@/components/driver/RouteSuggestionBadge';
 import { DriverRemarkSelector } from '@/components/driver/DriverRemarkSelector';
 import { DraggableOrderList } from '@/components/driver/DraggableOrderList';
+import { RemarkStatusDot } from '@/components/driver/RemarkStatusDot';
 import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
@@ -237,12 +238,13 @@ export default function DriverInbox() {
     return format(date, 'dd MMM');
   };
 
-  // Render order card content
+  // Render order card content — index is the display position in the sorted list
   const renderOrderCard = useCallback((order: any, index: number, isDragging: boolean) => {
     const items = formatOrderItems(order.order_items || []);
     const suggestion = suggestions.get(order.id);
     const remark = remarks[order.id];
     const isExpanded = expandedCards.has(order.id);
+    const displayPosition = index + 1; // 1-based position after sorting/drag
 
     return (
       <Card className={cn("overflow-hidden transition-all", isDragging && "opacity-60")}>
@@ -250,16 +252,22 @@ export default function DriverInbox() {
           <div className="flex justify-between items-start">
             <div className="flex-1 min-w-0">
               <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                {/* Remark status dot - visible on collapsed card */}
+                <RemarkStatusDot remarkType={remark?.remark_type} />
                 {order.order_code}
                 <span className="text-xs text-muted-foreground font-normal">
                   {getDateLabel(order)}
                 </span>
-                {/* Route Suggestion Badge */}
-                {hasSuggestions && suggestion && !hasManualPriority && (
-                  <RouteSuggestionBadge rank={suggestion.rank} distance={suggestion.distance} />
-                )}
               </CardTitle>
-              <div className="flex gap-2 mt-1 flex-wrap">
+              {/* Route position badge — always shows current sorted position */}
+              <div className="flex gap-2 mt-1 flex-wrap items-center">
+                {(hasSuggestions || hasManualPriority) && (
+                  <RouteSuggestionBadge
+                    rank={displayPosition}
+                    distance={suggestion?.distance}
+                    showDistance={!!suggestion}
+                  />
+                )}
                 <Badge className={driverStatusColors[order.driver_status || 'ASSIGNED']}>
                   {order.driver_status?.replace('_', ' ')}
                 </Badge>

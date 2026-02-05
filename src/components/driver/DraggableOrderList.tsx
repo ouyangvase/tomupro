@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { GripVertical, RotateCcw, Check } from "lucide-react";
+import { GripVertical, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DraggableOrderListProps<T> {
@@ -25,15 +25,30 @@ export function DraggableOrderList<T>({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [localItems, setLocalItems] = useState(items);
-  const [hasChanges, setHasChanges] = useState(false);
   const touchStartY = useRef<number>(0);
   const touchCurrentIndex = useRef<number | null>(null);
 
-  // Update local items when props change
+  // Update local items when props change (only if not mid-drag)
   React.useEffect(() => {
-    setLocalItems(items);
-    setHasChanges(false);
-  }, [items]);
+    if (draggedIndex === null) {
+      setLocalItems(items);
+    }
+  }, [items, draggedIndex]);
+
+  // Perform reorder and auto-save
+  const performReorder = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      const newItems = [...localItems];
+      const [draggedItem] = newItems.splice(fromIndex, 1);
+      newItems.splice(toIndex, 0, draggedItem);
+      setLocalItems(newItems);
+      // Auto-save immediately on drop
+      const orderedIds = newItems.map(getItemId);
+      onReorder(orderedIds);
+    },
+    [localItems, getItemId, onReorder]
+  );
 
   // Desktop drag handlers
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -50,11 +65,7 @@ export function DraggableOrderList<T>({
 
   const handleDragEnd = () => {
     if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
-      const newItems = [...localItems];
-      const [draggedItem] = newItems.splice(draggedIndex, 1);
-      newItems.splice(dragOverIndex, 0, draggedItem);
-      setLocalItems(newItems);
-      setHasChanges(true);
+      performReorder(draggedIndex, dragOverIndex);
     }
     setDraggedIndex(null);
     setDragOverIndex(null);
@@ -89,11 +100,7 @@ export function DraggableOrderList<T>({
     if (touchCurrentIndex.current !== null && dragOverIndex !== null) {
       const sourceIndex = touchCurrentIndex.current;
       if (sourceIndex !== dragOverIndex) {
-        const newItems = [...localItems];
-        const [draggedItem] = newItems.splice(sourceIndex, 1);
-        newItems.splice(dragOverIndex, 0, draggedItem);
-        setLocalItems(newItems);
-        setHasChanges(true);
+        performReorder(sourceIndex, dragOverIndex);
       }
     }
     setDraggedIndex(null);
@@ -101,50 +108,23 @@ export function DraggableOrderList<T>({
     touchCurrentIndex.current = null;
   };
 
-  const handleSave = () => {
-    const orderedIds = localItems.map(getItemId);
-    onReorder(orderedIds);
-    setHasChanges(false);
-  };
-
-  const handleReset = () => {
-    setLocalItems(items);
-    setHasChanges(false);
-  };
-
   return (
     <div className={cn("space-y-2", className)}>
-      {/* Priority indicator and controls */}
-      {(hasManualPriority || hasChanges) && (
+      {/* Priority indicator */}
+      {hasManualPriority && (
         <div className="flex items-center justify-between p-2 rounded-lg bg-primary/10 border border-primary/20">
           <span className="text-xs font-medium text-primary">
-            {hasChanges ? "Unsaved changes" : "Manual Priority Active"}
+            Manual Priority Active
           </span>
-          <div className="flex gap-2">
-            {hasChanges && (
-              <>
-                <Button size="sm" variant="ghost" onClick={handleReset} className="h-7 text-xs">
-                  <RotateCcw className="h-3 w-3 mr-1" />
-                  Reset
-                </Button>
-                <Button size="sm" onClick={handleSave} className="h-7 text-xs">
-                  <Check className="h-3 w-3 mr-1" />
-                  Save Order
-                </Button>
-              </>
-            )}
-            {!hasChanges && hasManualPriority && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={onClearPriority}
-                className="h-7 text-xs"
-              >
-                <RotateCcw className="h-3 w-3 mr-1" />
-                Reset to Default
-              </Button>
-            )}
-          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onClearPriority}
+            className="h-7 text-xs"
+          >
+            <RotateCcw className="h-3 w-3 mr-1" />
+            Reset to Default
+          </Button>
         </div>
       )}
 
@@ -168,7 +148,7 @@ export function DraggableOrderList<T>({
               onTouchEnd={handleTouchEnd}
               className={cn(
                 "relative transition-all duration-150",
-                isDragging && "opacity-50 scale-[0.98]",
+                isDragging && "opacity-50 scale-[0.98] shadow-lg",
                 isDragOver && "ring-2 ring-primary ring-offset-2"
               )}
             >
