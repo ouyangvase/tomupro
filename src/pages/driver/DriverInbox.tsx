@@ -108,7 +108,17 @@ export default function DriverInbox() {
     })), 
     [pendingOrders]
   );
-  const { suggestions, hasSuggestions, isGeocoding, refreshLocation, driverLocation } = useRouteSuggestion(ordersForSuggestion);
+  const { 
+    suggestions, 
+    hasSuggestions, 
+    isGeocoding, 
+    hasTimedOut, 
+    error: routeError,
+    refreshLocation, 
+    driverLocation,
+    ordersProcessed,
+    totalOrders,
+  } = useRouteSuggestion(ordersForSuggestion);
 
   // Driver remarks hook
   const { remarks, upsertRemark, deleteRemark } = useDriverRemarks(pendingOrderIds);
@@ -435,18 +445,26 @@ export default function DriverInbox() {
         {/* Route Suggestion Status */}
         {pendingOrders.length > 0 && (
           <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50 mb-4">
-            <div className="flex items-center gap-2 text-sm">
-              <MapPin className="h-4 w-4" />
-              <span>
-                {isGeocoding ? (
+            <div className="flex items-center gap-2 text-sm flex-1 min-w-0">
+              <MapPin className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">
+                {hasTimedOut ? (
+                  <span className="text-destructive flex items-center gap-1">
+                    Route temporarily unavailable. Tap refresh.
+                  </span>
+                ) : routeError && !isGeocoding ? (
+                  <span className="text-muted-foreground">{routeError}</span>
+                ) : isGeocoding ? (
                   <span className="flex items-center gap-2">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Calculating routes...
+                    <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
+                    <span className="truncate">
+                      Calculating routes ({ordersProcessed}/{totalOrders})...
+                    </span>
                   </span>
                 ) : hasSuggestions ? (
                   <span className="text-primary">Route suggestions active</span>
                 ) : driverLocation ? (
-                  "Geocoding addresses..."
+                  <span className="text-muted-foreground">No route data available</span>
                 ) : (
                   <span className="text-muted-foreground">Enable location for route suggestions</span>
                 )}
@@ -456,8 +474,8 @@ export default function DriverInbox() {
               size="sm"
               variant="ghost"
               onClick={refreshLocation}
-              className="h-8"
-              disabled={isGeocoding}
+              className="h-8 flex-shrink-0"
+              title="Refresh route"
             >
               <RefreshCw className={cn("h-4 w-4", isGeocoding && "animate-spin")} />
             </Button>
