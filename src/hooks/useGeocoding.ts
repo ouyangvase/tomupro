@@ -13,45 +13,86 @@ interface GeocodedLocation {
 }
 
 // Cache for geocoded addresses (persists across hook instances)
-const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
+// Key: address, Value: { coords, timestamp }
+const GEOCODE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const geocodeCache = new Map<string, { coords: { lat: number; lng: number } | null; timestamp: number }>();
+
+// Timeout for individual geocode requests
+const GEOCODE_REQUEST_TIMEOUT_MS = 3000;
+
+// Get API key with caching
+let cachedApiKey: string | null = null;
+let apiKeyPromise: Promise<string | null> | null = null;
+
+const getApiKey = async (): Promise<string | null> => {
+  if (cachedApiKey) return cachedApiKey;
+  
+  // Prevent duplicate API key requests
+  if (apiKeyPromise) return apiKeyPromise;
+  
+  apiKeyPromise = (async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('get-google-maps-key');
+      if (error || !data?.apiKey) {
+        console.warn("[Geocoding] Failed to get API key:", error?.message);
+        return null;
+      }
+      cachedApiKey = data.apiKey;
+      return data.apiKey;
+    } catch (err) {
+      console.error("[Geocoding] API key fetch error:", err);
+      return null;
+    } finally {
+      apiKeyPromise = null;
+    }
+  })();
+  
+  return apiKeyPromise;
+};
 
 export const useGeocoding = () => {
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [geocodedOrders, setGeocodedOrders] = useState<GeocodedLocation[]>([]);
-  const apiKeyRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const getApiKey = async (): Promise<string | null> => {
-    if (apiKeyRef.current) return apiKeyRef.current;
+  const geocodeAddress = useCallback(async (
+    address: string, 
+    signal?: AbortSignal
+  ): Promise<{ lat: number; lng: number } | null> => {
+    if (!address) return null;
     
-    try {
-      const { data, error } = await supabase.functions.invoke('get-google-maps-key');
-      if (error || !data?.apiKey) return null;
-      apiKeyRef.current = data.apiKey;
-      return data.apiKey;
-    } catch {
-      return null;
-    }
-  };
-
-  const geocodeAddress = useCallback(async (address: string): Promise<{ lat: number; lng: number } | null> => {
-    // Check cache first
-    if (geocodeCache.has(address)) {
-      return geocodeCache.get(address) || null;
+    // Check cache first (with TTL)
+    const cached = geocodeCache.get(address);
+    if (cached && Date.now() - cached.timestamp < GEOCODE_CACHE_TTL_MS) {
+      return cached.coords;
     }
 
     const apiKey = await getApiKey();
-    if (!apiKey || !address) {
+    if (!apiKey) {
       return null;
     }
 
     try {
       const encodedAddress = encodeURIComponent(address);
+      
+      // Create timeout for individual request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), GEOCODE_REQUEST_TIMEOUT_MS);
+      
+      // Combine with parent signal if provided
+      const combinedSignal = signal 
+        ? { signal: controller.signal }
+        : { signal: controller.signal };
+      
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${apiKey}`
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${apiKey}`,
+        combinedSignal
       );
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        geocodeCache.set(address, null);
+        geocodeCache.set(address, { coords: null, timestamp: Date.now() });
         return null;
       }
 
@@ -60,15 +101,19 @@ export const useGeocoding = () => {
       if (data.status === 'OK' && data.results && data.results.length > 0) {
         const location = data.results[0].geometry.location;
         const coords = { lat: location.lat, lng: location.lng };
-        geocodeCache.set(address, coords);
+        geocodeCache.set(address, { coords, timestamp: Date.now() });
         return coords;
       }
       
-      geocodeCache.set(address, null);
+      geocodeCache.set(address, { coords: null, timestamp: Date.now() });
       return null;
-    } catch (error) {
-      console.error("Geocoding error:", error);
-      geocodeCache.set(address, null);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log("[Geocoding] Request aborted for:", address.substring(0, 30));
+        return null;
+      }
+      console.error("[Geocoding] Error for address:", address.substring(0, 30), error.message);
+      geocodeCache.set(address, { coords: null, timestamp: Date.now() });
       return null;
     }
   }, []);
@@ -80,60 +125,96 @@ export const useGeocoding = () => {
     address: string;
     area: string | null;
     driver_id: string | null;
-  }>) => {
+  }>): Promise<GeocodedLocation[]> => {
     if (!orders || orders.length === 0) {
       setGeocodedOrders([]);
       return [];
     }
 
+    console.log("[Geocoding] Starting geocode for", orders.length, "orders");
+    
+    // Cancel any previous geocoding operation
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
     setIsGeocoding(true);
     const results: GeocodedLocation[] = [];
 
-    // Process in batches to avoid rate limiting
-    const batchSize = 5;
-    for (let i = 0; i < orders.length; i += batchSize) {
-      const batch = orders.slice(i, i + batchSize);
-      
-      const batchResults = await Promise.all(
-        batch.map(async (order) => {
-          // Try geocoding with full address first
-          let coords = await geocodeAddress(order.address);
-          
-          // If failed, try with area + "Brunei"
-          if (!coords && order.area) {
-            coords = await geocodeAddress(`${order.area}, Brunei`);
-          }
+    try {
+      // Check how many are already cached
+      let cachedCount = 0;
+      orders.forEach(order => {
+        const cached = geocodeCache.get(order.address);
+        if (cached && Date.now() - cached.timestamp < GEOCODE_CACHE_TTL_MS && cached.coords) {
+          cachedCount++;
+        }
+      });
+      console.log("[Geocoding]", cachedCount, "orders already cached");
 
-          if (coords) {
-            return {
-              orderId: order.id,
-              orderCode: order.order_code,
-              customerName: order.customer_name,
-              address: order.address,
-              area: order.area,
-              driverId: order.driver_id,
-              longitude: coords.lng,
-              latitude: coords.lat,
-            };
-          }
-          return null;
-        })
-      );
+      // Process in batches to avoid rate limiting
+      const batchSize = 5;
+      for (let i = 0; i < orders.length; i += batchSize) {
+        // Check if aborted
+        if (signal.aborted) {
+          console.log("[Geocoding] Operation aborted");
+          break;
+        }
+        
+        const batch = orders.slice(i, i + batchSize);
+        
+        const batchResults = await Promise.all(
+          batch.map(async (order) => {
+            if (signal.aborted) return null;
+            
+            // Try geocoding with full address first
+            let coords = await geocodeAddress(order.address, signal);
+            
+            // If failed, try with area + "Brunei"
+            if (!coords && order.area && !signal.aborted) {
+              coords = await geocodeAddress(`${order.area}, Brunei`, signal);
+            }
 
-      results.push(...batchResults.filter((r): r is GeocodedLocation => r !== null));
-      
-      // Small delay between batches to respect rate limits
-      if (i + batchSize < orders.length) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
+            if (coords) {
+              return {
+                orderId: order.id,
+                orderCode: order.order_code,
+                customerName: order.customer_name,
+                address: order.address,
+                area: order.area,
+                driverId: order.driver_id,
+                longitude: coords.lng,
+                latitude: coords.lat,
+              };
+            }
+            return null;
+          })
+        );
+
+        results.push(...batchResults.filter((r): r is GeocodedLocation => r !== null));
+        
+        // Small delay between batches to respect rate limits
+        if (i + batchSize < orders.length && !signal.aborted) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
       }
-    }
 
-    setGeocodedOrders(results);
-    setIsGeocoding(false);
-    return results;
+      console.log("[Geocoding] Completed, geocoded", results.length, "of", orders.length, "orders");
+      setGeocodedOrders(results);
+      return results;
+    } catch (error: any) {
+      console.error("[Geocoding] Batch processing error:", error.message);
+      setGeocodedOrders(results); // Return partial results
+      return results;
+    } finally {
+      setIsGeocoding(false);
+    }
   }, [geocodeAddress]);
 
   const clearCache = useCallback(() => {
+    console.log("[Geocoding] Cache cleared");
     geocodeCache.clear();
   }, []);
 
