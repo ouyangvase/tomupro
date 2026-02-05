@@ -1094,6 +1094,90 @@ export type Database = {
           },
         ]
       }
+      driver_order_priority: {
+        Row: {
+          driver_user_id: string
+          id: string
+          order_id: string
+          priority_number: number
+          updated_at: string | null
+        }
+        Insert: {
+          driver_user_id: string
+          id?: string
+          order_id: string
+          priority_number: number
+          updated_at?: string | null
+        }
+        Update: {
+          driver_user_id?: string
+          id?: string
+          order_id?: string
+          priority_number?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_order_priority_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_order_priority_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
+      driver_order_remarks: {
+        Row: {
+          created_at: string | null
+          driver_user_id: string
+          id: string
+          order_id: string
+          remark_text: string | null
+          remark_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          driver_user_id: string
+          id?: string
+          order_id: string
+          remark_text?: string | null
+          remark_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          driver_user_id?: string
+          id?: string
+          order_id?: string
+          remark_text?: string | null
+          remark_type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_order_remarks_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_order_remarks_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_delivered_order_lines"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
       driver_pickup_items: {
         Row: {
           buffer_qty: number
