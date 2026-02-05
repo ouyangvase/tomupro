@@ -325,3 +325,23 @@ export interface DriverAllocatedStock {
   delivered_qty: number;
   pending_qty: number;
 }
+
+// Driver order remarks (private notes per order)
+export interface DriverOrderRemark {
+  id: string;
+  order_id: string;
+  driver_user_id: string;
+  remark_type: string;
+  remark_text: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Driver order priority (manual sorting)
+export interface DriverOrderPriority {
+  id: string;
+  driver_user_id: string;
+  order_id: string;
+  priority_number: number;
+  updated_at: string;
+}
