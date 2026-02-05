@@ -1,7 +1,8 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
-import { MapPin } from "lucide-react";
+import { Navigation } from "lucide-react";
 import { formatDistance } from "@/lib/haversine";
+import { cn } from "@/lib/utils";
 
 interface RouteSuggestionBadgeProps {
   rank: number;
@@ -16,21 +17,21 @@ export const RouteSuggestionBadge: React.FC<RouteSuggestionBadgeProps> = ({
 }) => {
   if (rank <= 0) return null;
 
-  const getBadgeVariant = (rank: number) => {
-    if (rank === 1) return "default"; // Primary color for #1
-    if (rank <= 3) return "secondary";
-    return "outline";
-  };
+  const isTop = rank === 1;
+  const isHighPriority = rank <= 3;
 
   return (
     <Badge
-      variant={getBadgeVariant(rank)}
-      className="flex items-center gap-1 text-xs font-medium"
+      variant={isTop ? "default" : isHighPriority ? "secondary" : "outline"}
+      className={cn(
+        "flex items-center gap-1 text-[10px] font-bold px-2 py-0 h-5 rounded-full",
+        isTop && "shadow-sm"
+      )}
     >
-      <MapPin className="h-3 w-3" />
+      <Navigation className="h-2.5 w-2.5" />
       <span>#{rank}</span>
       {showDistance && distance !== undefined && (
-        <span className="opacity-80">• {formatDistance(distance)}</span>
+        <span className="opacity-70 font-normal">• {formatDistance(distance)}</span>
       )}
     </Badge>
   );

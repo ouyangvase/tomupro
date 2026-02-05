@@ -28,14 +28,12 @@ export function DraggableOrderList<T>({
   const touchStartY = useRef<number>(0);
   const touchCurrentIndex = useRef<number | null>(null);
 
-  // Update local items when props change (only if not mid-drag)
   React.useEffect(() => {
     if (draggedIndex === null) {
       setLocalItems(items);
     }
   }, [items, draggedIndex]);
 
-  // Perform reorder and auto-save
   const performReorder = useCallback(
     (fromIndex: number, toIndex: number) => {
       if (fromIndex === toIndex) return;
@@ -43,14 +41,12 @@ export function DraggableOrderList<T>({
       const [draggedItem] = newItems.splice(fromIndex, 1);
       newItems.splice(toIndex, 0, draggedItem);
       setLocalItems(newItems);
-      // Auto-save immediately on drop
       const orderedIds = newItems.map(getItemId);
       onReorder(orderedIds);
     },
     [localItems, getItemId, onReorder]
   );
 
-  // Desktop drag handlers
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = "move";
@@ -71,7 +67,6 @@ export function DraggableOrderList<T>({
     setDragOverIndex(null);
   };
 
-  // Mobile touch handlers
   const handleTouchStart = (e: React.TouchEvent, index: number) => {
     touchStartY.current = e.touches[0].clientY;
     touchCurrentIndex.current = index;
@@ -109,27 +104,28 @@ export function DraggableOrderList<T>({
   };
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("space-y-2.5", className)}>
       {/* Priority indicator */}
       {hasManualPriority && (
-        <div className="flex items-center justify-between p-2 rounded-lg bg-primary/10 border border-primary/20">
-          <span className="text-xs font-medium text-primary">
+        <div className="flex items-center justify-between p-2.5 rounded-xl glass-card border-primary/20 bg-primary/5">
+          <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-primary" />
             Manual Priority Active
           </span>
           <Button
             size="sm"
             variant="ghost"
             onClick={onClearPriority}
-            className="h-7 text-xs"
+            className="h-7 text-xs rounded-full"
           >
             <RotateCcw className="h-3 w-3 mr-1" />
-            Reset to Default
+            Reset
           </Button>
         </div>
       )}
 
       {/* Draggable items */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {localItems.map((item, index) => {
           const id = getItemId(item);
           const isDragging = draggedIndex === index;
@@ -147,18 +143,34 @@ export function DraggableOrderList<T>({
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
               className={cn(
-                "relative transition-all duration-150",
-                isDragging && "opacity-50 scale-[0.98] shadow-lg",
-                isDragOver && "ring-2 ring-primary ring-offset-2"
+                "relative transition-all duration-200",
+                isDragging && "opacity-50 scale-[0.97] shadow-xl z-10",
+                isDragOver && "ring-2 ring-primary/60 ring-offset-2 ring-offset-background rounded-2xl"
               )}
             >
-              <div className="flex items-start gap-2">
+              <div className="flex items-start gap-1.5">
                 {/* Drag handle */}
                 <div
-                  className="flex-shrink-0 mt-4 p-2 cursor-grab active:cursor-grabbing touch-none"
+                  className={cn(
+                    "flex-shrink-0 mt-5 p-1.5 cursor-grab active:cursor-grabbing touch-none rounded-lg transition-colors",
+                    "hover:bg-primary/10 active:bg-primary/20"
+                  )}
                   style={{ touchAction: "none" }}
                 >
-                  <GripVertical className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex flex-col gap-[3px]">
+                    <div className="flex gap-[3px]">
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                    </div>
+                    <div className="flex gap-[3px]">
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                    </div>
+                    <div className="flex gap-[3px]">
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Order content */}

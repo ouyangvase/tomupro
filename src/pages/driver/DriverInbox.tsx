@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp, Search, RefreshCw } from 'lucide-react';
+import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp, Search, RefreshCw, Clock, AlertTriangle } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import LocationTracker from '@/components/driver/LocationTracker';
 import { DeliveryPaymentDialog } from '@/components/driver/DeliveryPaymentDialog';
@@ -28,11 +28,11 @@ import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 
-const driverStatusColors: Record<string, string> = {
-  ASSIGNED: 'bg-blue-100 text-blue-800 border-blue-200',
-  OUT_FOR_DELIVERY: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  DRIVER_DELIVERED: 'bg-green-100 text-green-800 border-green-200',
-  DRIVER_FAILED: 'bg-red-100 text-red-800 border-red-200',
+const driverStatusConfig: Record<string, { label: string; className: string }> = {
+  ASSIGNED: { label: 'Assigned', className: 'status-neutral' },
+  OUT_FOR_DELIVERY: { label: 'Out for Delivery', className: 'status-pending' },
+  DRIVER_DELIVERED: { label: 'Delivered', className: 'status-success' },
+  DRIVER_FAILED: { label: 'Failed', className: 'status-error' },
 };
 
 export default function DriverInbox() {
@@ -70,11 +70,9 @@ export default function DriverInbox() {
   // Get ALL assigned driver orders (no date filtering) with search
   const filteredOrders = useMemo(() => {
     const statusFiltered = myOrders.filter(order => {
-      // Only show orders with active driver statuses
       return ['ASSIGNED', 'OUT_FOR_DELIVERY', 'DRIVER_DELIVERED', 'DRIVER_FAILED'].includes(order.driver_status || '');
     });
     
-    // Apply search filter if query exists
     if (!searchQuery.trim()) return statusFiltered;
     
     const query = searchQuery.toLowerCase().trim();
@@ -85,7 +83,6 @@ export default function DriverInbox() {
     });
   }, [myOrders, searchQuery]);
 
-  // Count stats for selected tab
   const pendingOrders = filteredOrders.filter(o => 
     o.driver_status === 'ASSIGNED' || o.driver_status === 'OUT_FOR_DELIVERY'
   );
@@ -94,10 +91,8 @@ export default function DriverInbox() {
   );
   const failedOrdersList = filteredOrders.filter(o => o.driver_status === 'DRIVER_FAILED');
 
-  // Extract order IDs for hooks
   const pendingOrderIds = useMemo(() => pendingOrders.map(o => o.id), [pendingOrders]);
 
-  // Route suggestion hook
   const ordersForSuggestion = useMemo(() => 
     pendingOrders.map(o => ({
       id: o.id,
@@ -121,18 +116,13 @@ export default function DriverInbox() {
     totalOrders,
   } = useRouteSuggestion(ordersForSuggestion);
 
-  // Driver remarks hook
   const { remarks, upsertRemark, deleteRemark } = useDriverRemarks(pendingOrderIds);
-
-  // Driver order priority hook
   const { priorities, hasManualPriority, updatePriorities, clearPriorities } = useDriverOrderPriority(pendingOrderIds);
 
-  // Sort pending orders based on manual priority > suggestion > date
   const sortedPendingOrders = useMemo(() => {
     const ordersCopy = [...pendingOrders];
     
     ordersCopy.sort((a, b) => {
-      // First: Manual priority (if exists)
       const priorityA = priorities[a.id];
       const priorityB = priorities[b.id];
       
@@ -142,7 +132,6 @@ export default function DriverInbox() {
       if (priorityA !== undefined) return -1;
       if (priorityB !== undefined) return 1;
       
-      // Second: Route suggestion (if available)
       const suggestionA = suggestions.get(a.id);
       const suggestionB = suggestions.get(b.id);
       
@@ -152,14 +141,12 @@ export default function DriverInbox() {
       if (suggestionA) return -1;
       if (suggestionB) return 1;
       
-      // Third: Delivery date
       return getDeliveryDate(a).getTime() - getDeliveryDate(b).getTime();
     });
     
     return ordersCopy;
   }, [pendingOrders, priorities, suggestions]);
 
-  // Format order items to show SKU codes with product names
   const formatOrderItems = (orderItems: any[]) => {
     if (!orderItems || orderItems.length === 0) return [];
     return orderItems.map(item => {
@@ -238,29 +225,42 @@ export default function DriverInbox() {
     return format(date, 'dd MMM');
   };
 
-  // Render order card content — index is the display position in the sorted list
+  // Render order card content
   const renderOrderCard = useCallback((order: any, index: number, isDragging: boolean) => {
     const items = formatOrderItems(order.order_items || []);
     const suggestion = suggestions.get(order.id);
     const remark = remarks[order.id];
     const isExpanded = expandedCards.has(order.id);
-    const displayPosition = index + 1; // 1-based position after sorting/drag
+    const displayPosition = index + 1;
+    const statusConfig = driverStatusConfig[order.driver_status || 'ASSIGNED'];
 
     return (
-      <Card className={cn("overflow-hidden transition-all", isDragging && "opacity-60")}>
-        <CardHeader className="pb-2 cursor-pointer" onClick={() => toggleCardExpanded(order.id)}>
-          <div className="flex justify-between items-start">
+      <div
+        className={cn(
+          "glass-card overflow-hidden transition-all duration-300",
+          isDragging && "opacity-60 scale-[0.98]",
+        )}
+      >
+        {/* Card Header — Collapsed View */}
+        <div
+          className="p-4 cursor-pointer active:bg-muted/20 transition-colors"
+          onClick={() => toggleCardExpanded(order.id)}
+        >
+          <div className="flex justify-between items-start gap-3">
+            {/* Left: Status Dot + Code + Date */}
             <div className="flex-1 min-w-0">
-              <CardTitle className="text-base flex items-center gap-2 flex-wrap">
-                {/* Remark status dot - visible on collapsed card */}
+              <div className="flex items-center gap-2.5">
                 <RemarkStatusDot remarkType={remark?.remark_type} />
-                {order.order_code}
-                <span className="text-xs text-muted-foreground font-normal">
-                  {getDateLabel(order)}
+                <span className="text-base font-bold tracking-tight truncate">
+                  {order.order_code}
                 </span>
-              </CardTitle>
-              {/* Route position badge — always shows current sorted position */}
-              <div className="flex gap-2 mt-1 flex-wrap items-center">
+                <Badge variant="secondary" className="text-[10px] font-medium px-2 py-0 h-5 rounded-full flex-shrink-0">
+                  {getDateLabel(order)}
+                </Badge>
+              </div>
+
+              {/* Route badge + Status */}
+              <div className="flex gap-2 mt-2 items-center flex-wrap">
                 {(hasSuggestions || hasManualPriority) && (
                   <RouteSuggestionBadge
                     rank={displayPosition}
@@ -268,28 +268,27 @@ export default function DriverInbox() {
                     showDistance={!!suggestion}
                   />
                 )}
-                <Badge className={driverStatusColors[order.driver_status || 'ASSIGNED']}>
-                  {order.driver_status?.replace('_', ' ')}
+                <Badge variant="outline" className={cn("text-[10px] px-2 py-0 h-5 rounded-full border", statusConfig.className)}>
+                  {statusConfig.label}
                 </Badge>
                 {order.driver_status === 'ASSIGNED' && (
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="h-6 text-xs"
+                    className="h-7 text-xs rounded-full bg-primary/90 hover:bg-primary text-primary-foreground shadow-sm px-3"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleToggleOutForDelivery(order.id, order.driver_status || 'ASSIGNED');
                     }}
                   >
                     <Truck className="h-3 w-3 mr-1" />
-                    Start Delivery
+                    Start
                   </Button>
                 )}
                 {order.driver_status === 'OUT_FOR_DELIVERY' && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-6 text-xs"
+                    className="h-7 text-xs rounded-full"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleToggleOutForDelivery(order.id, order.driver_status || 'ASSIGNED');
@@ -300,97 +299,122 @@ export default function DriverInbox() {
                 )}
               </div>
             </div>
-            <div className="text-right flex-shrink-0 ml-2">
-              <div className="font-bold">{formatBND(order.total_amount)}</div>
-              <div className="text-xs text-muted-foreground">{order.payment_method}</div>
-              <ChevronDown className={cn("h-4 w-4 mt-1 mx-auto transition-transform", isExpanded && "rotate-180")} />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className={cn("space-y-2 transition-all", !isExpanded && "hidden")}>
-          {/* Customer Info */}
-          <div className="flex items-center gap-2 text-sm">
-            <User className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">{order.customer_name}</span>
-          </div>
-          
-          {/* Phone - WhatsApp click-to-chat */}
-          <WhatsAppPhoneLink order={order} />
-          
-          {/* Full Address Display */}
-          <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-            <div className="flex items-start gap-2">
-              <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm break-words whitespace-pre-wrap">{order.address}</p>
-                {order.area && (
-                  <Badge variant="outline" className="text-xs mt-1">{order.area}</Badge>
-                )}
-              </div>
-            </div>
-            {/* Address Action Buttons */}
-            <AddressActions address={order.address} area={order.area} />
-          </div>
-          
-          {/* Order Items with full SKU details */}
-          {items.length > 0 && (
-            <div className="border-t pt-2 mt-2">
-              <div className="flex items-center gap-2 text-sm mb-2">
-                <Package className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">Order Items</span>
-              </div>
-              <div className="space-y-1 pl-6">
-                {items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center text-sm">
-                    <div>
-                      <span className="font-mono font-medium">{item.displayLabel}</span>
-                      <span className="text-muted-foreground ml-2">× {item.qty}</span>
-                    </div>
-                    <span className="font-medium">{formatBND(item.price)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {/* Driver Private Remark */}
-          <DriverRemarkSelector
-            orderId={order.id}
-            currentRemark={remark}
-            onSave={upsertRemark}
-            onDelete={deleteRemark}
-          />
-          
-          {/* Action Buttons - Large touch targets */}
-          <div className="flex gap-3 pt-4 border-t mt-3">
-            <Button 
-              className="flex-1 h-12 min-h-[44px] text-base" 
-              variant="default"
-              onClick={() => handleOpenDeliveredDialog(order)}
-              disabled={markDelivered.isPending}
-            >
-              <Check className="h-5 w-5 mr-2" />
-              Delivered
-            </Button>
-            <Button 
-              className="flex-1 h-12 min-h-[44px] text-base" 
-              variant="destructive"
-              onClick={() => handleOpenFailedDialog(order)}
-            >
-              <X className="h-5 w-5 mr-2" />
-              Failed
-            </Button>
+            {/* Right: Amount + Chevron */}
+            <div className="text-right flex-shrink-0 flex flex-col items-end">
+              <div className="text-lg font-bold tabular-nums tracking-tight">
+                {formatBND(order.total_amount)}
+              </div>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                {order.payment_method}
+              </span>
+              <ChevronDown className={cn(
+                "h-4 w-4 mt-1 text-muted-foreground transition-transform duration-300",
+                isExpanded && "rotate-180"
+              )} />
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Expanded Content */}
+        <div className={cn(
+          "overflow-hidden transition-all duration-300",
+          isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+        )}>
+          <div className="px-4 pb-4 space-y-3 border-t border-border/30 pt-3">
+            {/* Customer Info */}
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <User className="h-4 w-4 text-primary" />
+              </div>
+              <span className="font-semibold text-sm">{order.customer_name}</span>
+            </div>
+            
+            {/* Phone - WhatsApp */}
+            <WhatsAppPhoneLink order={order} />
+            
+            {/* Address Block */}
+            <div className="rounded-xl bg-secondary/40 border border-border/30 overflow-hidden">
+              <div className="border-l-[3px] border-primary/60 p-3">
+                <div className="flex items-start gap-2">
+                  <MapPin className="h-4 w-4 text-primary/70 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">{order.address}</p>
+                    {order.area && (
+                      <Badge variant="outline" className="text-[10px] mt-1.5 rounded-full">{order.area}</Badge>
+                    )}
+                  </div>
+                </div>
+                <AddressActions address={order.address} area={order.area} />
+              </div>
+            </div>
+            
+            {/* Order Items */}
+            {items.length > 0 && (
+              <div className="rounded-xl bg-secondary/20 border border-border/20 p-3">
+                <div className="flex items-center gap-2 text-sm mb-2">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Order Items</span>
+                </div>
+                <div className="space-y-1.5">
+                  {items.map((item, idx) => (
+                    <div key={idx} className={cn(
+                      "flex justify-between items-center text-sm py-1.5 px-2 rounded-lg",
+                      idx % 2 === 0 ? "bg-background/50" : ""
+                    )}>
+                      <div className="min-w-0">
+                        <span className="font-mono text-xs font-medium">{item.displayLabel}</span>
+                        <span className="text-muted-foreground ml-1.5">× {item.qty}</span>
+                      </div>
+                      <span className="font-semibold text-sm tabular-nums ml-2">{formatBND(item.price)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Driver Remark */}
+            <DriverRemarkSelector
+              orderId={order.id}
+              currentRemark={remark}
+              onSave={upsertRemark}
+              onDelete={deleteRemark}
+            />
+            
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-3">
+              <Button 
+                className="flex-1 h-12 min-h-[48px] text-sm font-semibold rounded-xl shadow-sm" 
+                variant="default"
+                onClick={() => handleOpenDeliveredDialog(order)}
+                disabled={markDelivered.isPending}
+              >
+                <Check className="h-5 w-5 mr-2" />
+                Delivered
+              </Button>
+              <Button 
+                className="flex-1 h-12 min-h-[48px] text-sm font-semibold rounded-xl shadow-sm" 
+                variant="destructive"
+                onClick={() => handleOpenFailedDialog(order)}
+              >
+                <X className="h-5 w-5 mr-2" />
+                Failed
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }, [suggestions, remarks, expandedCards, hasSuggestions, hasManualPriority, markDelivered.isPending, upsertRemark, deleteRemark]);
 
   if (isLoading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+          <p className="text-sm text-muted-foreground">Loading deliveries...</p>
         </div>
       </AppLayout>
     );
@@ -398,91 +422,115 @@ export default function DriverInbox() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        {/* Location Tracker - shows location sharing status */}
+      <div className="max-w-4xl mx-auto space-y-4">
+        {/* ─── Gradient Header Banner ─── */}
+        <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-primary/70 p-5 shadow-lg">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_hsl(38_70%_70%/0.3),transparent_70%)]" />
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold text-primary-foreground tracking-tight">
+              My Deliveries
+            </h1>
+            {parentRunner && (
+              <p className="text-primary-foreground/70 text-sm mt-0.5">
+                Runner: {parentRunner.display_name}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* ─── Location Tracker ─── */}
         <LocationTracker />
 
-        {/* Header */}
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold">My Deliveries</h1>
-          {parentRunner && (
-            <p className="text-muted-foreground text-sm">
-              Runner: {parentRunner.display_name}
-            </p>
-          )}
+        {/* ─── Stats Pills ─── */}
+        <div className="grid grid-cols-3 gap-2.5">
+          {/* Pending */}
+          <div className="glass-card p-3 text-center">
+            <div className="text-3xl font-bold tabular-nums tracking-tight">{pendingOrders.length}</div>
+            <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
+              Pending
+            </div>
+          </div>
+          {/* Delivered */}
+          <div className="glass-card p-3 text-center border-[hsl(var(--status-pending)/0.3)]">
+            <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-pending))]">
+              {deliveredPendingAcceptance.length}
+            </div>
+            <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
+              Delivered
+            </div>
+          </div>
+          {/* Failed */}
+          <div className="glass-card p-3 text-center border-[hsl(var(--status-error)/0.3)]">
+            <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-error))]">
+              {failedOrdersList.length}
+            </div>
+            <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
+              Failed
+            </div>
+          </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <Card className="p-3">
-            <div className="text-2xl font-bold text-center">{pendingOrders.length}</div>
-            <div className="text-xs text-center text-muted-foreground">Pending</div>
-          </Card>
-          <Card className="p-3">
-            <div className="text-2xl font-bold text-center text-amber-600">{deliveredPendingAcceptance.length}</div>
-            <div className="text-xs text-center text-muted-foreground">Delivered (Pending)</div>
-          </Card>
-          <Card className="p-3">
-            <div className="text-2xl font-bold text-center text-red-600">{failedOrdersList.length}</div>
-            <div className="text-xs text-center text-muted-foreground">Failed</div>
-          </Card>
-        </div>
-
-        {/* Search Bar */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        {/* ─── Search Bar ─── */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="Search by order ref or customer name..."
+            placeholder="Search order or customer..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-10"
+            className="pl-10 h-11 rounded-full bg-secondary/40 border-border/30 shadow-sm"
           />
           {searchQuery && (
             <Button
               variant="ghost"
               size="icon"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 rounded-full"
               onClick={() => setSearchQuery('')}
             >
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </Button>
           )}
         </div>
 
-        {/* Route Suggestion Status */}
+        {/* ─── Route Suggestion Status ─── */}
         {pendingOrders.length > 0 && (
-          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50 mb-4">
-            <div className="flex items-center gap-2 text-sm flex-1 min-w-0">
-              <MapPin className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">
+          <div className="glass-card flex items-center justify-between p-3">
+            <div className="flex items-center gap-2.5 text-sm flex-1 min-w-0">
+              {isGeocoding ? (
+                <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+              ) : hasSuggestions ? (
+                <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-50" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
+                </span>
+              ) : (
+                <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              )}
+              <span className="truncate text-sm">
                 {hasTimedOut ? (
-                  <span className="text-destructive flex items-center gap-1">
-                    Route temporarily unavailable. Tap refresh.
+                  <span className="text-[hsl(var(--status-error))]">
+                    Route unavailable — tap refresh
                   </span>
                 ) : routeError && !isGeocoding ? (
                   <span className="text-muted-foreground">{routeError}</span>
                 ) : isGeocoding ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
-                    <span className="truncate">
-                      Calculating routes ({ordersProcessed}/{totalOrders})...
-                    </span>
+                  <span className="text-muted-foreground">
+                    Calculating ({ordersProcessed}/{totalOrders})...
                   </span>
                 ) : hasSuggestions ? (
-                  <span className="text-primary">Route suggestions active</span>
+                  <span className="text-primary font-medium">Route active</span>
                 ) : driverLocation ? (
-                  <span className="text-muted-foreground">No route data available</span>
+                  <span className="text-muted-foreground">No route data</span>
                 ) : (
-                  <span className="text-muted-foreground">Enable location for route suggestions</span>
+                  <span className="text-muted-foreground">Enable location for routes</span>
                 )}
               </span>
             </div>
             <Button
-              size="sm"
+              size="icon"
               variant="ghost"
               onClick={refreshLocation}
-              className="h-8 flex-shrink-0"
+              className="h-8 w-8 rounded-full flex-shrink-0"
               title="Refresh route"
             >
               <RefreshCw className={cn("h-4 w-4", isGeocoding && "animate-spin")} />
@@ -490,10 +538,12 @@ export default function DriverInbox() {
           </div>
         )}
 
-        {/* Pending Orders with Drag & Drop */}
+        {/* ─── Pending Orders with Drag & Drop ─── */}
         {sortedPendingOrders.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-3">Pending Deliveries ({sortedPendingOrders.length})</h2>
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3 px-1">
+              Pending Deliveries ({sortedPendingOrders.length})
+            </h2>
             <DraggableOrderList
               items={sortedPendingOrders}
               getItemId={(order) => order.id}
@@ -505,79 +555,86 @@ export default function DriverInbox() {
           </div>
         )}
 
-        {/* Delivered Orders (Pending Runner Acceptance) */}
+        {/* ─── Delivered (Pending Acceptance) ─── */}
         {deliveredPendingAcceptance.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-3">Pending Runner Acceptance ({deliveredPendingAcceptance.length})</h2>
-            <div className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3 px-1">
+              Pending Acceptance ({deliveredPendingAcceptance.length})
+            </h2>
+            <div className="space-y-2.5">
               {deliveredPendingAcceptance.map(order => {
                 const items = formatOrderItems(order.order_items || []);
                 return (
-                  <Card key={order.id} className="overflow-hidden border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
-                    <CardContent className="p-4 space-y-2">
+                  <div key={order.id} className="glass-card overflow-hidden border-l-[3px] border-l-[hsl(var(--status-pending))]">
+                    <div className="p-4 space-y-2.5">
                       <div className="flex justify-between items-start">
                         <div>
-                          <div className="font-medium">{order.order_code}</div>
-                          <div className="text-sm text-muted-foreground">{order.customer_name}</div>
+                          <div className="font-bold text-sm">{order.order_code}</div>
+                          <div className="text-xs text-muted-foreground">{order.customer_name}</div>
                         </div>
-                        <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                          Awaiting Acceptance
+                        <Badge className="status-pending text-[10px] rounded-full px-2 h-5 border">
+                          Awaiting
                         </Badge>
                       </div>
                       <WhatsAppPhoneLink order={order} />
                       
-                      {/* Full Address Display */}
-                      <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-                        <div className="flex items-start gap-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm break-words whitespace-pre-wrap">{order.address}</p>
-                            {order.area && (
-                              <Badge variant="outline" className="text-xs mt-1">{order.area}</Badge>
-                            )}
+                      {/* Address */}
+                      <div className="rounded-xl bg-secondary/40 border border-border/30 overflow-hidden">
+                        <div className="border-l-[3px] border-primary/40 p-3">
+                          <div className="flex items-start gap-2">
+                            <MapPin className="h-3.5 w-3.5 text-primary/70 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs break-words whitespace-pre-wrap">{order.address}</p>
+                              {order.area && (
+                                <Badge variant="outline" className="text-[10px] mt-1 rounded-full">{order.area}</Badge>
+                              )}
+                            </div>
                           </div>
+                          <AddressActions address={order.address} area={order.area} />
                         </div>
-                        <AddressActions address={order.address} area={order.area} />
                       </div>
                       
                       {items.length > 0 && (
-                        <div className="text-xs space-y-0.5 pt-2 border-t">
+                        <div className="text-xs space-y-0.5 pt-2 border-t border-border/30">
                           {items.map((item, idx) => (
                             <div key={idx} className="flex justify-between">
                               <span><span className="font-mono">{item.displayLabel}</span> × {item.qty}</span>
-                              <span>{formatBND(item.price)}</span>
+                              <span className="font-semibold tabular-nums">{formatBND(item.price)}</span>
                             </div>
                           ))}
                         </div>
                       )}
-                      <div className="text-xs text-muted-foreground">
-                        Delivered: {order.driver_delivered_at && format(new Date(order.driver_delivered_at), 'dd MMM HH:mm')}
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        Delivered {order.driver_delivered_at && format(new Date(order.driver_delivered_at), 'dd MMM HH:mm')}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 );
               })}
             </div>
           </div>
         )}
 
-        {/* Failed Orders */}
+        {/* ─── Failed Orders ─── */}
         {failedOrdersList.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-3">Failed Deliveries ({failedOrdersList.length})</h2>
-            <div className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3 px-1">
+              Failed Deliveries ({failedOrdersList.length})
+            </h2>
+            <div className="space-y-2.5">
               {failedOrdersList.map(order => {
                 const items = formatOrderItems(order.order_items || []);
                 return (
-                  <Card key={order.id} className="overflow-hidden border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800">
-                    <CardContent className="p-4 space-y-2">
+                  <div key={order.id} className="glass-card overflow-hidden border-l-[3px] border-l-[hsl(var(--status-error))]">
+                    <div className="p-4 space-y-2.5">
                       <div className="flex justify-between items-start">
                         <div>
-                          <div className="font-medium">{order.order_code}</div>
-                          <div className="text-sm text-muted-foreground">{order.customer_name}</div>
+                          <div className="font-bold text-sm">{order.order_code}</div>
+                          <div className="text-xs text-muted-foreground">{order.customer_name}</div>
                         </div>
                         {order.driver_next_delivery_date && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                             <Calendar className="h-3 w-3" />
                             {format(new Date(order.driver_next_delivery_date), 'dd MMM')}
                           </div>
@@ -585,53 +642,58 @@ export default function DriverInbox() {
                       </div>
                       <WhatsAppPhoneLink order={order} />
                       
-                      {/* Full Address Display */}
-                      <div className="p-3 rounded-lg bg-secondary/30 border border-border/50">
-                        <div className="flex items-start gap-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm break-words whitespace-pre-wrap">{order.address}</p>
-                            {order.area && (
-                              <Badge variant="outline" className="text-xs mt-1">{order.area}</Badge>
-                            )}
+                      {/* Address */}
+                      <div className="rounded-xl bg-secondary/40 border border-border/30 overflow-hidden">
+                        <div className="border-l-[3px] border-[hsl(var(--status-error)/0.5)] p-3">
+                          <div className="flex items-start gap-2">
+                            <MapPin className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs break-words whitespace-pre-wrap">{order.address}</p>
+                              {order.area && (
+                                <Badge variant="outline" className="text-[10px] mt-1 rounded-full">{order.area}</Badge>
+                              )}
+                            </div>
                           </div>
+                          <AddressActions address={order.address} area={order.area} />
                         </div>
-                        <AddressActions address={order.address} area={order.area} />
                       </div>
                       
                       {items.length > 0 && (
-                        <div className="text-xs space-y-0.5 pt-2 border-t">
+                        <div className="text-xs space-y-0.5 pt-2 border-t border-border/30">
                           {items.map((item, idx) => (
                             <div key={idx} className="flex justify-between">
                               <span><span className="font-mono">{item.displayLabel}</span> × {item.qty}</span>
-                              <span>{formatBND(item.price)}</span>
+                              <span className="font-semibold tabular-nums">{formatBND(item.price)}</span>
                             </div>
                           ))}
                         </div>
                       )}
-                      <div className="text-xs text-red-600 mt-1">
-                        Reason: {order.driver_failed_reason}
+                      <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--status-error))]">
+                        <AlertTriangle className="h-3 w-3" />
+                        {order.driver_failed_reason}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 );
               })}
             </div>
           </div>
         )}
 
-        {/* Empty State */}
+        {/* ─── Empty State ─── */}
         {filteredOrders.length === 0 && (
-          <div className="text-center py-12">
-            <Package className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-            <h3 className="text-lg font-medium">No deliveries assigned</h3>
-            <p className="text-muted-foreground text-sm">
+          <div className="text-center py-16">
+            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <Package className="h-8 w-8 text-primary/60" />
+            </div>
+            <h3 className="text-lg font-semibold">No deliveries assigned</h3>
+            <p className="text-muted-foreground text-sm mt-1">
               Wait for your runner to assign orders
             </p>
           </div>
         )}
 
-        {/* Delivered Confirmation Dialog with Payment Method Selection */}
+        {/* ─── Dialogs ─── */}
         <DeliveryPaymentDialog
           open={deliveredDialogOpen}
           onOpenChange={setDeliveredDialogOpen}
@@ -645,7 +707,6 @@ export default function DriverInbox() {
           isPending={markDelivered.isPending}
         />
 
-        {/* Failed Dialog - Bottom Sheet on Mobile */}
         <MobileActionSheet
           open={failedDialogOpen}
           onOpenChange={setFailedDialogOpen}

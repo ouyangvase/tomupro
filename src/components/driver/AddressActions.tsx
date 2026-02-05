@@ -1,7 +1,9 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Copy, MapPin, Navigation } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface AddressActionsProps {
   address: string;
@@ -14,7 +16,7 @@ export const AddressActions: React.FC<AddressActionsProps> = ({ address, area })
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(fullAddress);
-      toast.success("Address copied to clipboard");
+      toast.success("Address copied");
     } catch (error) {
       console.error("Failed to copy address:", error);
       toast.error("Failed to copy address");
@@ -35,13 +37,10 @@ export const AddressActions: React.FC<AddressActionsProps> = ({ address, area })
     let mapsUrl: string;
 
     if (os === "ios") {
-      // iOS: Open in Apple Maps with option for Google Maps
       mapsUrl = `maps://maps.apple.com/?q=${encodedAddress}`;
     } else if (os === "android") {
-      // Android: Open in Google Maps
       mapsUrl = `geo:0,0?q=${encodedAddress}`;
     } else {
-      // Fallback: Open Google Maps in browser
       mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
     }
 
@@ -55,35 +54,51 @@ export const AddressActions: React.FC<AddressActionsProps> = ({ address, area })
   };
 
   return (
-    <div className="flex flex-wrap gap-2 mt-3">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleCopy}
-        className="flex items-center gap-1.5 text-xs"
-      >
-        <Copy className="h-3.5 w-3.5" />
-        Copy Address
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleOpenMaps}
-        className="flex items-center gap-1.5 text-xs"
-      >
-        <MapPin className="h-3.5 w-3.5" />
-        Google Maps
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleOpenWaze}
-        className="flex items-center gap-1.5 text-xs"
-      >
-        <Navigation className="h-3.5 w-3.5" />
-        Waze
-      </Button>
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <div className="flex gap-2 mt-2.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleCopy}
+              className="h-8 w-8 rounded-full border-border/50"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">Copy</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleOpenMaps}
+              className="h-8 w-8 rounded-full border-border/50"
+            >
+              <MapPin className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">Google Maps</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleOpenWaze}
+              className="h-8 w-8 rounded-full border-border/50"
+            >
+              <Navigation className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">Waze</TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
   );
 };
 

@@ -10,6 +10,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, X, Check } from "lucide-react";
 import { REMARK_PRESETS, RemarkPreset, DriverRemark } from "@/hooks/useDriverRemarks";
+import { cn } from "@/lib/utils";
+
+const REMARK_BORDER_COLORS: Record<string, string> = {
+  texted_customer: "border-l-[hsl(217,91%,60%)]",
+  called_customer: "border-l-[hsl(271,91%,65%)]",
+  waiting_reply: "border-l-[hsl(var(--status-neutral))]",
+  customer_replied: "border-l-[hsl(var(--status-success))]",
+  arranging_delivery: "border-l-[hsl(var(--status-warning))]",
+  custom: "border-l-[hsl(45,93%,47%)]",
+};
 
 interface DriverRemarkSelectorProps {
   orderId: string;
@@ -30,7 +40,6 @@ export const DriverRemarkSelector: React.FC<DriverRemarkSelectorProps> = ({
   const [customText, setCustomText] = useState(currentRemark?.remark_text || "");
   const [isEditing, setIsEditing] = useState(false);
 
-  // Update state when current remark changes
   useEffect(() => {
     setSelectedType(currentRemark?.remark_type || "");
     setCustomText(currentRemark?.remark_text || "");
@@ -39,7 +48,6 @@ export const DriverRemarkSelector: React.FC<DriverRemarkSelectorProps> = ({
   const handleTypeChange = (value: string) => {
     setSelectedType(value);
     if (value !== "custom") {
-      // Auto-save for preset options
       onSave(orderId, value);
       setIsEditing(false);
     } else {
@@ -66,54 +74,62 @@ export const DriverRemarkSelector: React.FC<DriverRemarkSelectorProps> = ({
     return preset?.label || type;
   };
 
+  const borderColor = currentRemark?.remark_type
+    ? REMARK_BORDER_COLORS[currentRemark.remark_type] || ""
+    : "";
+
   // Show current remark summary when not editing
   if (currentRemark && !isEditing && selectedType !== "custom") {
     return (
-      <div className="mt-3 p-3 rounded-lg bg-secondary/30 border border-border/50">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">
-              {getRemarkLabel(currentRemark.remark_type)}
-            </span>
+      <div className={cn(
+        "rounded-xl bg-secondary/30 border border-border/30 overflow-hidden",
+      )}>
+        <div className={cn("p-3 border-l-[3px]", borderColor)}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-semibold">
+                {getRemarkLabel(currentRemark.remark_type)}
+              </span>
+            </div>
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 rounded-full"
+                onClick={() => setIsEditing(true)}
+              >
+                <MessageSquare className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 rounded-full text-[hsl(var(--status-error))]"
+                onClick={handleClear}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setIsEditing(true)}
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-destructive"
-              onClick={handleClear}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+          {currentRemark.remark_text && (
+            <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
+              {currentRemark.remark_text}
+            </p>
+          )}
         </div>
-        {currentRemark.remark_text && (
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-            {currentRemark.remark_text}
-          </p>
-        )}
       </div>
     );
   }
 
   return (
-    <div className="mt-3 p-3 rounded-lg bg-secondary/30 border border-border/50 space-y-3">
+    <div className="rounded-xl bg-secondary/30 border border-border/30 p-3 space-y-2.5">
       <div className="flex items-center gap-2">
-        <MessageSquare className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Driver Note</span>
+        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Driver Note</span>
       </div>
 
       <Select value={selectedType} onValueChange={handleTypeChange}>
-        <SelectTrigger className="h-9 text-sm">
+        <SelectTrigger className="h-9 text-sm rounded-xl">
           <SelectValue placeholder="Add a note..." />
         </SelectTrigger>
         <SelectContent>
@@ -131,21 +147,22 @@ export const DriverRemarkSelector: React.FC<DriverRemarkSelectorProps> = ({
             value={customText}
             onChange={(e) => setCustomText(e.target.value)}
             placeholder="Enter your note..."
-            className="min-h-[80px] text-sm resize-none"
+            className="min-h-[80px] text-sm resize-none rounded-xl"
           />
           <div className="flex gap-2">
             <Button
               size="sm"
               onClick={handleSaveCustom}
               disabled={!customText.trim()}
-              className="flex-1"
+              className="flex-1 rounded-full h-8 text-xs"
             >
-              <Check className="h-3.5 w-3.5 mr-1.5" />
+              <Check className="h-3 w-3 mr-1" />
               Save
             </Button>
             <Button
               size="sm"
               variant="outline"
+              className="rounded-full h-8 text-xs"
               onClick={() => {
                 setIsEditing(false);
                 setSelectedType(currentRemark?.remark_type || "");
@@ -162,10 +179,10 @@ export const DriverRemarkSelector: React.FC<DriverRemarkSelectorProps> = ({
         <Button
           variant="ghost"
           size="sm"
-          className="w-full text-destructive"
+          className="w-full text-[hsl(var(--status-error))] text-xs rounded-full h-8"
           onClick={handleClear}
         >
-          <X className="h-3.5 w-3.5 mr-1.5" />
+          <X className="h-3 w-3 mr-1" />
           Clear Note
         </Button>
       )}
