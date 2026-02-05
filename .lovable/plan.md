@@ -1,175 +1,151 @@
 
-# Runner Mobile Order Inbox Enhancement Plan
+
+# Full UI Redesign: Driver Inbox — Modern Orange-Silver Theme
 
 ## Overview
-This plan enhances the Driver Inbox (`/driver/inbox`) with four key features to improve driver usability, route suggestions, and personal workflow management. All changes are mobile-first and maintain backward compatibility.
+Complete visual overhaul of the Driver Inbox (`/driver/inbox`) into a modern, premium orange-silver design system. The redesign covers both mobile and desktop layouts while preserving all existing functionality (drag-to-reorder, route suggestions, remark dots, delivery/failed actions).
+
+The reference screenshots show the current state — a functional but plain white/grey interface. The goal is a polished, modern delivery operations UI with warm orange accents on a silver/slate base.
 
 ---
 
-## Feature Summary
+## Design Direction
 
-| Feature | Description |
-|---------|-------------|
-| 1. Full Address Display | Show complete address with copy + open maps buttons |
-| 2. Auto Route Suggestion | GPS-based delivery sequence suggestions using Haversine formula |
-| 3. Driver Private Remarks | Personal notes per order (visible only to that driver) |
-| 4. Manual Order Rearrange | Drag-and-drop priority with persistent storage |
+**Color Palette:**
+- Primary: Warm Orange (the existing `--primary: 38 70% 59%` gold/orange)
+- Base surface: Silver-grey tones (light: `hsl(220, 14%, 96%)`, dark: existing dark slate)
+- Cards: Semi-transparent frosted glass effect (already supported via `glass-card`)
+- Accents: Orange gradient highlights for stat cards and active states
+- Status colors: Keep existing semantic colors (green/red/amber/blue)
 
----
-
-## Feature 1: Mobile Full Address Display
-
-### Current Behavior
-- Address is shown in a single line with a Maps button
-- Can be truncated on small screens
-
-### New Behavior
-- Full address always visible with text wrapping
-- Copy Address button (copies to clipboard)
-- Open in Maps button (detects OS: Google Maps or Waze)
-
-### Changes
-- **File**: `src/pages/driver/DriverInbox.tsx`
-  - Update address display section in order cards
-  - Add copy-to-clipboard functionality
-  - Add OS detection for maps app selection (Google Maps vs Waze)
+**Design Language:**
+- Rounded corners (2xl), soft shadows, subtle gradients
+- Glassmorphism cards with frosted backdrop
+- Orange gradient hero/header area
+- Larger stat numbers with pill-shaped stat cards
+- Smooth card expand/collapse animations
+- Touch-optimized spacing (48px minimum targets)
 
 ---
 
-## Feature 2: Auto Route Suggestion Based on GPS
+## Implementation Details
 
-### Logic
-1. Get driver's current GPS location from existing `LocationContext`
-2. Calculate distance to each assigned order using Haversine formula
-3. Sort orders by distance (nearest first)
-4. Display suggestion badges: "Suggested #1", "Suggested #2", etc.
+### 1. Page Header — Orange Gradient Banner
+Replace the plain text header with a warm gradient banner:
+- Gradient from `hsl(38, 70%, 55%)` to `hsl(38, 70%, 45%)` 
+- White text: "My Deliveries" + runner name
+- Rounded bottom corners
+- Works as visual anchor on both mobile and desktop
 
-### Technical Details
-- **New Hook**: `src/hooks/useRouteSuggestion.ts`
-  - Consumes driver GPS from `useLocationContext`
-  - Uses existing geocoding hook for order addresses
-  - Implements Haversine distance calculation
-  - Returns sorted order IDs with suggestion ranks
+### 2. Location Tracker — Modernized Inline Banner
+- Redesign as a sleek inline pill banner below the gradient header
+- Green glow effect when location is ON
+- Orange accent for the ON/OFF badge
+- Compact single-line layout with icon + status + timestamp + toggle
 
-### Haversine Formula
-```text
-d = 2r * arcsin(sqrt(
-  sin^2((lat2-lat1)/2) + 
-  cos(lat1) * cos(lat2) * sin^2((lng2-lng1)/2)
-))
-```
+### 3. Stats Cards — Orange-Silver Gradient Pills
+Replace the plain `Card p-3` stat boxes with:
+- Three horizontal pill-shaped cards with subtle gradient backgrounds
+- Pending: Silver-to-white gradient with bold dark number
+- Delivered (Pending): Amber/orange tinted card
+- Failed: Red-tinted card with muted background
+- Large display numbers (text-3xl font-bold)
+- Subtle bottom border accent color matching each stat type
 
-### UI Updates
-- Add `Suggested #N` badge to order cards when GPS is active
-- Hide suggestions if GPS permission denied
+### 4. Search Bar — Modern Floating Input
+- Pill-shaped search with rounded-full corners
+- Subtle shadow and border
+- Orange focus ring
+- Clear button appears on input
+- Light silver background
 
----
+### 5. Route Suggestion Status Bar
+- Redesign as a modern pill banner
+- Orange pulsing dot when active
+- Animated spinner during calculation
+- Refresh button with icon rotation animation
+- Frosted glass background
 
-## Feature 3: Driver Private Remark System
+### 6. Order Cards — Glass Morphism Design
+Complete card redesign:
 
-### Database Schema (New Table)
-```sql
-CREATE TABLE driver_order_remarks (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  driver_user_id UUID NOT NULL REFERENCES auth.users(id),
-  remark_type TEXT NOT NULL,
-  remark_text TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(order_id, driver_user_id)
-);
+**Collapsed State:**
+- Glass-card effect (frosted backdrop)
+- Left side: Remark status dot (larger, 3px ring) + Order code (bold, larger) + date badge (pill)
+- Right side: Amount in large bold + payment method tag
+- Below: Route badge (orange gradient for #1, silver for others) + Status badge (redesigned as subtle pill) + Start Delivery button (orange gradient pill)
+- Drag handle: Subtle dots icon with orange hover color
 
--- RLS: Driver can only see/edit their own remarks
-ALTER TABLE driver_order_remarks ENABLE ROW LEVEL SECURITY;
+**Expanded State (smooth animation):**
+- Customer info section with user icon in orange circle
+- Phone/WhatsApp row with green WhatsApp button
+- Address block: Silver card with subtle left orange border accent, full text wrap, copy + maps buttons as icon-only pills
+- Order Items: Clean table with alternating subtle row backgrounds
+- Driver Note: Redesigned with colored left border matching remark type
+- Action buttons: Full-width, prominent orange "Delivered" + red "Failed" with rounded corners and icons
 
-CREATE POLICY "Drivers can manage own remarks"
-  ON driver_order_remarks FOR ALL
-  USING (driver_user_id = auth.uid())
-  WITH CHECK (driver_user_id = auth.uid());
-```
+### 7. Delivered Orders Section (Pending Acceptance)
+- Amber-tinted glass cards
+- Subtle amber left border accent
+- "Awaiting Acceptance" badge in amber pill style
+- Compact item list
 
-### Preset Options
-- Texted Customer
-- Called Customer
-- Waiting Reply
-- Customer Replied
-- Arranging Delivery
-- (Custom text input)
+### 8. Failed Orders Section
+- Red-tinted glass cards
+- Red left border accent
+- Failure reason displayed in red text block
+- Next delivery date shown if set
 
-### New Files
-- **Hook**: `src/hooks/useDriverRemarks.ts`
-  - CRUD operations for remarks
-  - Realtime subscription for updates
-- **Component**: `src/components/driver/DriverRemarkSelector.tsx`
-  - Dropdown with presets + custom input
-  - Displays current remark
+### 9. Empty State
+- Modern illustration-style icon (package with orange accent)
+- Larger text with subtitle
+- Subtle animation (fade-in)
 
-### UI Integration
-- Add remark selector inside expanded order card in DriverInbox
-- Show latest remark below address
+### 10. Drag Handle & Reorder Visual Polish
+- Replace plain GripVertical with a styled drag indicator (6 dots pattern)
+- On drag: Card lifts with shadow-xl + slight scale + orange ring
+- Drop target: Orange dashed border indicator
+- "Manual Priority Active" banner: Orange gradient pill with reset button
 
----
+### 11. DraggableOrderList Component Updates
+- Add smooth `transition-transform` on reorder
+- Orange ring-2 on drag-over state
+- Drag shadow elevation effect
+- Better touch feedback on mobile
 
-## Feature 4: Driver Manual Order Rearrange
+### 12. RouteSuggestionBadge Component Updates
+- Rank #1: Orange gradient background with white text
+- Rank #2-3: Light orange/amber background
+- Rank 4+: Silver/outline style
+- Distance shown in smaller muted text
 
-### Database Schema (New Table)
-```sql
-CREATE TABLE driver_order_priority (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  driver_user_id UUID NOT NULL REFERENCES auth.users(id),
-  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  priority_number INT NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(driver_user_id, order_id)
-);
+### 13. RemarkStatusDot Component Updates
+- Slightly larger dot (3px width/height)
+- Add subtle pulse animation for "waiting_reply" state
+- Ring effect matches the dot color (not just background)
 
--- RLS: Driver can only manage their own priorities
-ALTER TABLE driver_order_priority ENABLE ROW LEVEL SECURITY;
+### 14. AddressActions Component Updates
+- Redesign buttons as compact icon-only pills with tooltips
+- Copy: Silver pill with copy icon
+- Google Maps: Blue-tinted pill
+- Waze: Purple-tinted pill
+- Horizontal row with tight spacing
 
-CREATE POLICY "Drivers can manage own priorities"
-  ON driver_order_priority FOR ALL
-  USING (driver_user_id = auth.uid())
-  WITH CHECK (driver_user_id = auth.uid());
-```
-
-### Sorting Priority Logic
-```text
-IF driver has manual priority for orders:
-    Sort by priority_number ASC
-ELSE:
-    Sort by route suggestion (nearest first)
-    OR default by delivery date
-```
-
-### New Files
-- **Hook**: `src/hooks/useDriverOrderPriority.ts`
-  - Save/load priority ordering
-  - Bulk update on drag-drop
-- **Component**: `src/components/driver/DraggableOrderList.tsx`
-  - Mobile-friendly drag-and-drop
-  - Uses touch events for mobile
-  - Shows "Manual Priority Active" indicator
-
-### UI Integration
-- Wrap pending orders section with draggable list
-- Add toggle to enable/disable manual sorting
-- Persist order after drag-drop via hook
+### 15. DriverRemarkSelector Component Updates
+- Colored left border matching selected remark type
+- Cleaner dropdown styling
+- Custom note textarea with orange focus ring
+- Save/cancel as small rounded buttons
 
 ---
 
-## Files to Create
+## Desktop-Specific Adjustments
 
-| File | Purpose |
-|------|---------|
-| `src/hooks/useRouteSuggestion.ts` | GPS distance calculation and sorting |
-| `src/hooks/useDriverRemarks.ts` | CRUD for private remarks |
-| `src/hooks/useDriverOrderPriority.ts` | Order priority persistence |
-| `src/components/driver/DriverRemarkSelector.tsx` | Remark UI component |
-| `src/components/driver/DraggableOrderList.tsx` | Mobile drag-and-drop |
-| `src/components/driver/AddressActions.tsx` | Copy + Maps buttons |
-| `src/components/driver/RouteSuggestionBadge.tsx` | Suggestion badge display |
-| `src/lib/haversine.ts` | Distance calculation utility |
+On desktop (>= 1025px), the AppLayout sidebar wraps the content. The redesigned cards will:
+- Use a max-width container (max-w-4xl) centered in the content area
+- Stats row uses slightly larger cards
+- Cards have more horizontal padding
+- Two-column layout for items + address in expanded cards
 
 ---
 
@@ -177,79 +153,28 @@ ELSE:
 
 | File | Changes |
 |------|---------|
-| `src/pages/driver/DriverInbox.tsx` | Integrate all new features, update order card layout |
-| `src/types/database.ts` | Add new table types |
+| `src/pages/driver/DriverInbox.tsx` | Full visual overhaul — gradient header, glass cards, stat pills, modern order card layout, animations |
+| `src/components/driver/DraggableOrderList.tsx` | Improved drag visual feedback — shadow, scale, orange ring |
+| `src/components/driver/RouteSuggestionBadge.tsx` | Orange gradient for top ranks, silver for others |
+| `src/components/driver/RemarkStatusDot.tsx` | Larger dot, pulse animation for waiting states |
+| `src/components/driver/AddressActions.tsx` | Icon-only compact pill buttons with tooltips |
+| `src/components/driver/DriverRemarkSelector.tsx` | Colored left border accent, cleaner layout |
+| `src/components/driver/LocationTracker.tsx` | Modernized inline pill banner with glow effect |
 
 ---
 
-## Database Migrations
-
-Two new tables with RLS policies:
-1. `driver_order_remarks` - Private remarks per driver per order
-2. `driver_order_priority` - Manual sort priority per driver
-
-Enable realtime for both tables.
-
----
-
-## Permission Rules
-
-| Role | Can See Suggestion | Can Add Remark | Can Rearrange |
-|------|-------------------|----------------|---------------|
-| Driver | Yes (own orders) | Yes (own only) | Yes (own only) |
-| Runner | No | No | No |
-| Admin | No | No | No |
-| Manager | No | No | No |
+## Files NOT Modified
+- Database schema: No changes
+- Business logic hooks: No changes
+- Existing permissions/roles: No changes
+- Other pages: No changes
+- CSS variables/theme: Uses existing orange/gold primary — no theme changes needed
 
 ---
 
-## Realtime Requirements
+## Performance Considerations
+- All visual changes use Tailwind utility classes (no new CSS files)
+- Animations use CSS transforms/opacity only (GPU-accelerated)
+- No additional API calls or data fetching changes
+- Card expand/collapse uses CSS `max-height` transition for smooth animation
 
-- Remarks sync instantly via Supabase realtime channel
-- Priority sync instantly via Supabase realtime channel
-- Suggestions recalculate when:
-  - Driver location updates (every 10s when tracking active)
-  - Page is refreshed
-  - New orders are assigned
-
----
-
-## Mobile UX Specifications
-
-- Order cards expand/collapse smoothly with animations
-- Touch-friendly drag handles (48px minimum touch target)
-- Text wraps properly for long addresses
-- Fast render with 100+ orders (virtual list if needed)
-- Loading skeletons during geocoding
-
----
-
-## Edge Cases
-
-| Scenario | Handling |
-|----------|----------|
-| GPS permission denied | Hide suggestion badges, use default date sorting |
-| No GPS position available | Fallback to date-based sorting |
-| Order has no address | Skip in distance calculation |
-| Geocoding fails | Skip that order for suggestions |
-| 100+ orders | Batch geocoding with rate limiting (existing logic) |
-
----
-
-## Implementation Order
-
-1. **Database migrations** - Create tables + RLS
-2. **Utility functions** - Haversine formula
-3. **Hooks** - Route suggestion, remarks, priority
-4. **Components** - Address actions, remark selector, draggable list
-5. **Integration** - Update DriverInbox page
-6. **Testing** - Verify all features on mobile
-
----
-
-## Technical Notes
-
-- Reuses existing `LocationContext` for GPS tracking (already implemented for drivers)
-- Reuses existing `useGeocoding` hook for address-to-coordinates conversion
-- No changes to order table structure - all new data in separate tables
-- Backward compatible - existing workflow unchanged if features not used
