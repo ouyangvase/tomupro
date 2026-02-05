@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrders } from '@/hooks/useOrders';
@@ -19,7 +20,7 @@ import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewT
 import { ActionResolutionDialog } from '@/components/sales/ActionResolutionDialog';
 import { BulkActionResolutionDialog } from '@/components/sales/BulkActionResolutionDialog';
 import { 
-  AlertCircle, MessageSquare, User, 
+  AlertCircle, MessageSquare, User, Search,
   CalendarClock, Loader2, RefreshCw, Play, ListChecks, XCircle, Calendar, AlertTriangle
 } from 'lucide-react';
 import type { Order } from '@/types/database';
@@ -98,6 +99,7 @@ export default function SalespersonActionInbox() {
   
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [salespersonFilter, setSalespersonFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
@@ -175,8 +177,19 @@ export default function SalespersonActionInbox() {
       filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
     }
 
+    // Apply search filter (order code, customer name, address, phone)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(o => 
+        o.order_code?.toLowerCase().includes(q) ||
+        o.customer_name?.toLowerCase().includes(q) ||
+        o.address?.toLowerCase().includes(q) ||
+        o.phone?.toLowerCase().includes(q)
+      );
+    }
+
     return filtered;
-  }, [allOrders, profile?.id, sourceFilter, salespersonFilter, canViewAll, canViewGroup, viewMode, selectedMember, teamMemberIds, visibleIdsLoading]);
+  }, [allOrders, profile?.id, sourceFilter, salespersonFilter, searchQuery, canViewAll, canViewGroup, viewMode, selectedMember, teamMemberIds, visibleIdsLoading]);
 
   // Fetch salesperson info for ALL orders in the filtered list (not just team members)
   const salespersonIds = useMemo(() => {
@@ -377,7 +390,21 @@ export default function SalespersonActionInbox() {
         <Card>
           <CardContent className="p-3 md:p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4 flex-1">
+                {/* Search Bar */}
+                <div className="flex-1 md:max-w-xs">
+                  <Label className="text-xs">Search</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Order ID, customer, address..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 h-10"
+                    />
+                  </div>
+                </div>
+                
                 {/* Salesperson Filter - only for admin/manager */}
                 {(canViewAll || canViewGroup) && salespersons.length > 0 && (
                   <div className="flex-1 md:flex-none">
