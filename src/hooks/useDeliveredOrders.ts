@@ -125,6 +125,50 @@ export function useDeliveredSummary(params: Omit<UseDeliveredOrdersParams, 'limi
 }
 
 /**
+ * Server-side summary with ALL filter params (search, area, claim, driver, SKU)
+ * Eliminates mismatch between KPI cards and table data
+ */
+interface DeliveredSummaryFilteredParams {
+  runnerId?: string;
+  salespersonId?: string;
+  salespersonIds?: string[];
+  search?: string;
+  area?: string;
+  claimStatus?: string;
+  driverId?: string;
+  skuCode?: string;
+  enabled?: boolean;
+}
+
+export function useDeliveredSummaryFiltered(params: DeliveredSummaryFilteredParams = {}) {
+  const { runnerId, salespersonId, salespersonIds, search, area, claimStatus, driverId, skuCode, enabled = true } = params;
+
+  return useQuery({
+    queryKey: ['delivered-summary-filtered', runnerId, salespersonId, salespersonIds, search, area, claimStatus, driverId, skuCode],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_delivered_summary_filtered', {
+        p_runner_id: runnerId || null,
+        p_salesperson_id: salespersonId || null,
+        p_salesperson_ids: salespersonIds || null,
+        p_search: search || null,
+        p_area: area || null,
+        p_claim_status: claimStatus || null,
+        p_driver_id: driverId || null,
+        p_sku_code: skuCode || null,
+      });
+
+      if (error) throw error;
+      
+      const summary = data?.[0] || { total_delivered: 0, pending_claim: 0, total_amount: 0 };
+      return summary as DeliveredSummary;
+    },
+    enabled,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
+
+/**
  * Optimistic mutation for marking an order as delivered
  * Updates UI immediately, queues background processing
  */

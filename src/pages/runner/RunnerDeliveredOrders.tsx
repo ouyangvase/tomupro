@@ -16,7 +16,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
 import { formatBND } from '@/lib/currency';
-import { useDeliveredSummary } from '@/hooks/useDeliveredOrders';
+import { useDeliveredSummaryFiltered } from '@/hooks/useDeliveredOrders';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
@@ -205,37 +205,52 @@ export default function RunnerDeliveredOrders() {
     return map;
   }, [activeCharges]);
   
-  // Create summary params based on role for accurate server-side stats
-  // CRITICAL: Must match the server-side filtering logic in ordersFilter
+  // Build server-side summary params that include ALL active filters
+  // This ensures KPIs are always accurate, even beyond the 2000-row table limit
   const summaryParams = useMemo(() => {
+    const params: {
+      runnerId?: string;
+      salespersonId?: string;
+      salespersonIds?: string[];
+      search?: string;
+      area?: string;
+      claimStatus?: string;
+      driverId?: string;
+      skuCode?: string;
+    } = {};
+
+    // Role-based filters
     if (role === 'runner') {
-      const params: { runnerId?: string; salespersonIds?: string[] } = { runnerId: user?.id };
+      params.runnerId = user?.id;
+    } else if (role === 'salesperson') {
+      params.salespersonId = user?.id;
+    } else if (role === 'manager') {
       if (salespersonFilter !== 'all') {
         params.salespersonIds = [salespersonFilter];
+      } else if (salespersonIds && salespersonIds.length > 0) {
+        params.salespersonIds = salespersonIds;
       }
-      return params;
+    } else if (role === 'admin' && salespersonFilter !== 'all') {
+      params.salespersonIds = [salespersonFilter];
     }
-    if (role === 'salesperson') {
-      return { salespersonId: user?.id };
+
+    // Runner role salesperson filter (applied server-side)
+    if (role === 'runner' && salespersonFilter !== 'all') {
+      params.salespersonIds = [salespersonFilter];
     }
-    if (role === 'manager') {
-      if (salespersonFilter !== 'all') {
-        return { salespersonIds: [salespersonFilter] };
-      }
-      if (salespersonIds && salespersonIds.length > 0) {
-        return { salespersonIds };
-      }
-      return {};
-    }
-    // Admin: apply salesperson filter to summary too
-    if (role === 'admin' && salespersonFilter !== 'all') {
-      return { salespersonIds: [salespersonFilter] };
-    }
-    return {}; // admin - get all
-  }, [role, user?.id, salespersonIds, salespersonFilter]);
+
+    // All filter params for accurate server-side aggregation
+    if (searchQuery.trim()) params.search = searchQuery.trim();
+    if (areaFilter !== 'all') params.area = areaFilter;
+    if (claimStatusFilter !== 'all') params.claimStatus = claimStatusFilter;
+    if (driverFilter !== 'all') params.driverId = driverFilter;
+    if (skuFilter !== 'all') params.skuCode = skuFilter;
+
+    return params;
+  }, [role, user?.id, salespersonIds, salespersonFilter, searchQuery, areaFilter, claimStatusFilter, driverFilter, skuFilter]);
   
-  // Fetch accurate summary stats from server (not truncated by query limit)
-  const { data: summary, isLoading: summaryLoading } = useDeliveredSummary(summaryParams);
+  // Fetch accurate summary stats from server with ALL filters applied
+  const { data: summary, isLoading: summaryLoading } = useDeliveredSummaryFiltered(summaryParams);
   
   // Determine if current user can claim orders (only runners can claim)
   const canClaim = role === 'runner';
@@ -298,7 +313,7 @@ export default function RunnerDeliveredOrders() {
     return filtered;
   }, [orders, driverFilter, salespersonFilter, skuFilter, claimStatusFilter, role]);
 
-  // Detect if any filters are active
+  // Detect if any filters are active (for UI labels)
   const hasActiveFilters = useMemo(() => {
     return (
       searchQuery.trim() !== '' ||
@@ -310,16 +325,6 @@ export default function RunnerDeliveredOrders() {
     );
   }, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
 
-  // ALWAYS calculate summary from actual displayed data so KPI matches the table
-  // This prevents mismatch when server RPC returns totals beyond the 2000-row query limit
-  const clientSummary = useMemo(() => {
-    const total_delivered = deliveredOrders.length;
-    const pending_claim = deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED').length;
-    const total_amount = deliveredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-    
-    return { total_delivered, pending_claim, total_amount };
-  }, [deliveredOrders]);
-
   // Detect if data might be truncated by the 2000-row query limit
   const QUERY_LIMIT = 2000;
   const isDataTruncated = useMemo(() => {
@@ -327,9 +332,9 @@ export default function RunnerDeliveredOrders() {
     return orders.length >= QUERY_LIMIT;
   }, [orders]);
 
-  // Always use client-side summary to ensure KPI matches visible table data
-  const displaySummary = clientSummary;
-  const displaySummaryLoading = isLoading;
+  // Always use server-side summary for KPIs (accurate, no truncation)
+  const displaySummary = summary;
+  const displaySummaryLoading = summaryLoading;
 
   // Pagination calculations
   const totalPages = Math.max(1, Math.ceil(deliveredOrders.length / PAGE_SIZE));
@@ -737,25 +742,25 @@ export default function RunnerDeliveredOrders() {
           </div>
         </div>
 
-        {/* Data truncation warning */}
+        {/* Data truncation warning - table may show fewer rows than KPI totals */}
         {isDataTruncated && (
           <Card className="border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20">
             <CardContent className="p-3 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                Showing {deliveredOrders.length} of {summary?.total_delivered ?? '2000+'} delivered orders. 
-                Apply filters (salesperson, area) to narrow results and see accurate totals.
+                Table shows up to {QUERY_LIMIT} rows. KPI totals reflect all {summary?.total_delivered ?? '2000+'} delivered orders.
+                Apply filters to narrow results.
               </p>
             </CardContent>
           </Card>
         )}
 
-        {/* Stats - Always calculated from visible data so KPI matches the table */}
+        {/* Stats - Server-side aggregation with ALL filters for accurate totals */}
         <div className="grid gap-4 grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Delivered
+                Total Delivered {hasActiveFilters && <span className="text-xs">(filtered)</span>}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -769,7 +774,7 @@ export default function RunnerDeliveredOrders() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Pending Claim
+                Pending Claim {hasActiveFilters && <span className="text-xs">(filtered)</span>}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -783,7 +788,7 @@ export default function RunnerDeliveredOrders() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Value
+                Total Value {hasActiveFilters && <span className="text-xs">(filtered)</span>}
               </CardTitle>
             </CardHeader>
             <CardContent>
