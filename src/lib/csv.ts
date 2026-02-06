@@ -462,8 +462,8 @@ export function exportSelectedRunnerOrderLines(
   return true;
 }
 
-// Delivered orders export - simplified columns with delivery charges lookup
-export interface DeliveredOrderLineExport {
+// Delivered orders export - one row per order with combined items
+export interface DeliveredOrderExport {
   order_ref: string;
   customer_name: string;
   phone: string;
@@ -471,9 +471,10 @@ export interface DeliveredOrderLineExport {
   area: string;
   salesperson_name: string;
   delivered_timestamp: string;
-  sku_name: string;
-  qty: number;
+  items: string;
+  total_qty: number;
   total_amount: number;
+  payment_method: string;
   delivery_charges: number;
 }
 
@@ -482,44 +483,42 @@ export function exportDeliveredOrderLines(
   deliveryChargesMap: Map<string, number>, // key: "runnerId:area" -> charge
   filename: string
 ) {
-  const lines: DeliveredOrderLineExport[] = [];
+  const lines: DeliveredOrderExport[] = [];
   
   for (const order of orders) {
     const orderItems = order.order_items || [];
     const chargeKey = `${order.runner_id}:${order.area || ''}`;
     const deliveryCharge = deliveryChargesMap.get(chargeKey) || 0;
     
-    if (orderItems.length === 0) {
-      lines.push({
-        order_ref: order.order_code || '',
-        customer_name: order.customer_name || '',
-        phone: order.phone || '',
-        address: order.address || '',
-        area: order.area || '',
-        salesperson_name: order.salesperson?.display_name || order.created_by_name_snapshot || '',
-        delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
-        sku_name: '',
-        qty: 0,
-        total_amount: Number(order.total_amount) || 0,
-        delivery_charges: deliveryCharge,
-      });
-    } else {
+    // Combine all items into a single readable string and sum qty
+    let itemsSummary = '';
+    let totalQty = 0;
+    
+    if (orderItems.length > 0) {
+      const itemParts: string[] = [];
       for (const item of orderItems) {
-        lines.push({
-          order_ref: order.order_code || '',
-          customer_name: order.customer_name || '',
-          phone: order.phone || '',
-          address: order.address || '',
-          area: order.area || '',
-          salesperson_name: order.salesperson?.display_name || order.created_by_name_snapshot || '',
-          delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
-          sku_name: item.product?.sku_name || item.sku_label || '',
-          qty: item.qty || 0,
-          total_amount: Number(order.total_amount) || 0,
-          delivery_charges: deliveryCharge,
-        });
+        const skuName = item.product?.sku_name || item.sku_label || 'Unknown';
+        const qty = item.qty || 0;
+        totalQty += qty;
+        itemParts.push(`${skuName} x ${qty}`);
       }
+      itemsSummary = itemParts.join('; ');
     }
+    
+    lines.push({
+      order_ref: order.order_code || '',
+      customer_name: order.customer_name || '',
+      phone: order.phone || '',
+      address: order.address || '',
+      area: order.area || '',
+      salesperson_name: order.salesperson?.display_name || order.created_by_name_snapshot || '',
+      delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
+      items: itemsSummary,
+      total_qty: totalQty,
+      total_amount: Number(order.total_amount) || 0,
+      payment_method: order.payment_method || '',
+      delivery_charges: deliveryCharge,
+    });
   }
 
   const columns = [
@@ -530,9 +529,10 @@ export function exportDeliveredOrderLines(
     { key: 'area', header: 'area' },
     { key: 'salesperson_name', header: 'salesperson_name' },
     { key: 'delivered_timestamp', header: 'delivered_timestamp' },
-    { key: 'sku_name', header: 'sku_name' },
-    { key: 'qty', header: 'qty' },
+    { key: 'items', header: 'items' },
+    { key: 'total_qty', header: 'qty' },
     { key: 'total_amount', header: 'total_amount' },
+    { key: 'payment_method', header: 'payment_method' },
     { key: 'delivery_charges', header: 'delivery_charges' },
   ];
 
