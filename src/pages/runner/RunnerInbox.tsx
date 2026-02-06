@@ -237,32 +237,33 @@ export default function RunnerInbox() {
   const columns: Column<Order>[] = [
     {
       key: 'runner_assigned_at',
-      header: 'Date',
+      header: 'Assigned At',
       sortable: true,
-      minWidth: '90px',
-      maxWidth: '120px',
-      preferredWidth: '7vw',
+      minWidth: '130px',
+      maxWidth: '170px',
+      preferredWidth: '10vw',
       render: (order) => {
         const assignedAt = (order as any).runner_assigned_at;
         if (!assignedAt) {
           return (
-            <span className="text-xs whitespace-nowrap text-muted-foreground">
-              {new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+            <span className="text-xs whitespace-nowrap text-muted-foreground italic">
+              Not Assigned
             </span>
           );
         }
         const date = new Date(assignedAt);
+        const formatted = date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+          + ', '
+          + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
         return (
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="text-xs whitespace-nowrap">
-                {date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-                <br />
-                <span className="text-muted-foreground">{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                {formatted}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              Assigned: {date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              Assigned: {formatted}
             </TooltipContent>
           </Tooltip>
         );
