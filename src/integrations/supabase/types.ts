@@ -2363,6 +2363,7 @@ export type Database = {
           reschedule_flag: boolean | null
           rescheduled_from_status: string | null
           runner_accept_status: string | null
+          runner_assigned_at: string | null
           runner_comment: string | null
           runner_failed_reason_id: string | null
           runner_final_outcome: string | null
@@ -2432,6 +2433,7 @@ export type Database = {
           reschedule_flag?: boolean | null
           rescheduled_from_status?: string | null
           runner_accept_status?: string | null
+          runner_assigned_at?: string | null
           runner_comment?: string | null
           runner_failed_reason_id?: string | null
           runner_final_outcome?: string | null
@@ -2501,6 +2503,7 @@ export type Database = {
           reschedule_flag?: boolean | null
           rescheduled_from_status?: string | null
           runner_accept_status?: string | null
+          runner_assigned_at?: string | null
           runner_comment?: string | null
           runner_failed_reason_id?: string | null
           runner_final_outcome?: string | null
