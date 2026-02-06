@@ -4045,6 +4045,23 @@ export type Database = {
           total_delivered: number
         }[]
       }
+      get_delivered_summary_filtered: {
+        Args: {
+          p_area?: string
+          p_claim_status?: string
+          p_driver_id?: string
+          p_runner_id?: string
+          p_salesperson_id?: string
+          p_salesperson_ids?: string[]
+          p_search?: string
+          p_sku_code?: string
+        }
+        Returns: {
+          pending_claim: number
+          total_amount: number
+          total_delivered: number
+        }[]
+      }
       get_delivery_charge: {
         Args: { p_area: string; p_runner_id: string }
         Returns: number
