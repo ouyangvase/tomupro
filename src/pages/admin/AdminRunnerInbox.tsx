@@ -163,10 +163,23 @@ export default function AdminRunnerInbox() {
 
   const columns: Column<Order>[] = [
     {
-      key: 'order_date',
+      key: 'runner_assigned_at',
       header: 'Date',
       sortable: true,
-      render: (order) => new Date(order.order_date).toLocaleDateString(),
+      render: (order) => {
+        const assignedAt = (order as any).runner_assigned_at;
+        if (!assignedAt) {
+          return <span className="text-muted-foreground">{new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>;
+        }
+        const date = new Date(assignedAt);
+        return (
+          <span className="text-sm">
+            {date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+            {' '}
+            <span className="text-muted-foreground">{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+          </span>
+        );
+      },
     },
     {
       key: 'order_code',

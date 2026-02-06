@@ -236,17 +236,37 @@ export default function RunnerInbox() {
 
   const columns: Column<Order>[] = [
     {
-      key: 'order_date',
+      key: 'runner_assigned_at',
       header: 'Date',
       sortable: true,
-      minWidth: '70px',
-      maxWidth: '90px',
-      preferredWidth: '5vw',
-      render: (order) => (
-        <span className="text-xs whitespace-nowrap">
-          {new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-        </span>
-      ),
+      minWidth: '90px',
+      maxWidth: '120px',
+      preferredWidth: '7vw',
+      render: (order) => {
+        const assignedAt = (order as any).runner_assigned_at;
+        if (!assignedAt) {
+          return (
+            <span className="text-xs whitespace-nowrap text-muted-foreground">
+              {new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+            </span>
+          );
+        }
+        const date = new Date(assignedAt);
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-xs whitespace-nowrap">
+                {date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                <br />
+                <span className="text-muted-foreground">{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              Assigned: {date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </TooltipContent>
+          </Tooltip>
+        );
+      },
     },
     {
       key: 'order_code',
