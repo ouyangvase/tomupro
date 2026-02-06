@@ -310,20 +310,26 @@ export default function RunnerDeliveredOrders() {
     );
   }, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
 
-  // Calculate client-side filtered summary when filters are active
-  const filteredSummary = useMemo(() => {
-    if (!hasActiveFilters) return null;
-    
+  // ALWAYS calculate summary from actual displayed data so KPI matches the table
+  // This prevents mismatch when server RPC returns totals beyond the 2000-row query limit
+  const clientSummary = useMemo(() => {
     const total_delivered = deliveredOrders.length;
     const pending_claim = deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED').length;
     const total_amount = deliveredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
     
     return { total_delivered, pending_claim, total_amount };
-  }, [hasActiveFilters, deliveredOrders]);
+  }, [deliveredOrders]);
 
-  // Use filtered summary when filters active, otherwise use server summary
-  const displaySummary = hasActiveFilters ? filteredSummary : summary;
-  const displaySummaryLoading = hasActiveFilters ? false : summaryLoading;
+  // Detect if data might be truncated by the 2000-row query limit
+  const QUERY_LIMIT = 2000;
+  const isDataTruncated = useMemo(() => {
+    if (!orders) return false;
+    return orders.length >= QUERY_LIMIT;
+  }, [orders]);
+
+  // Always use client-side summary to ensure KPI matches visible table data
+  const displaySummary = clientSummary;
+  const displaySummaryLoading = isLoading;
 
   // Pagination calculations
   const totalPages = Math.max(1, Math.ceil(deliveredOrders.length / PAGE_SIZE));
@@ -731,12 +737,25 @@ export default function RunnerDeliveredOrders() {
           </div>
         </div>
 
-        {/* Stats - Uses server-side RPC for accurate totals, or filtered client-side data when filters active */}
+        {/* Data truncation warning */}
+        {isDataTruncated && (
+          <Card className="border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20">
+            <CardContent className="p-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                Showing {deliveredOrders.length} of {summary?.total_delivered ?? '2000+'} delivered orders. 
+                Apply filters (salesperson, area) to narrow results and see accurate totals.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Stats - Always calculated from visible data so KPI matches the table */}
         <div className="grid gap-4 grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Delivered {hasActiveFilters && <span className="text-xs">(filtered)</span>}
+                Total Delivered
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -750,7 +769,7 @@ export default function RunnerDeliveredOrders() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Pending Claim {hasActiveFilters && <span className="text-xs">(filtered)</span>}
+                Pending Claim
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -764,7 +783,7 @@ export default function RunnerDeliveredOrders() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Value {hasActiveFilters && <span className="text-xs">(filtered)</span>}
+                Total Value
               </CardTitle>
             </CardHeader>
             <CardContent>
