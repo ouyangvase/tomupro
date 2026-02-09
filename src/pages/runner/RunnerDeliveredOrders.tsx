@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useOrders } from '@/hooks/useOrders';
@@ -119,7 +120,7 @@ export default function RunnerDeliveredOrders() {
   const [searchQuery, setSearchQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('all');
   const [driverFilter, setDriverFilter] = useState('all');
-  const [salespersonFilter, setSalespersonFilter] = useState('all');
+  const [salespersonFilters, setSalespersonFilters] = useState<string[]>([]);
   const [skuFilter, setSkuFilter] = useState('all');
   const [claimStatusFilter, setClaimStatusFilter] = useState<ClaimStatusFilter>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -157,10 +158,9 @@ export default function RunnerDeliveredOrders() {
     }
     
     if (role === 'runner') {
-      // Apply salesperson filter server-side to avoid response truncation on large datasets
       const runnerFilter = { ...baseFilter, runnerId: user?.id };
-      if (salespersonFilter !== 'all') {
-        return { ...runnerFilter, salespersonIds: [salespersonFilter] };
+      if (salespersonFilters.length > 0) {
+        return { ...runnerFilter, salespersonIds: salespersonFilters };
       }
       return runnerFilter;
     }
@@ -168,9 +168,8 @@ export default function RunnerDeliveredOrders() {
       return { ...baseFilter, salespersonId: user?.id };
     }
     if (role === 'manager') {
-      // Manager: filter by team or specific salesperson
-      if (salespersonFilter !== 'all') {
-        return { ...baseFilter, salespersonIds: [salespersonFilter] };
+      if (salespersonFilters.length > 0) {
+        return { ...baseFilter, salespersonIds: salespersonFilters };
       }
       if (salespersonIds && salespersonIds.length > 0) {
         return { ...baseFilter, salespersonIds };
@@ -178,18 +177,19 @@ export default function RunnerDeliveredOrders() {
       return baseFilter;
     }
     // Admin: apply salesperson filter SERVER-SIDE to avoid truncation bug
-    if (role === 'admin' && salespersonFilter !== 'all') {
-      return { ...baseFilter, salespersonIds: [salespersonFilter] };
+    if (role === 'admin' && salespersonFilters.length > 0) {
+      return { ...baseFilter, salespersonIds: salespersonFilters };
     }
     return baseFilter; // admin no filter - fetch all delivered
-  }, [role, user?.id, salespersonIds, salespersonFilter, searchQuery, areaFilter]);
+  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter]);
   
   const { data: orders, isLoading } = useOrders(ordersFilter as any);
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
   const { data: products = [] } = useProducts();
   // Only fetch claim batches for runner role (they're the ones who claim)
-  const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : undefined);
+  // Fetch claim batches for all roles - batch ref column is visible to everyone
+  const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : {});
   
   // Fetch active delivery charges for runner (for export)
   const { data: activeCharges = [] } = useActiveDeliveryCharges(
@@ -225,18 +225,18 @@ export default function RunnerDeliveredOrders() {
     } else if (role === 'salesperson') {
       params.salespersonId = user?.id;
     } else if (role === 'manager') {
-      if (salespersonFilter !== 'all') {
-        params.salespersonIds = [salespersonFilter];
+      if (salespersonFilters.length > 0) {
+        params.salespersonIds = salespersonFilters;
       } else if (salespersonIds && salespersonIds.length > 0) {
         params.salespersonIds = salespersonIds;
       }
-    } else if (role === 'admin' && salespersonFilter !== 'all') {
-      params.salespersonIds = [salespersonFilter];
+    } else if (role === 'admin' && salespersonFilters.length > 0) {
+      params.salespersonIds = salespersonFilters;
     }
 
     // Runner role salesperson filter (applied server-side)
-    if (role === 'runner' && salespersonFilter !== 'all') {
-      params.salespersonIds = [salespersonFilter];
+    if (role === 'runner' && salespersonFilters.length > 0) {
+      params.salespersonIds = salespersonFilters;
     }
 
     // All filter params for accurate server-side aggregation
@@ -247,7 +247,7 @@ export default function RunnerDeliveredOrders() {
     if (skuFilter !== 'all') params.skuCode = skuFilter;
 
     return params;
-  }, [role, user?.id, salespersonIds, salespersonFilter, searchQuery, areaFilter, claimStatusFilter, driverFilter, skuFilter]);
+  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, claimStatusFilter, driverFilter, skuFilter]);
   
   // Fetch accurate summary stats from server with ALL filters applied
   const { data: summary, isLoading: summaryLoading } = useDeliveredSummaryFiltered(summaryParams);
@@ -288,8 +288,8 @@ export default function RunnerDeliveredOrders() {
 
     // Apply salesperson filter client-side ONLY for runner role
     // (admin and manager now filter server-side to avoid truncation)
-    if (salespersonFilter !== 'all' && role === 'runner') {
-      filtered = filtered.filter(order => order.salesperson_id === salespersonFilter);
+    if (salespersonFilters.length > 0 && role === 'runner') {
+      filtered = filtered.filter(order => order.salesperson_id && salespersonFilters.includes(order.salesperson_id));
     }
 
     // Apply SKU filter (by SKU code, not product ID)
@@ -311,7 +311,7 @@ export default function RunnerDeliveredOrders() {
     }
 
     return filtered;
-  }, [orders, driverFilter, salespersonFilter, skuFilter, claimStatusFilter, role]);
+  }, [orders, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, role]);
 
   // Detect if any filters are active (for UI labels)
   const hasActiveFilters = useMemo(() => {
@@ -319,11 +319,11 @@ export default function RunnerDeliveredOrders() {
       searchQuery.trim() !== '' ||
       areaFilter !== 'all' ||
       driverFilter !== 'all' ||
-      salespersonFilter !== 'all' ||
+      salespersonFilters.length > 0 ||
       skuFilter !== 'all' ||
       claimStatusFilter !== 'all'
     );
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter]);
 
   // Detect if data might be truncated by the 2000-row query limit
   const QUERY_LIMIT = 2000;
@@ -345,14 +345,14 @@ export default function RunnerDeliveredOrders() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilter, skuFilter, claimStatusFilter]);
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter]);
 
   // Clear filters helper
   const clearAllFilters = useCallback(() => {
     setSearchQuery('');
     setAreaFilter('all');
     setDriverFilter('all');
-    setSalespersonFilter('all');
+    setSalespersonFilters([]);
     setSkuFilter('all');
     setClaimStatusFilter('all');
   }, []);
@@ -669,10 +669,10 @@ export default function RunnerDeliveredOrders() {
     let selectedUserName = 'All Users';
     let expectedCount = allDelivered.length;
     
-    if (salespersonFilter !== 'all') {
-      const selectedUser = salespersonOptions.find(sp => sp.value === salespersonFilter);
-      selectedUserName = selectedUser?.label || salespersonFilter;
-      expectedCount = allDelivered.filter(o => o.salesperson_id === salespersonFilter).length;
+    if (salespersonFilters.length > 0) {
+      const selectedUsers = salespersonOptions.filter(sp => salespersonFilters.includes(sp.value));
+      selectedUserName = selectedUsers.map(u => u.label).join(', ') || salespersonFilters.join(', ');
+      expectedCount = allDelivered.filter(o => o.salesperson_id && salespersonFilters.includes(o.salesperson_id)).length;
     }
     
     return {
@@ -683,7 +683,7 @@ export default function RunnerDeliveredOrders() {
       selectedUserName,
       isMatch: deliveredOrders.length === expectedCount,
     };
-  }, [role, orders, salespersonFilter, salespersonOptions, deliveredOrders]);
+  }, [role, orders, salespersonFilters, salespersonOptions, deliveredOrders]);
 
   const isMobile = useIsMobile();
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -839,14 +839,14 @@ export default function RunnerDeliveredOrders() {
                   </SelectContent>
                 </Select>
                 
-                {/* User filter - All roles (Admin/Manager/Runner) */}
-                <SearchableSelect
+                {/* User filter - All roles (Admin/Manager/Runner) - Multi-select */}
+                <SearchableMultiSelect
                   options={salespersonOptions}
-                  value={salespersonFilter}
-                  onValueChange={setSalespersonFilter}
+                  values={salespersonFilters}
+                  onValuesChange={setSalespersonFilters}
                   placeholder="All Users"
                   searchPlaceholder="Search users..."
-                  allOption={{ label: 'All Users', value: 'all' }}
+                  allLabel="All Users"
                   className="w-full md:w-[180px]"
                 />
                 
@@ -890,7 +890,7 @@ export default function RunnerDeliveredOrders() {
                 </div>
               </div>
               {/* Warning when no results found and no user selected - SKU filter is client-side limited */}
-              {skuSummary.totalOrders === 0 && salespersonFilter === 'all' && isAdminOrManager && (
+              {skuSummary.totalOrders === 0 && salespersonFilters.length === 0 && isAdminOrManager && (
                 <div className="mt-4 flex items-start gap-2 p-3 rounded-md bg-amber-500/10 border border-amber-500/30 text-sm">
                   <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                   <span className="text-muted-foreground">
@@ -1139,8 +1139,8 @@ export default function RunnerDeliveredOrders() {
                       <TableHead>Driver</TableHead>
                       <TableHead>Salesperson</TableHead>
                       <TableHead>Delivered</TableHead>
+                      <TableHead>Claim Batch</TableHead>
                       <TableHead>Claim Status</TableHead>
-                      {canClaim && <TableHead>Claim Batch Ref</TableHead>}
                       {canClaim && <TableHead>Action</TableHead>}
                       {isAdmin && <TableHead>Admin</TableHead>}
                     </TableRow>
@@ -1148,13 +1148,13 @@ export default function RunnerDeliveredOrders() {
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8">
+                        <TableCell colSpan={16 + (isAdminOrManager ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={15 + (isAdminOrManager ? 1 : 0) + (canClaim ? 3 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={16 + (isAdminOrManager ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8 text-muted-foreground">
                           <div className="flex flex-col items-center gap-2">
                             <span>No delivered orders found</span>
                             {hasActiveFilters && (
@@ -1244,30 +1244,28 @@ export default function RunnerDeliveredOrders() {
                                 : '-'}
                             </TableCell>
                             <TableCell>
+                              {orderToBatchRef.has(order.id) ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
+                                        {orderToBatchRef.get(order.id)?.batchId}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Submitted: {format(new Date(orderToBatchRef.get(order.id)!.submittedAt), 'dd MMM yyyy HH:mm')}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
                               <Badge className={claimStatusColors[order.reconciliation_status]}>
                                 {claimStatusLabels[order.reconciliation_status]}
                               </Badge>
                             </TableCell>
-                            {canClaim && (
-                              <TableCell>
-                                {orderToBatchRef.has(order.id) ? (
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
-                                          {orderToBatchRef.get(order.id)?.batchId}
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>Submitted: {format(new Date(orderToBatchRef.get(order.id)!.submittedAt), 'dd MMM yyyy HH:mm')}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                ) : (
-                                  <span className="text-muted-foreground">-</span>
-                                )}
-                              </TableCell>
-                            )}
                             {canClaim && (
                               <TableCell>
                                 {isClaimable && (
