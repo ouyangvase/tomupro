@@ -104,24 +104,42 @@ export default function ClaimBatchesHistory() {
 
   const handleExportSelected = () => {
     const selectedBatches = filteredBatches.filter(b => selectedRows.includes(b.id));
-    const exportData = selectedBatches.map(batch => ({
-      submitted_at: format(parseISO(batch.submitted_at), 'yyyy-MM-dd HH:mm'),
-      runner: batch.runner?.display_name || '',
-      order_count: batch.items?.length || 0,
-      total_amount: batch.total_amount,
-      status: batch.status,
-      admin_ack_at: batch.admin_ack_at ? format(parseISO(batch.admin_ack_at), 'yyyy-MM-dd HH:mm') : '',
-      note: batch.note || '',
-    }));
-    exportToCSV(exportData, [
-      { key: 'submitted_at', header: 'Submitted At' },
+    // Build full order-level export rows
+    const exportRows: Record<string, unknown>[] = [];
+    for (const batch of selectedBatches) {
+      for (const item of batch.items || []) {
+        const order = item.order;
+        if (!order) continue;
+        exportRows.push({
+          batch_code: (batch as any).batch_code || '',
+          submitted_at: format(parseISO(batch.submitted_at), 'yyyy-MM-dd HH:mm'),
+          runner: batch.runner?.display_name || '',
+          batch_status: batch.status === 'ADMIN_ACK_PENDING' ? 'Pending' : 'Claimed',
+          order_code: order.order_code || '',
+          order_date: order.order_date ? format(new Date(order.order_date), 'yyyy-MM-dd') : '',
+          customer_name: order.customer_name || '',
+          area: order.area || '',
+          amount: Number(order.total_amount || 0),
+          payment_method: order.payment_method || '',
+          reconciliation_status: order.reconciliation_status?.replace(/_/g, ' ') || '',
+          note: batch.note || '',
+        });
+      }
+    }
+    exportToCSV(exportRows, [
+      { key: 'batch_code', header: 'Batch #' },
+      { key: 'submitted_at', header: 'Batch Submitted' },
       { key: 'runner', header: 'Runner' },
-      { key: 'order_count', header: 'Order Count' },
-      { key: 'total_amount', header: 'Total Amount' },
-      { key: 'status', header: 'Status' },
-      { key: 'admin_ack_at', header: 'Acknowledged At' },
+      { key: 'batch_status', header: 'Batch Status' },
+      { key: 'order_code', header: 'Order Ref' },
+      { key: 'order_date', header: 'Order Date' },
+      { key: 'customer_name', header: 'Customer' },
+      { key: 'area', header: 'Area' },
+      { key: 'amount', header: 'Amount (BND)' },
+      { key: 'payment_method', header: 'Payment Method' },
+      { key: 'reconciliation_status', header: 'Claim Status' },
       { key: 'note', header: 'Note' },
-    ], 'claim_batches_export');
+    ], 'claim_batches_orders_export');
   };
 
   const clearFilters = () => {
@@ -145,6 +163,12 @@ export default function ClaimBatchesHistory() {
   }, [filteredBatches]);
 
   const columns: Column<ClaimBatch>[] = [
+    {
+      key: 'batch_code',
+      header: 'Batch #',
+      sortable: true,
+      render: (batch) => <span className="font-mono font-medium">{(batch as any).batch_code || '-'}</span>,
+    },
     {
       key: 'submitted_at',
       header: 'Submitted',
@@ -316,12 +340,14 @@ export default function ClaimBatchesHistory() {
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Claim Batch Details</DialogTitle>
+            <DialogTitle>Claim Batch {(selectedBatch as any)?.batch_code || ''} Details</DialogTitle>
             <DialogDescription>
               Submitted by {selectedBatch?.runner?.display_name} on{' '}
               {selectedBatch && format(parseISO(selectedBatch.submitted_at), 'MMM dd, yyyy HH:mm')}
             </DialogDescription>
           </DialogHeader>
+
+
 
           <div className="space-y-6">
             {/* Summary */}
