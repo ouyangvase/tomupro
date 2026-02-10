@@ -669,11 +669,11 @@ export default function RunnerDeliveredOrders() {
 
   // Build a map of order_id -> batch reference for showing claim batch info
   const orderToBatchRef = useMemo(() => {
-    const map = new Map<string, { batchId: string; submittedAt: string }>();
+    const map = new Map<string, { batchCode: string; submittedAt: string }>();
     for (const batch of claimBatches) {
       for (const item of batch.items || []) {
         map.set(item.order_id, {
-          batchId: batch.id.slice(0, 8).toUpperCase(),
+          batchCode: (batch as any).batch_code || batch.id.slice(0, 8).toUpperCase(),
           submittedAt: batch.submitted_at,
         });
       }
@@ -1085,7 +1085,7 @@ export default function RunnerDeliveredOrders() {
                       { label: 'Runner', value: order.runner?.display_name || '-' },
                       { label: 'Driver', value: order.driver?.display_name || '-' },
                       { label: 'Salesperson', value: salespersonDisplayName },
-                      ...(batchRef ? [{ label: 'Batch Ref', value: batchRef.batchId }] : []),
+                      ...(batchRef ? [{ label: 'Batch Ref', value: batchRef.batchCode }] : []),
                     ]}
                     primaryAction={
                       isClaimable ? (
@@ -1287,7 +1287,7 @@ export default function RunnerDeliveredOrders() {
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
-                                        {orderToBatchRef.get(order.id)?.batchId}
+                                        {orderToBatchRef.get(order.id)?.batchCode}
                                       </span>
                                     </TooltipTrigger>
                                     <TooltipContent>

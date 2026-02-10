@@ -110,6 +110,13 @@ export default function ClaimBatchesHistory() {
       for (const item of batch.items || []) {
         const order = item.order;
         if (!order) continue;
+        // Build items string from order_items
+        const orderItems = (order as any).order_items || [];
+        const itemsStr = orderItems.map((oi: any) => {
+          const sku = oi.product?.sku_code || oi.sku_label || '-';
+          return `${sku} x ${oi.qty}`;
+        }).join('; ');
+        const totalQty = orderItems.reduce((sum: number, oi: any) => sum + (oi.qty || 0), 0);
         exportRows.push({
           batch_code: (batch as any).batch_code || '',
           submitted_at: format(parseISO(batch.submitted_at), 'yyyy-MM-dd HH:mm'),
@@ -119,6 +126,8 @@ export default function ClaimBatchesHistory() {
           order_date: order.order_date ? format(new Date(order.order_date), 'yyyy-MM-dd') : '',
           customer_name: order.customer_name || '',
           area: order.area || '',
+          items: itemsStr,
+          total_qty: totalQty,
           amount: Number(order.total_amount || 0),
           payment_method: order.payment_method || '',
           reconciliation_status: order.reconciliation_status?.replace(/_/g, ' ') || '',
@@ -135,6 +144,8 @@ export default function ClaimBatchesHistory() {
       { key: 'order_date', header: 'Order Date' },
       { key: 'customer_name', header: 'Customer' },
       { key: 'area', header: 'Area' },
+      { key: 'items', header: 'Items (SKU x Qty)' },
+      { key: 'total_qty', header: 'Total Qty' },
       { key: 'amount', header: 'Amount (BND)' },
       { key: 'payment_method', header: 'Payment Method' },
       { key: 'reconciliation_status', header: 'Claim Status' },
