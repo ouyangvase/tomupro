@@ -18,7 +18,10 @@ export function useClaimBatches(filters?: ClaimBatchFilters) {
           *,
           items:claim_batch_items(
             *,
-            order:orders(*)
+            order:orders(
+              *,
+              order_items(*, product:products(sku_code, sku_name))
+            )
           )
         `)
         .order('submitted_at', { ascending: false });
@@ -51,7 +54,7 @@ export function useClaimBatches(filters?: ClaimBatchFilters) {
       return (data || []).map(batch => ({
         ...batch,
         runner: runnerMap[batch.runner_id],
-      })) as ClaimBatch[];
+      })) as unknown as ClaimBatch[];
     },
   });
 }
