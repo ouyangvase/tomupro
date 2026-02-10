@@ -13,9 +13,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, AlertCircle, Info, TrendingDown, Banknote } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, AlertCircle, Info, TrendingDown, Banknote, ExternalLink, Trash2 } from 'lucide-react';
 import { formatBND, formatRM, convertBNDtoRM } from '@/lib/currency';
 import { useClaimPreview } from '@/hooks/useDeliveryChargePreview';
+import { format } from 'date-fns';
 import type { Order } from '@/types/database';
 
 interface BulkClaimDialogProps {
@@ -24,6 +27,8 @@ interface BulkClaimDialogProps {
   orders: Order[];
   onSubmit: (exchangeRate: number, note?: string) => Promise<void>;
   isSubmitting: boolean;
+  onRemoveInvalidOrders?: (invalidOrderIds: string[]) => void;
+  onNavigateToCharges?: () => void;
 }
 
 export function BulkClaimDialog({
@@ -32,6 +37,8 @@ export function BulkClaimDialog({
   orders,
   onSubmit,
   isSubmitting,
+  onRemoveInvalidOrders,
+  onNavigateToCharges,
 }: BulkClaimDialogProps) {
   const [exchangeRate, setExchangeRate] = useState('');
   const [note, setNote] = useState('');
@@ -50,6 +57,25 @@ export function BulkClaimDialog({
 
   const hasMissingCharges = preview.missingAreas.length > 0;
 
+  // Get invalid orders (those with missing area charges)
+  const invalidOrders = useMemo(() => {
+    if (!hasMissingCharges) return [];
+    return preview.orderBreakdown.filter(ob => {
+      const area = ob.area?.toLowerCase() || '';
+      return ob.area && preview.missingAreas.map(a => a.toLowerCase()).includes(area);
+    });
+  }, [preview, hasMissingCharges]);
+
+  // Group invalid orders by area for summary
+  const invalidAreaSummary = useMemo(() => {
+    const map = new Map<string, number>();
+    invalidOrders.forEach(o => {
+      const area = o.area || 'Unknown';
+      map.set(area, (map.get(area) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([area, count]) => ({ area, count }));
+  }, [invalidOrders]);
+
   const handleSubmit = async () => {
     if (!isValidRate) {
       setError('Please enter a valid exchange rate (0.0001 - 99.9999)');
@@ -57,7 +83,7 @@ export function BulkClaimDialog({
     }
 
     if (hasMissingCharges) {
-      setError(`Missing delivery charges for: ${preview.missingAreas.join(', ')}`);
+      setError(`Cannot submit: ${invalidOrders.length} order(s) have no approved delivery charge. Remove them first.`);
       return;
     }
 
@@ -80,9 +106,21 @@ export function BulkClaimDialog({
     }
   };
 
+  const handleRemoveInvalid = () => {
+    if (onRemoveInvalidOrders) {
+      onRemoveInvalidOrders(invalidOrders.map(o => o.orderId));
+      setError('');
+    }
+  };
+
+  const handleGoToCharges = () => {
+    handleClose();
+    onNavigateToCharges?.();
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={hasMissingCharges ? "sm:max-w-2xl max-h-[90vh] overflow-y-auto" : "sm:max-w-lg"}>
         <DialogHeader>
           <DialogTitle>Submit Claim Batch</DialogTitle>
           <DialogDescription>
@@ -91,11 +129,97 @@ export function BulkClaimDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Missing Delivery Charges - Detailed Breakdown */}
+          {hasMissingCharges && (
+            <div className="space-y-3">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="font-medium">
+                  {invalidOrders.length} order(s) cannot be claimed - missing approved delivery charge
+                </AlertDescription>
+              </Alert>
+
+              {/* Area summary */}
+              <div className="flex flex-wrap gap-2">
+                {invalidAreaSummary.map(({ area, count }) => (
+                  <Badge key={area} variant="destructive" className="text-xs">
+                    {area}: {count} order{count > 1 ? 's' : ''}
+                  </Badge>
+                ))}
+              </div>
+
+              {/* Invalid orders table */}
+              <div className="rounded-md border border-destructive/30 max-h-[200px] overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Order Code</TableHead>
+                      <TableHead className="text-xs">Area</TableHead>
+                      <TableHead className="text-xs">Amount</TableHead>
+                      <TableHead className="text-xs">Delivered</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invalidOrders.map(o => {
+                      const order = orders.find(ord => ord.id === o.orderId);
+                      return (
+                        <TableRow key={o.orderId}>
+                          <TableCell className="font-mono text-xs py-1.5">{o.orderCode}</TableCell>
+                          <TableCell className="py-1.5">
+                            <Badge variant="outline" className="text-xs border-destructive/50 text-destructive">
+                              {o.area || '-'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs py-1.5">{formatBND(o.amount)}</TableCell>
+                          <TableCell className="text-xs py-1.5">
+                            {order?.delivered_at ? format(new Date(order.delivered_at), 'dd MMM, HH:mm') : '-'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Action buttons for invalid orders */}
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {onRemoveInvalidOrders && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                    onClick={handleRemoveInvalid}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remove Invalid Orders ({invalidOrders.length})
+                  </Button>
+                )}
+                {onNavigateToCharges && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGoToCharges}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Go to Delivery Charge Proposals
+                  </Button>
+                )}
+              </div>
+
+              <Separator />
+            </div>
+          )}
+
           {/* BND Breakdown */}
           <div className="p-4 bg-muted rounded-lg space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Banknote className="h-4 w-4" />
               <span>BND Breakdown</span>
+              {hasMissingCharges && (
+                <Badge variant="outline" className="text-xs ml-auto">
+                  Excludes {invalidOrders.length} invalid order(s)
+                </Badge>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -126,21 +250,10 @@ export function BulkClaimDialog({
             </div>
           </div>
 
-          {/* Missing Delivery Charges Warning */}
-          {hasMissingCharges && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No approved delivery charge for area(s): <strong>{preview.missingAreas.join(', ')}</strong>.
-                Please submit delivery charge proposals first.
-              </AlertDescription>
-            </Alert>
-          )}
-
           {/* Exchange Rate Input */}
           <div className="space-y-2">
             <Label htmlFor="exchangeRate">
-              Exchange Rate (BND → RM) <span className="text-destructive">*</span>
+              Exchange Rate (BND &rarr; RM) <span className="text-destructive">*</span>
             </Label>
             <Input
               id="exchangeRate"
@@ -159,7 +272,7 @@ export function BulkClaimDialog({
           </div>
 
           {/* RM Preview */}
-          {isValidRate && (
+          {isValidRate && !hasMissingCharges && (
             <div className="p-4 border border-primary/20 bg-primary/5 rounded-lg space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-primary">
                 <span>RM Conversion (Rate: {rate.toFixed(4)})</span>

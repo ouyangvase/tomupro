@@ -72,6 +72,8 @@ import { toast } from 'sonner';
 import { useClaimBatches } from '@/hooks/useClaimBatches';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
+import { useNavigate } from 'react-router-dom';
+import { useDeliveryCharges as useApprovedChargeMap } from '@/hooks/useDeliveryChargePreview';
 
 // Claim status filter options for the dropdown
 type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -106,6 +108,10 @@ const claimStatusColors: Record<ReconciliationStatus, string> = {
 export default function RunnerDeliveredOrders() {
   const { user, profile, role } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  
+  // Approved delivery charges map for the runner (area -> charge_amount)
+  const { data: approvedChargeMap = {} } = useApprovedChargeMap();
   
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager: isManagerRole, teamMembers } = useTeamViewState('my');
@@ -364,11 +370,28 @@ export default function RunnerDeliveredOrders() {
     }
   }, [currentPage, totalPages]);
 
-  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED) - only relevant for runners
+  // Check if an order has a valid approved delivery charge for its area
+  const orderHasValidAreaRate = useCallback((order: Order): boolean => {
+    if (!order.area) return true; // No area = no charge needed
+    const area = order.area.toLowerCase();
+    return approvedChargeMap[area] !== undefined;
+  }, [approvedChargeMap]);
+
+  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED + valid area rate) - only relevant for runners
   const claimableOrders = useMemo(() => {
     if (!canClaim) return [];
-    return deliveredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED');
-  }, [deliveredOrders, canClaim]);
+    return deliveredOrders.filter(o => 
+      o.reconciliation_status === 'NOT_CLAIMED' && orderHasValidAreaRate(o)
+    );
+  }, [deliveredOrders, canClaim, orderHasValidAreaRate]);
+
+  // Orders that are NOT_CLAIMED but have invalid area (for display purposes)
+  const invalidAreaOrders = useMemo(() => {
+    if (!canClaim) return [];
+    return deliveredOrders.filter(o => 
+      o.reconciliation_status === 'NOT_CLAIMED' && !orderHasValidAreaRate(o)
+    );
+  }, [deliveredOrders, canClaim, orderHasValidAreaRate]);
 
   // Selected orders that are claimable
   const selectedClaimableOrders = useMemo(() => {
@@ -1017,7 +1040,7 @@ export default function RunnerDeliveredOrders() {
               </div>
             ) : (
               paginatedOrders.map((order) => {
-                const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
+                const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && orderHasValidAreaRate(order);
                 const isSelected = selectedIds.has(order.id);
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
                 const batchRef = orderToBatchRef.get(order.id);
@@ -1171,7 +1194,8 @@ export default function RunnerDeliveredOrders() {
                       </TableRow>
                     ) : (
                       paginatedOrders.map((order) => {
-                        const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED';
+                        const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && orderHasValidAreaRate(order);
+                        const isInvalidArea = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && !orderHasValidAreaRate(order);
                         const isSelected = selectedIds.has(order.id);
                         const isExportSelected = exportSelectedIds.has(order.id);
                         const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
@@ -1195,6 +1219,20 @@ export default function RunnerDeliveredOrders() {
                                     checked={isSelected}
                                     onCheckedChange={() => toggleSelection(order.id)}
                                   />
+                                ) : isInvalidArea ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex flex-col items-center gap-0.5">
+                                          <Checkbox disabled checked={false} className="opacity-30" />
+                                          <span className="text-[10px] text-destructive leading-tight whitespace-nowrap">No rate</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>No approved delivery charge for area "{order.area}". Submit a delivery charge proposal first.</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 ) : (
                                   <Checkbox disabled checked={false} className="opacity-30" />
                                 )}
@@ -1363,6 +1401,14 @@ export default function RunnerDeliveredOrders() {
           orders={selectedClaimableOrders}
           onSubmit={handleBulkClaimSubmit}
           isSubmitting={isSubmitting}
+          onRemoveInvalidOrders={(invalidIds) => {
+            setSelectedIds(prev => {
+              const next = new Set(prev);
+              invalidIds.forEach(id => next.delete(id));
+              return next;
+            });
+          }}
+          onNavigateToCharges={() => navigate('/runner/delivery-charges')}
         />
 
         {/* Revert Delivery Dialog (Admin only) */}
