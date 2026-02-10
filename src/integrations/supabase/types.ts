@@ -525,6 +525,7 @@ export type Database = {
         Row: {
           admin_ack_at: string | null
           admin_ack_by: string | null
+          batch_code: string
           delivery_charges_bnd: number | null
           delivery_charges_rm: number | null
           exchange_rate_to_rm: number | null
@@ -544,6 +545,7 @@ export type Database = {
         Insert: {
           admin_ack_at?: string | null
           admin_ack_by?: string | null
+          batch_code: string
           delivery_charges_bnd?: number | null
           delivery_charges_rm?: number | null
           exchange_rate_to_rm?: number | null
@@ -563,6 +565,7 @@ export type Database = {
         Update: {
           admin_ack_at?: string | null
           admin_ack_by?: string | null
+          batch_code?: string
           delivery_charges_bnd?: number | null
           delivery_charges_rm?: number | null
           exchange_rate_to_rm?: number | null
