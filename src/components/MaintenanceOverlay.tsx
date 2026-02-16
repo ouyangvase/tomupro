@@ -1,6 +1,13 @@
-import { Construction } from 'lucide-react';
+import { Construction, LogOut } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
 
 export function MaintenanceOverlay() {
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/auth';
+  };
+
   return (
     <div className="fixed inset-0 z-[9999] bg-background flex items-center justify-center">
       <div className="text-center space-y-4 p-8 max-w-md">
@@ -16,6 +23,10 @@ export function MaintenanceOverlay() {
           <div className="h-2 w-2 rounded-full bg-primary animate-bounce [animation-delay:150ms]" />
           <div className="h-2 w-2 rounded-full bg-primary animate-bounce [animation-delay:300ms]" />
         </div>
+        <Button variant="outline" onClick={handleSignOut} className="mt-6 gap-2">
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </Button>
       </div>
     </div>
   );
