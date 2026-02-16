@@ -10,6 +10,8 @@ import { RoleChangeBanner } from "@/components/RoleChangeBanner";
 import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
 import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
 import { ProfileGate } from "@/components/auth/ProfileGate";
+import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
+import { MaintenanceOverlay } from "@/components/MaintenanceOverlay";
 
 // Pages
 import Auth from "./pages/Auth";
@@ -80,7 +82,13 @@ const queryClient = new QueryClient();
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, profileStatus, profileError, retryProfile, resetSession } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
+  const { isMaintenanceMode } = useMaintenanceMode();
   
+  // Maintenance mode: block all non-admin users
+  const isAdmin = profile?.role === "admin";
+  if (!loading && user && profileStatus === 'ready' && isMaintenanceMode && !isAdmin) {
+    return <MaintenanceOverlay />;
+  }
   // Step 1: Auth is still initializing
   if (loading) {
     return (

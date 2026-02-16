@@ -13,15 +13,17 @@ import { ActionRequiredCard } from '@/components/dashboard/ActionRequiredCard';
 import { 
   Users, AlertTriangle, Clock, CheckCircle, FileWarning, 
   RefreshCw, Package, DollarSign, TrendingUp, Truck, AlertCircle,
-  XCircle, Calendar, MessageSquare, ExternalLink
+  XCircle, Calendar, MessageSquare, ExternalLink, Construction
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useMaintenanceMode } from '@/hooks/useMaintenanceMode';
 
 export default function AdminOverview() {
   const navigate = useNavigate();
@@ -32,6 +34,7 @@ export default function AdminOverview() {
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: claimBatches = [] } = useClaimBatches();
   const { data: actionStats, isLoading: actionStatsLoading } = useAdminActionRequiredStats();
+  const { isMaintenanceMode, toggleMaintenance, isToggling } = useMaintenanceMode();
 
   const pendingClaimBatches = claimBatches.filter(b => b.status === 'ADMIN_ACK_PENDING');
 
@@ -117,6 +120,26 @@ export default function AdminOverview() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Maintenance Mode Toggle */}
+            <div className={cn(
+              "flex items-center gap-2 px-3 py-2 rounded-lg border",
+              isMaintenanceMode 
+                ? "border-destructive/50 bg-destructive/10" 
+                : "border-border"
+            )}>
+              <Construction className={cn("h-4 w-4", isMaintenanceMode ? "text-destructive" : "text-muted-foreground")} />
+              <span className="text-sm font-medium whitespace-nowrap">Maintenance</span>
+              <Switch
+                checked={isMaintenanceMode}
+                disabled={isToggling}
+                onCheckedChange={(checked) => {
+                  toggleMaintenance(checked, {
+                    onSuccess: () => toast.success(checked ? 'Maintenance mode enabled' : 'Maintenance mode disabled'),
+                    onError: () => toast.error('Failed to toggle maintenance mode'),
+                  });
+                }}
+              />
+            </div>
             <Input
               type="date"
               value={selectedDate}
