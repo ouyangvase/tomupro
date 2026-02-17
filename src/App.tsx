@@ -82,15 +82,10 @@ const queryClient = new QueryClient();
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, profileStatus, profileError, retryProfile, resetSession } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
-  const { isMaintenanceMode } = useMaintenanceMode();
+  const { isMaintenanceMode, isLoading: maintenanceLoading } = useMaintenanceMode();
   
-  // Maintenance mode: block all non-admin users
-  const isAdmin = profile?.role === "admin";
-  if (!loading && user && profileStatus === 'ready' && isMaintenanceMode && !isAdmin) {
-    return <MaintenanceOverlay />;
-  }
-  // Step 1: Auth is still initializing
-  if (loading) {
+  // Step 1: Auth is still initializing (or maintenance status loading)
+  if (loading || maintenanceLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex items-center gap-2">
@@ -101,7 +96,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   
-  // Step 2: No user - redirect to auth
+  // Step 2b: Maintenance mode - block all non-admin users
+  const isAdmin = profile?.role === "admin";
+  if (user && profileStatus === 'ready' && isMaintenanceMode && !isAdmin) {
+    return <MaintenanceOverlay />;
+  }
+
+  // Step 3: No user - redirect to auth
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
