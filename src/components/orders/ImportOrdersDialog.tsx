@@ -18,7 +18,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users } from 'lucide-react';
+import {
+  Upload,
+  Download,
+  FileSpreadsheet,
+  AlertCircle,
+  CheckCircle,
+  X,
+  ArrowLeft,
+  ArrowRight,
+  Users,
+} from 'lucide-react';
 import { parseCSVRaw, downloadTemplate, HEADER_ALIASES } from '@/lib/csv';
 import { validateOrderLines, type ValidatedOrderLine } from '@/lib/csvValidation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,7 +37,11 @@ import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
-import { ColumnMappingStep, areRequiredFieldsMapped, applyColumnMapping } from './ColumnMappingStep';
+import {
+  ColumnMappingStep,
+  areRequiredFieldsMapped,
+  applyColumnMapping,
+} from './ColumnMappingStep';
 
 interface ImportOrdersDialogProps {
   open: boolean;
@@ -36,27 +50,32 @@ interface ImportOrdersDialogProps {
 }
 
 type ImportStep = 'upload' | 'mapping' | 'preview';
+type ConflictAction = 'merge' | 'skip' | null;
 
-export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKING' }: ImportOrdersDialogProps) {
+export function ImportOrdersDialog({
+  open,
+  onOpenChange,
+  defaultStatus = 'BOOKING',
+}: ImportOrdersDialogProps) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: teamMembers = [] } = useTeamMembers();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Order owner selection for managers/admins
   const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
-  
+
   // Products filtered to selected order owner
   const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
-  
+
   // Owner options for selection
   const ownerOptions = useMemo(() => {
     if (role === 'salesperson') return []; // No selection needed
     if (role === 'manager' && profile) {
       return [
         { id: profile.id, display_name: `${profile.display_name} (My Orders)` },
-        ...teamMembers.map(m => ({ id: m.id, display_name: m.display_name })),
+        ...teamMembers.map((m) => ({ id: m.id, display_name: m.display_name })),
       ];
     }
     // Admin would need to fetch all users - for now use profile
@@ -65,16 +84,41 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     }
     return [];
   }, [role, profile, teamMembers]);
-  
+
   // State
   const [file, setFile] = useState<File | null>(null);
-  const [rawData, setRawData] = useState<{ headers: string[]; rows: Record<string, string>[] } | null>(null);
+  const [rawData, setRawData] = useState<{
+    headers: string[];
+    rows: Record<string, string>[];
+  } | null>(null);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [step, setStep] = useState<ImportStep>('upload');
   const [importing, setImporting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [successCount, setSuccessCount] = useState(0);
-  
+
+  // DB conflict confirmation state (NEW)
+  const [showDbConflictModal, setShowDbConflictModal] = useState(false);
+  const [dbConflicts, setDbConflicts] = useState<string[]>([]);
+  const [pendingOrderGroups, setPendingOrderGroups] = useState<
+    Map<
+      string,
+      {
+        orderRef: string;
+        orderData: ValidatedOrderLine;
+        items: {
+          sku_name_or_code: string;
+          qty: number;
+          price: number;
+          productId: string | null;
+        }[];
+      }
+    > | null
+  >(null);
+  const [pendingMappedRows, setPendingMappedRows] = useState<Record<string, string>[] | null>(null);
+  const [pendingValidationRows, setPendingValidationRows] = useState<ValidatedOrderLine[] | null>(null);
+  const [conflictAction, setConflictAction] = useState<ConflictAction>(null);
+
   // Reset orderOwnerId when dialog opens
   useEffect(() => {
     if (open && profile?.id) {
@@ -85,25 +129,30 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   // Auto-suggest mappings based on header aliases
   const suggestMappings = (headers: string[]): Record<string, string> => {
     const mapping: Record<string, string> = {};
-    
+
     for (const header of headers) {
-      const normalized = header.toLowerCase().trim().replace(/[\s_-]+/g, ' ').replace(/\s+/g, ' ');
-      
+      const normalized = header
+        .toLowerCase()
+        .trim()
+        .replace(/[\s_-]+/g, ' ')
+        .replace(/\s+/g, ' ');
+
       for (const [standardName, aliases] of Object.entries(HEADER_ALIASES)) {
         const aliasArray = aliases as string[];
-        const matched = aliasArray.some(alias => 
-          alias === normalized || 
-          alias === normalized.replace(/\s/g, '_') || 
-          alias === normalized.replace(/\s/g, '')
+        const matched = aliasArray.some(
+          (alias) =>
+            alias === normalized ||
+            alias === normalized.replace(/\s/g, '_') ||
+            alias === normalized.replace(/\s/g, '')
         );
-        
+
         if (matched && !Object.values(mapping).includes(standardName)) {
           mapping[header] = standardName;
           break;
         }
       }
     }
-    
+
     return mapping;
   };
 
@@ -115,6 +164,15 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     setColumnMapping({});
     setStep('upload');
     setSuccessCount(0);
+
+    // reset conflict state
+    setShowDbConflictModal(false);
+    setDbConflicts([]);
+    setPendingOrderGroups(null);
+    setPendingMappedRows(null);
+    setPendingValidationRows(null);
+    setConflictAction(null);
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -126,7 +184,11 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
     // Validate file size (max 5MB)
     if (selectedFile.size > 5 * 1024 * 1024) {
-      toast({ variant: 'destructive', title: 'File too large', description: 'Maximum file size is 5MB' });
+      toast({
+        variant: 'destructive',
+        title: 'File too large',
+        description: 'Maximum file size is 5MB',
+      });
       return;
     }
 
@@ -136,18 +198,22 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
     const text = await selectedFile.text();
     const parsed = parseCSVRaw(text);
-    
+
     if (parsed.headers.length === 0) {
-      toast({ variant: 'destructive', title: 'Invalid CSV', description: 'No headers found in file' });
+      toast({
+        variant: 'destructive',
+        title: 'Invalid CSV',
+        description: 'No headers found in file',
+      });
       return;
     }
 
     setRawData(parsed);
-    
+
     // Auto-suggest column mappings
     const suggestedMapping = suggestMappings(parsed.headers);
     setColumnMapping(suggestedMapping);
-    
+
     // Move to mapping step
     setStep('mapping');
   };
@@ -159,20 +225,24 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
   const handleProceedToPreview = () => {
     if (!rawData || !areRequiredFieldsMapped(columnMapping)) {
-      toast({ variant: 'destructive', title: 'Missing required fields', description: 'Please map all required fields' });
+      toast({
+        variant: 'destructive',
+        title: 'Missing required fields',
+        description: 'Please map all required fields',
+      });
       return;
     }
 
     // Apply mapping and validate
     const mappedRows = applyColumnMapping(rawData.rows, columnMapping);
     const validation = validateOrderLines(mappedRows);
-    
+
     if (validation.errors.length > 0) {
-      setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
+      setErrors(validation.errors.map((e) => `Row ${e.row}: ${e.message}`));
     } else {
       setErrors([]);
     }
-    
+
     setStep('preview');
   };
 
@@ -210,7 +280,9 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       if (codeMatches.length === 1) continue;
 
       if (codeMatches.length > 1) {
-        skuErrors.push(`Row ${csvRowNum}: Multiple products with sku_code="${skuValue}"; please use unique sku_code`);
+        skuErrors.push(
+          `Row ${csvRowNum}: Multiple products with sku_code="${skuValue}"; please use unique sku_code`
+        );
         continue;
       }
 
@@ -219,9 +291,13 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       );
 
       if (nameMatches.length === 0) {
-        skuErrors.push(`Row ${csvRowNum}: SKU not found in the selected owner's product list (sku_name_or_code="${skuValue}")`);
+        skuErrors.push(
+          `Row ${csvRowNum}: SKU not found in the selected owner's product list (sku_name_or_code="${skuValue}")`
+        );
       } else if (nameMatches.length > 1) {
-        skuErrors.push(`Row ${csvRowNum}: SKU name is ambiguous (${nameMatches.length} matches); please use sku_code (sku_name="${skuValue}")`);
+        skuErrors.push(
+          `Row ${csvRowNum}: SKU name is ambiguous (${nameMatches.length} matches); please use sku_code (sku_name="${skuValue}")`
+        );
       }
     }
 
@@ -230,14 +306,122 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
   const findProductId = (skuNameOrCode: string): string | null => {
     if (!skuNameOrCode.trim()) return null;
-    let product = ownerProducts.find((p: any) => p.sku_code?.toLowerCase() === skuNameOrCode.toLowerCase());
+    let product = ownerProducts.find(
+      (p: any) => p.sku_code?.toLowerCase() === skuNameOrCode.toLowerCase()
+    );
     if (!product) {
-      product = ownerProducts.find((p: any) => p.sku_name.toLowerCase() === skuNameOrCode.toLowerCase());
+      product = ownerProducts.find(
+        (p: any) => p.sku_name.toLowerCase() === skuNameOrCode.toLowerCase()
+      );
     }
     return product?.id || null;
   };
 
-  const handleImport = async () => {
+  // Helper: DB duplicate error detection
+  const isDuplicateError = (err: any) => {
+    const code = String(err?.code || '');
+    const msg = String(err?.message || '').toLowerCase();
+    return code === '23505' || msg.includes('duplicate') || msg.includes('already exists');
+  };
+
+  /**
+   * Merge confirmed by user (ONLY after confirmation)
+   * - find existing order by (order_owner_id, order_code)
+   * - for each item:
+   *    - if exists item with same product_id -> qty += incoming qty
+   *    - else insert new
+   * - update order totals (incremental)
+   */
+  const mergeIntoExistingOrder = async (
+    orderRef: string,
+    group: {
+      orderRef: string;
+      orderData: ValidatedOrderLine;
+      items: { sku_name_or_code: string; qty: number; price: number; productId: string | null }[];
+    }
+  ) => {
+    // Find existing order
+    const { data: existingOrder, error: findErr } = await supabase
+      .from('orders')
+      .select('id, total_qty, total_amount')
+      .eq('order_owner_id', orderOwnerId)
+      .eq('order_code', orderRef)
+      .single();
+
+    if (findErr || !existingOrder) {
+      throw new Error(findErr?.message || `Existing order not found for ${orderRef}`);
+    }
+
+    // Merge items
+    let addQty = 0;
+    let addAmount = 0;
+
+    for (const item of group.items) {
+      if (!item.productId) continue;
+
+      // check if item exists
+      const { data: existingItem, error: itemFindErr } = await supabase
+        .from('order_items')
+        .select('id, qty, price')
+        .eq('order_id', existingOrder.id)
+        .eq('product_id', item.productId)
+        .maybeSingle();
+
+      if (itemFindErr) throw new Error(itemFindErr.message);
+
+      const incomingLineTotal = item.price * item.qty;
+
+      if (existingItem?.id) {
+        const newQty = (existingItem.qty || 0) + item.qty;
+        const newLineTotal = (existingItem.price || item.price) * newQty;
+
+        const { error: updErr } = await supabase
+          .from('order_items')
+          .update({
+            qty: newQty,
+            // keep price as existingItem.price if present; otherwise use incoming
+            price: existingItem.price ?? item.price,
+            line_total: newLineTotal,
+          })
+          .eq('id', existingItem.id);
+
+        if (updErr) throw new Error(updErr.message);
+      } else {
+        const { error: insErr } = await supabase.from('order_items').insert({
+          order_id: existingOrder.id,
+          product_id: item.productId,
+          sku_label: item.sku_name_or_code,
+          qty: item.qty,
+          price: item.price,
+          line_total: incomingLineTotal,
+        });
+
+        if (insErr) throw new Error(insErr.message);
+      }
+
+      addQty += item.qty;
+      addAmount += incomingLineTotal;
+    }
+
+    // Update totals (incremental)
+    const { error: orderUpdErr } = await supabase
+      .from('orders')
+      .update({
+        total_qty: (existingOrder.total_qty || 0) + addQty,
+        total_amount: (existingOrder.total_amount || 0) + addAmount,
+      })
+      .eq('id', existingOrder.id);
+
+    if (orderUpdErr) throw new Error(orderUpdErr.message);
+  };
+
+  /**
+   * Performs import with a chosen conflict action:
+   * - null action means no DB conflicts expected
+   * - "skip" means skip those orderRefs that already exist in DB
+   * - "merge" means merge those orderRefs into existing orders (user-confirmed)
+   */
+  const performImport = async (action: ConflictAction) => {
     if (!rawData || !profile) return;
 
     setImporting(true);
@@ -246,19 +430,22 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
     try {
       // Apply column mapping
-      const mappedRows = applyColumnMapping(rawData.rows, columnMapping);
-      
+      const mappedRows =
+        pendingMappedRows ?? applyColumnMapping(rawData.rows, columnMapping);
+
       // Validate all rows
-      const validation = validateOrderLines(mappedRows);
-      if (validation.errors.length > 0) {
-        setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
-        setImporting(false);
+      const validation =
+        pendingValidationRows
+          ? { valid: pendingValidationRows, errors: [] }
+          : validateOrderLines(mappedRows);
+
+      if (!pendingValidationRows && validation.errors.length > 0) {
+        setErrors(validation.errors.map((e) => `Row ${e.row}: ${e.message}`));
         return;
       }
 
       if (validation.valid.length === 0) {
         setErrors(['No valid rows found in the file']);
-        setImporting(false);
         return;
       }
 
@@ -266,113 +453,174 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
       if (!skuValidation.valid) {
         setErrors(['Import FAILED: Invalid SKUs found. No orders were imported.', '', ...skuValidation.errors]);
-        setImporting(false);
         return;
       }
 
-      // Group by order_ref and validate for duplicate SKUs
-      const orderGroups = new Map<string, {
-        orderRef: string;
-        orderData: ValidatedOrderLine;
-        items: { sku_name_or_code: string; qty: number; price: number; productId: string | null }[];
-      }>();
-      
-      const duplicateSkuErrors: string[] = [];
-      
-      for (const row of validation.valid) {
-        const orderRef = row.order_ref.trim();
-        const skuValue = row.sku_name_or_code?.trim();
-        
-        if (!skuValue) {
-          duplicateSkuErrors.push(`Order ${orderRef}: SKU code is required for all order items.`);
-          continue;
-        }
-        
-        // Find product ID for this SKU
-        const productId = findProductId(skuValue);
-        if (!productId) {
-          duplicateSkuErrors.push(`Order ${orderRef}: SKU "${skuValue}" not found in product list.`);
-          continue;
-        }
-        
-        if (!orderGroups.has(orderRef)) {
-          orderGroups.set(orderRef, { orderRef, orderData: row, items: [] });
+      // Group by order_ref and validate for duplicate SKUs (same-file only)
+      const orderGroups =
+        pendingOrderGroups ??
+        new Map<
+          string,
+          {
+            orderRef: string;
+            orderData: ValidatedOrderLine;
+            items: { sku_name_or_code: string; qty: number; price: number; productId: string | null }[];
+          }
+        >();
+
+      if (!pendingOrderGroups) {
+        const duplicateSkuErrors: string[] = [];
+
+        for (const row of validation.valid) {
+          const orderRef = row.order_ref.trim();
+          const skuValue = row.sku_name_or_code?.trim();
+
+          if (!skuValue) {
+            duplicateSkuErrors.push(`Order ${orderRef}: SKU code is required for all order items.`);
+            continue;
+          }
+
+          // Find product ID for this SKU
+          const productId = findProductId(skuValue);
+          if (!productId) {
+            duplicateSkuErrors.push(`Order ${orderRef}: SKU "${skuValue}" not found in product list.`);
+            continue;
+          }
+
+          if (!orderGroups.has(orderRef)) {
+            orderGroups.set(orderRef, { orderRef, orderData: row, items: [] });
+          }
+
+          const group = orderGroups.get(orderRef)!;
+
+          // Check for duplicate SKU within the same order (same file)
+          const existingItem = group.items.find((i) => i.productId === productId);
+          if (existingItem) {
+            duplicateSkuErrors.push(
+              `Order ${orderRef}: Duplicate SKU detected - "${skuValue}" appears more than once. Each SKU can only appear once per order.`
+            );
+            continue;
+          }
+
+          group.items.push({
+            sku_name_or_code: skuValue,
+            qty: row.qty,
+            price: row.price,
+            productId,
+          });
         }
 
-        const group = orderGroups.get(orderRef)!;
-        
-        // Check for duplicate SKU within the same order
-        const existingItem = group.items.find(i => i.productId === productId);
-        if (existingItem) {
-          duplicateSkuErrors.push(`Order ${orderRef}: Duplicate SKU detected - "${skuValue}" appears more than once. Each SKU can only appear once per order.`);
-          continue;
+        // If there are duplicate SKU errors, reject the entire import
+        if (duplicateSkuErrors.length > 0) {
+          setErrors(['Import FAILED: Validation errors found. No orders were imported.', '', ...duplicateSkuErrors]);
+          return;
         }
-        
-        group.items.push({
-          sku_name_or_code: skuValue,
-          qty: row.qty,
-          price: row.price,
-          productId,
-        });
-      }
-      
-      // If there are duplicate SKU errors, reject the entire import
-      if (duplicateSkuErrors.length > 0) {
-        setErrors(['Import FAILED: Validation errors found. No orders were imported.', '', ...duplicateSkuErrors]);
-        setImporting(false);
-        return;
-      }
-      
-      // Check that all orders have at least one valid item
-      for (const [orderRef, group] of orderGroups) {
-        if (group.items.length === 0) {
-          duplicateSkuErrors.push(`Order ${orderRef}: No valid SKU items found.`);
+
+        // Check that all orders have at least one valid item
+        for (const [orderRef, group] of orderGroups) {
+          if (group.items.length === 0) {
+            duplicateSkuErrors.push(`Order ${orderRef}: No valid SKU items found.`);
+          }
+        }
+
+        if (duplicateSkuErrors.length > 0) {
+          setErrors(['Import FAILED: Orders without valid items. No orders were imported.', '', ...duplicateSkuErrors]);
+          return;
         }
       }
-      
-      if (duplicateSkuErrors.length > 0) {
-        setErrors(['Import FAILED: Orders without valid items. No orders were imported.', '', ...duplicateSkuErrors]);
-        setImporting(false);
-        return;
+
+      // If action is null, do a DB pre-check:
+      // - If order already exists in DB: DO NOT auto-merge; show confirmation modal
+      if (action === null) {
+        const orderRefs = Array.from(orderGroups.keys());
+        if (orderRefs.length > 0) {
+          const { data: existingOrders, error: existErr } = await supabase
+            .from('orders')
+            .select('order_code')
+            .eq('order_owner_id', orderOwnerId)
+            .in('order_code', orderRefs);
+
+          if (existErr) throw new Error(existErr.message);
+
+          const existingRefs = (existingOrders || []).map((o: any) => o.order_code).filter(Boolean);
+
+          if (existingRefs.length > 0) {
+            // Pause import and require user confirmation
+            setDbConflicts(existingRefs);
+            setPendingOrderGroups(orderGroups);
+            setPendingMappedRows(mappedRows);
+            setPendingValidationRows(validation.valid);
+            setShowDbConflictModal(true);
+            setImporting(false);
+            return;
+          }
+        }
       }
 
       // Create orders
       const newErrors: string[] = [];
       let created = 0;
+      let merged = 0;
+      let skipped = 0;
 
       for (const [orderRef, group] of orderGroups) {
+        // If user chose skip and this order exists, skip it
+        if (action === 'skip' && dbConflicts.includes(orderRef)) {
+          skipped++;
+          continue;
+        }
+
+        // If user chose merge and this order exists, merge it (user-confirmed)
+        if (action === 'merge' && dbConflicts.includes(orderRef)) {
+          try {
+            await mergeIntoExistingOrder(orderRef, group);
+            merged++;
+          } catch (e: any) {
+            newErrors.push(`Order ${orderRef}: ${e.message}`);
+          }
+          continue;
+        }
+
+        // Otherwise insert as a new order
         try {
           let totalQty = 0;
           let totalAmount = 0;
           for (const item of group.items) {
             totalQty += item.qty;
-            totalAmount += item.price;
+            totalAmount += item.price * item.qty;
           }
 
           const { data: order, error: orderError } = await supabase
             .from('orders')
-            .insert([{
-              order_code: orderRef,
-              customer_name: group.orderData.customer_name,
-              phone: group.orderData.phone,
-              address: group.orderData.address,
-              area: group.orderData.area || null,
-              channel: group.orderData.channel || null,
-              notes: group.orderData.notes || null,
-              order_date: group.orderData.order_date || new Date().toISOString().split('T')[0],
-              payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
-              expected_pickup_date: group.orderData.expected_pickup_date || null,
-              salesperson_id: profile.id,
-              order_owner_id: orderOwnerId, // Use selected order owner for SKU validation
-              status: defaultStatus,
-              total_qty: totalQty,
-              total_amount: totalAmount,
-            }])
+            .insert([
+              {
+                order_code: orderRef,
+                customer_name: group.orderData.customer_name,
+                phone: group.orderData.phone,
+                address: group.orderData.address,
+                area: group.orderData.area || null,
+                channel: group.orderData.channel || null,
+                notes: group.orderData.notes || null,
+                order_date: group.orderData.order_date || new Date().toISOString().split('T')[0],
+                payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
+                expected_pickup_date: group.orderData.expected_pickup_date || null,
+                salesperson_id: profile.id,
+                order_owner_id: orderOwnerId,
+                status: defaultStatus,
+                total_qty: totalQty,
+                total_amount: totalAmount,
+              },
+            ])
             .select()
             .single();
 
           if (orderError) {
-            newErrors.push(`Order ${orderRef}: ${orderError.message}`);
+            // If it’s a duplicate and we got here, treat as error (should not happen if precheck ran)
+            if (isDuplicateError(orderError)) {
+              newErrors.push(`Order ${orderRef}: Already exists in system (not imported).`);
+            } else {
+              newErrors.push(`Order ${orderRef}: ${orderError.message}`);
+            }
             continue;
           }
 
@@ -383,7 +631,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               sku_label: item.sku_name_or_code,
               qty: item.qty,
               price: item.price,
-              line_total: item.price,
+              line_total: item.price * item.qty,
             });
           }
 
@@ -396,18 +644,35 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       setErrors(newErrors);
       setSuccessCount(created);
 
-      if (created > 0) {
-        toast({
-          title: 'Import Complete',
-          description: `Successfully imported ${created} order(s)${newErrors.length > 0 ? ` with ${newErrors.length} error(s)` : ''}`,
-        });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      }
+      // toast summary
+      const parts: string[] = [];
+      if (created > 0) parts.push(`Imported ${created} new`);
+      if (merged > 0) parts.push(`Merged ${merged}`);
+      if (skipped > 0) parts.push(`Skipped ${skipped}`);
+      const summary = parts.length ? parts.join(' • ') : 'No orders processed';
 
+      toast({
+        title: 'Import Complete',
+        description:
+          `${summary}` +
+          (newErrors.length > 0 ? ` • ${newErrors.length} error(s)` : ''),
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+
+      // If no errors, close dialog
       if (newErrors.length === 0) {
         onOpenChange(false);
         clearErrors();
       }
+
+      // clear conflict state after successful run
+      setShowDbConflictModal(false);
+      setDbConflicts([]);
+      setPendingOrderGroups(null);
+      setPendingMappedRows(null);
+      setPendingValidationRows(null);
+      setConflictAction(null);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Import Failed', description: err.message });
     } finally {
@@ -415,248 +680,396 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     }
   };
 
+  const handleImport = async () => {
+    // Start import with pre-check (action=null means: if DB conflicts -> require confirmation modal)
+    await performImport(null);
+  };
+
   const canProceedToPreview = areRequiredFieldsMapped(columnMapping);
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) clearErrors(); onOpenChange(isOpen); }}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto p-3 sm:p-6">
-        <DialogHeader className="pb-2">
-          <DialogTitle className="text-base sm:text-lg">Import Orders</DialogTitle>
-          <DialogDescription className="text-xs sm:text-sm leading-relaxed">
-            {step === 'upload' && 'Upload a CSV file with orders.'}
-            {step === 'mapping' && 'Map your CSV columns to the required fields.'}
-            {step === 'preview' && 'Review and confirm your import.'}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) clearErrors();
+          onOpenChange(isOpen);
+        }}
+      >
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto p-3 sm:p-6">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="text-base sm:text-lg">Import Orders</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm leading-relaxed">
+              {step === 'upload' && 'Upload a CSV file with orders.'}
+              {step === 'mapping' && 'Map your CSV columns to the required fields.'}
+              {step === 'preview' && 'Review and confirm your import.'}
+            </DialogDescription>
+          </DialogHeader>
 
-        {/* Step indicator */}
-        <div className="flex items-center justify-center gap-1 text-xs mb-2">
-          <span className={`px-2 py-0.5 rounded ${step === 'upload' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            1. Upload
-          </span>
-          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-          <span className={`px-2 py-0.5 rounded ${step === 'mapping' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            2. Map Columns
-          </span>
-          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-          <span className={`px-2 py-0.5 rounded ${step === 'preview' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            3. Import
-          </span>
-        </div>
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-1 text-xs mb-2">
+            <span
+              className={`px-2 py-0.5 rounded ${
+                step === 'upload' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+              }`}
+            >
+              1. Upload
+            </span>
+            <ArrowRight className="h-3 w-3 text-muted-foreground" />
+            <span
+              className={`px-2 py-0.5 rounded ${
+                step === 'mapping' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+              }`}
+            >
+              2. Map Columns
+            </span>
+            <ArrowRight className="h-3 w-3 text-muted-foreground" />
+            <span
+              className={`px-2 py-0.5 rounded ${
+                step === 'preview' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+              }`}
+            >
+              3. Import
+            </span>
+          </div>
 
-        {/* Step: Upload */}
-        {step === 'upload' && (
-          <div className="space-y-4">
-            {/* Order Owner Selection for managers/admins */}
-            {(role === 'manager' || role === 'admin') && ownerOptions.length > 0 && (
-              <div className="p-4 border rounded-lg bg-muted/30">
-                <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-4 w-4 text-primary" />
-                  <Label className="text-sm font-medium">Order Owner</Label>
-                </div>
-                <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select who owns these orders" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ownerOptions.map(opt => (
-                      <SelectItem key={opt.id} value={opt.id}>
-                        {opt.display_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Only SKUs belonging to this user will be matched during import
-                </p>
-              </div>
-            )}
-            
-            <Tabs defaultValue="upload" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 h-8 sm:h-9">
-                <TabsTrigger value="upload" className="text-xs sm:text-sm">Upload CSV</TabsTrigger>
-                <TabsTrigger value="templates" className="text-xs sm:text-sm">Templates</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="upload" className="space-y-3 mt-3">
-                <div className="border-2 border-dashed rounded-lg p-4 sm:p-6 text-center">
-                  <Input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                  <FileSpreadsheet className="h-6 w-6 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-2 sm:mb-3" />
-                  <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 break-all px-2">
-                    {file ? file.name : 'Select a CSV file to import'}
+          {/* Step: Upload */}
+          {step === 'upload' && (
+            <div className="space-y-4">
+              {/* Order Owner Selection for managers/admins */}
+              {(role === 'manager' || role === 'admin') && ownerOptions.length > 0 && (
+                <div className="p-4 border rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Users className="h-4 w-4 text-primary" />
+                    <Label className="text-sm font-medium">Order Owner</Label>
+                  </div>
+                  <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select who owns these orders" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ownerOptions.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.display_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Only SKUs belonging to this user will be matched during import
                   </p>
-                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-8">
-                    <Upload className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5" />
-                    <span className="text-xs sm:text-sm">Select File</span>
-                  </Button>
                 </div>
-              </TabsContent>
+              )}
 
-              <TabsContent value="templates" className="space-y-3 mt-3">
-                <div className="grid gap-2.5">
-                  <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-xs sm:text-sm">Order Lines Template</h4>
-                      <p className="text-xs text-muted-foreground truncate">Multi-SKU per order</p>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => downloadTemplate('order_lines')} className="shrink-0 h-7 sm:h-8">
-                      <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                      <span className="text-xs">Download</span>
+              <Tabs defaultValue="upload" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 h-8 sm:h-9">
+                  <TabsTrigger value="upload" className="text-xs sm:text-sm">
+                    Upload CSV
+                  </TabsTrigger>
+                  <TabsTrigger value="templates" className="text-xs sm:text-sm">
+                    Templates
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="upload" className="space-y-3 mt-3">
+                  <div className="border-2 border-dashed rounded-lg p-4 sm:p-6 text-center">
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <FileSpreadsheet className="h-6 w-6 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-2 sm:mb-3" />
+                    <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 break-all px-2">
+                      {file ? file.name : 'Select a CSV file to import'}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="h-8"
+                    >
+                      <Upload className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5" />
+                      <span className="text-xs sm:text-sm">Select File</span>
                     </Button>
                   </div>
-                  <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-xs sm:text-sm">Simple Orders Template</h4>
-                      <p className="text-xs text-muted-foreground truncate">Basic orders</p>
+                </TabsContent>
+
+                <TabsContent value="templates" className="space-y-3 mt-3">
+                  <div className="grid gap-2.5">
+                    <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-xs sm:text-sm">Order Lines Template</h4>
+                        <p className="text-xs text-muted-foreground truncate">Multi-SKU per order</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => downloadTemplate('order_lines')}
+                        className="shrink-0 h-7 sm:h-8"
+                      >
+                        <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        <span className="text-xs">Download</span>
+                      </Button>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => downloadTemplate('orders')} className="shrink-0 h-7 sm:h-8">
-                      <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                      <span className="text-xs">Download</span>
-                    </Button>
+                    <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-xs sm:text-sm">Simple Orders Template</h4>
+                        <p className="text-xs text-muted-foreground truncate">Basic orders</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => downloadTemplate('orders')}
+                        className="shrink-0 h-7 sm:h-8"
+                      >
+                        <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        <span className="text-xs">Download</span>
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
 
-        {/* Step: Column Mapping */}
-        {step === 'mapping' && rawData && (
-          <div className="space-y-3">
-            <Label className="text-xs font-medium">
-              Map columns from: <span className="text-muted-foreground">{file?.name}</span>
-            </Label>
-            <ColumnMappingStep
-              csvHeaders={rawData.headers}
-              columnMapping={columnMapping}
-              onMappingChange={setColumnMapping}
-              sampleData={rawData.rows.slice(0, 3)}
-            />
-          </div>
-        )}
+          {/* Step: Column Mapping */}
+          {step === 'mapping' && rawData && (
+            <div className="space-y-3">
+              <Label className="text-xs font-medium">
+                Map columns from: <span className="text-muted-foreground">{file?.name}</span>
+              </Label>
+              <ColumnMappingStep
+                csvHeaders={rawData.headers}
+                columnMapping={columnMapping}
+                onMappingChange={setColumnMapping}
+                sampleData={rawData.rows.slice(0, 3)}
+              />
+            </div>
+          )}
 
-        {/* Step: Preview & Import */}
-        {step === 'preview' && (
-          <div className="space-y-3">
-            {mappedPreview.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">Preview (mapped data)</Label>
-                <div className="border rounded-lg overflow-x-auto text-xs">
-                  <table className="w-full min-w-[400px]">
-                    <thead className="bg-muted/50">
-                      <tr>
-                        {Object.keys(mappedPreview[0]).slice(0, 6).map((key) => (
-                          <th key={key} className="px-2 py-1.5 text-left font-medium whitespace-nowrap">
-                            {key}
-                          </th>
-                        ))}
-                        {Object.keys(mappedPreview[0]).length > 6 && (
-                          <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">
-                            +{Object.keys(mappedPreview[0]).length - 6} more
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mappedPreview.slice(0, 3).map((row, i) => (
-                        <tr key={i} className="border-t">
-                          {Object.values(row).slice(0, 6).map((val, j) => (
-                            <td key={j} className="px-2 py-1.5 max-w-[80px] truncate">
-                              {val || <span className="text-muted-foreground italic">empty</span>}
-                            </td>
-                          ))}
-                          {Object.keys(row).length > 6 && (
-                            <td className="px-2 py-1.5 text-muted-foreground">...</td>
+          {/* Step: Preview & Import */}
+          {step === 'preview' && (
+            <div className="space-y-3">
+              {mappedPreview.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Preview (mapped data)</Label>
+                  <div className="border rounded-lg overflow-x-auto text-xs">
+                    <table className="w-full min-w-[400px]">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          {Object.keys(mappedPreview[0])
+                            .slice(0, 6)
+                            .map((key) => (
+                              <th
+                                key={key}
+                                className="px-2 py-1.5 text-left font-medium whitespace-nowrap"
+                              >
+                                {key}
+                              </th>
+                            ))}
+                          {Object.keys(mappedPreview[0]).length > 6 && (
+                            <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">
+                              +{Object.keys(mappedPreview[0]).length - 6} more
+                            </th>
                           )}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  {rawData?.rows.length} total rows
-                </p>
-              </div>
-            )}
-
-            {successCount > 0 && (
-              <div className="bg-primary/10 border border-primary/30 rounded-lg p-2.5 sm:p-3">
-                <div className="flex items-center gap-2 text-primary">
-                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="font-medium text-xs sm:text-sm">Imported {successCount} orders</span>
-                </div>
-              </div>
-            )}
-
-            {errors.length > 0 && (
-              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2.5 sm:p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5 text-destructive">
-                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="font-medium text-xs sm:text-sm">Errors ({errors.filter(e => e.trim()).length})</span>
+                      </thead>
+                      <tbody>
+                        {mappedPreview.slice(0, 3).map((row, i) => (
+                          <tr key={i} className="border-t">
+                            {Object.values(row)
+                              .slice(0, 6)
+                              .map((val, j) => (
+                                <td key={j} className="px-2 py-1.5 max-w-[80px] truncate">
+                                  {val || <span className="text-muted-foreground italic">empty</span>}
+                                </td>
+                              ))}
+                            {Object.keys(row).length > 6 && (
+                              <td className="px-2 py-1.5 text-muted-foreground">...</td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/20"
-                    onClick={clearErrors}
-                  >
-                    <X className="h-3 w-3 mr-1" />
-                    Clear
-                  </Button>
+                  <p className="text-xs text-muted-foreground text-center">{rawData?.rows.length} total rows</p>
                 </div>
-                <ul className="text-xs text-destructive space-y-0.5 max-h-24 overflow-y-auto">
-                  {errors.filter(e => e.trim()).slice(0, 10).map((err, i) => (
-                    <li key={i} className="break-words leading-relaxed">{err}</li>
-                  ))}
-                  {errors.filter(e => e.trim()).length > 10 && (
-                    <li className="text-destructive/70 italic">+{errors.filter(e => e.trim()).length - 10} more errors</li>
-                  )}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
+              )}
 
-        <DialogFooter className="flex-row gap-2 pt-2 sm:pt-3">
-          {step === 'upload' && (
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="flex-1 sm:flex-none h-8">
-              Cancel
+              {successCount > 0 && (
+                <div className="bg-primary/10 border border-primary/30 rounded-lg p-2.5 sm:p-3">
+                  <div className="flex items-center gap-2 text-primary">
+                    <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="font-medium text-xs sm:text-sm">Imported {successCount} orders</span>
+                  </div>
+                </div>
+              )}
+
+              {errors.length > 0 && (
+                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2.5 sm:p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5 text-destructive">
+                      <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="font-medium text-xs sm:text-sm">
+                        Errors ({errors.filter((e) => e.trim()).length})
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/20"
+                      onClick={clearErrors}
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Clear
+                    </Button>
+                  </div>
+                  <ul className="text-xs text-destructive space-y-0.5 max-h-24 overflow-y-auto">
+                    {errors
+                      .filter((e) => e.trim())
+                      .slice(0, 10)
+                      .map((err, i) => (
+                        <li key={i} className="break-words leading-relaxed">
+                          {err}
+                        </li>
+                      ))}
+                    {errors.filter((e) => e.trim()).length > 10 && (
+                      <li className="text-destructive/70 italic">
+                        +{errors.filter((e) => e.trim()).length - 10} more errors
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="flex-row gap-2 pt-2 sm:pt-3">
+            {step === 'upload' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                className="flex-1 sm:flex-none h-8"
+              >
+                Cancel
+              </Button>
+            )}
+
+            {step === 'mapping' && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBackToUpload}
+                  className="flex-1 sm:flex-none h-8"
+                >
+                  <ArrowLeft className="h-3 w-3 mr-1" />
+                  Back
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleProceedToPreview}
+                  disabled={!canProceedToPreview}
+                  className="flex-1 sm:flex-none h-8"
+                >
+                  Next
+                  <ArrowRight className="h-3 w-3 ml-1" />
+                </Button>
+              </>
+            )}
+
+            {step === 'preview' && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBackToMapping}
+                  className="flex-1 sm:flex-none h-8"
+                >
+                  <ArrowLeft className="h-3 w-3 mr-1" />
+                  Back
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleImport}
+                  disabled={importing || errors.length > 0}
+                  className="flex-1 sm:flex-none h-8"
+                >
+                  {importing ? 'Importing...' : 'Import'}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DB Conflict Confirmation Modal (NEW) */}
+      <Dialog open={showDbConflictModal} onOpenChange={setShowDbConflictModal}>
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Orders already exist</DialogTitle>
+            <DialogDescription>
+              Some order codes in this file already exist in the system (from previous uploads).
+              Please choose what to do. (Duplicates inside the SAME file are handled automatically.)
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="border rounded-lg p-3 text-xs max-h-40 overflow-y-auto">
+            <div className="font-medium mb-2">Existing Orders ({dbConflicts.length})</div>
+            <ul className="space-y-1">
+              {dbConflicts.slice(0, 50).map((c) => (
+                <li key={c} className="break-all">
+                  • {c}
+                </li>
+              ))}
+              {dbConflicts.length > 50 && (
+                <li className="text-muted-foreground italic">+{dbConflicts.length - 50} more</li>
+              )}
+            </ul>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Cancel import
+                setShowDbConflictModal(false);
+                setDbConflicts([]);
+                setPendingOrderGroups(null);
+                setPendingMappedRows(null);
+                setPendingValidationRows(null);
+                setConflictAction(null);
+              }}
+            >
+              Cancel Import
             </Button>
-          )}
-          
-          {step === 'mapping' && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleBackToUpload} className="flex-1 sm:flex-none h-8">
-                <ArrowLeft className="h-3 w-3 mr-1" />
-                Back
-              </Button>
-              <Button size="sm" onClick={handleProceedToPreview} disabled={!canProceedToPreview} className="flex-1 sm:flex-none h-8">
-                Next
-                <ArrowRight className="h-3 w-3 ml-1" />
-              </Button>
-            </>
-          )}
-          
-          {step === 'preview' && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleBackToMapping} className="flex-1 sm:flex-none h-8">
-                <ArrowLeft className="h-3 w-3 mr-1" />
-                Back
-              </Button>
-              <Button size="sm" onClick={handleImport} disabled={importing || errors.length > 0} className="flex-1 sm:flex-none h-8">
-                {importing ? 'Importing...' : 'Import'}
-              </Button>
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setConflictAction('skip');
+                setShowDbConflictModal(false);
+                await performImport('skip');
+              }}
+            >
+              Skip Existing
+            </Button>
+
+            <Button
+              onClick={async () => {
+                setConflictAction('merge');
+                setShowDbConflictModal(false);
+                await performImport('merge');
+              }}
+            >
+              Merge (Confirm)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
