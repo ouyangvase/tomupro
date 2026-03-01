@@ -12,7 +12,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -128,13 +127,12 @@ export default function InviteCodesAdmin() {
             </p>
           </div>
 
+          <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Create Code
+          </Button>
+
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                Create Code
-              </Button>
-            </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Create Invite Code</DialogTitle>
