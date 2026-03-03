@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 export interface DriverRanking {
   driver_id: string;
   driver_name: string;
+  driver_avatar_url?: string | null;
   runner_id: string;
   runner_name: string;
   month: string;
