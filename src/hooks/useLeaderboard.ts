@@ -1,12 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, format, subMonths, subWeeks, subDays } from "date-fns";
-import { useEffect } from "react";
+import {
+  startOfMonth, endOfMonth, startOfQuarter, endOfQuarter,
+  startOfYear, endOfYear, subMonths, subQuarters, subYears,
+  format
+} from "date-fns";
+import { useEffect, useMemo } from "react";
 
-export type PeriodMode = 'today' | 'week' | 'month' | 'custom';
+// ── Types ───────────────────────────────────────────────────────────────────
+
+export type PeriodTab = 'monthly' | 'quarterly' | 'yearly';
 export type PrimaryMetric = 'completed_orders' | 'net_sales' | 'delivered_orders' | 'conversion_score' | 'success_rate';
 export type VisibilityMode = 'all' | 'top_10_self' | 'self_only';
+
+// Keep the old PeriodMode for backwards compat with dashboard card etc.
+export type PeriodMode = 'today' | 'week' | 'month' | 'custom';
 
 export interface LeaderboardSettings {
   id: string;
@@ -42,6 +51,7 @@ export interface LeaderboardRanking {
   conversion_score: number;
   success_rate: number;
   rank_position: number;
+  improvement_pct: number | null; // null = NEW, number = percentage change
 }
 
 export interface LeaderboardArchive {
@@ -53,32 +63,123 @@ export interface LeaderboardArchive {
   created_at: string;
 }
 
-// Get period dates based on mode (local time)
+// ── Period Calculation ──────────────────────────────────────────────────────
+
+/**
+ * Get start/end dates for a given period tab and reference date (selected month).
+ * ALL dates are based on delivered_at — the only source of truth.
+ */
+export function getTabPeriodDates(
+  tab: PeriodTab,
+  selectedMonth: Date
+): { start: Date; end: Date } {
+  switch (tab) {
+    case 'monthly':
+      return { start: startOfMonth(selectedMonth), end: endOfMonth(selectedMonth) };
+    case 'quarterly':
+      return { start: startOfQuarter(selectedMonth), end: endOfQuarter(selectedMonth) };
+    case 'yearly':
+      return { start: startOfYear(selectedMonth), end: endOfYear(selectedMonth) };
+    default:
+      return { start: startOfMonth(selectedMonth), end: endOfMonth(selectedMonth) };
+  }
+}
+
+/**
+ * Get the previous period for comparison (improvement %).
+ */
+export function getPreviousPeriodDates(
+  tab: PeriodTab,
+  selectedMonth: Date
+): { start: Date; end: Date } {
+  switch (tab) {
+    case 'monthly': {
+      const prev = subMonths(selectedMonth, 1);
+      return { start: startOfMonth(prev), end: endOfMonth(prev) };
+    }
+    case 'quarterly': {
+      const prev = subQuarters(selectedMonth, 1);
+      return { start: startOfQuarter(prev), end: endOfQuarter(prev) };
+    }
+    case 'yearly': {
+      const prev = subYears(selectedMonth, 1);
+      return { start: startOfYear(prev), end: endOfYear(prev) };
+    }
+    default: {
+      const prev = subMonths(selectedMonth, 1);
+      return { start: startOfMonth(prev), end: endOfMonth(prev) };
+    }
+  }
+}
+
+// Legacy getPeriodDates for backward compat (dashboard card)
 export function getPeriodDates(mode: PeriodMode, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
   const now = new Date();
   switch (mode) {
     case 'today':
-      return { start: startOfDay(now), end: endOfDay(now) };
+      return { start: startOfMonth(now), end: endOfMonth(now) };
     case 'week':
-      return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+      return { start: startOfMonth(now), end: endOfMonth(now) };
     case 'month':
       return { start: startOfMonth(now), end: endOfMonth(now) };
     case 'custom':
-      return { 
-        start: customStart || startOfMonth(now), 
-        end: customEnd || endOfMonth(now) 
+      return {
+        start: customStart || startOfMonth(now),
+        end: customEnd || endOfMonth(now)
       };
     default:
       return { start: startOfMonth(now), end: endOfMonth(now) };
   }
 }
 
-// Format date for database query
 function formatDateForQuery(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
-// Hook to fetch leaderboard settings
+// ── Available Months ────────────────────────────────────────────────────────
+
+/**
+ * Fetch distinct months from delivered_at in the orders table.
+ */
+export function useAvailableMonths() {
+  return useQuery({
+    queryKey: ['leaderboard-available-months'],
+    queryFn: async () => {
+      // Query distinct months from delivered_at
+      const { data, error } = await supabase
+        .from('orders')
+        .select('delivered_at')
+        .not('delivered_at', 'is', null)
+        .order('delivered_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Extract unique year-month combinations
+      const monthSet = new Set<string>();
+      (data || []).forEach((row: { delivered_at: string | null }) => {
+        if (row.delivered_at) {
+          const d = new Date(row.delivered_at);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          monthSet.add(key);
+        }
+      });
+
+      // Convert to sorted array of Date objects (first day of month)
+      const months = Array.from(monthSet)
+        .sort((a, b) => b.localeCompare(a))
+        .map(key => {
+          const [year, month] = key.split('-');
+          return new Date(parseInt(year), parseInt(month) - 1, 1);
+        });
+
+      return months;
+    },
+    staleTime: 300000, // 5 min cache
+  });
+}
+
+// ── Settings ────────────────────────────────────────────────────────────────
+
 export function useLeaderboardSettings() {
   return useQuery({
     queryKey: ['leaderboard-settings'],
@@ -88,9 +189,8 @@ export function useLeaderboardSettings() {
         .select('*')
         .limit(1)
         .single();
-      
+
       if (error) {
-        // Return default settings if none exist
         if (error.code === 'PGRST116') {
           return {
             id: '',
@@ -115,10 +215,9 @@ export function useLeaderboardSettings() {
   });
 }
 
-// Hook to update leaderboard settings
 export function useUpdateLeaderboardSettings() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (settings: Partial<LeaderboardSettings> & { id: string }) => {
       const updateData: Record<string, unknown> = {
@@ -129,14 +228,14 @@ export function useUpdateLeaderboardSettings() {
       if (settings.visibility_mode) updateData.visibility_mode = settings.visibility_mode;
       if (settings.enabled_metrics) updateData.enabled_metrics = settings.enabled_metrics;
       if (settings.tie_breakers) updateData.tie_breakers = settings.tie_breakers;
-      
+
       const { data, error } = await supabase
         .from('leaderboard_settings')
         .update(updateData)
         .eq('id', settings.id)
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     },
@@ -147,7 +246,8 @@ export function useUpdateLeaderboardSettings() {
   });
 }
 
-// Hook to fetch leaderboard participants
+// ── Participants ─────────────────────────────────────────────────────────────
+
 export function useLeaderboardParticipants() {
   return useQuery({
     queryKey: ['leaderboard-participants'],
@@ -155,17 +255,15 @@ export function useLeaderboardParticipants() {
       const { data, error } = await supabase
         .from('leaderboard_participants')
         .select('*');
-      
       if (error) throw error;
       return data as LeaderboardParticipant[];
     }
   });
 }
 
-// Hook to upsert leaderboard participant
 export function useUpsertLeaderboardParticipant() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (participant: { salesperson_id: string; is_included: boolean }) => {
       const { data, error } = await supabase
@@ -177,7 +275,6 @@ export function useUpsertLeaderboardParticipant() {
         }, { onConflict: 'salesperson_id' })
         .select()
         .single();
-      
       if (error) throw error;
       return data;
     },
@@ -188,7 +285,133 @@ export function useUpsertLeaderboardParticipant() {
   });
 }
 
-// Hook to fetch leaderboard rankings with real-time data
+// ── Core Rankings Query ─────────────────────────────────────────────────────
+
+interface RawRankingRow {
+  salesperson_id: string;
+  salesperson_name: string;
+  avatar_url: string | null;
+  delivered_orders: number;
+  failed_orders: number;
+  net_sales: number;
+  completed_orders: number;
+}
+
+function mapRankings(data: RawRankingRow[]): Omit<LeaderboardRanking, 'improvement_pct'>[] {
+  return (data || []).map((row, index) => {
+    const deliveredTotal = row.delivered_orders + row.failed_orders;
+    return {
+      salesperson_id: row.salesperson_id,
+      salesperson_name: row.salesperson_name || 'Unknown',
+      avatar_url: row.avatar_url || null,
+      completed_orders: row.completed_orders,
+      net_sales: Number(row.net_sales) || 0,
+      delivered_orders: row.delivered_orders,
+      failed_orders: row.failed_orders,
+      conversion_score: row.delivered_orders > 0
+        ? Math.round((row.completed_orders / row.delivered_orders) * 100 * 100) / 100
+        : 0,
+      success_rate: deliveredTotal > 0
+        ? Math.round((row.delivered_orders / deliveredTotal) * 100 * 100) / 100
+        : 0,
+      rank_position: index + 1
+    };
+  });
+}
+
+/**
+ * Fetch rankings for a specific date range.
+ * Uses the get_leaderboard_rankings RPC which filters by delivered_at.
+ */
+function useRankingsForRange(startStr: string, endStr: string, enabled = true) {
+  return useQuery({
+    queryKey: ['leaderboard-rankings', startStr, endStr],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_leaderboard_rankings', {
+        p_start_date: startStr,
+        p_end_date: endStr
+      });
+      if (error) throw error;
+      return mapRankings(data as RawRankingRow[]);
+    },
+    enabled,
+    staleTime: 10000,
+  });
+}
+
+/**
+ * Main hook for the leaderboard page.
+ * Fetches current + previous period, computes improvement %.
+ */
+export function useLeaderboardRankingsWithImprovement(
+  tab: PeriodTab,
+  selectedMonth: Date
+) {
+  const queryClient = useQueryClient();
+
+  const { start, end } = getTabPeriodDates(tab, selectedMonth);
+  const { start: prevStart, end: prevEnd } = getPreviousPeriodDates(tab, selectedMonth);
+
+  const startStr = formatDateForQuery(start);
+  const endStr = formatDateForQuery(end);
+  const prevStartStr = formatDateForQuery(prevStart);
+  const prevEndStr = formatDateForQuery(prevEnd);
+
+  // Real-time subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('leaderboard-orders-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['leaderboard-rankings'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  const currentQuery = useRankingsForRange(startStr, endStr);
+  const prevQuery = useRankingsForRange(prevStartStr, prevEndStr);
+
+  // Merge improvement %
+  const rankings = useMemo<LeaderboardRanking[]>(() => {
+    if (!currentQuery.data) return [];
+
+    const prevMap = new Map<string, number>();
+    (prevQuery.data || []).forEach(r => {
+      prevMap.set(r.salesperson_id, r.net_sales);
+    });
+
+    return currentQuery.data.map(r => {
+      const prevSales = prevMap.get(r.salesperson_id);
+      let improvement_pct: number | null = null;
+
+      if (prevSales === undefined) {
+        // Not in previous period at all → NEW
+        improvement_pct = r.net_sales > 0 ? null : null;
+      } else if (prevSales === 0 && r.net_sales > 0) {
+        // Was zero, now has sales → NEW
+        improvement_pct = null;
+      } else if (prevSales === 0 && r.net_sales === 0) {
+        improvement_pct = 0;
+      } else if (prevSales > 0) {
+        improvement_pct = Math.round(((r.net_sales - prevSales) / prevSales) * 100 * 10) / 10;
+      }
+
+      return { ...r, improvement_pct };
+    });
+  }, [currentQuery.data, prevQuery.data]);
+
+  return {
+    rankings,
+    lastUpdated: new Date(),
+    isLoading: currentQuery.isLoading,
+    isFetching: currentQuery.isFetching || prevQuery.isFetching,
+  };
+}
+
+// Legacy hook (dashboard card uses this)
 export function useLeaderboardRankings(
   periodMode: PeriodMode = 'month',
   primaryMetric: PrimaryMetric = 'net_sales',
@@ -196,155 +419,94 @@ export function useLeaderboardRankings(
   customEnd?: Date
 ) {
   const queryClient = useQueryClient();
-  
+
   const { start, end } = getPeriodDates(periodMode, customStart, customEnd);
   const startStr = formatDateForQuery(start);
   const endStr = formatDateForQuery(end);
-  
-  // Set up real-time subscription
+
   useEffect(() => {
     const channel = supabase
-      .channel('leaderboard-orders-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders'
-        },
-        () => {
-          // Invalidate and refetch on any order change
-          queryClient.invalidateQueries({ queryKey: ['leaderboard-rankings'] });
-        }
-      )
+      .channel('leaderboard-orders-realtime-legacy')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['leaderboard-rankings'] });
+      })
       .subscribe();
-    
+
     return () => {
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
-  
+
   const query = useQuery({
     queryKey: ['leaderboard-rankings', periodMode, primaryMetric, startStr, endStr],
     queryFn: async () => {
-      // Use the SECURITY DEFINER function that bypasses RLS
-      // This allows all authenticated users to see the full leaderboard
       const { data, error } = await supabase.rpc('get_leaderboard_rankings', {
         p_start_date: startStr,
         p_end_date: endStr
       });
-      
       if (error) throw error;
-      
-      // Build rankings array with proper typing
-      const rankings: LeaderboardRanking[] = (data || []).map((row: {
-        salesperson_id: string;
-        salesperson_name: string;
-        avatar_url: string | null;
-        delivered_orders: number;
-        failed_orders: number;
-        net_sales: number;
-        completed_orders: number;
-      }, index: number) => {
-        const deliveredTotal = row.delivered_orders + row.failed_orders;
-        
-        return {
-          salesperson_id: row.salesperson_id,
-          salesperson_name: row.salesperson_name || 'Unknown',
-          avatar_url: row.avatar_url || null,
-          completed_orders: row.completed_orders,
-          net_sales: Number(row.net_sales) || 0,
-          delivered_orders: row.delivered_orders,
-          failed_orders: row.failed_orders,
-          conversion_score: row.delivered_orders > 0 
-            ? Math.round((row.completed_orders / row.delivered_orders) * 100 * 100) / 100
-            : 0,
-          success_rate: deliveredTotal > 0
-            ? Math.round((row.delivered_orders / deliveredTotal) * 100 * 100) / 100
-            : 0,
-          rank_position: index + 1
-        };
-      });
-      
+
+      const rankings: LeaderboardRanking[] = mapRankings(data as RawRankingRow[]).map(r => ({
+        ...r,
+        improvement_pct: null
+      }));
+
       return { rankings, lastUpdated: new Date() };
     },
-    refetchInterval: 30000, // Auto-refresh every 30 seconds as fallback
+    refetchInterval: 30000,
     staleTime: 5000,
   });
-  
+
   return query;
 }
 
-// Hook to get user's own ranking
+// ── User-specific hooks ─────────────────────────────────────────────────────
+
 export function useMyRanking(periodMode: PeriodMode = 'month') {
   const { profile } = useAuth();
   const { data } = useLeaderboardRankings(periodMode);
-  
   if (!profile || !data?.rankings) return null;
-  
   return data.rankings.find(r => r.salesperson_id === profile.id) || null;
 }
 
-// Hook to get previous period ranking for comparison
 export function usePreviousPeriodRanking(periodMode: PeriodMode = 'month') {
   const { profile } = useAuth();
-  
   const now = new Date();
-  let prevStart: Date;
-  let prevEnd: Date;
-  
-  switch (periodMode) {
-    case 'today':
-      prevStart = startOfDay(subDays(now, 1));
-      prevEnd = endOfDay(subDays(now, 1));
-      break;
-    case 'week':
-      prevStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
-      prevEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
-      break;
-    case 'month':
-    default:
-      const prevMonth = subMonths(now, 1);
-      prevStart = startOfMonth(prevMonth);
-      prevEnd = endOfMonth(prevMonth);
-      break;
-  }
-  
+  const prevMonth = subMonths(now, 1);
+  const prevStart = startOfMonth(prevMonth);
+  const prevEnd = endOfMonth(prevMonth);
+
   const { data } = useLeaderboardRankings('custom', 'net_sales', prevStart, prevEnd);
-  
   if (!profile || !data?.rankings) return null;
-  
   return data.rankings.find(r => r.salesperson_id === profile.id) || null;
 }
 
-// Hook to fetch leaderboard archive
+// ── Archive ─────────────────────────────────────────────────────────────────
+
 export function useLeaderboardArchive(periodStart?: string, periodEnd?: string) {
   return useQuery({
     queryKey: ['leaderboard-archive', periodStart, periodEnd],
     queryFn: async () => {
       let query = supabase.from('leaderboard_archive').select('*');
-      
-      if (periodStart) {
-        query = query.eq('period_start', periodStart);
-      }
-      if (periodEnd) {
-        query = query.eq('period_end', periodEnd);
-      }
-      
+      if (periodStart) query = query.eq('period_start', periodStart);
+      if (periodEnd) query = query.eq('period_end', periodEnd);
       const { data, error } = await query.order('period_start', { ascending: false });
-      
       if (error) throw error;
       return data as unknown as LeaderboardArchive[];
     }
   });
 }
 
-// Hook to create leaderboard archive
 export function useCreateLeaderboardArchive() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: async (archive: { period_start: string; period_end: string; metric_config_snapshot: Record<string, unknown>; ranks: LeaderboardRanking[] }) => {
+    mutationFn: async (archive: {
+      period_start: string;
+      period_end: string;
+      metric_config_snapshot: Record<string, unknown>;
+      ranks: LeaderboardRanking[];
+    }) => {
       const { data, error } = await supabase
         .from('leaderboard_archive')
         .insert({
@@ -355,7 +517,6 @@ export function useCreateLeaderboardArchive() {
         })
         .select()
         .single();
-      
       if (error) throw error;
       return data;
     },
@@ -365,53 +526,41 @@ export function useCreateLeaderboardArchive() {
   });
 }
 
-// Hook for filtered rankings based on visibility
-export function useVisibleRankings(periodMode: PeriodMode = 'month') {
+// ── Visibility Filtering ────────────────────────────────────────────────────
+
+export function useVisibleRankingsNew(tab: PeriodTab, selectedMonth: Date) {
   const { profile } = useAuth();
   const { data: settings } = useLeaderboardSettings();
-  const { data: rankingsData, isLoading, isFetching } = useLeaderboardRankings(periodMode, settings?.primary_metric);
-  
-  const allRankings = rankingsData?.rankings || [];
-  const lastUpdated = rankingsData?.lastUpdated || new Date();
-  
+  const { rankings: allRankings, lastUpdated, isLoading, isFetching } =
+    useLeaderboardRankingsWithImprovement(tab, selectedMonth);
+
   if (!allRankings.length || !profile) {
-    return { 
-      rankings: [], 
+    return {
+      rankings: [],
       top3Rankings: [],
-      lastUpdated, 
-      isLoading, 
-      isFetching, 
-      hasDeliveredOrders: false 
+      lastUpdated,
+      isLoading,
+      isFetching,
+      hasDeliveredOrders: false
     };
   }
-  
+
   const visibilityMode = settings?.visibility_mode || 'all';
   const userRole = profile.role;
-  
-  // Check if there are any delivered orders
   const hasDeliveredOrders = allRankings.some(r => r.delivered_orders > 0 || r.net_sales > 0);
-  
-  // Top 3 is ALWAYS the actual top 3 from all rankings - everyone can see this
   const top3Rankings = allRankings.slice(0, 3);
-  
-  // Admin sees all
-  if (userRole === 'admin') {
+
+  if (userRole === 'admin' || userRole === 'manager') {
     return { rankings: allRankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
   }
-  
-  // Manager sees all (bound salespeople - for now all)
-  if (userRole === 'manager') {
-    return { rankings: allRankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
-  }
-  
-  // Salesperson visibility based on settings
+
   if (userRole === 'salesperson') {
     let filteredRankings: LeaderboardRanking[];
     switch (visibilityMode) {
       case 'all':
         filteredRankings = allRankings;
         break;
-      case 'top_10_self':
+      case 'top_10_self': {
         const top10 = allRankings.slice(0, 10);
         const selfRanking = allRankings.find(r => r.salesperson_id === profile.id);
         if (selfRanking && selfRanking.rank_position > 10) {
@@ -420,15 +569,65 @@ export function useVisibleRankings(periodMode: PeriodMode = 'month') {
           filteredRankings = top10;
         }
         break;
+      }
       case 'self_only':
         filteredRankings = allRankings.filter(r => r.salesperson_id === profile.id);
         break;
       default:
         filteredRankings = allRankings;
     }
-    // Salesperson ALWAYS gets top3Rankings to display the podium
     return { rankings: filteredRankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
   }
-  
+
+  return { rankings: [], top3Rankings: [], lastUpdated, isLoading, isFetching, hasDeliveredOrders: false };
+}
+
+// Legacy useVisibleRankings for dashboard card
+export function useVisibleRankings(periodMode: PeriodMode = 'month') {
+  const { profile } = useAuth();
+  const { data: settings } = useLeaderboardSettings();
+  const { data: rankingsData, isLoading, isFetching } = useLeaderboardRankings(periodMode, settings?.primary_metric);
+
+  const allRankings = rankingsData?.rankings || [];
+  const lastUpdated = rankingsData?.lastUpdated || new Date();
+
+  if (!allRankings.length || !profile) {
+    return { rankings: [], top3Rankings: [], lastUpdated, isLoading, isFetching, hasDeliveredOrders: false };
+  }
+
+  const visibilityMode = settings?.visibility_mode || 'all';
+  const userRole = profile.role;
+  const hasDeliveredOrders = allRankings.some(r => r.delivered_orders > 0 || r.net_sales > 0);
+  const top3Rankings = allRankings.slice(0, 3);
+
+  if (userRole === 'admin' || userRole === 'manager') {
+    return { rankings: allRankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
+  }
+
+  if (userRole === 'salesperson') {
+    let filteredRankings: LeaderboardRanking[];
+    switch (visibilityMode) {
+      case 'all':
+        filteredRankings = allRankings;
+        break;
+      case 'top_10_self': {
+        const top10 = allRankings.slice(0, 10);
+        const selfRanking = allRankings.find(r => r.salesperson_id === profile.id);
+        if (selfRanking && selfRanking.rank_position > 10) {
+          filteredRankings = [...top10, selfRanking];
+        } else {
+          filteredRankings = top10;
+        }
+        break;
+      }
+      case 'self_only':
+        filteredRankings = allRankings.filter(r => r.salesperson_id === profile.id);
+        break;
+      default:
+        filteredRankings = allRankings;
+    }
+    return { rankings: filteredRankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders };
+  }
+
   return { rankings: [], top3Rankings: [], lastUpdated, isLoading, isFetching, hasDeliveredOrders: false };
 }

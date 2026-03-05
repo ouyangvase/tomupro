@@ -5,12 +5,29 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trophy, TrendingUp, TrendingDown, Minus, AlertTriangle, Sparkles, RefreshCw, Award, Crown, Timer, Medal, Flame } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Trophy, TrendingUp, TrendingDown, Minus, AlertTriangle,
+  Sparkles, RefreshCw, Award, Crown, Timer, Medal, Flame,
+  CalendarDays, ArrowUpRight, ArrowDownRight
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useVisibleRankings, useMyRanking, usePreviousPeriodRanking, useLeaderboardSettings, PeriodMode, LeaderboardRanking } from "@/hooks/useLeaderboard";
+import {
+  useVisibleRankingsNew,
+  useAvailableMonths,
+  useLeaderboardSettings,
+  PeriodTab,
+  LeaderboardRanking
+} from "@/hooks/useLeaderboard";
 import { formatBND } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import { format, endOfMonth, differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
+import {
+  format, endOfMonth, endOfQuarter, endOfYear,
+  differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds,
+  startOfMonth
+} from "date-fns";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getInitials(name: string) {
   return name
@@ -21,50 +38,73 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function RankDelta({ current, previous }: { current: number; previous: number | null }) {
-  if (previous === null) {
+function formatImprovementPct(pct: number | null): { label: string; color: string; icon: 'up' | 'down' | 'neutral' | 'new' } {
+  if (pct === null) return { label: 'NEW', color: 'text-primary', icon: 'new' };
+  if (pct > 0) return { label: `+${pct}%`, color: 'text-[hsl(var(--status-success))]', icon: 'up' };
+  if (pct < 0) return { label: `${pct}%`, color: 'text-[hsl(var(--status-error))]', icon: 'down' };
+  return { label: '0%', color: 'text-muted-foreground/60', icon: 'neutral' };
+}
+
+function getPeriodEndDate(tab: PeriodTab, selectedMonth: Date): Date {
+  switch (tab) {
+    case 'monthly': return endOfMonth(selectedMonth);
+    case 'quarterly': return endOfQuarter(selectedMonth);
+    case 'yearly': return endOfYear(selectedMonth);
+    default: return endOfMonth(selectedMonth);
+  }
+}
+
+function getPeriodLabel(tab: PeriodTab): string {
+  switch (tab) {
+    case 'monthly': return 'vs last month';
+    case 'quarterly': return 'vs last quarter';
+    case 'yearly': return 'vs last year';
+    default: return 'vs previous';
+  }
+}
+
+// ── Improvement Badge ────────────────────────────────────────────────────────
+
+function ImprovementBadge({ pct, size = 'sm' }: { pct: number | null; size?: 'sm' | 'lg' }) {
+  const { label, color, icon } = formatImprovementPct(pct);
+
+  if (icon === 'new') {
     return (
-      <Badge className="text-[10px] px-2 py-0.5 bg-primary/20 text-primary border-0 font-medium">
+      <Badge className={cn(
+        "border-0 font-medium bg-primary/20 text-primary",
+        size === 'sm' ? "text-[10px] px-2 py-0.5" : "text-xs px-2.5 py-1"
+      )}>
         NEW
       </Badge>
     );
   }
-  
-  const delta = previous - current;
-  
-  if (delta > 0) {
-    return (
-      <span className="flex items-center gap-0.5 text-[hsl(var(--status-success))] text-xs font-semibold">
-        <TrendingUp className="h-3.5 w-3.5" />
-        +{delta}
-      </span>
-    );
-  }
-  
-  if (delta < 0) {
-    return (
-      <span className="flex items-center gap-0.5 text-[hsl(var(--status-error))] text-xs font-semibold">
-        <TrendingDown className="h-3.5 w-3.5" />
-        {delta}
-      </span>
-    );
-  }
-  
+
   return (
-    <span className="flex items-center gap-0.5 text-muted-foreground/60 text-xs">
-      <Minus className="h-3 w-3" />
+    <span className={cn(
+      "flex items-center gap-0.5 font-semibold",
+      color,
+      size === 'sm' ? "text-xs" : "text-sm"
+    )}>
+      {icon === 'up' && <ArrowUpRight className={size === 'sm' ? "h-3.5 w-3.5" : "h-4 w-4"} />}
+      {icon === 'down' && <ArrowDownRight className={size === 'sm' ? "h-3.5 w-3.5" : "h-4 w-4"} />}
+      {icon === 'neutral' && <Minus className={size === 'sm' ? "h-3 w-3" : "h-3.5 w-3.5"} />}
+      {label}
     </span>
   );
 }
 
-function PodiumCard({ 
-  ranking, 
+// ── Podium Card ──────────────────────────────────────────────────────────────
+
+function PodiumCard({
+  ranking,
   position,
-  isCurrentUser 
-}: { 
-  ranking: LeaderboardRanking; 
+  isCurrentUser,
+  tab
+}: {
+  ranking: LeaderboardRanking;
   position: 1 | 2 | 3;
   isCurrentUser: boolean;
+  tab: PeriodTab;
 }) {
   const positionConfig = {
     1: {
@@ -159,7 +199,7 @@ function PodiumCard({
             <p className="text-xs text-muted-foreground font-medium">
               <span className="text-foreground font-semibold">{ranking.delivered_orders}</span> delivered
             </p>
-            
+
             <div className="flex items-center justify-center gap-1.5">
               <Flame className="h-5 w-5 text-primary" />
               <span className={cn("font-bold tabular-nums tracking-tight", config.salesSize)}>
@@ -167,12 +207,20 @@ function PodiumCard({
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Net Sales</p>
+
+            {/* Improvement indicator */}
+            <div className="flex items-center justify-center gap-1 pt-1">
+              <ImprovementBadge pct={ranking.improvement_pct} size="sm" />
+              {ranking.improvement_pct !== null && (
+                <span className="text-[9px] text-muted-foreground">{getPeriodLabel(tab)}</span>
+              )}
+            </div>
           </div>
 
           {/* Countdown for 1st place */}
           {position === 1 && (
             <div className="mt-5 pt-4 border-t border-primary/20 w-full">
-              <CountdownTimer />
+              <CountdownTimer tab={tab} selectedMonth={new Date()} />
             </div>
           )}
         </div>
@@ -186,21 +234,32 @@ function PodiumCard({
   );
 }
 
-function CountdownTimer() {
+// ── Countdown Timer ──────────────────────────────────────────────────────────
+
+function CountdownTimer({ tab, selectedMonth }: { tab: PeriodTab; selectedMonth: Date }) {
   const [, setTick] = useState(0);
-  
+
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
   const now = new Date();
-  const endOfMonthDate = endOfMonth(now);
-  
-  const days = differenceInDays(endOfMonthDate, now);
-  const hours = differenceInHours(endOfMonthDate, now) % 24;
-  const minutes = differenceInMinutes(endOfMonthDate, now) % 60;
-  const seconds = differenceInSeconds(endOfMonthDate, now) % 60;
+  const periodEnd = getPeriodEndDate(tab, selectedMonth);
+
+  // If the period has already ended, don't show countdown
+  if (periodEnd < now) {
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <span className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">Period ended</span>
+      </div>
+    );
+  }
+
+  const days = differenceInDays(periodEnd, now);
+  const hours = differenceInHours(periodEnd, now) % 24;
+  const minutes = differenceInMinutes(periodEnd, now) % 60;
+  const seconds = differenceInSeconds(periodEnd, now) % 60;
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -232,21 +291,23 @@ function TimeUnit({ value, label }: { value: number; label: string }) {
   );
 }
 
-function UserRankBanner({ 
-  ranking, 
+// ── User Rank Banner ─────────────────────────────────────────────────────────
+
+function UserRankBanner({
+  ranking,
   totalUsers,
-  previousRanking
-}: { 
-  ranking: LeaderboardRanking; 
+  tab
+}: {
+  ranking: LeaderboardRanking;
   totalUsers: number;
-  previousRanking: LeaderboardRanking | null;
+  tab: PeriodTab;
 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-card to-primary/10 p-4 md:p-5 max-w-2xl mx-auto shadow-lg">
       {/* Decorative elements */}
       <div className="absolute top-0 left-0 w-20 h-20 bg-primary/10 rounded-full -translate-x-1/2 -translate-y-1/2 blur-2xl" />
       <div className="absolute bottom-0 right-0 w-20 h-20 bg-primary/10 rounded-full translate-x-1/2 translate-y-1/2 blur-2xl" />
-      
+
       <div className="relative flex flex-col md:flex-row items-center justify-center gap-3 md:gap-6 text-center md:text-left">
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-primary" />
@@ -256,14 +317,14 @@ function UserRankBanner({
             <span className="font-bold text-primary">{formatBND(ranking.net_sales).replace('BND ', '')}</span>
           </span>
         </div>
-        
+
         <div className="hidden md:block w-px h-8 bg-border" />
-        
+
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Ranked</span>
           <span className="flex items-center gap-2 bg-muted/50 px-3 py-1 rounded-full">
             <span className="font-bold text-xl text-foreground">#{ranking.rank_position}</span>
-            <RankDelta current={ranking.rank_position} previous={previousRanking?.rank_position ?? null} />
+            <ImprovementBadge pct={ranking.improvement_pct} size="sm" />
           </span>
           <span className="text-sm text-muted-foreground">of <span className="font-semibold text-foreground">{totalUsers}</span></span>
         </div>
@@ -272,14 +333,16 @@ function UserRankBanner({
   );
 }
 
-function LeaderboardTable({ 
-  rankings, 
+// ── Leaderboard Table ────────────────────────────────────────────────────────
+
+function LeaderboardTable({
+  rankings,
   currentUserId,
-  primaryMetric
-}: { 
+  tab
+}: {
   rankings: LeaderboardRanking[];
   currentUserId: string | undefined;
-  primaryMetric: string;
+  tab: PeriodTab;
 }) {
   return (
     <div className="rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden shadow-sm">
@@ -291,20 +354,21 @@ function LeaderboardTable({
             <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-semibold">Delivered</TableHead>
             <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-semibold">Success</TableHead>
             <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-semibold">Sales</TableHead>
+            <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-semibold">Improvement</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rankings.map((ranking, index) => {
+          {rankings.map((ranking) => {
             const isCurrentUser = ranking.salesperson_id === currentUserId;
             const isTopThree = ranking.rank_position <= 3;
-            
+
             return (
-              <TableRow 
+              <TableRow
                 key={ranking.salesperson_id}
                 className={cn(
                   "border-border/20 transition-all duration-200",
-                  isCurrentUser 
-                    ? "bg-primary/10 hover:bg-primary/15 border-l-4 border-l-primary" 
+                  isCurrentUser
+                    ? "bg-primary/10 hover:bg-primary/15 border-l-4 border-l-primary"
                     : "hover:bg-muted/20",
                   isTopThree && !isCurrentUser && "bg-muted/10"
                 )}
@@ -362,8 +426,8 @@ function LeaderboardTable({
                   <span className="font-medium">{ranking.delivered_orders}</span>
                 </TableCell>
                 <TableCell className="text-right tabular-nums py-4">
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={cn(
                       "font-medium border-0",
                       ranking.success_rate >= 80 && "bg-[hsl(var(--status-success))]/20 text-[hsl(var(--status-success))]",
@@ -382,6 +446,9 @@ function LeaderboardTable({
                     </span>
                   </div>
                 </TableCell>
+                <TableCell className="text-right py-4">
+                  <ImprovementBadge pct={ranking.improvement_pct} size="sm" />
+                </TableCell>
               </TableRow>
             );
           })}
@@ -391,18 +458,75 @@ function LeaderboardTable({
   );
 }
 
+// ── Month Picker ─────────────────────────────────────────────────────────────
+
+function MonthPicker({
+  availableMonths,
+  selectedMonth,
+  onSelect
+}: {
+  availableMonths: Date[];
+  selectedMonth: Date;
+  onSelect: (month: Date) => void;
+}) {
+  const selectedKey = format(selectedMonth, 'yyyy-MM');
+
+  return (
+    <Select
+      value={selectedKey}
+      onValueChange={(val) => {
+        const [year, month] = val.split('-');
+        onSelect(new Date(parseInt(year), parseInt(month) - 1, 1));
+      }}
+    >
+      <SelectTrigger className="w-[180px] h-10 rounded-xl bg-muted/50 border-border/50">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-muted-foreground" />
+          <SelectValue />
+        </div>
+      </SelectTrigger>
+      <SelectContent>
+        {availableMonths.map(m => {
+          const key = format(m, 'yyyy-MM');
+          return (
+            <SelectItem key={key} value={key}>
+              {format(m, 'MMMM yyyy')}
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
+
 export default function LeaderboardPage() {
-  const [periodMode, setPeriodMode] = useState<PeriodMode>('month');
+  const [tab, setTab] = useState<PeriodTab>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
   const { profile } = useAuth();
   const { data: settings } = useLeaderboardSettings();
-  const { rankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders } = useVisibleRankings(periodMode);
-  const myRanking = useMyRanking(periodMode);
-  const previousRanking = usePreviousPeriodRanking(periodMode);
-  
-  const primaryMetric = settings?.primary_metric || 'net_sales';
-  
+  const { data: availableMonths, isLoading: monthsLoading } = useAvailableMonths();
+
+  const { rankings, top3Rankings, lastUpdated, isLoading, isFetching, hasDeliveredOrders } =
+    useVisibleRankingsNew(tab, selectedMonth);
+
+  // Find current user's ranking
+  const myRanking = rankings.find(r => r.salesperson_id === profile?.id) || null;
+
   // Check if all rankings have zero data
   const allZeros = rankings.length > 0 && rankings.every(r => r.net_sales === 0 && r.delivered_orders === 0);
+
+  // Default selected month to most recent available month
+  useEffect(() => {
+    if (availableMonths && availableMonths.length > 0) {
+      const currentMonthKey = format(selectedMonth, 'yyyy-MM');
+      const availableKeys = availableMonths.map(m => format(m, 'yyyy-MM'));
+      if (!availableKeys.includes(currentMonthKey)) {
+        setSelectedMonth(availableMonths[0]); // Most recent
+      }
+    }
+  }, [availableMonths]);
 
   return (
     <AppLayout>
@@ -417,18 +541,28 @@ export default function LeaderboardPage() {
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">Sales Leaderboard</h1>
                 <p className="text-sm text-muted-foreground">
-                  Rankings by {settings?.primary_metric?.replace('_', ' ') || 'net sales'}
+                  Rankings by {settings?.primary_metric?.replace('_', ' ') || 'net sales'} (delivered orders)
                 </p>
               </div>
             </div>
           </div>
-          
-          {/* Live Indicator */}
-          <div className="flex items-center gap-3">
+
+          {/* Right side: Month Picker + Live Indicator */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Month Picker */}
+            {!monthsLoading && availableMonths && availableMonths.length > 0 && (
+              <MonthPicker
+                availableMonths={availableMonths}
+                selectedMonth={selectedMonth}
+                onSelect={setSelectedMonth}
+              />
+            )}
+
+            {/* Live Indicator */}
             <div className={cn(
               "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
-              isFetching 
-                ? "bg-[hsl(var(--status-pending))]/20 text-[hsl(var(--status-pending))]" 
+              isFetching
+                ? "bg-[hsl(var(--status-pending))]/20 text-[hsl(var(--status-pending))]"
                 : "bg-[hsl(var(--status-success))]/20 text-[hsl(var(--status-success))]"
             )}>
               <span className={cn(
@@ -454,23 +588,23 @@ export default function LeaderboardPage() {
           </Alert>
         )}
 
-        {/* Period Tabs */}
-        <Tabs value={periodMode} onValueChange={(v) => setPeriodMode(v as PeriodMode)} className="w-full">
+        {/* Period Tabs: Monthly / Quarterly / Yearly */}
+        <Tabs value={tab} onValueChange={(v) => setTab(v as PeriodTab)} className="w-full">
           <div className="flex justify-center">
             <TabsList className="grid grid-cols-3 w-full max-w-sm h-11 p-1 bg-muted/50 rounded-xl">
-              <TabsTrigger value="today" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                Today
+              <TabsTrigger value="monthly" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                Monthly
               </TabsTrigger>
-              <TabsTrigger value="week" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                This Week
+              <TabsTrigger value="quarterly" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                Quarterly
               </TabsTrigger>
-              <TabsTrigger value="month" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                This Month
+              <TabsTrigger value="yearly" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                Yearly
               </TabsTrigger>
             </TabsList>
           </div>
-          
-          <TabsContent value={periodMode} className="mt-10 space-y-10">
+
+          <TabsContent value={tab} className="mt-10 space-y-10">
             {/* Loading State */}
             {isLoading && (
               <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -482,23 +616,26 @@ export default function LeaderboardPage() {
               </div>
             )}
 
-            {/* Top 3 Podium - Always shows actual top 3 regardless of visibility settings */}
+            {/* Top 3 Podium */}
             {!isLoading && top3Rankings.length >= 3 && (
               <div className="flex justify-center items-end gap-3 md:gap-6 py-6">
-                <PodiumCard 
-                  ranking={top3Rankings[1]} 
-                  position={2} 
+                <PodiumCard
+                  ranking={top3Rankings[1]}
+                  position={2}
                   isCurrentUser={top3Rankings[1].salesperson_id === profile?.id}
+                  tab={tab}
                 />
-                <PodiumCard 
-                  ranking={top3Rankings[0]} 
-                  position={1} 
+                <PodiumCard
+                  ranking={top3Rankings[0]}
+                  position={1}
                   isCurrentUser={top3Rankings[0].salesperson_id === profile?.id}
+                  tab={tab}
                 />
-                <PodiumCard 
-                  ranking={top3Rankings[2]} 
-                  position={3} 
+                <PodiumCard
+                  ranking={top3Rankings[2]}
+                  position={3}
                   isCurrentUser={top3Rankings[2].salesperson_id === profile?.id}
+                  tab={tab}
                 />
               </div>
             )}
@@ -507,11 +644,12 @@ export default function LeaderboardPage() {
             {!isLoading && top3Rankings.length > 0 && top3Rankings.length < 3 && (
               <div className="flex justify-center items-end gap-3 md:gap-6 py-6">
                 {top3Rankings.map((ranking, index) => (
-                  <PodiumCard 
+                  <PodiumCard
                     key={ranking.salesperson_id}
-                    ranking={ranking} 
-                    position={(index + 1) as 1 | 2 | 3} 
+                    ranking={ranking}
+                    position={(index + 1) as 1 | 2 | 3}
                     isCurrentUser={ranking.salesperson_id === profile?.id}
+                    tab={tab}
                   />
                 ))}
               </div>
@@ -519,10 +657,10 @@ export default function LeaderboardPage() {
 
             {/* User Rank Banner */}
             {!isLoading && (profile?.role === 'salesperson' || profile?.role === 'manager') && myRanking && (
-              <UserRankBanner 
-                ranking={myRanking} 
+              <UserRankBanner
+                ranking={myRanking}
                 totalUsers={rankings.length}
-                previousRanking={previousRanking}
+                tab={tab}
               />
             )}
 
@@ -538,10 +676,10 @@ export default function LeaderboardPage() {
                     {rankings.length} salespeople
                   </Badge>
                 </div>
-                <LeaderboardTable 
+                <LeaderboardTable
                   rankings={rankings}
                   currentUserId={profile?.id}
-                  primaryMetric={primaryMetric}
+                  tab={tab}
                 />
               </div>
             )}
