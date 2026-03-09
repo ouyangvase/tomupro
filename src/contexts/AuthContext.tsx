@@ -68,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Clear stale tokens function - used when session refresh fails
   const clearAuthState = useCallback(() => {
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || 'dtcchduronwsyunyakxj';
+    const projectId = 'fitonksgqfxnpljiylkn';
     localStorage.removeItem(`sb-${projectId}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     sessionStorage.clear();
@@ -93,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     // Clear all Supabase auth tokens
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || 'dtcchduronwsyunyakxj';
+    const projectId = 'fitonksgqfxnpljiylkn';
     localStorage.removeItem(`sb-${projectId}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     sessionStorage.clear();
@@ -457,7 +457,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     // Always clear local state regardless of API response
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || 'dtcchduronwsyunyakxj';
+    const projectId = 'fitonksgqfxnpljiylkn';
     localStorage.removeItem(`sb-${projectId}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     sessionStorage.clear();
