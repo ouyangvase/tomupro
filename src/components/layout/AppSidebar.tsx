@@ -411,7 +411,7 @@ export function AppSidebar() {
           activeClassName="bg-gradient-to-r from-primary/15 to-primary/5 text-primary font-semibold border-l-2 border-primary shadow-[0_0_8px_hsl(var(--primary)/0.15)]"
         >
           <item.icon className="h-[18px] w-[18px] shrink-0" />
-          <span className="text-sm tracking-tight flex-1 truncate">{item.title}</span>
+          <span className="text-[15px] tracking-tight flex-1 truncate">{item.title}</span>
           <BadgePill count={badgeCount} urgent={isUrgent} />
         </NavLink>
         {showFavStar && (
