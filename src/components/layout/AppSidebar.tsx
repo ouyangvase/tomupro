@@ -515,7 +515,7 @@ export function AppSidebar() {
           <div className="mb-2">
             <div className="flex items-center gap-2 px-3 py-1.5">
               <Star className="h-3.5 w-3.5 text-[hsl(var(--status-pending))] fill-[hsl(var(--status-pending))]" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--status-pending)/0.7)]">Favorites</span>
+              <span className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--status-pending)/0.7)]">Favorites</span>
             </div>
             <div className="space-y-0.5">
               {favoriteItems.map(item => renderNavItem(item))}
