@@ -218,6 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     console.log('[Auth] Profile loaded successfully, role:', newProfile.role);
+    isFetchingRef.current = false;
     setPreviousRole(newProfile.role);
     setProfile(newProfile);
     setProfileStatus('ready');
