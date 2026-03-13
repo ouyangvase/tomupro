@@ -139,6 +139,7 @@ export default function RunnerDeliveredOrders() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
+  const { dateRange, setDateRange } = useDateRangeState();
   
   // Fetch orders based on role and view mode:
   // - Runner: fetch their own orders (runner_id = user.id), with optional salesperson filter
