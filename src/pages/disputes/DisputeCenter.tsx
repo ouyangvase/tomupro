@@ -84,7 +84,7 @@ export default function DisputeCenter() {
   const handleUpdateNotes = () => {
     if (!selectedOrder) return;
     updateOrder.mutate(
-      { id: selectedOrder.id, updates: { dispute_notes: newNotes } },
+      { id: selectedOrder.id, dispute_notes: newNotes } as any,
       {
         onSuccess: () => {
           setNotesDialogOpen(false);
