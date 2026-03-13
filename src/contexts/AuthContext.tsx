@@ -60,6 +60,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   // Ref to track current profile user ID (avoids closure issues and infinite loops)
   const profileUserIdRef = useRef<string | null>(null);
+  // Guard against duplicate concurrent profile fetches
+  const isFetchingRef = useRef<boolean>(false);
   
   // Update the ref whenever profile changes
   useEffect(() => {
@@ -122,9 +124,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const fetchProfile = useCallback(async (userId: string, retryCount = 0): Promise<void> => {
-    const maxRetries = 3;
-    const baseDelay = 1000;
-    const fetchTimeout = 8000; // 8 second timeout per attempt
+    const maxRetries = 1;
+    const baseDelay = 500;
+    const fetchTimeout = 3000; // 3 second timeout per attempt
+
+    // Prevent duplicate concurrent fetches
+    if (retryCount === 0 && isFetchingRef.current) {
+      console.log('[Auth] Profile fetch already in progress, skipping duplicate');
+      return;
+    }
+    if (retryCount === 0) {
+      isFetchingRef.current = true;
+    }
     
     // Set loading status on first attempt
     if (retryCount === 0) {
@@ -163,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Terminal error state - all retries exhausted
     if (error) {
       console.error('[Auth] Profile fetch failed after all retries:', error);
+      isFetchingRef.current = false;
       setProfileStatus('error');
       setProfileError(error.message || 'Failed to load profile after multiple attempts');
       return;
@@ -171,6 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Profile missing - no row exists for this user
     if (!data) {
       console.warn('[Auth] No profile row found for user:', userId);
+      isFetchingRef.current = false;
       setProfileStatus('missing');
       setProfileError('No profile found for your account');
       return;
@@ -205,6 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     console.log('[Auth] Profile loaded successfully, role:', newProfile.role);
+    isFetchingRef.current = false;
     setPreviousRole(newProfile.role);
     setProfile(newProfile);
     setProfileStatus('ready');
@@ -250,10 +264,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (loading) {
-        console.warn('[Auth] Loading timeout (10s) - forcing completion');
+        console.warn('[Auth] Loading timeout (5s) - forcing completion');
+        isFetchingRef.current = false;
         setLoading(false);
       }
-    }, 10000); // 10 second timeout
+    }, 5000); // 5 second timeout
     
     return () => clearTimeout(timeout);
   }, [loading]);
