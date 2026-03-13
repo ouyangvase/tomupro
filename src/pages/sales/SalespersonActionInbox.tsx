@@ -344,39 +344,39 @@ export default function SalespersonActionInbox() {
 
         {/* Stats - responsive grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-          <Card className="border-orange-200 bg-orange-50 dark:bg-orange-900/10">
+          <Card className="border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.08)]">
             <CardContent className="p-3 md:p-4">
-              <div className="text-xl md:text-2xl font-bold text-orange-600">{actionRequiredOrders.length}</div>
+              <div className="text-xl md:text-2xl font-bold text-[hsl(var(--status-warning))]">{actionRequiredOrders.length}</div>
               <div className="text-xs md:text-sm text-muted-foreground">Total Pending</div>
             </CardContent>
           </Card>
-          <Card className="border-red-200 bg-red-50 dark:bg-red-900/10">
+          <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="p-3 md:p-4 flex items-center gap-2">
-              <XCircle className="h-4 w-4 md:h-5 md:w-5 text-red-500" />
+              <XCircle className="h-4 w-4 md:h-5 md:w-5 text-destructive" />
               <div>
-                <div className="text-xl md:text-2xl font-bold text-red-600">
+                <div className="text-xl md:text-2xl font-bold text-destructive">
                   {actionRequiredOrders.filter(o => getActionSource(o) === 'FAILED_DELIVERY').length}
                 </div>
                 <div className="text-xs md:text-sm text-muted-foreground">Failed</div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/10">
+          <Card className="border-[hsl(var(--status-pending)/0.3)] bg-[hsl(var(--status-pending)/0.08)]">
             <CardContent className="p-3 md:p-4 flex items-center gap-2">
-              <Calendar className="h-4 w-4 md:h-5 md:w-5 text-yellow-500" />
+              <Calendar className="h-4 w-4 md:h-5 md:w-5 text-[hsl(var(--status-pending))]" />
               <div>
-                <div className="text-xl md:text-2xl font-bold text-yellow-600">
+                <div className="text-xl md:text-2xl font-bold text-[hsl(var(--status-pending))]">
                   {actionRequiredOrders.filter(o => getActionSource(o) === 'RESCHEDULED').length}
                 </div>
                 <div className="text-xs md:text-sm text-muted-foreground">Rescheduled</div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/10">
+          <Card className="border-primary/30 bg-primary/5">
             <CardContent className="p-3 md:p-4 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 md:h-5 md:w-5 text-blue-500" />
+              <AlertTriangle className="h-4 w-4 md:h-5 md:w-5 text-primary" />
               <div>
-                <div className="text-xl md:text-2xl font-bold text-blue-600">
+                <div className="text-xl md:text-2xl font-bold text-primary">
                   {actionRequiredOrders.filter(o => 
                     getActionSource(o) === 'RUNNER_FLAGGED' || getActionSource(o) === 'MANUAL'
                   ).length}
