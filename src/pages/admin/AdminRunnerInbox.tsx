@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useBulkUpdateOrders } from '@/hooks/useOrders';
+import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useUserDirectory, useRunners } from '@/hooks/useUserDirectory';
-import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { exportSelectedOrderLines } from '@/lib/csv';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
 import { Inbox, UserPlus } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -58,44 +58,23 @@ const reconciliationStatusOptions = [
 
 export default function AdminRunnerInbox() {
   const { toast } = useToast();
-  const { data: allOrders, isLoading } = useOrders(); // Admin gets all orders
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: runners = [] } = useRunners();
   const bulkUpdateOrders = useBulkUpdateOrders();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
-  const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   const [selectedRunnerId, setSelectedRunnerId] = useState<string>('__all__');
   const [bulkAssignRunnerId, setBulkAssignRunnerId] = useState<string>('');
+  const [serverSearch, setServerSearch] = useState('');
 
-  // Filter to only orders that have runner assignment or are relevant for runner inbox
-  const runnerOrders = useMemo(() => {
-    if (!allOrders) return [];
-    // Include all orders that are in READY status (can be assigned) or already have a runner
-    return allOrders.filter(o => 
-      o.status === 'READY' && (o.runner_id || o.runner_status !== 'UNASSIGNED' || true)
-    );
-  }, [allOrders]);
+  // Server-side paginated query - READY orders for admin
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
+    status: 'READY' as any,
+    runnerId: selectedRunnerId === '__all__' ? undefined : selectedRunnerId === '__unassigned__' ? undefined : selectedRunnerId,
+    searchQuery: serverSearch || undefined,
+  }, 50);
 
-  // Apply runner filter
-  const runnerFilteredOrders = useMemo(() => {
-    if (!runnerOrders) return [];
-    if (selectedRunnerId === '__all__') return runnerOrders;
-    if (selectedRunnerId === '__unassigned__') return runnerOrders.filter(o => !o.runner_id);
-    return runnerOrders.filter(o => o.runner_id === selectedRunnerId);
-  }, [runnerOrders, selectedRunnerId]);
-
-  // Apply panel filters
-  const filteredOrders = useMemo(() => {
-    return applyOrderFilters(runnerFilteredOrders, panelFilters);
-  }, [runnerFilteredOrders, panelFilters]);
-
-  // Extract unique areas for filter dropdown
-  const areaOptions = useMemo(() => {
-    if (!runnerOrders) return [];
-    const uniqueAreas = [...new Set(runnerOrders.map(o => o.area).filter(Boolean))];
-    return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
-  }, [runnerOrders]);
+  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 
   // Salesperson filter options
   const salespersonOptions = useMemo(() => {
@@ -115,7 +94,7 @@ export default function AdminRunnerInbox() {
       });
       return;
     }
-    const success = exportSelectedOrderLines(runnerOrders || [], selectedRows, 'admin_runner_inbox_export');
+    const success = exportSelectedOrderLines(orders || [], selectedRows, 'admin_runner_inbox_export');
     if (success) {
       toast({ title: 'Export complete', description: `Exported ${selectedRows.length} order(s)` });
     }
@@ -202,8 +181,6 @@ export default function AdminRunnerInbox() {
       key: 'area',
       header: 'Area',
       sortable: true,
-      filterable: true,
-      filterOptions: areaOptions,
       render: (order) => order.area || '-',
     },
     {
@@ -354,19 +331,8 @@ export default function AdminRunnerInbox() {
           )}
         </div>
 
-        <OrderFiltersPanel
-          filters={panelFilters}
-          onFiltersChange={setPanelFilters}
-          areaOptions={areaOptions}
-          salespersonOptions={salespersonOptions}
-          showSalespersonFilter={true}
-          showOrderStatus={false}
-          showRunnerStatus={true}
-          showReconciliationStatus={true}
-        />
-
         <DataGrid
-          data={filteredOrders}
+          data={orders}
           columns={columns}
           loading={isLoading}
           keyField="id"
@@ -374,7 +340,18 @@ export default function AdminRunnerInbox() {
           selectedRows={selectedRows}
           onSelectionChange={setSelectedRows}
           onExport={handleExport}
+          onSearchChange={handleSearchChange}
           emptyMessage="No orders found"
+          serverPagination={{
+            enabled: true,
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            totalCount: pagination.totalCount,
+            totalPages: pagination.totalPages,
+            onPageChange: setPage,
+            onPageSizeChange: setPageSize,
+            isFetching,
+          }}
         />
       </div>
     </AppLayout>

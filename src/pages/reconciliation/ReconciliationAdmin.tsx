@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useBulkUpdateOrders } from '@/hooks/useOrders';
+import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useClaimsByOrders } from '@/hooks/useClaims';
 import { useReasons } from '@/hooks/useReasons';
 import { logAudit } from '@/hooks/useAuditLogs';
@@ -28,9 +29,15 @@ import type { Order, Claim } from '@/types/database';
 import { CheckCircle, AlertTriangle, Shield, Users } from 'lucide-react';
 
 export default function ReconciliationAdmin() {
-  const { data: orders, isLoading } = useOrders({ 
-    reconciliationStatus: 'ADMIN_ACK_PENDING' 
-  });
+  const [serverSearch, setServerSearch] = useState('');
+  
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders({
+    reconciliationStatus: 'ADMIN_ACK_PENDING' as any,
+    searchQuery: serverSearch || undefined,
+  }, 50);
+
+  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+  
   const orderIds = useMemo(() => orders?.map(o => o.id) || [], [orders]);
   const { data: claims } = useClaimsByOrders(orderIds);
   const bulkUpdate = useBulkUpdateOrders();
@@ -59,71 +66,82 @@ export default function ReconciliationAdmin() {
       groups[spId].totalClaimed += orderClaims.reduce((sum, c) => sum + c.amount, 0);
     });
     
-    return Object.values(groups);
+    return Object.values(groups).sort((a, b) => b.orders.length - a.orders.length);
   }, [orders, claims]);
 
-  const handleSettle = async () => {
+  const handleApprove = () => {
     if (selectedOrders.length === 0) return;
-
-    for (const orderId of selectedOrders) {
-      await logAudit({
+    
+    selectedOrders.forEach(id => {
+      logAudit({
         entity_type: 'order',
-        entity_id: orderId,
-        action: 'ADMIN_SETTLED',
+        entity_id: id,
+        action: 'RECONCILIATION_APPROVED',
         before_json: { reconciliation_status: 'ADMIN_ACK_PENDING' },
-        after_json: { reconciliation_status: 'SETTLED' },
+        after_json: { reconciliation_status: 'CLAIMED' },
       });
-    }
-
-    await bulkUpdate.mutateAsync({
-      ids: selectedOrders,
-      updates: { reconciliation_status: 'SETTLED' },
     });
-    setSelectedOrders([]);
+
+    bulkUpdate.mutate(
+      {
+        ids: selectedOrders,
+        updates: { reconciliation_status: 'CLAIMED' as any },
+      },
+      {
+        onSuccess: () => {
+          setSelectedOrders([]);
+          refetch();
+        },
+      }
+    );
   };
 
-  const handleDispute = async () => {
-    if (selectedOrders.length === 0 || !disputeReason) return;
-
-    for (const orderId of selectedOrders) {
-      await logAudit({
+  const handleDispute = () => {
+    if (selectedOrders.length === 0) return;
+    
+    selectedOrders.forEach(id => {
+      logAudit({
         entity_type: 'order',
-        entity_id: orderId,
-        action: 'ADMIN_DISPUTED',
+        entity_id: id,
+        action: 'RECONCILIATION_DISPUTED',
         before_json: { reconciliation_status: 'ADMIN_ACK_PENDING' },
         after_json: { reconciliation_status: 'DISPUTE', dispute_reason: disputeReason, dispute_notes: disputeNotes },
       });
-    }
-
-    await bulkUpdate.mutateAsync({
-      ids: selectedOrders,
-      updates: { 
-        reconciliation_status: 'DISPUTE',
-        dispute_reason: disputeReason,
-        dispute_notes: disputeNotes,
-      },
     });
-    setSelectedOrders([]);
-    setDisputeReason('');
-    setDisputeNotes('');
-    setDisputeDialogOpen(false);
-  };
 
-  const getClaimsForOrder = (orderId: string): Claim[] => {
-    return claims?.filter(c => c.order_id === orderId) || [];
+    bulkUpdate.mutate(
+      {
+        ids: selectedOrders,
+        updates: { 
+          reconciliation_status: 'DISPUTE' as any,
+          dispute_reason: disputeReason,
+          dispute_notes: disputeNotes,
+        },
+      },
+      {
+        onSuccess: () => {
+          setSelectedOrders([]);
+          setDisputeDialogOpen(false);
+          setDisputeReason('');
+          setDisputeNotes('');
+          refetch();
+        },
+      }
+    );
   };
 
   const columns: Column<Order>[] = [
     {
-      key: 'order_date',
-      header: 'Date',
+      key: 'order_code',
+      header: 'Order',
       sortable: true,
-      render: (order) => new Date(order.order_date).toLocaleDateString(),
+      render: (order) => <span className="font-mono text-sm">{order.order_code}</span>,
     },
     {
       key: 'customer_name',
       header: 'Customer',
       sortable: true,
+      render: (order) => order.customer_name || '-',
     },
     {
       key: 'salesperson',
@@ -137,34 +155,23 @@ export default function ReconciliationAdmin() {
     },
     {
       key: 'total_amount',
-      header: 'Amount (BND)',
+      header: 'Order Amt',
       sortable: true,
-      render: (order) => formatBND(order.total_amount),
+      render: (order) => <span className="font-medium">{formatBND(order.total_amount)}</span>,
     },
     {
       key: 'claimed_amount',
-      header: 'Claimed (BND)',
+      header: 'Claimed',
       render: (order) => {
-        const orderClaims = getClaimsForOrder(order.id);
+        const orderClaims = claims?.filter(c => c.order_id === order.id) || [];
         const total = orderClaims.reduce((sum, c) => sum + c.amount, 0);
-        return formatBND(total);
+        return <span className="font-medium text-primary">{formatBND(total)}</span>;
       },
     },
     {
-      key: 'claim_method',
-      header: 'Method',
-      render: (order) => {
-        const orderClaims = getClaimsForOrder(order.id);
-        const methods = [...new Set(orderClaims.map(c => c.method))];
-        return methods.join(', ') || '-';
-      },
-    },
-    {
-      key: 'delivered_at',
-      header: 'Delivered',
-      render: (order) => order.delivered_at 
-        ? new Date(order.delivered_at).toLocaleDateString() 
-        : '-',
+      key: 'payment_method',
+      header: 'Payment',
+      render: (order) => order.payment_method,
     },
   ];
 
@@ -174,50 +181,44 @@ export default function ReconciliationAdmin() {
         <div className="flex items-center gap-3">
           <Shield className="h-8 w-8 text-primary" />
           <div>
-            <h1 className="text-2xl font-bold">Claims Pending (Admin)</h1>
-            <p className="text-muted-foreground">Final approval for SP-acknowledged claims</p>
+            <h1 className="text-2xl font-bold">Reconciliation</h1>
+            <p className="text-muted-foreground">Review and approve pending claims</p>
           </div>
         </div>
 
-        {/* Summary Cards by Salesperson */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {groupedBySP.map((group, idx) => (
-            <Card key={idx}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  {group.salesperson?.display_name || 'Unknown'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatBND(group.totalClaimed)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {group.orders.length} orders
+        {/* Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-[hsl(var(--status-warning))]" />
+              <div>
+                <p className="text-2xl font-bold">{pagination.totalCount}</p>
+                <p className="text-xs text-muted-foreground">Pending Review</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <Users className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-2xl font-bold">{groupedBySP.length}</p>
+                <p className="text-xs text-muted-foreground">Salespersons</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <CheckCircle className="h-5 w-5 text-[hsl(var(--status-success))]" />
+              <div>
+                <p className="text-2xl font-bold">
+                  {formatBND(
+                    claims?.reduce((sum, c) => sum + c.amount, 0) || 0
+                  )}
                 </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          <Button
-            onClick={handleSettle}
-            disabled={selectedOrders.length === 0 || bulkUpdate.isPending}
-          >
-            <CheckCircle className="h-4 w-4 mr-2" />
-            Settle Selected ({selectedOrders.length})
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => setDisputeDialogOpen(true)}
-            disabled={selectedOrders.length === 0}
-          >
-            <AlertTriangle className="h-4 w-4 mr-2" />
-            Dispute Selected
-          </Button>
+                <p className="text-xs text-muted-foreground">Total Claimed</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <DataGrid
@@ -228,6 +229,41 @@ export default function ReconciliationAdmin() {
           selectable
           selectedRows={selectedOrders}
           onSelectionChange={setSelectedOrders}
+          onSearchChange={handleSearchChange}
+          emptyMessage="No pending reconciliation items"
+          serverPagination={{
+            enabled: true,
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            totalCount: pagination.totalCount,
+            totalPages: pagination.totalPages,
+            onPageChange: setPage,
+            onPageSizeChange: setPageSize,
+            isFetching,
+          }}
+          bulkActions={
+            selectedOrders.length > 0 ? (
+              <div className="flex gap-2">
+                <Button 
+                  onClick={handleApprove} 
+                  disabled={bulkUpdate.isPending}
+                  size="sm"
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Approve ({selectedOrders.length})
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={() => setDisputeDialogOpen(true)}
+                  disabled={bulkUpdate.isPending}
+                  size="sm"
+                >
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  Dispute ({selectedOrders.length})
+                </Button>
+              </div>
+            ) : undefined
+          }
         />
       </div>
 
@@ -235,44 +271,35 @@ export default function ReconciliationAdmin() {
       <Dialog open={disputeDialogOpen} onOpenChange={setDisputeDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dispute Selected Orders</DialogTitle>
+            <DialogTitle>Dispute Orders</DialogTitle>
           </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label>Dispute Reason *</Label>
+          <div className="space-y-4">
+            <div>
+              <Label>Reason</Label>
               <Select value={disputeReason} onValueChange={setDisputeReason}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select reason..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {disputeReasons?.map((r) => (
-                    <SelectItem key={r.id} value={r.label}>
-                      {r.label}
-                    </SelectItem>
+                  {disputeReasons?.map(r => (
+                    <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Additional Notes</Label>
-              <Textarea
-                placeholder="Enter dispute notes..."
-                value={disputeNotes}
+            <div>
+              <Label>Notes</Label>
+              <Textarea 
+                value={disputeNotes} 
                 onChange={(e) => setDisputeNotes(e.target.value)}
-                rows={4}
+                placeholder="Add notes about the dispute..."
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDisputeDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={handleDispute}
-              disabled={!disputeReason}
-            >
-              Submit Dispute
+            <Button variant="ghost" onClick={() => setDisputeDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDispute} disabled={!disputeReason}>
+              Confirm Dispute
             </Button>
           </DialogFooter>
         </DialogContent>

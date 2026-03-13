@@ -1,17 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useOrders, useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useBulkUpdateOrders } from '@/hooks/useOrders';
+import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
-import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers, useAssignOrderToDriver } from '@/hooks/useDrivers';
@@ -23,9 +23,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
 import { Package, CheckCircle, XCircle, DollarSign, Truck, Loader2, User } from 'lucide-react';
-import { generateWhatsAppUrl, formatPhoneDisplay } from '@/lib/whatsapp';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useMarkDeliveredFast } from '@/hooks/useDeliveredOrders';
 
@@ -64,7 +63,6 @@ export default function RunnerInbox() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: orders, isLoading } = useOrders({ runnerId: user?.id, excludeDeliveredAndFailed: true });
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
   const assignOrderToDriver = useAssignOrderToDriver();
@@ -74,48 +72,28 @@ export default function RunnerInbox() {
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
   const [bulkClaimDialogOpen, setBulkClaimDialogOpen] = useState(false);
-  const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
+  const [serverSearch, setServerSearch] = useState('');
   
   const bulkUpdateOrders = useBulkUpdateOrders();
   const submitBulkClaim = useSubmitBulkClaim();
   const markDeliveredFast = useMarkDeliveredFast();
 
-  // Apply panel filters to orders
-  // Runner Inbox should ONLY show orders that:
-  // - Are READY status
-  // - Are assigned to this runner
-  // - Are pending delivery (NOT failed, NOT cancelled)
-  // Runner Inbox should ONLY show active orders (not delivered, not failed, not cancelled)
-  const filteredOrders = useMemo(() => {
-    if (!orders) return [];
-    
-    // Filter to only show active delivery orders
-    const activeOrders = orders.filter(order => {
-      const status = order.status as string;
-      const runnerStatus = order.runner_status as string;
-      
-      // Exclude cancelled orders
-      if (status === 'CANCELLED') return false;
-      
-      // Exclude failed delivery orders - they go to Failed Orders page
-      if (runnerStatus === 'FAILED_DELIVERY') return false;
-      
-      // Exclude delivered orders - they go to Delivered Orders page
-      if (runnerStatus === 'DELIVERED') return false;
-      
-      // Include only active orders (UNASSIGNED, ASSIGNED, TAKEN)
-      return true;
-    });
-    
-    return applyOrderFilters(activeOrders, panelFilters);
-  }, [orders, panelFilters]);
+  // Server-side paginated query - only active orders for this runner
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders({
+    runnerId: user?.id,
+    excludeDeliveredAndFailed: true,
+    searchQuery: serverSearch || undefined,
+  }, 50);
 
-  // Extract unique areas for filter dropdown
-  const areaOptions = useMemo(() => {
-    if (!orders) return [];
-    const uniqueAreas = [...new Set(orders.map(o => o.area).filter(Boolean))];
-    return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
-  }, [orders]);
+  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+
+  // Driver filter options
+  const driverOptions = useMemo(() => {
+    return myDrivers.map(d => ({
+      label: d.driver?.display_name || 'Unknown',
+      value: d.driver_id,
+    }));
+  }, [myDrivers]);
 
   // User filter options (salesperson + manager)
   const salespersonOptions = useMemo(() => {
@@ -125,14 +103,6 @@ export default function RunnerInbox() {
       value: u.id,
     }));
   }, [userDirectory]);
-
-  // Driver filter options
-  const driverOptions = useMemo(() => {
-    return myDrivers.map(d => ({
-      label: d.driver?.display_name || 'Unknown',
-      value: d.driver_id,
-    }));
-  }, [myDrivers]);
 
   // Handle driver assignment
   const handleAssignDriver = (orderId: string, driverId: string) => {
@@ -186,9 +156,7 @@ export default function RunnerInbox() {
       });
       return;
     }
-    // Runner uses simplified export format with one row per item
-    // Use filteredOrders to respect current filters/search
-    const success = exportSelectedRunnerOrderLines(filteredOrders || [], selectedRows, 'runner_delivery_list');
+    const success = exportSelectedRunnerOrderLines(orders || [], selectedRows, 'runner_delivery_list');
     if (success) {
       toast({ title: 'Export complete', description: `Exported ${selectedRows.length} order(s)` });
     }
@@ -212,6 +180,7 @@ export default function RunnerInbox() {
         after_json: { runner_status: 'TAKEN' },
       });
       
+      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast({ title: 'Job taken successfully' });
     } catch {
@@ -219,7 +188,6 @@ export default function RunnerInbox() {
     }
   };
 
-  // Use optimistic mutation for instant UI feedback
   const handleMarkDelivered = (order: Order) => {
     markDeliveredFast.mutate(order.id);
   };
@@ -258,13 +226,9 @@ export default function RunnerInbox() {
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs whitespace-nowrap">
-                {formatted}
-              </span>
+              <span className="text-xs whitespace-nowrap">{formatted}</span>
             </TooltipTrigger>
-            <TooltipContent>
-              Assigned: {formatted}
-            </TooltipContent>
+            <TooltipContent>Assigned: {formatted}</TooltipContent>
           </Tooltip>
         );
       },
@@ -313,8 +277,6 @@ export default function RunnerInbox() {
       key: 'area',
       header: 'Area',
       sortable: true,
-      filterable: true,
-      filterOptions: areaOptions,
       minWidth: '60px',
       maxWidth: '100px',
       preferredWidth: '5vw',
@@ -336,9 +298,7 @@ export default function RunnerInbox() {
       render: (order) => (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-xs truncate block cursor-help">
-              {order.address || '-'}
-            </span>
+            <span className="text-xs truncate block cursor-help">{order.address || '-'}</span>
           </TooltipTrigger>
           <TooltipContent className="max-w-[400px]">
             <p className="whitespace-pre-wrap">{order.address || 'No address'}</p>
@@ -568,22 +528,8 @@ export default function RunnerInbox() {
           </div>
         </div>
 
-        <OrderFiltersPanel
-          filters={panelFilters}
-          onFiltersChange={setPanelFilters}
-          areaOptions={areaOptions}
-          salespersonOptions={salespersonOptions}
-          driverOptions={driverOptions}
-          showSalespersonFilter={true}
-          showDriverFilter={true}
-          showOrderStatus={false}
-          showRunnerStatus={true}
-          showDriverStatus={true}
-          showReconciliationStatus={true}
-        />
-
         <DataGrid
-          data={filteredOrders}
+          data={orders}
           columns={columns}
           loading={isLoading}
           keyField="id"
@@ -591,6 +537,17 @@ export default function RunnerInbox() {
           selectedRows={selectedRows}
           onSelectionChange={setSelectedRows}
           onExport={handleExport}
+          onSearchChange={handleSearchChange}
+          serverPagination={{
+            enabled: true,
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            totalCount: pagination.totalCount,
+            totalPages: pagination.totalPages,
+            onPageChange: setPage,
+            onPageSizeChange: setPageSize,
+            isFetching,
+          }}
           bulkActions={
             selectedRows.length > 0 ? (
               <div className="flex gap-2">
