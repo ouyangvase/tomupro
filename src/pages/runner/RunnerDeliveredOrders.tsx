@@ -154,6 +154,8 @@ export default function RunnerDeliveredOrders() {
       runnerStatus: 'DELIVERED'; 
       searchQuery?: string;
       areaFilter?: string;
+      deliveredDateFrom?: string;
+      deliveredDateTo?: string;
     } = { 
       runnerStatus: 'DELIVERED' as const 
     };
@@ -166,6 +168,14 @@ export default function RunnerDeliveredOrders() {
     // Apply area filter server-side
     if (areaFilter !== 'all') {
       baseFilter.areaFilter = areaFilter;
+    }
+
+    // Apply date range filter server-side
+    if (dateRange.from) {
+      baseFilter.deliveredDateFrom = dateRange.from.toISOString();
+    }
+    if (dateRange.to) {
+      baseFilter.deliveredDateTo = dateRange.to.toISOString();
     }
     
     if (role === 'runner') {
@@ -192,7 +202,7 @@ export default function RunnerDeliveredOrders() {
       return { ...baseFilter, salespersonIds: salespersonFilters };
     }
     return baseFilter; // admin no filter - fetch all delivered
-  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter]);
+  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, dateRange]);
   
   const { data: orders, isLoading } = useOrders(ordersFilter as any);
   const { data: userDirectory = [] } = useUserDirectory();
