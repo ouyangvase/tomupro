@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Trophy, TrendingUp, TrendingDown, Minus, AlertTriangle, Sparkles, RefreshCw, Award, Crown, Timer, Medal, Flame } from "lucide-react";
+import { CapybaraState } from "@/components/dashboard/CapybaraState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVisibleRankings, useMyRanking, usePreviousPeriodRanking, useLeaderboardSettings, PeriodMode, LeaderboardRanking } from "@/hooks/useLeaderboard";
 import { formatBND } from "@/lib/currency";
