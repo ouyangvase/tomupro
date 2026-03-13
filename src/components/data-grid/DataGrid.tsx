@@ -111,7 +111,7 @@ function useResponsivePagination(totalItems: number, headerHeight = 200) {
   }, [dimensions.height, headerHeight, rowHeight]);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout>;
     const handleResize = () => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {

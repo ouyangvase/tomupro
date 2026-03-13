@@ -264,10 +264,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (loading) {
-        console.warn('[Auth] Loading timeout (10s) - forcing completion');
+        console.warn('[Auth] Loading timeout (5s) - forcing completion');
+        isFetchingRef.current = false;
         setLoading(false);
       }
-    }, 10000); // 10 second timeout
+    }, 5000); // 5 second timeout
     
     return () => clearTimeout(timeout);
   }, [loading]);

@@ -32,7 +32,7 @@ export const useLocationPermission = () => {
   });
 
   const watchIdRef = useRef<number | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPositionRef = useRef<GeolocationPosition | null>(null);
 
   // Check initial permission state

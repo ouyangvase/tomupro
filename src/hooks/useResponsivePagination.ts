@@ -41,7 +41,7 @@ export function useResponsivePagination({
 
   // Debounced resize handler
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
     const handleResize = () => {
       clearTimeout(timeoutId);
