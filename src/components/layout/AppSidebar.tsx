@@ -462,7 +462,7 @@ export function AppSidebar() {
             sectionHasActiveRoute ? "text-primary" : "text-muted-foreground/60"
           )} />
           <span className={cn(
-            "text-[11px] font-semibold uppercase tracking-widest flex-1 text-left transition-colors",
+            "text-xs font-semibold uppercase tracking-widest flex-1 text-left transition-colors",
             sectionHasActiveRoute ? "text-primary" : "text-muted-foreground/60"
           )}>
             {section.label}
