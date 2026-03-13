@@ -319,28 +319,28 @@ export default function SalespersonActionInbox() {
   return (
     <AppLayout>
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 md:h-8 md:w-8 text-orange-500" />
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold">Action Required</h1>
-              <p className="text-sm text-muted-foreground">Orders requiring your attention</p>
+        {/* Hero Header */}
+        <PageHero
+          icon={<Flame className="h-6 w-6 text-[hsl(var(--status-warning))]" />}
+          title="Action Required"
+          subtitle={`${actionRequiredOrders.length} orders requiring your attention`}
+          image={capybaraRunner}
+          imageAlt="Runner capybara"
+          actions={
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <TeamViewToggle
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                selectedMember={selectedMember}
+                onMemberChange={setSelectedMember}
+              />
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCw className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Refresh</span>
+              </Button>
             </div>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <TeamViewToggle
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              selectedMember={selectedMember}
-              onMemberChange={setSelectedMember}
-            />
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Refresh</span>
-            </Button>
-          </div>
-        </div>
+          }
+        />
 
         {/* Stats - responsive grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
