@@ -42,28 +42,20 @@ export default function BookingSales() {
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [rescheduleOrder, setRescheduleOrder] = useState<Order | null>(null);
   const [mobileSearch, setMobileSearch] = useState('');
+  const [serverSearch, setServerSearch] = useState('');
 
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
-  // Use team-aware orders hook
-  const { data: orders = [], isLoading } = useTeamOrders({ 
+  // Use paginated orders hook
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
     status: 'BOOKING',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
-  });
+    searchQuery: serverSearch || undefined,
+  }, 50);
 
-  // Apply mobile search filter
-  const filteredOrders = useMemo(() => {
-    if (!mobileSearch.trim()) return orders;
-    const query = mobileSearch.toLowerCase();
-    return orders.filter(order =>
-      order.order_code?.toLowerCase().includes(query) ||
-      order.customer_name?.toLowerCase().includes(query) ||
-      order.phone?.toLowerCase().includes(query) ||
-      order.area?.toLowerCase().includes(query)
-    );
-  }, [orders, mobileSearch]);
+  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
   
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
