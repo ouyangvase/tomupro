@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { startOfMonth, subDays, format } from 'date-fns';
 
-export type RankingPeriod = 'last7' | 'mtd';
+export type RankingPeriod = 'monthly' | 'quarterly' | 'yearly';
 export type RankingMetric = 'leadership_score' | 'team_gmv' | 'team_delivered';
 
 export interface ManagerRankingParticipant {
