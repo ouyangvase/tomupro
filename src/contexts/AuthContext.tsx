@@ -60,6 +60,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   // Ref to track current profile user ID (avoids closure issues and infinite loops)
   const profileUserIdRef = useRef<string | null>(null);
+  // Guard against duplicate concurrent profile fetches
+  const isFetchingRef = useRef<boolean>(false);
   
   // Update the ref whenever profile changes
   useEffect(() => {
