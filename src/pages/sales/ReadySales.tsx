@@ -442,36 +442,37 @@ export default function ReadySales() {
   return (
     <AppLayout>
       <div className="space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Ready Sales</h1>
-            <p className="text-muted-foreground">
-              Orders ready for delivery • {unassignedCount} awaiting runner assignment
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <TeamViewToggle
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              selectedMember={selectedMember}
-              onMemberChange={setSelectedMember}
-            />
-            {isEditable && (
-              <div className="flex gap-2">
-                <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  {isMobile ? 'New' : 'New Order'}
-                </Button>
-                {isMobile && (
-                  <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm">
-                    <Upload className="h-4 w-4 mr-2" />
-                    Import
+        <PageHero
+          icon={<ShoppingCart className="h-6 w-6 text-primary" />}
+          title="Ready Sales"
+          subtitle={`${orders.length} orders ready for delivery • ${unassignedCount} awaiting runner assignment`}
+          image={capybaraSales}
+          imageAlt="Sales capybara"
+          actions={
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <TeamViewToggle
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                selectedMember={selectedMember}
+                onMemberChange={setSelectedMember}
+              />
+              {isEditable && (
+                <div className="flex gap-2">
+                  <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    {isMobile ? 'New' : 'New Order'}
                   </Button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+                  {isMobile && (
+                    <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm">
+                      <Upload className="h-4 w-4 mr-2" />
+                      Import
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          }
+        />
 
         <OrderFiltersPanel
           filters={panelFilters}
