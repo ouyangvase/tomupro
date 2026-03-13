@@ -409,12 +409,9 @@ function TimeFilterControls({ periodMode, setPeriodMode, selectedMonth, setSelec
       <div className="flex flex-wrap items-center justify-center gap-2">
         <div className="flex rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1 shadow-sm">
           {([
-            { value: 'today', label: 'Today' },
-            { value: 'week', label: 'Week' },
             { value: 'month', label: 'Monthly' },
             { value: 'quarter', label: 'Quarterly' },
             { value: 'year', label: 'Yearly' },
-            { value: 'lifetime', label: 'All Time' },
           ] as const).map(tab => (
             <Button key={tab.value} variant={periodMode === tab.value ? 'default' : 'ghost'} size="sm"
               onClick={() => setPeriodMode(tab.value)}

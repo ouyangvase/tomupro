@@ -121,14 +121,16 @@ export default function ManagerRankingBoard() {
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex rounded-full border border-border/50 bg-card/80 backdrop-blur-sm p-1 shadow-sm">
-                <Button variant={period === 'last7' ? 'default' : 'ghost'} size="sm" onClick={() => setPeriod('last7')}
-                  className={cn("rounded-full text-xs px-4 transition-all", period === 'last7' && "bg-primary text-primary-foreground shadow-md")}>
-                  Last 7 Days
-                </Button>
-                <Button variant={period === 'mtd' ? 'default' : 'ghost'} size="sm" onClick={() => setPeriod('mtd')}
-                  className={cn("rounded-full text-xs px-4 transition-all", period === 'mtd' && "bg-primary text-primary-foreground shadow-md")}>
-                  MTD
-                </Button>
+                {([
+                  { value: 'monthly' as const, label: 'Monthly' },
+                  { value: 'quarterly' as const, label: 'Quarterly' },
+                  { value: 'yearly' as const, label: 'Yearly' },
+                ]).map(tab => (
+                  <Button key={tab.value} variant={period === tab.value ? 'default' : 'ghost'} size="sm" onClick={() => setPeriod(tab.value)}
+                    className={cn("rounded-full text-xs px-4 transition-all", period === tab.value && "bg-primary text-primary-foreground shadow-md")}>
+                    {tab.label}
+                  </Button>
+                ))}
               </div>
               {isAdmin && (
                 <Sheet open={participantsOpen} onOpenChange={setParticipantsOpen}>
