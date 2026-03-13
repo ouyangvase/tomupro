@@ -97,12 +97,12 @@ export default function CancelledSales() {
 
   // Get unique values for filter dropdowns
   const uniqueReasons = useMemo(() => 
-    [...new Set(allOrders.map(o => o.cancel_reason).filter(Boolean))],
+    [...new Set(allOrders.map(o => o.cancel_reason).filter(Boolean))] as string[],
     [allOrders]
   );
   
   const uniqueAreas = useMemo(() => 
-    [...new Set(allOrders.map(o => o.area).filter(Boolean))].sort(),
+    ([...new Set(allOrders.map(o => o.area).filter(Boolean))] as string[]).sort(),
     [allOrders]
   );
   
