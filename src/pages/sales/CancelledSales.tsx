@@ -54,12 +54,16 @@ export default function CancelledSales() {
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('my');
 
-  // Use team-aware orders hook
-  const { data: allOrders = [], isLoading } = useTeamOrders({ 
+  const [serverSearch, setServerSearch] = useState('');
+  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+
+  // Use paginated orders hook
+  const { data: allOrders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
     status: 'CANCELLED',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
-  });
+    searchQuery: serverSearch || undefined,
+  }, 50);
   
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: cancelReasons = [] } = useReasons('CANCEL', false);
