@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useBulkUpdateOrders } from '@/hooks/useOrders';
-import { useTeamOrders } from '@/hooks/useTeamOrders';
+import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useReasons } from '@/hooks/useReasons';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
@@ -54,12 +54,16 @@ export default function CancelledSales() {
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('my');
 
-  // Use team-aware orders hook
-  const { data: allOrders = [], isLoading } = useTeamOrders({ 
+  const [serverSearch, setServerSearch] = useState('');
+  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+
+  // Use paginated orders hook
+  const { data: allOrders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
     status: 'CANCELLED',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
-  });
+    searchQuery: serverSearch || undefined,
+  }, 50);
   
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: cancelReasons = [] } = useReasons('CANCEL', false);
@@ -93,12 +97,12 @@ export default function CancelledSales() {
 
   // Get unique values for filter dropdowns
   const uniqueReasons = useMemo(() => 
-    [...new Set(allOrders.map(o => o.cancel_reason).filter(Boolean))],
+    [...new Set(allOrders.map(o => o.cancel_reason).filter(Boolean))] as string[],
     [allOrders]
   );
   
   const uniqueAreas = useMemo(() => 
-    [...new Set(allOrders.map(o => o.area).filter(Boolean))].sort(),
+    ([...new Set(allOrders.map(o => o.area).filter(Boolean))] as string[]).sort(),
     [allOrders]
   );
   
@@ -450,6 +454,17 @@ export default function CancelledSales() {
           loading={isLoading}
           emptyMessage="No cancelled orders"
           onExport={handleExport}
+          onSearchChange={handleSearchChange}
+          serverPagination={{
+            enabled: true,
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            totalCount: pagination.totalCount,
+            totalPages: pagination.totalPages,
+            onPageChange: setPage,
+            onPageSizeChange: setPageSize,
+            isFetching,
+          }}
           bulkActions={
             isEditable && selectedRows.length > 0 ? (
               <Button size="sm" onClick={() => setRestoreDialogOpen(true)}>

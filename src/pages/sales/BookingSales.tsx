@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
-import { useTeamOrders } from '@/hooks/useTeamOrders';
+import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -42,28 +42,20 @@ export default function BookingSales() {
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [rescheduleOrder, setRescheduleOrder] = useState<Order | null>(null);
   const [mobileSearch, setMobileSearch] = useState('');
+  const [serverSearch, setServerSearch] = useState('');
 
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
-  // Use team-aware orders hook
-  const { data: orders = [], isLoading } = useTeamOrders({ 
+  // Use paginated orders hook
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
     status: 'BOOKING',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
-  });
+    searchQuery: serverSearch || undefined,
+  }, 50);
 
-  // Apply mobile search filter
-  const filteredOrders = useMemo(() => {
-    if (!mobileSearch.trim()) return orders;
-    const query = mobileSearch.toLowerCase();
-    return orders.filter(order =>
-      order.order_code?.toLowerCase().includes(query) ||
-      order.customer_name?.toLowerCase().includes(query) ||
-      order.phone?.toLowerCase().includes(query) ||
-      order.area?.toLowerCase().includes(query)
-    );
-  }, [orders, mobileSearch]);
+  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
   
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
@@ -91,7 +83,7 @@ export default function BookingSales() {
       sortable: true,
       editable: isEditable,
       filterable: true, 
-      filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a!, value: a! })) 
+      filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a as string, value: a as string })) 
     },
     { 
       key: 'address', 
@@ -282,11 +274,11 @@ export default function BookingSales() {
     }
   };
 
-  const isAllSelected = filteredOrders.length > 0 && selectedRows.length === filteredOrders.length;
+  const isAllSelected = orders.length > 0 && selectedRows.length === orders.length;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedRows(filteredOrders.map(o => o.id));
+      setSelectedRows(orders.map(o => o.id));
     } else {
       setSelectedRows([]);
     }
@@ -303,7 +295,7 @@ export default function BookingSales() {
               <ShoppingBag className="h-5 w-5 text-primary" />
               <div>
                 <h1 className="text-xl font-bold">Booking Sales</h1>
-                <p className="text-xs text-muted-foreground">{filteredOrders.length} orders</p>
+                <p className="text-xs text-muted-foreground">{orders.length} orders</p>
               </div>
             </div>
             {isEditable && (
@@ -332,12 +324,12 @@ export default function BookingSales() {
           </div>
 
           {/* Select all */}
-          {isEditable && filteredOrders.length > 0 && (
+          {isEditable && orders.length > 0 && (
             <MobileSelectAllCard
               isAllSelected={isAllSelected}
               onSelectAll={handleSelectAll}
               selectedCount={selectedRows.length}
-              totalCount={filteredOrders.length}
+              totalCount={orders.length}
             />
           )}
 
@@ -347,13 +339,13 @@ export default function BookingSales() {
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               <span className="text-muted-foreground">Loading...</span>
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : orders.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               {mobileSearch ? "No orders match your search" : "No booking orders"}
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredOrders.map((order) => {
+              {orders.map((order) => {
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
                 return (
                   <MobileOrderCard
@@ -472,6 +464,17 @@ export default function BookingSales() {
           emptyMessage="No booking orders"
           onExport={handleExport}
           onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
+          onSearchChange={handleSearchChange}
+          serverPagination={{
+            enabled: true,
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            totalCount: pagination.totalCount,
+            totalPages: pagination.totalPages,
+            onPageChange: setPage,
+            onPageSizeChange: setPageSize,
+            isFetching,
+          }}
           bulkActions={
             isEditable && selectedRows.length > 0 ? (
               (() => {

@@ -1,11 +1,6 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -13,40 +8,23 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { 
-  Search, 
-  ArrowUpDown, 
-  ArrowUp, 
-  ArrowDown,
-  Download,
-  Upload,
-  Filter,
-  X,
-  ChevronDown,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight
+import {
+  Search, ArrowUpDown, ArrowUp, ArrowDown,
+  Download, Upload, Filter, X,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
+  ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
+  Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -54,7 +32,6 @@ export interface Column<T> {
   key: string;
   header: string;
   width?: string;
-  // Responsive width configuration
   minWidth?: string;
   maxWidth?: string;
   preferredWidth?: string;
@@ -65,8 +42,20 @@ export interface Column<T> {
   editable?: boolean;
   editType?: 'text' | 'number' | 'select';
   editOptions?: { label: string; value: string }[];
-  // Mobile priority: 'primary' (always visible), 'secondary' (visible in collapsed), 'expanded' (only in expanded view)
   mobilePriority?: 'primary' | 'secondary' | 'expanded';
+}
+
+// Server-side pagination props
+export interface ServerPaginationProps {
+  enabled: true;
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  pageSizeOptions?: number[];
+  isFetching?: boolean;
 }
 
 interface DataGridProps<T extends object> {
@@ -83,26 +72,30 @@ interface DataGridProps<T extends object> {
   bulkActions?: React.ReactNode;
   onExport?: () => void;
   onImport?: () => void;
-  // Pagination options
   enablePagination?: boolean;
   headerHeight?: number;
+  // Server-side pagination
+  serverPagination?: ServerPaginationProps;
+  // Server-side search callback (debounced)
+  onSearchChange?: (query: string) => void;
+  // Server-side sort callback
+  onSortChange?: (field: string | null, direction: 'asc' | 'desc' | null) => void;
+  searchDebounceMs?: number;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
-// Hook for responsive pagination
-function useResponsivePagination(totalItems: number, headerHeight = 200) {
+// Local pagination hook (client-side fallback)
+function useLocalPagination(totalItems: number, headerHeight = 200) {
   const [currentPage, setCurrentPage] = useState(1);
   const [dimensions, setDimensions] = useState({ width: 1920, height: 900 });
 
-  // Calculate row height based on screen width
   const rowHeight = useMemo(() => {
     if (dimensions.width >= 1600) return 56;
     if (dimensions.width < 1280) return 44;
     return 52;
   }, [dimensions.width]);
 
-  // Calculate page size based on available height
   const pageSize = useMemo(() => {
     const footerHeight = 60;
     const availableHeight = dimensions.height - headerHeight - footerHeight;
@@ -118,17 +111,13 @@ function useResponsivePagination(totalItems: number, headerHeight = 200) {
         setDimensions({ width: window.innerWidth, height: window.innerHeight });
       }, 150);
     };
-
     setDimensions({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      clearTimeout(timeoutId);
-    };
+    return () => { window.removeEventListener('resize', handleResize); clearTimeout(timeoutId); };
   }, []);
 
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  
+
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(1);
   }, [currentPage, totalPages]);
@@ -142,6 +131,16 @@ function useResponsivePagination(totalItems: number, headerHeight = 200) {
   );
 
   return { pageSize, currentPage, setCurrentPage, totalPages, paginatedData, rowHeight };
+}
+
+// Debounce hook
+function useDebounce(value: string, delay: number): string {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
 }
 
 export function DataGrid<T extends object>({
@@ -160,6 +159,10 @@ export function DataGrid<T extends object>({
   onImport,
   enablePagination = true,
   headerHeight = 200,
+  serverPagination,
+  onSearchChange,
+  onSortChange,
+  searchDebounceMs = 400,
 }: DataGridProps<T>) {
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState('');
@@ -170,7 +173,22 @@ export function DataGrid<T extends object>({
   const [editValue, setEditValue] = useState<string>('');
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
+  const isServerMode = !!serverPagination?.enabled;
+  const debouncedSearch = useDebounce(searchQuery, searchDebounceMs);
+
+  // Emit debounced search to parent for server-side filtering
+  const prevDebouncedSearch = useRef(debouncedSearch);
+  useEffect(() => {
+    if (isServerMode && onSearchChange && prevDebouncedSearch.current !== debouncedSearch) {
+      prevDebouncedSearch.current = debouncedSearch;
+      onSearchChange(debouncedSearch);
+    }
+  }, [debouncedSearch, isServerMode, onSearchChange]);
+
+  // Client-side filtering (only when not in server mode)
   const filteredData = useMemo(() => {
+    if (isServerMode) return data; // Server handles filtering
+
     let result = [...data];
 
     if (searchQuery) {
@@ -196,42 +214,54 @@ export function DataGrid<T extends object>({
       result.sort((a, b) => {
         const aVal = (a as any)[sortField];
         const bVal = (b as any)[sortField];
-        
         if (aVal === null || aVal === undefined) return 1;
         if (bVal === null || bVal === undefined) return -1;
-        
         let comparison = 0;
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          comparison = aVal.localeCompare(bVal);
-        } else if (typeof aVal === 'number' && typeof bVal === 'number') {
-          comparison = aVal - bVal;
-        } else {
-          comparison = String(aVal).localeCompare(String(bVal));
-        }
-        
+        if (typeof aVal === 'string' && typeof bVal === 'string') comparison = aVal.localeCompare(bVal);
+        else if (typeof aVal === 'number' && typeof bVal === 'number') comparison = aVal - bVal;
+        else comparison = String(aVal).localeCompare(String(bVal));
         return sortDirection === 'asc' ? comparison : -comparison;
       });
     }
 
     return result;
-  }, [data, searchQuery, sortField, sortDirection, columnFilters, columns]);
+  }, [data, searchQuery, sortField, sortDirection, columnFilters, columns, isServerMode]);
 
-  // Use responsive pagination
-  const { pageSize, currentPage, setCurrentPage, totalPages, paginatedData, rowHeight } = 
-    useResponsivePagination(filteredData.length, headerHeight);
+  // Client-side pagination (fallback)
+  const localPagination = useLocalPagination(filteredData.length, headerHeight);
 
+  // Determine display data
   const displayData = useMemo(() => {
+    if (isServerMode) return data; // Already paginated from server
     if (!enablePagination || isMobile) return filteredData;
-    return paginatedData(filteredData);
-  }, [enablePagination, isMobile, filteredData, paginatedData]);
+    return localPagination.paginatedData(filteredData);
+  }, [isServerMode, enablePagination, isMobile, filteredData, localPagination.paginatedData, data]);
+
+  // Pagination values (unified)
+  const currentPage = isServerMode ? serverPagination.page : localPagination.currentPage;
+  const currentPageSize = isServerMode ? serverPagination.pageSize : localPagination.pageSize;
+  const totalPages = isServerMode ? serverPagination.totalPages : localPagination.totalPages;
+  const totalCount = isServerMode ? serverPagination.totalCount : filteredData.length;
+  const setCurrentPage = isServerMode ? serverPagination.onPageChange : localPagination.setCurrentPage;
+  const rowHeight = localPagination.rowHeight;
 
   const handleSort = (field: string) => {
+    let newField: string | null;
+    let newDirection: SortDirection;
+
     if (sortField === field) {
-      if (sortDirection === 'asc') setSortDirection('desc');
-      else if (sortDirection === 'desc') { setSortField(null); setSortDirection(null); }
+      if (sortDirection === 'asc') { newField = field; newDirection = 'desc'; }
+      else { newField = null; newDirection = null; }
     } else {
-      setSortField(field);
-      setSortDirection('asc');
+      newField = field;
+      newDirection = 'asc';
+    }
+
+    setSortField(newField);
+    setSortDirection(newDirection);
+
+    if (isServerMode && onSortChange) {
+      onSortChange(newField, newDirection);
     }
   };
 
@@ -272,7 +302,7 @@ export function DataGrid<T extends object>({
     else if (e.key === 'Escape') { setEditingCell(null); setEditValue(''); }
   };
 
-  const isAllSelected = displayData.length > 0 && 
+  const isAllSelected = displayData.length > 0 &&
     displayData.every((item) => selectedRows.includes(String(item[keyField])));
 
   const getSortIcon = (field: string) => {
@@ -292,14 +322,11 @@ export function DataGrid<T extends object>({
     });
   };
 
-  // Mobile column organization
   const primaryColumns = columns.filter(c => !c.mobilePriority || c.mobilePriority === 'primary');
   const secondaryColumns = columns.filter(c => c.mobilePriority === 'secondary');
-  const expandedMobileColumns = columns.filter(c => c.mobilePriority === 'expanded');
   const mobileVisibleColumns = [...primaryColumns, ...secondaryColumns].slice(0, 6);
   const mobileExpandedColumns = columns.filter(c => !mobileVisibleColumns.includes(c));
 
-  // Build responsive column width style
   const getColumnStyle = (col: Column<T>) => {
     if (col.width) return { width: col.width, minWidth: col.width, maxWidth: col.width };
     const min = col.minWidth || '80px';
@@ -308,7 +335,6 @@ export function DataGrid<T extends object>({
     return { width: `clamp(${min}, ${preferred}, ${max})`, minWidth: min, maxWidth: max };
   };
 
-  // Filter content
   const filterContent = (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -342,6 +368,32 @@ export function DataGrid<T extends object>({
     </div>
   );
 
+  // Loading indicator (subtle, for server fetches)
+  const showFetchingIndicator = isServerMode && serverPagination.isFetching && !loading;
+
+  // Skeleton rows for loading state
+  const skeletonRows = Array.from({ length: Math.min(currentPageSize, 8) }, (_, i) => i);
+
+  // Pagination range display
+  const rangeStart = totalCount === 0 ? 0 : (currentPage - 1) * currentPageSize + 1;
+  const rangeEnd = Math.min(currentPage * currentPageSize, totalCount);
+
+  // Page number buttons (show up to 5)
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(totalPages, start + maxVisible - 1);
+    start = Math.max(1, end - maxVisible + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    return pages;
+  }, [currentPage, totalPages]);
+
+  // Page size options
+  const pageSizeOptions = isServerMode
+    ? (serverPagination.pageSizeOptions || [20, 50, 100])
+    : [20, 50, 100];
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -354,6 +406,11 @@ export function DataGrid<T extends object>({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 h-10"
           />
+          {showFetchingIndicator && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -413,19 +470,16 @@ export function DataGrid<T extends object>({
             <span className="text-sm font-medium text-primary">
               {selectedRows.length > 0 ? `${selectedRows.length} selected` : 'No selection'}
             </span>
-            
-            {/* Select All button - selects ALL filtered data, not just current page */}
-            {selectedRows.length < filteredData.length && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => onSelectionChange?.(filteredData.map((item) => String(item[keyField])))}
+            {selectedRows.length < (isServerMode ? displayData.length : filteredData.length) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSelectionChange?.((isServerMode ? displayData : filteredData).map((item) => String(item[keyField])))}
                 className="text-primary border-primary/30 hover:bg-primary/10"
               >
-                Select All ({filteredData.length})
+                Select All ({isServerMode ? displayData.length : filteredData.length})
               </Button>
             )}
-            
             {selectedRows.length > 0 && (
               <>
                 <div className="flex items-center gap-2 flex-wrap">{bulkActions}</div>
@@ -450,9 +504,17 @@ export function DataGrid<T extends object>({
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center gap-3 py-12">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <span className="text-muted-foreground">Loading...</span>
+            <div className="space-y-3">
+              {skeletonRows.map(i => (
+                <Card key={i} className="p-4 space-y-3">
+                  <div className="flex gap-3">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-32" />
+                  </div>
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-4 w-20" />
+                </Card>
+              ))}
             </div>
           ) : displayData.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">{emptyMessage}</div>
@@ -510,6 +572,24 @@ export function DataGrid<T extends object>({
               );
             })
           )}
+
+          {/* Mobile pagination */}
+          {(enablePagination || isServerMode) && totalPages > 1 && (
+            <div className="flex items-center justify-between px-2 pt-2 text-sm">
+              <span className="text-muted-foreground text-xs">
+                {rangeStart}–{rangeEnd} of {totalCount}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(currentPage - 1)} disabled={currentPage === 1} className="h-8 w-8 p-0">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="px-2 text-xs">{currentPage}/{totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(currentPage + 1)} disabled={currentPage === totalPages} className="h-8 w-8 p-0">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         // Desktop Fixed Table View
@@ -541,14 +621,17 @@ export function DataGrid<T extends object>({
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={columns.length + (selectable ? 1 : 0)} className="h-32 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                          <span className="text-muted-foreground">Loading...</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                    // Skeleton loading rows
+                    skeletonRows.map(i => (
+                      <TableRow key={`skeleton-${i}`} style={{ height: `${rowHeight}px` }}>
+                        {selectable && <TableCell className="px-2"><Skeleton className="h-4 w-4" /></TableCell>}
+                        {columns.map((col) => (
+                          <TableCell key={col.key} style={getColumnStyle(col)} className="px-2 py-1.5">
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
                   ) : displayData.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={columns.length + (selectable ? 1 : 0)} className="h-32 text-center text-muted-foreground">
@@ -564,7 +647,12 @@ export function DataGrid<T extends object>({
                         <TableRow
                           key={id}
                           style={{ height: `${rowHeight}px` }}
-                          className={cn('transition-colors', isSelected && 'bg-primary/5', onRowClick && 'cursor-pointer hover:bg-muted/50')}
+                          className={cn(
+                            'transition-colors',
+                            isSelected && 'bg-primary/5',
+                            onRowClick && 'cursor-pointer hover:bg-muted/50',
+                            showFetchingIndicator && 'opacity-60'
+                          )}
                           onClick={() => onRowClick?.(item)}
                         >
                           {selectable && (
@@ -619,28 +707,84 @@ export function DataGrid<T extends object>({
             </div>
           </div>
 
-          {/* Pagination */}
-          {enablePagination && totalPages > 1 && (
+          {/* Enhanced Pagination Footer */}
+          {(enablePagination || isServerMode) && (
             <div className="flex items-center justify-between px-2 text-sm">
-              <span className="text-muted-foreground">
-                Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, filteredData.length)} of {filteredData.length}
-              </span>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(currentPage - 1)} disabled={currentPage === 1}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="px-3">Page {currentPage} of {totalPages}</span>
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(currentPage + 1)} disabled={currentPage === totalPages}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+              {/* Left: Results count */}
+              <div className="flex items-center gap-4">
+                <span className="text-muted-foreground">
+                  {totalCount === 0
+                    ? 'No results'
+                    : `${rangeStart}–${rangeEnd} of ${totalCount.toLocaleString()}`
+                  }
+                </span>
+
+                {/* Page size selector */}
+                {(isServerMode || totalCount > 20) && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-xs">Rows:</span>
+                    <Select
+                      value={String(currentPageSize)}
+                      onValueChange={(v) => {
+                        const size = Number(v);
+                        if (isServerMode) {
+                          serverPagination.onPageSizeChange(size);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[70px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pageSizeOptions.map(size => (
+                          <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
+
+              {/* Right: Page navigation */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  {/* First */}
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="h-8 w-8 p-0" title="First page">
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  {/* Previous */}
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(currentPage - 1)} disabled={currentPage === 1} className="h-8 w-8 p-0" title="Previous page">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {/* Page numbers */}
+                  {pageNumbers.map(p => (
+                    <Button
+                      key={p}
+                      variant={p === currentPage ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(p)}
+                      className={cn("h-8 w-8 p-0 text-xs", p === currentPage && "pointer-events-none")}
+                    >
+                      {p}
+                    </Button>
+                  ))}
+                  {/* Next */}
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(currentPage + 1)} disabled={currentPage === totalPages} className="h-8 w-8 p-0" title="Next page">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  {/* Last */}
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="h-8 w-8 p-0" title="Last page">
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Footer for mobile */}
-      {isMobile && (
+      {/* Mobile footer info */}
+      {isMobile && !isServerMode && (
         <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
           <span>Showing {displayData.length} of {data.length} rows</span>
         </div>

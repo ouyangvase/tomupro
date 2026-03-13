@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
-import { useTeamOrders } from '@/hooks/useTeamOrders';
+import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useBindings } from '@/hooks/useBindings';
 import { useManagerRunnerBindings } from '@/hooks/useManagerRunnerBindings';
@@ -67,6 +67,7 @@ export default function ReadySales() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   const [mobileSearch, setMobileSearch] = useState('');
+  const [serverSearch, setServerSearch] = useState('');
   
   // For manager assign dialog: manually selected salesperson
   const [managerSelectedSalesperson, setManagerSelectedSalesperson] = useState<string>('');
@@ -74,32 +75,21 @@ export default function ReadySales() {
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
-  // Use team-aware orders hook
-  const { data: orders = [], isLoading } = useTeamOrders({ 
+  // Use paginated orders hook
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
     status: 'READY',
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
-  });
+    searchQuery: serverSearch || undefined,
+  }, 50);
 
-  // Apply panel filters and mobile search to orders
+  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+
+  // For client-side panel filters that still apply
   const filteredOrders = useMemo(() => {
     let result = applyOrderFilters(orders, panelFilters);
-    
-    // Apply mobile search filter
-    if (mobileSearch.trim()) {
-      const searchLower = mobileSearch.toLowerCase().trim();
-      result = result.filter(order => 
-        order.order_code?.toLowerCase().includes(searchLower) ||
-        order.customer_name?.toLowerCase().includes(searchLower) ||
-        order.phone?.toLowerCase().includes(searchLower) ||
-        order.address?.toLowerCase().includes(searchLower) ||
-        order.area?.toLowerCase().includes(searchLower) ||
-        order.runner?.display_name?.toLowerCase().includes(searchLower)
-      );
-    }
-    
     return result;
-  }, [orders, panelFilters, mobileSearch]);
+  }, [orders, panelFilters]);
 
   // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {
@@ -597,6 +587,17 @@ export default function ReadySales() {
             emptyMessage="No ready orders"
             onExport={handleExport}
             onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
+            onSearchChange={handleSearchChange}
+            serverPagination={{
+              enabled: true,
+              page: pagination.page,
+              pageSize: pagination.pageSize,
+              totalCount: pagination.totalCount,
+              totalPages: pagination.totalPages,
+              onPageChange: setPage,
+              onPageSizeChange: setPageSize,
+              isFetching,
+            }}
             bulkActions={
               isEditable && selectedRows.length > 0 ? (
                 (() => {
