@@ -420,8 +420,8 @@ export function AppSidebar() {
             className={cn(
               "absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md transition-all duration-150",
               isFav
-                ? "text-amber-400 opacity-100"
-                : "text-muted-foreground/30 opacity-0 group-hover/item:opacity-100 hover:text-amber-400"
+                ? "text-[hsl(var(--status-pending))] opacity-100"
+                : "text-muted-foreground/30 opacity-0 group-hover/item:opacity-100 hover:text-[hsl(var(--status-pending))]"
             )}
             title={isFav ? "Remove from favorites" : "Add to favorites"}
           >
