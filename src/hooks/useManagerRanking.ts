@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { startOfMonth, subDays, format } from 'date-fns';
 
-export type RankingPeriod = 'last7' | 'mtd';
+export type RankingPeriod = 'monthly' | 'quarterly' | 'yearly';
 export type RankingMetric = 'leadership_score' | 'team_gmv' | 'team_delivered';
 
 export interface ManagerRankingParticipant {
@@ -202,7 +202,7 @@ export function useBulkUpdateManagerRankingParticipants() {
 }
 
 // Hook to fetch ranking data with KPIs
-export function useManagerRankingData(period: RankingPeriod = 'last7', metric: RankingMetric = 'leadership_score') {
+export function useManagerRankingData(period: RankingPeriod = 'monthly', metric: RankingMetric = 'leadership_score') {
   return useQuery({
     queryKey: ['manager-ranking-data', period, metric],
     queryFn: async () => {
@@ -233,11 +233,17 @@ export function useManagerRankingData(period: RankingPeriod = 'last7', metric: R
       let prevStartDate: Date;
       let prevEndDate: Date;
 
-      if (period === 'last7') {
-        startDate = subDays(now, 7);
-        prevStartDate = subDays(now, 14);
-        prevEndDate = subDays(now, 7);
+      if (period === 'quarterly') {
+        const quarterStart = Math.floor(now.getMonth() / 3) * 3;
+        startDate = new Date(now.getFullYear(), quarterStart, 1);
+        prevStartDate = new Date(now.getFullYear(), quarterStart - 3, 1);
+        prevEndDate = new Date(now.getFullYear(), quarterStart, 0);
+      } else if (period === 'yearly') {
+        startDate = new Date(now.getFullYear(), 0, 1);
+        prevStartDate = new Date(now.getFullYear() - 1, 0, 1);
+        prevEndDate = new Date(now.getFullYear() - 1, 11, 31);
       } else {
+        // monthly (default)
         startDate = startOfMonth(now);
         const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         prevStartDate = prevMonth;
