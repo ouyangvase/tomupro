@@ -2,13 +2,9 @@ import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  useManagerRankingData,
-  useAllManagersForRanking,
-  useToggleManagerRankingParticipant,
-  useBulkUpdateManagerRankingParticipants,
-  type RankingPeriod,
-  type RankingMetric,
-  type ManagerRankingData
+  useManagerRankingData, useAllManagersForRanking,
+  useToggleManagerRankingParticipant, useBulkUpdateManagerRankingParticipants,
+  type RankingPeriod, type RankingMetric, type ManagerRankingData
 } from '@/hooks/useManagerRanking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,7 +24,7 @@ import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { CapybaraState } from '@/components/dashboard/CapybaraState';
 import {
   Trophy, TrendingUp, TrendingDown, Users, Crown, Medal, Settings, Search,
-  Award, Target, Zap, User, Sparkles, ChevronRight, Star, Flame, BarChart3
+  Award, Target, Zap, User, Sparkles, ChevronRight, Star, Flame, BarChart3, GitCompare
 } from 'lucide-react';
 import { formatBND } from '@/lib/currency';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -51,6 +47,7 @@ export default function ManagerRankingBoard() {
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState<'enable' | 'disable' | null>(null);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
 
   const { data: rankingData, isLoading } = useManagerRankingData(period, metric);
   const { data: allManagers, isLoading: loadingManagers } = useAllManagersForRanking();
@@ -78,6 +75,10 @@ export default function ManagerRankingBoard() {
     } catch { toast.error('Failed to update participants'); }
   };
 
+  const toggleCompare = (id: string) => {
+    setCompareIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 3 ? [...prev, id] : prev);
+  };
+
   const topThree = rankingData?.slice(0, 3) || [];
   const restOfList = rankingData?.slice(3) || [];
   const podiumOrder = topThree.length >= 3
@@ -100,11 +101,12 @@ export default function ManagerRankingBoard() {
     }
   };
 
-  // Summary insight cards
   const totalGmv = rankingData?.reduce((s, m) => s + m.team_realized_gmv, 0) || 0;
   const totalDelivered = rankingData?.reduce((s, m) => s + m.team_delivered_orders, 0) || 0;
   const avgGrowth = rankingData && rankingData.length > 0
     ? rankingData.reduce((s, m) => s + m.growth_pct, 0) / rankingData.length : 0;
+
+  const comparedManagers = (rankingData || []).filter(m => compareIds.includes(m.manager_id));
 
   return (
     <AppLayout>
@@ -191,17 +193,17 @@ export default function ManagerRankingBoard() {
         {rankingData && rankingData.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { label: "Managers", value: rankingData.length, icon: <Users className="h-4 w-4" /> },
-              { label: "Total GMV", value: formatBND(totalGmv), icon: <Flame className="h-4 w-4" /> },
-              { label: "Total Delivered", value: totalDelivered, icon: <Target className="h-4 w-4" /> },
-              { label: "Avg Growth", value: `${avgGrowth >= 0 ? '+' : ''}${avgGrowth.toFixed(1)}%`, icon: <TrendingUp className="h-4 w-4" /> },
+              { label: "Managers", value: rankingData.length, icon: <Users className="h-4 w-4" />, isNum: true },
+              { label: "Total GMV", value: formatBND(totalGmv), icon: <Flame className="h-4 w-4" />, isNum: false },
+              { label: "Total Delivered", value: totalDelivered, icon: <Target className="h-4 w-4" />, isNum: true },
+              { label: "Avg Growth", value: `${avgGrowth >= 0 ? '+' : ''}${avgGrowth.toFixed(1)}%`, icon: <TrendingUp className="h-4 w-4" />, isNum: false },
             ].map(item => (
-              <Card key={item.label} className="border-border/50">
+              <Card key={item.label} className="border-border/50 hover:shadow-md transition-shadow">
                 <CardContent className="p-4 flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-primary/10 text-primary">{item.icon}</div>
                   <div>
-                    <p className="text-xs text-muted-foreground">{item.label}</p>
-                    <p className="font-bold text-lg">{typeof item.value === 'number' ? <AnimatedCounter value={item.value} /> : item.value}</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{item.label}</p>
+                    <p className="font-bold text-lg">{item.isNum ? <AnimatedCounter value={item.value as number} /> : item.value}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -238,23 +240,92 @@ export default function ManagerRankingBoard() {
                 <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
                   <Medal className="h-4 w-4 text-primary" /> Current Awards
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <AwardBadge title="Top Performer" manager={topThree[0]} icon={<Crown className="h-4 w-4" />} variant="gold" />
                   <AwardBadge title="Best Growth" manager={rankingData.reduce((prev, curr) => (curr.growth_pct > prev.growth_pct) ? curr : prev)} icon={<TrendingUp className="h-4 w-4" />} variant="green" />
-                  <AwardBadge title="Rising Star" manager={rankingData[Math.min(2, rankingData.length - 1)]} icon={<Flame className="h-4 w-4" />} variant="orange" />
+                  <AwardBadge title="Most Delivered" manager={rankingData.reduce((prev, curr) => (curr.team_delivered_orders > prev.team_delivered_orders) ? curr : prev)} icon={<Target className="h-4 w-4" />} variant="orange" />
+                  <AwardBadge title="Rising Star" manager={rankingData[Math.min(2, rankingData.length - 1)]} icon={<Flame className="h-4 w-4" />} variant="gold" />
                 </div>
               </div>
+            )}
+
+            {/* Comparison Panel */}
+            {comparedManagers.length >= 2 && (
+              <Card className="border-primary/20 overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-primary/10 to-transparent pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <GitCompare className="h-4 w-4 text-primary" /> Manager Comparison
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border/30">
+                          <th className="text-left p-2 text-muted-foreground font-medium text-xs">Metric</th>
+                          {comparedManagers.map(m => (
+                            <th key={m.manager_id} className="text-center p-2">
+                              <div className="flex flex-col items-center gap-1">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage src={m.manager_avatar_url || undefined} />
+                                  <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(m.manager_name)}</AvatarFallback>
+                                </Avatar>
+                                <span className="font-semibold text-xs">{m.manager_name}</span>
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          { label: 'Rank', get: (m: ManagerRankingData) => `#${m.rank}` },
+                          { label: 'Team GMV', get: (m: ManagerRankingData) => formatBND(m.team_realized_gmv) },
+                          { label: 'Delivered', get: (m: ManagerRankingData) => m.team_delivered_orders.toString() },
+                          { label: 'Growth', get: (m: ManagerRankingData) => `${m.growth_pct >= 0 ? '+' : ''}${m.growth_pct.toFixed(1)}%` },
+                          { label: 'Leadership', get: (m: ManagerRankingData) => m.leadership_score.toFixed(0) },
+                        ].map(row => (
+                          <tr key={row.label} className="border-b border-border/20">
+                            <td className="p-2 text-muted-foreground text-xs font-medium">{row.label}</td>
+                            {comparedManagers.map(m => (
+                              <td key={m.manager_id} className="p-2 text-center font-semibold">{row.get(m)}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => setCompareIds([])}>
+                    Clear Comparison
+                  </Button>
+                </CardContent>
+              </Card>
             )}
 
             {/* Rest of Rankings */}
             {restOfList.length > 0 && (
               <div className="space-y-3">
-                <h3 className="text-sm font-medium text-muted-foreground px-1 flex items-center gap-2">
-                  <Star className="h-4 w-4" /> All Rankings
-                </h3>
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Star className="h-4 w-4" /> All Rankings
+                  </h3>
+                  {compareIds.length > 0 && compareIds.length < 2 && (
+                    <span className="text-xs text-muted-foreground">Select {2 - compareIds.length} more to compare</span>
+                  )}
+                </div>
                 {restOfList.map((manager) => (
-                  <RankingCard key={manager.manager_id} data={manager} metricValue={getMetricValue(manager)} metricLabel={getMetricLabel()} onClick={() => setSelectedManager(manager)} />
+                  <RankingCard key={manager.manager_id} data={manager} metricValue={getMetricValue(manager)}
+                    metricLabel={getMetricLabel()} onClick={() => setSelectedManager(manager)}
+                    isComparing={compareIds.includes(manager.manager_id)}
+                    onToggleCompare={() => toggleCompare(manager.manager_id)} />
                 ))}
+              </div>
+            )}
+
+            {/* Compare hint for top 3 */}
+            {rankingData && rankingData.length >= 2 && compareIds.length === 0 && (
+              <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-muted/30 border border-border/30">
+                <GitCompare className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Click the compare icon on ranking cards to compare managers side by side</span>
               </div>
             )}
           </>
@@ -338,10 +409,10 @@ function AwardBadge({ title, manager, icon, variant }: { title: string; manager:
   }[variant];
 
   return (
-    <div className={cn("flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-md", styles)}>
+    <div className={cn("flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-md hover:-translate-y-0.5", styles)}>
       <div className="p-2 rounded-lg bg-card shadow-sm">{icon}</div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-muted-foreground font-medium">{title}</p>
+        <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{title}</p>
         <div className="flex items-center gap-2 mt-0.5">
           {manager && (
             <Avatar className="h-5 w-5">
@@ -357,19 +428,29 @@ function AwardBadge({ title, manager, icon, variant }: { title: string; manager:
 }
 
 // ─── Ranking Card ────────────────────────────────────────
-function RankingCard({ data, metricValue, metricLabel, onClick }: { data: ManagerRankingData; metricValue: string; metricLabel: string; onClick: () => void }) {
+function RankingCard({ data, metricValue, metricLabel, onClick, isComparing, onToggleCompare }: {
+  data: ManagerRankingData; metricValue: string; metricLabel: string; onClick: () => void;
+  isComparing: boolean; onToggleCompare: () => void;
+}) {
   return (
-    <Card className="cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] border-border/50 hover:border-primary/30" onClick={onClick}>
+    <Card className={cn(
+      "transition-all duration-200 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] border-border/50 hover:border-primary/30",
+      isComparing && "ring-2 ring-primary border-primary/40"
+    )}>
       <CardContent className="p-4">
         <div className="flex items-center gap-4">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary border border-primary/20">
+          <Button variant="ghost" size="sm" className={cn("h-8 w-8 p-0 rounded-full shrink-0", isComparing && "bg-primary/20")}
+            onClick={(e) => { e.stopPropagation(); onToggleCompare(); }}>
+            <GitCompare className={cn("h-3.5 w-3.5", isComparing ? "text-primary" : "text-muted-foreground")} />
+          </Button>
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary border border-primary/20 cursor-pointer" onClick={onClick}>
             #{data.rank}
           </div>
-          <Avatar className="h-12 w-12 border-2 border-border/30">
+          <Avatar className="h-12 w-12 border-2 border-border/30 cursor-pointer" onClick={onClick}>
             <AvatarImage src={data.manager_avatar_url || undefined} alt={data.manager_name} />
             <AvatarFallback className="bg-primary/10 text-primary font-medium">{getInitials(data.manager_name)}</AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 cursor-pointer" onClick={onClick}>
             <p className="font-semibold truncate">{data.manager_name}</p>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>{data.team_delivered_orders} delivered</span>
@@ -383,11 +464,11 @@ function RankingCard({ data, metricValue, metricLabel, onClick }: { data: Manage
               )}
             </div>
           </div>
-          <div className="flex-shrink-0 text-right">
+          <div className="flex-shrink-0 text-right cursor-pointer" onClick={onClick}>
             <span className="text-lg font-bold text-primary">{metricValue}</span>
             <p className="text-xs text-muted-foreground">{metricLabel}</p>
           </div>
-          <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+          <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0 cursor-pointer" onClick={onClick} />
         </div>
       </CardContent>
     </Card>
