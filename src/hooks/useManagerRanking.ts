@@ -202,7 +202,7 @@ export function useBulkUpdateManagerRankingParticipants() {
 }
 
 // Hook to fetch ranking data with KPIs
-export function useManagerRankingData(period: RankingPeriod = 'last7', metric: RankingMetric = 'leadership_score') {
+export function useManagerRankingData(period: RankingPeriod = 'monthly', metric: RankingMetric = 'leadership_score') {
   return useQuery({
     queryKey: ['manager-ranking-data', period, metric],
     queryFn: async () => {
