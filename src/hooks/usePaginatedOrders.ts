@@ -6,17 +6,25 @@ import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/t
 
 export interface PaginatedOrderFilters {
   status?: OrderStatus;
+  statusIn?: OrderStatus[];
   salespersonIds?: string[];
   salespersonId?: string;
   runnerId?: string;
   runnerStatus?: RunnerStatus;
+  runnerStatusIn?: RunnerStatus[];
+  excludeRunnerStatuses?: RunnerStatus[];
   reconciliationStatus?: ReconciliationStatus;
+  driverId?: string;
   searchQuery?: string;
   areaFilter?: string;
   deliveredDateFrom?: string;
   deliveredDateTo?: string;
   sortField?: string;
   sortDirection?: 'asc' | 'desc';
+  // Exclude delivered and failed orders (for runner inbox active view)
+  excludeDeliveredAndFailed?: boolean;
+  // Custom: salesperson_action_required = true
+  salespersonActionRequired?: boolean;
 }
 
 export interface PaginationState {
@@ -68,10 +76,15 @@ export function usePaginatedOrders(
     retry: 2,
     retryDelay: 1000,
     queryFn: async () => {
-      // Get visible owner IDs for team visibility
-      const { data: visibleUserIds, error: visError } = await supabase.rpc('get_visible_owner_ids');
-      if (visError) {
-        console.warn('Failed to fetch visible owner IDs:', visError);
+      // Get visible owner IDs for team visibility (skip for admin)
+      let visibleUserIds: string[] | null = null;
+      if (role !== 'admin') {
+        const { data, error: visError } = await supabase.rpc('get_visible_owner_ids');
+        if (visError) {
+          console.warn('Failed to fetch visible owner IDs:', visError);
+        } else {
+          visibleUserIds = data;
+        }
       }
 
       // Build the query with count
@@ -100,6 +113,36 @@ export function usePaginatedOrders(
         }
       }
 
+      // Multiple status filter
+      if (filters.statusIn && filters.statusIn.length > 0) {
+        query = query.in('status', filters.statusIn);
+      }
+
+      // Runner status filters
+      if (filters.runnerStatus) {
+        query = query.eq('runner_status', filters.runnerStatus);
+      }
+      if (filters.runnerStatusIn && filters.runnerStatusIn.length > 0) {
+        query = query.in('runner_status', filters.runnerStatusIn);
+      }
+      if (filters.excludeRunnerStatuses && filters.excludeRunnerStatuses.length > 0) {
+        for (const rs of filters.excludeRunnerStatuses) {
+          query = query.neq('runner_status', rs);
+        }
+      }
+
+      // Exclude delivered and failed (shorthand for runner inbox)
+      if (filters.excludeDeliveredAndFailed) {
+        query = query.neq('runner_status', 'DELIVERED');
+        query = query.neq('runner_status', 'FAILED_DELIVERY');
+        query = query.neq('status', 'CANCELLED');
+      }
+
+      // Salesperson action required
+      if (filters.salespersonActionRequired) {
+        query = query.eq('salesperson_action_required', true);
+      }
+
       // Visibility: team filtering
       if (filters.salespersonIds && filters.salespersonIds.length > 0) {
         if (visibleUserIds !== null && Array.isArray(visibleUserIds)) {
@@ -124,13 +167,13 @@ export function usePaginatedOrders(
       }
 
       if (filters.runnerId) query = query.eq('runner_id', filters.runnerId);
-      if (filters.runnerStatus) query = query.eq('runner_status', filters.runnerStatus);
+      if (filters.driverId) query = query.eq('driver_id', filters.driverId);
       if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
 
       // Search
       if (filters.searchQuery?.trim()) {
         const searchTerm = `%${filters.searchQuery.trim()}%`;
-        query = query.or(`order_code.ilike.${searchTerm},customer_name.ilike.${searchTerm},area.ilike.${searchTerm}`);
+        query = query.or(`order_code.ilike.${searchTerm},customer_name.ilike.${searchTerm},area.ilike.${searchTerm},phone.ilike.${searchTerm},address.ilike.${searchTerm}`);
       }
 
       // Area filter
