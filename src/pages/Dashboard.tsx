@@ -59,6 +59,9 @@ import { cn } from '@/lib/utils';
 import { LeaderboardDashboardCard } from '@/components/leaderboard/LeaderboardDashboardCard';
 import { VisibilityDebugPanel } from '@/components/admin/VisibilityDebugPanel';
 import { KPIStrip, KPIItem } from '@/components/desktop/KPIStrip';
+import { RoleHeroBanner } from '@/components/dashboard/RoleHeroBanner';
+import { CapybaraState } from '@/components/dashboard/CapybaraState';
+import capybaraLoading from '@/assets/capybara-loading.png';
 
 // Loading component for when role is being fetched
 function DashboardLoading() {
