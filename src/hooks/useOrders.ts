@@ -78,6 +78,14 @@ export function useOrders(filters?: OrderFilters) {
         query = query.eq('area', filters.areaFilter);
       }
 
+      // Server-side date range filter on delivered_at
+      if (filters?.deliveredDateFrom) {
+        query = query.gte('delivered_at', filters.deliveredDateFrom);
+      }
+      if (filters?.deliveredDateTo) {
+        query = query.lte('delivered_at', filters.deliveredDateTo);
+      }
+
       const { data: ordersData, error: ordersError } = await query;
       if (ordersError) throw ordersError;
 
