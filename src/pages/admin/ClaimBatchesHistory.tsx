@@ -209,7 +209,7 @@ export default function ClaimBatchesHistory() {
       <div className="space-y-6">
         {/* Hero */}
         <PageHero
-          icon={Receipt}
+          icon={<Receipt className="h-6 w-6 text-primary" />}
           title="Claim Batches History"
           subtitle="Complete history of all runner claim batches"
         />

@@ -260,7 +260,7 @@ export default function InventoryBalance() {
       <div className="space-y-6">
         {/* Hero */}
         <PageHero
-          icon={Package}
+          icon={<Package className="h-6 w-6 text-primary" />}
           title="Stock Balance"
           subtitle={isAdmin ? 'View and manage all inventory' : 
                    isManager ? 'View your inventory and team stock' : 'View your inventory'}
