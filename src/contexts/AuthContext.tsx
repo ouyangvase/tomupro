@@ -174,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Terminal error state - all retries exhausted
     if (error) {
       console.error('[Auth] Profile fetch failed after all retries:', error);
+      isFetchingRef.current = false;
       setProfileStatus('error');
       setProfileError(error.message || 'Failed to load profile after multiple attempts');
       return;
