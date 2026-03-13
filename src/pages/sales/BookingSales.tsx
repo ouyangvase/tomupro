@@ -274,11 +274,11 @@ export default function BookingSales() {
     }
   };
 
-  const isAllSelected = filteredOrders.length > 0 && selectedRows.length === filteredOrders.length;
+  const isAllSelected = orders.length > 0 && selectedRows.length === orders.length;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedRows(filteredOrders.map(o => o.id));
+      setSelectedRows(orders.map(o => o.id));
     } else {
       setSelectedRows([]);
     }
@@ -295,7 +295,7 @@ export default function BookingSales() {
               <ShoppingBag className="h-5 w-5 text-primary" />
               <div>
                 <h1 className="text-xl font-bold">Booking Sales</h1>
-                <p className="text-xs text-muted-foreground">{filteredOrders.length} orders</p>
+                <p className="text-xs text-muted-foreground">{orders.length} orders</p>
               </div>
             </div>
             {isEditable && (
@@ -324,12 +324,12 @@ export default function BookingSales() {
           </div>
 
           {/* Select all */}
-          {isEditable && filteredOrders.length > 0 && (
+          {isEditable && orders.length > 0 && (
             <MobileSelectAllCard
               isAllSelected={isAllSelected}
               onSelectAll={handleSelectAll}
               selectedCount={selectedRows.length}
-              totalCount={filteredOrders.length}
+              totalCount={orders.length}
             />
           )}
 
@@ -339,13 +339,13 @@ export default function BookingSales() {
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               <span className="text-muted-foreground">Loading...</span>
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : orders.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               {mobileSearch ? "No orders match your search" : "No booking orders"}
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredOrders.map((order) => {
+              {orders.map((order) => {
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
                 return (
                   <MobileOrderCard
