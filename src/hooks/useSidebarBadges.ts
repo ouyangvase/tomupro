@@ -88,7 +88,6 @@ export function useSidebarBadges(): Record<string, number> {
   const badges: Record<string, number> = {};
 
   if (actionCount && actionCount > 0) badges['/sales/action-required'] = actionCount;
-  if (approvalsCount && approvalsCount > 0) badges['/manager/pending-approvals'] = approvalsCount;
   if (claimBatchCount && claimBatchCount > 0) badges['/admin/claim-batches'] = claimBatchCount;
   if (runnerInboxCount && runnerInboxCount > 0) badges['/runner/inbox'] = runnerInboxCount;
 
