@@ -543,15 +543,7 @@ export default function LeaderboardPage() {
 
             {/* Empty State */}
             {!isLoading && rankings.length === 0 && (
-              <div className="text-center py-20">
-                <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-6">
-                  <Trophy className="h-10 w-10 text-muted-foreground/40" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">No rankings yet</h3>
-                <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                  Start delivering orders to climb the leaderboard and compete with your team!
-                </p>
-              </div>
+              <CapybaraState type="empty" title="No rankings yet" description="Start delivering orders to climb the leaderboard and compete with your team!" />
             )}
           </TabsContent>
         </Tabs>
