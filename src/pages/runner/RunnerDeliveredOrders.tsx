@@ -342,9 +342,10 @@ export default function RunnerDeliveredOrders() {
       driverFilter !== 'all' ||
       salespersonFilters.length > 0 ||
       skuFilter !== 'all' ||
-      claimStatusFilter !== 'all'
+      claimStatusFilter !== 'all' ||
+      dateRange.from !== null
     );
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter]);
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
 
   // Detect if data might be truncated by the 2000-row query limit
   const QUERY_LIMIT = 2000;
