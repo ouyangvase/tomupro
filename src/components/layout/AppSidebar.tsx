@@ -411,7 +411,7 @@ export function AppSidebar() {
           activeClassName="bg-gradient-to-r from-primary/15 to-primary/5 text-primary font-semibold border-l-2 border-primary shadow-[0_0_8px_hsl(var(--primary)/0.15)]"
         >
           <item.icon className="h-[18px] w-[18px] shrink-0" />
-          <span className="text-sm tracking-tight flex-1 truncate">{item.title}</span>
+          <span className="text-[15px] tracking-tight flex-1 truncate">{item.title}</span>
           <BadgePill count={badgeCount} urgent={isUrgent} />
         </NavLink>
         {showFavStar && (
@@ -462,7 +462,7 @@ export function AppSidebar() {
             sectionHasActiveRoute ? "text-primary" : "text-muted-foreground/60"
           )} />
           <span className={cn(
-            "text-[11px] font-semibold uppercase tracking-widest flex-1 text-left transition-colors",
+            "text-xs font-semibold uppercase tracking-widest flex-1 text-left transition-colors",
             sectionHasActiveRoute ? "text-primary" : "text-muted-foreground/60"
           )}>
             {section.label}
@@ -515,7 +515,7 @@ export function AppSidebar() {
           <div className="mb-2">
             <div className="flex items-center gap-2 px-3 py-1.5">
               <Star className="h-3.5 w-3.5 text-[hsl(var(--status-pending))] fill-[hsl(var(--status-pending))]" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--status-pending)/0.7)]">Favorites</span>
+              <span className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--status-pending)/0.7)]">Favorites</span>
             </div>
             <div className="space-y-0.5">
               {favoriteItems.map(item => renderNavItem(item))}
