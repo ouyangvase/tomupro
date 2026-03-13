@@ -1,130 +1,180 @@
 
 
-## Sidebar Navigation Redesign Plan
+# Full UI Redesign: Driver Inbox — Modern Orange-Silver Theme
 
-### What We're Building
-Transform the flat sidebar into a structured, collapsible navigation command panel with notification badges, favorites, quick actions, and role-aware section grouping.
+## Overview
+Complete visual overhaul of the Driver Inbox (`/driver/inbox`) into a modern, premium orange-silver design system. The redesign covers both mobile and desktop layouts while preserving all existing functionality (drag-to-reorder, route suggestions, remark dots, delivery/failed actions).
 
-### Architecture
+The reference screenshots show the current state — a functional but plain white/grey interface. The goal is a polished, modern delivery operations UI with warm orange accents on a silver/slate base.
 
-**Single file rewrite**: `src/components/layout/AppSidebar.tsx` — the sidebar is self-contained. No new files needed beyond a small `useSidebarBadges` hook.
+---
 
-**New hook**: `src/hooks/useSidebarBadges.ts` — aggregates badge counts from existing hooks (`useActionRequiredStats`, `useUnreadNotificationCount`, etc.) into a single object keyed by URL path.
+## Design Direction
 
-### Navigation Structure (Collapsible Groups)
+**Color Palette:**
+- Primary: Warm Orange (the existing `--primary: 38 70% 59%` gold/orange)
+- Base surface: Silver-grey tones (light: `hsl(220, 14%, 96%)`, dark: existing dark slate)
+- Cards: Semi-transparent frosted glass effect (already supported via `glass-card`)
+- Accents: Orange gradient highlights for stat cards and active states
+- Status colors: Keep existing semantic colors (green/red/amber/blue)
 
-Each group uses `Collapsible` from `@radix-ui/react-collapsible` (already installed at `src/components/ui/collapsible.tsx`). Groups auto-expand if they contain the active route.
+**Design Language:**
+- Rounded corners (2xl), soft shadows, subtle gradients
+- Glassmorphism cards with frosted backdrop
+- Orange gradient hero/header area
+- Larger stat numbers with pill-shaped stat cards
+- Smooth card expand/collapse animations
+- Touch-optimized spacing (48px minimum targets)
 
-```text
-HOME (always open)
-  Dashboard                    [all roles]
+---
 
-OPERATIONS                     [admin, manager, salesperson]
-  Booking Sales
-  Ready Orders
-  Delivered Orders
-  Cancelled Orders
-  Action Required              (badge: count)
+## Implementation Details
 
-LOGISTICS                      [admin, runner]
-  Runner Inbox (All)           [admin only]
-  Runner Inbox                 [runner]
-  Runner Inbound
-  Driver Inbox                 [runner]
-  Driver Management            [runner]
-  Live Map
-  Failed Orders                [runner]
+### 1. Page Header — Orange Gradient Banner
+Replace the plain text header with a warm gradient banner:
+- Gradient from `hsl(38, 70%, 55%)` to `hsl(38, 70%, 45%)` 
+- White text: "My Deliveries" + runner name
+- Rounded bottom corners
+- Works as visual anchor on both mobile and desktop
 
-DELIVERY                       [driver]
-  My Deliveries
-  Optimized Route
-  My Pickups
-  My Returns
-  My Analytics
+### 2. Location Tracker — Modernized Inline Banner
+- Redesign as a sleek inline pill banner below the gradient header
+- Green glow effect when location is ON
+- Orange accent for the ON/OFF badge
+- Compact single-line layout with icon + status + timestamp + toggle
 
-PERFORMANCE                    [salesperson, manager, admin, runner, driver]
-  Leaderboard
-  Ranking Board                [manager, admin]
-  Impact Board                 [manager, admin]
-  Driver Ranking               [runner, driver]
+### 3. Stats Cards — Orange-Silver Gradient Pills
+Replace the plain `Card p-3` stat boxes with:
+- Three horizontal pill-shaped cards with subtle gradient backgrounds
+- Pending: Silver-to-white gradient with bold dark number
+- Delivered (Pending): Amber/orange tinted card
+- Failed: Red-tinted card with muted background
+- Large display numbers (text-3xl font-bold)
+- Subtle bottom border accent color matching each stat type
 
-MANAGEMENT                     [manager, admin]
-  Manager Dashboard            [manager]
-  Pending Approvals            (badge: count)
-  Team Oversight
-  Dispute Center
+### 4. Search Bar — Modern Floating Input
+- Pill-shaped search with rounded-full corners
+- Subtle shadow and border
+- Orange focus ring
+- Clear button appears on input
+- Light silver background
 
-FINANCE                        [admin, runner]
-  Claims / My Claims
-  Reconciliation               [admin]
-  Claim Batches                [admin] (badge)
-  Cash Settlement              [runner]
-  Cash Driver                  [runner]
-  Delivery Charges
-  Delivery Fees Report         [admin]
+### 5. Route Suggestion Status Bar
+- Redesign as a modern pill banner
+- Orange pulsing dot when active
+- Animated spinner during calculation
+- Refresh button with icon rotation animation
+- Frosted glass background
 
-INVENTORY                      [admin, manager, salesperson, runner]
-  Inbound Pending
-  Inbound History              [admin]
-  Stock Balance
-  Adjustments                  [admin]
-  Warehouses                   [admin]
-  Products
+### 6. Order Cards — Glass Morphism Design
+Complete card redesign:
 
-SYSTEM                         [admin, manager]
-  Profile                      [all roles]
-  Users
-  Bindings                     [admin]
-  Invite Codes                 [admin]
-  Commission                   [admin]
-  Leaderboard Settings         [admin]
-  Data Sharing                 [admin]
-  Reasons                      [admin]
-  Stock Integrity              [admin]
-```
+**Collapsed State:**
+- Glass-card effect (frosted backdrop)
+- Left side: Remark status dot (larger, 3px ring) + Order code (bold, larger) + date badge (pill)
+- Right side: Amount in large bold + payment method tag
+- Below: Route badge (orange gradient for #1, silver for others) + Status badge (redesigned as subtle pill) + Start Delivery button (orange gradient pill)
+- Drag handle: Subtle dots icon with orange hover color
 
-### Badge System
+**Expanded State (smooth animation):**
+- Customer info section with user icon in orange circle
+- Phone/WhatsApp row with green WhatsApp button
+- Address block: Silver card with subtle left orange border accent, full text wrap, copy + maps buttons as icon-only pills
+- Order Items: Clean table with alternating subtle row backgrounds
+- Driver Note: Redesigned with colored left border matching remark type
+- Action buttons: Full-width, prominent orange "Delivered" + red "Failed" with rounded corners and icons
 
-`useSidebarBadges` hook returns `Record<string, number>` mapping URL paths to counts. Sources:
-- `/sales/action-required` → `useSalespersonActionRequiredStats` / `useAdminActionRequiredStats` total
-- `/manager/pending-approvals` → query `stock_adjustments` where `status = 'pending'`
-- `/runner/claims` or `/admin/claim-batches` → query pending claim batches count
+### 7. Delivered Orders Section (Pending Acceptance)
+- Amber-tinted glass cards
+- Subtle amber left border accent
+- "Awaiting Acceptance" badge in amber pill style
+- Compact item list
 
-Badges render as small pills next to menu item text: red for urgent (action required), orange/primary for informational.
+### 8. Failed Orders Section
+- Red-tinted glass cards
+- Red left border accent
+- Failure reason displayed in red text block
+- Next delivery date shown if set
 
-### Favorites System
+### 9. Empty State
+- Modern illustration-style icon (package with orange accent)
+- Larger text with subtitle
+- Subtle animation (fade-in)
 
-Use `localStorage` key `tomupro-sidebar-favorites` storing an array of URL strings. A "Favorites" section appears at the top (below HOME) when non-empty. Users star/unstar items via a small star icon on hover. No database needed.
+### 10. Drag Handle & Reorder Visual Polish
+- Replace plain GripVertical with a styled drag indicator (6 dots pattern)
+- On drag: Card lifts with shadow-xl + slight scale + orange ring
+- Drop target: Orange dashed border indicator
+- "Manual Priority Active" banner: Orange gradient pill with reset button
 
-### Quick Actions Footer
+### 11. DraggableOrderList Component Updates
+- Add smooth `transition-transform` on reorder
+- Orange ring-2 on drag-over state
+- Drag shadow elevation effect
+- Better touch feedback on mobile
 
-Below the user card, add 2-3 role-contextual quick action buttons:
-- Admin/Salesperson: "+ New Order" (navigates to booking)
-- Runner: "+ Create Claim" (navigates to claims)
-- Kept small as icon+text pills in a row
+### 12. RouteSuggestionBadge Component Updates
+- Rank #1: Orange gradient background with white text
+- Rank #2-3: Light orange/amber background
+- Rank 4+: Silver/outline style
+- Distance shown in smaller muted text
 
-### Collapsible Group UX
+### 13. RemarkStatusDot Component Updates
+- Slightly larger dot (3px width/height)
+- Add subtle pulse animation for "waiting_reply" state
+- Ring effect matches the dot color (not just background)
 
-Each section header is a `CollapsibleTrigger` with a chevron that rotates on open/close. Collapsed state stored in `localStorage` per group. Groups containing the active route auto-expand on mount.
+### 14. AddressActions Component Updates
+- Redesign buttons as compact icon-only pills with tooltips
+- Copy: Silver pill with copy icon
+- Google Maps: Blue-tinted pill
+- Waze: Purple-tinted pill
+- Horizontal row with tight spacing
 
-### Visual Design Changes
+### 15. DriverRemarkSelector Component Updates
+- Colored left border matching selected remark type
+- Cleaner dropdown styling
+- Custom note textarea with orange focus ring
+- Save/cancel as small rounded buttons
 
-- **Active item**: `bg-gradient-to-r from-primary/15 to-primary/5 text-primary font-semibold border-l-2 border-primary` with subtle glow via `shadow-[0_0_8px_hsl(var(--primary)/0.15)]`
-- **Hover**: `hover:-translate-y-[1px] hover:shadow-sm transition-all duration-150`
-- **Section headers**: Uppercase tracking-widest with a small themed icon (Lucide icons, not capybara images — keeps it clean and professional)
-- **Badge pills**: `bg-destructive text-destructive-foreground text-[10px] font-bold min-w-[18px] h-[18px] rounded-full` for urgent, `bg-primary/15 text-primary` for informational
-- **Favorites star**: `text-amber-400` when pinned, `text-muted-foreground/30 opacity-0 group-hover:opacity-100` when not
+---
 
-### Files to Create/Edit
+## Desktop-Specific Adjustments
 
-1. **Create** `src/hooks/useSidebarBadges.ts` — lightweight hook aggregating badge counts
-2. **Rewrite** `src/components/layout/AppSidebar.tsx` — new collapsible group structure, badges, favorites, quick actions
+On desktop (>= 1025px), the AppLayout sidebar wraps the content. The redesigned cards will:
+- Use a max-width container (max-w-4xl) centered in the content area
+- Stats row uses slightly larger cards
+- Cards have more horizontal padding
+- Two-column layout for items + address in expanded cards
 
-### Implementation Notes
+---
 
-- All existing URLs and role filters preserved exactly — no routing changes
-- Uses existing `Collapsible` component (already in project)
-- Uses existing `useLocation` from react-router to detect active group
-- Loading/error states preserved as-is
-- Collapsed sidebar mode (icon-only) continues to work — groups hidden, only icons shown with tooltips
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/pages/driver/DriverInbox.tsx` | Full visual overhaul — gradient header, glass cards, stat pills, modern order card layout, animations |
+| `src/components/driver/DraggableOrderList.tsx` | Improved drag visual feedback — shadow, scale, orange ring |
+| `src/components/driver/RouteSuggestionBadge.tsx` | Orange gradient for top ranks, silver for others |
+| `src/components/driver/RemarkStatusDot.tsx` | Larger dot, pulse animation for waiting states |
+| `src/components/driver/AddressActions.tsx` | Icon-only compact pill buttons with tooltips |
+| `src/components/driver/DriverRemarkSelector.tsx` | Colored left border accent, cleaner layout |
+| `src/components/driver/LocationTracker.tsx` | Modernized inline pill banner with glow effect |
+
+---
+
+## Files NOT Modified
+- Database schema: No changes
+- Business logic hooks: No changes
+- Existing permissions/roles: No changes
+- Other pages: No changes
+- CSS variables/theme: Uses existing orange/gold primary — no theme changes needed
+
+---
+
+## Performance Considerations
+- All visual changes use Tailwind utility classes (no new CSS files)
+- Animations use CSS transforms/opacity only (GPU-accelerated)
+- No additional API calls or data fetching changes
+- Card expand/collapse uses CSS `max-height` transition for smooth animation
 
