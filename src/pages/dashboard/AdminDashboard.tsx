@@ -41,23 +41,32 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* ── 1. HERO PANEL (handled by parent RoleHeroBanner) ── */}
       <VisibilityDebugPanel />
-      
-      {/* Operations Alerts */}
-      {(actionStats?.systemTotal ?? 0) > 0 && (
-        <ActionRequiredCard
-          total={actionStats?.systemTotal ?? 0}
-          failedDelivery={actionStats?.failedDelivery}
-          rescheduled={actionStats?.rescheduled}
-          runnerFlagged={actionStats?.runnerFlagged}
-          isLoading={actionLoading}
-          href="/sales/action-required"
-          title="Operations Alerts"
-          subtitle="Orders across all users requiring immediate attention"
-        />
-      )}
 
-      {/* Primary Operations KPIs */}
+      {/* ── 2. ACTION CARDS — Quick Actions ── */}
+      <div className="grid gap-5 md:grid-cols-2">
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-primary/10">
+                <Zap className="h-4 w-4 text-primary" />
+              </div>
+              Quick Actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            <QuickActionTile icon={ShieldAlert} title="Operations Alert Center" subtitle="System-wide alerts" href="/sales/action-required" badge={actionStats?.systemTotal} iconColor="text-destructive" iconBg="bg-destructive/10" />
+            <QuickActionTile icon={Package} title="Manage All Orders" subtitle="View booking orders" href="/sales/booking" />
+            <QuickActionTile icon={FileCheck} title="Reconciliation" subtitle="Claims & payouts" href="/reconciliation/admin" iconColor="text-[hsl(var(--status-success))]" iconBg="bg-[hsl(var(--status-success)/0.1)]" />
+            <QuickActionTile icon={AlertTriangle} title="Handle Disputes" subtitle="Resolve conflicts" href="/disputes" iconColor="text-destructive" iconBg="bg-destructive/10" />
+            <QuickActionTile icon={TrendingUp} title="Leaderboard" subtitle="Performance rankings" href="/leaderboard" />
+            <QuickActionTile icon={Users} title="Manage Users" subtitle="User accounts & roles" href="/settings/users" />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── 3. VISUAL PIPELINE — Operations Pipeline ── */}
       <MissionSection icon={Activity} title="Operations Pipeline">
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           {primaryMetrics.map((stat) => (
@@ -87,7 +96,7 @@ export function AdminDashboard() {
         </div>
       </MissionSection>
 
-      {/* System Health Strip */}
+      {/* ── 4. PERFORMANCE CARDS — System Health Strip ── */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
         {secondaryMetrics.map((stat) => (
           <Card 
@@ -114,78 +123,70 @@ export function AdminDashboard() {
         ))}
       </div>
 
-      {/* Quick Actions & Live Activity */}
-      <div className="grid gap-5 md:grid-cols-2">
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
+      {/* ── 5. ALERTS — Operations Alerts ── */}
+      {(actionStats?.systemTotal ?? 0) > 0 && (
+        <ActionRequiredCard
+          total={actionStats?.systemTotal ?? 0}
+          failedDelivery={actionStats?.failedDelivery}
+          rescheduled={actionStats?.rescheduled}
+          runnerFlagged={actionStats?.runnerFlagged}
+          isLoading={actionLoading}
+          href="/sales/action-required"
+          title="Operations Alerts"
+          subtitle="Orders across all users requiring immediate attention"
+        />
+      )}
+
+      {/* ── 6. ACTIVITY FEED — Live Activity ── */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
             <CardTitle className="text-base font-bold flex items-center gap-2">
               <div className="p-2 rounded-xl bg-primary/10">
-                <Zap className="h-4 w-4 text-primary" />
+                <Clock className="h-4 w-4 text-primary" />
               </div>
-              Quick Actions
+              Live Activity
             </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            <QuickActionTile icon={ShieldAlert} title="Operations Alert Center" subtitle="System-wide alerts" href="/sales/action-required" badge={actionStats?.systemTotal} iconColor="text-destructive" iconBg="bg-destructive/10" />
-            <QuickActionTile icon={Package} title="Manage All Orders" subtitle="View booking orders" href="/sales/booking" />
-            <QuickActionTile icon={FileCheck} title="Reconciliation" subtitle="Claims & payouts" href="/reconciliation/admin" iconColor="text-[hsl(var(--status-success))]" iconBg="bg-[hsl(var(--status-success)/0.1)]" />
-            <QuickActionTile icon={AlertTriangle} title="Handle Disputes" subtitle="Resolve conflicts" href="/disputes" iconColor="text-destructive" iconBg="bg-destructive/10" />
-            <QuickActionTile icon={TrendingUp} title="Leaderboard" subtitle="Performance rankings" href="/leaderboard" />
-            <QuickActionTile icon={Users} title="Manage Users" subtitle="User accounts & roles" href="/settings/users" />
-          </CardContent>
-        </Card>
-
-        {/* Live Activity Feed */}
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-bold flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-primary/10">
-                  <Clock className="h-4 w-4 text-primary" />
-                </div>
-                Live Activity
-              </CardTitle>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[hsl(var(--status-success))] animate-pulse" />
-                <span className="text-xs text-muted-foreground">Real-time</span>
-              </div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-[hsl(var(--status-success))] animate-pulse" />
+              <span className="text-xs text-muted-foreground">Real-time</span>
             </div>
-          </CardHeader>
-          <CardContent>
-            {activityLoading ? (
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-11 w-full rounded-xl" />)}
-              </div>
-            ) : activity && activity.length > 0 ? (
-              <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
-                {activity.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors border border-transparent hover:border-border/30">
-                    <div className="flex items-center gap-2.5">
-                      <Badge 
-                        variant={item.action.includes('create') || item.action.includes('insert') ? 'default' : item.action.includes('delete') ? 'destructive' : 'secondary'} 
-                        className="text-[10px] font-semibold px-2 py-0.5"
-                      >
-                        {item.action}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground font-medium">
-                        {item.entity_type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground/60 font-medium shrink-0">
-                      {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {activityLoading ? (
+            <div className="space-y-2">
+              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-11 w-full rounded-xl" />)}
+            </div>
+          ) : activity && activity.length > 0 ? (
+            <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+              {activity.map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors border border-transparent hover:border-border/30">
+                  <div className="flex items-center gap-2.5">
+                    <Badge 
+                      variant={item.action.includes('create') || item.action.includes('insert') ? 'default' : item.action.includes('delete') ? 'destructive' : 'secondary'} 
+                      className="text-[10px] font-semibold px-2 py-0.5"
+                    >
+                      {item.action}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {item.entity_type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                     </span>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Clock className="h-8 w-8 mx-auto mb-2 text-muted-foreground/20" />
-                <p className="text-sm text-muted-foreground">No recent activity</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  <span className="text-[10px] text-muted-foreground/60 font-medium shrink-0">
+                    {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Clock className="h-8 w-8 mx-auto mb-2 text-muted-foreground/20" />
+              <p className="text-sm text-muted-foreground">No recent activity</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
