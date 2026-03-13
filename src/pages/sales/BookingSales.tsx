@@ -83,7 +83,7 @@ export default function BookingSales() {
       sortable: true,
       editable: isEditable,
       filterable: true, 
-      filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a!, value: a! })) 
+      filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a as string, value: a as string })) 
     },
     { 
       key: 'address', 
