@@ -474,13 +474,7 @@ export default function LeaderboardPage() {
           <TabsContent value={periodMode} className="mt-10 space-y-10">
             {/* Loading State */}
             {isLoading && (
-              <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <div className="relative">
-                  <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                  <Trophy className="absolute inset-0 m-auto h-6 w-6 text-primary" />
-                </div>
-                <p className="text-muted-foreground font-medium">Loading rankings...</p>
-              </div>
+              <CapybaraState type="loading" title="Loading rankings..." description="Our capybara is tallying up the scores" />
             )}
 
             {/* Top 3 Podium - Always shows actual top 3 regardless of visibility settings */}
