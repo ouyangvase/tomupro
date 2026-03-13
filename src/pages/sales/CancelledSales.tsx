@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useBulkUpdateOrders } from '@/hooks/useOrders';
-import { useTeamOrders } from '@/hooks/useTeamOrders';
+import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useReasons } from '@/hooks/useReasons';
 import { useTeamMembers } from '@/hooks/useTeamMembers';

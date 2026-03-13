@@ -587,6 +587,17 @@ export default function ReadySales() {
             emptyMessage="No ready orders"
             onExport={handleExport}
             onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
+            onSearchChange={handleSearchChange}
+            serverPagination={{
+              enabled: true,
+              page: pagination.page,
+              pageSize: pagination.pageSize,
+              totalCount: pagination.totalCount,
+              totalPages: pagination.totalPages,
+              onPageChange: setPage,
+              onPageSizeChange: setPageSize,
+              isFetching,
+            }}
             bulkActions={
               isEditable && selectedRows.length > 0 ? (
                 (() => {
