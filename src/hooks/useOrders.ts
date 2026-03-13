@@ -13,6 +13,8 @@ interface OrderFilters {
   excludeDeliveredAndFailed?: boolean;
   searchQuery?: string; // Server-side search on order_code, customer_name, or area
   areaFilter?: string; // Server-side exact match on area
+  deliveredDateFrom?: string; // ISO date string for delivered_at >= filter
+  deliveredDateTo?: string; // ISO date string for delivered_at <= filter
 }
 
 export function useOrders(filters?: OrderFilters) {
