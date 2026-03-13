@@ -311,9 +311,7 @@ export default function SalespersonActionInbox() {
   if (isLoading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <CapybaraState type="loading" title="Loading actions..." description="Checking for orders that need your attention" />
       </AppLayout>
     );
   }
