@@ -59,14 +59,18 @@ import { cn } from '@/lib/utils';
 import { LeaderboardDashboardCard } from '@/components/leaderboard/LeaderboardDashboardCard';
 import { VisibilityDebugPanel } from '@/components/admin/VisibilityDebugPanel';
 import { KPIStrip, KPIItem } from '@/components/desktop/KPIStrip';
+import { RoleHeroBanner } from '@/components/dashboard/RoleHeroBanner';
+import { CapybaraState } from '@/components/dashboard/CapybaraState';
+import capybaraLoading from '@/assets/capybara-loading.png';
 
 // Loading component for when role is being fetched
 function DashboardLoading() {
   return (
     <AppLayout>
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="text-muted-foreground text-lg">Loading your dashboard...</p>
+        <img src={capybaraLoading} alt="Loading" className="h-32 w-32 object-contain drop-shadow-lg animate-fade-in" />
+        <p className="text-muted-foreground text-lg font-medium">Loading your dashboard...</p>
+        <p className="text-sm text-muted-foreground/60">Our capybara is gathering your data</p>
       </div>
     </AppLayout>
   );
@@ -1401,31 +1405,9 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="space-y-8">
-        {/* Premium Welcome Header - Modern Orange/Silver */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/20 via-secondary/40 to-primary/5 p-8 md:p-10 border border-primary/30 shadow-lg">
-          {/* Decorative orbs */}
-          <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-primary/30 to-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 animate-pulse" />
-          <div className="absolute bottom-0 left-0 w-60 h-60 bg-gradient-to-tr from-secondary/60 to-transparent rounded-full blur-2xl translate-y-1/3 -translate-x-1/4" />
-          <div className="absolute top-1/2 left-1/2 w-40 h-40 bg-primary/10 rounded-full blur-xl -translate-x-1/2 -translate-y-1/2" />
-          
-          {/* Content */}
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="h-1.5 w-12 rounded-full bg-gradient-to-r from-primary to-primary/50" />
-              <span className="text-xs font-semibold uppercase tracking-widest text-primary">Dashboard</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
-              Welcome back, <span className="bg-gradient-to-r from-primary via-primary/80 to-[hsl(var(--status-warning))] bg-clip-text text-transparent drop-shadow-sm">{profile?.display_name}</span>
-            </h1>
-            <p className="text-muted-foreground mt-3 text-base flex items-center gap-3">
-              Here's an overview of your operations
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full bg-primary/15 text-primary border border-primary/20 shadow-sm">
-                <RefreshCw className="h-3 w-3 animate-spin" style={{ animationDuration: '3s' }} /> Live
-              </span>
-            </p>
-          </div>
-        </div>
+      <div className="space-y-6">
+        {/* Role-specific hero banner with capybara */}
+        <RoleHeroBanner />
 
         {renderDashboard()}
       </div>
