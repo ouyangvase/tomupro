@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "typeRoots": ["./node_modules/@types"],
+    "types": ["google.maps"],
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
