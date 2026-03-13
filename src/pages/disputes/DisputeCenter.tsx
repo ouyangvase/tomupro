@@ -70,7 +70,7 @@ export default function DisputeCenter() {
     });
     
     updateOrder.mutate(
-      { id: selectedOrder.id, updates: { reconciliation_status: resolveTarget } },
+      { id: selectedOrder.id, reconciliation_status: resolveTarget } as any,
       {
         onSuccess: () => {
           setResolveDialogOpen(false);
