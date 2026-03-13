@@ -183,6 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Profile missing - no row exists for this user
     if (!data) {
       console.warn('[Auth] No profile row found for user:', userId);
+      isFetchingRef.current = false;
       setProfileStatus('missing');
       setProfileError('No profile found for your account');
       return;
