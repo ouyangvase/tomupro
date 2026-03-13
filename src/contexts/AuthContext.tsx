@@ -124,9 +124,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const fetchProfile = useCallback(async (userId: string, retryCount = 0): Promise<void> => {
-    const maxRetries = 3;
-    const baseDelay = 1000;
-    const fetchTimeout = 8000; // 8 second timeout per attempt
+    const maxRetries = 1;
+    const baseDelay = 500;
+    const fetchTimeout = 3000; // 3 second timeout per attempt
+
+    // Prevent duplicate concurrent fetches
+    if (retryCount === 0 && isFetchingRef.current) {
+      console.log('[Auth] Profile fetch already in progress, skipping duplicate');
+      return;
+    }
+    if (retryCount === 0) {
+      isFetchingRef.current = true;
+    }
     
     // Set loading status on first attempt
     if (retryCount === 0) {
