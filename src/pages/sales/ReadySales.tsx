@@ -30,7 +30,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck, Lock, Plus, AlertTriangle, ChevronDown, ChevronUp, Send, Search, X, Upload } from 'lucide-react';
+import { Truck, UserCheck, Lock, Plus, AlertTriangle, ChevronDown, ChevronUp, Send, Search, X, Upload, ShoppingCart } from 'lucide-react';
+import { PageHero } from '@/components/dashboard/PageHero';
+import capybaraSales from '@/assets/capybara-sales.png';
 import { Input } from '@/components/ui/input';
 import {
   Tooltip,

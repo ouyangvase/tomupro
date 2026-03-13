@@ -21,12 +21,15 @@ import { ActionResolutionDialog } from '@/components/sales/ActionResolutionDialo
 import { BulkActionResolutionDialog } from '@/components/sales/BulkActionResolutionDialog';
 import { 
   AlertCircle, MessageSquare, User, Search,
-  CalendarClock, Loader2, RefreshCw, Play, ListChecks, XCircle, Calendar, AlertTriangle
+  CalendarClock, Loader2, RefreshCw, Play, ListChecks, XCircle, Calendar, AlertTriangle, Flame
 } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { WhatsAppPhoneLink, WhatsAppPhoneLinkCompact } from '@/components/orders/WhatsAppPhoneLink';
+import { PageHero } from '@/components/dashboard/PageHero';
+import capybaraRunner from '@/assets/capybara-runner.png';
+import { CapybaraState } from '@/components/dashboard/CapybaraState';
 
 // Reason types for action required
 type ActionRequiredSource = 'FAILED_DELIVERY' | 'RESCHEDULED' | 'RUNNER_FLAGGED' | 'MANUAL';
