@@ -366,7 +366,7 @@ export default function RunnerDeliveredOrders() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter]);
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
 
   // Clear filters helper
   const clearAllFilters = useCallback(() => {
