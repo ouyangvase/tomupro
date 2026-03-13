@@ -13,6 +13,8 @@ interface OrderFilters {
   excludeDeliveredAndFailed?: boolean;
   searchQuery?: string; // Server-side search on order_code, customer_name, or area
   areaFilter?: string; // Server-side exact match on area
+  deliveredDateFrom?: string; // ISO date string for delivered_at >= filter
+  deliveredDateTo?: string; // ISO date string for delivered_at <= filter
 }
 
 export function useOrders(filters?: OrderFilters) {
@@ -74,6 +76,14 @@ export function useOrders(filters?: OrderFilters) {
       // Server-side exact area filter
       if (filters?.areaFilter && filters.areaFilter !== 'all') {
         query = query.eq('area', filters.areaFilter);
+      }
+
+      // Server-side date range filter on delivered_at
+      if (filters?.deliveredDateFrom) {
+        query = query.gte('delivered_at', filters.deliveredDateFrom);
+      }
+      if (filters?.deliveredDateTo) {
+        query = query.lte('delivered_at', filters.deliveredDateTo);
       }
 
       const { data: ordersData, error: ordersError } = await query;

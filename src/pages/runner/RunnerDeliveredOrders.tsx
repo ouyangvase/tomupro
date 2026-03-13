@@ -22,8 +22,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2, AlertTriangle, Shield } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2, AlertTriangle, Shield, DollarSign, FileCheck } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { DateRangePresets, useDateRangeState, type DateRange } from '@/components/filters/DateRangePresets';
+import { PageHero } from '@/components/dashboard/PageHero';
+import capybaraRunner from '@/assets/capybara-runner.png';
+import { CapybaraState } from '@/components/dashboard/CapybaraState';
 import {
   Pagination,
   PaginationContent,
@@ -135,6 +139,7 @@ export default function RunnerDeliveredOrders() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
+  const { dateRange, setDateRange } = useDateRangeState();
   
   // Fetch orders based on role and view mode:
   // - Runner: fetch their own orders (runner_id = user.id), with optional salesperson filter
@@ -149,6 +154,8 @@ export default function RunnerDeliveredOrders() {
       runnerStatus: 'DELIVERED'; 
       searchQuery?: string;
       areaFilter?: string;
+      deliveredDateFrom?: string;
+      deliveredDateTo?: string;
     } = { 
       runnerStatus: 'DELIVERED' as const 
     };
@@ -161,6 +168,14 @@ export default function RunnerDeliveredOrders() {
     // Apply area filter server-side
     if (areaFilter !== 'all') {
       baseFilter.areaFilter = areaFilter;
+    }
+
+    // Apply date range filter server-side
+    if (dateRange.from) {
+      baseFilter.deliveredDateFrom = dateRange.from.toISOString();
+    }
+    if (dateRange.to) {
+      baseFilter.deliveredDateTo = dateRange.to.toISOString();
     }
     
     if (role === 'runner') {
@@ -187,7 +202,7 @@ export default function RunnerDeliveredOrders() {
       return { ...baseFilter, salespersonIds: salespersonFilters };
     }
     return baseFilter; // admin no filter - fetch all delivered
-  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter]);
+  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, dateRange]);
   
   const { data: orders, isLoading } = useOrders(ordersFilter as any);
   const { data: userDirectory = [] } = useUserDirectory();
@@ -327,9 +342,10 @@ export default function RunnerDeliveredOrders() {
       driverFilter !== 'all' ||
       salespersonFilters.length > 0 ||
       skuFilter !== 'all' ||
-      claimStatusFilter !== 'all'
+      claimStatusFilter !== 'all' ||
+      dateRange.from !== null
     );
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter]);
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
 
   // Detect if data might be truncated by the 2000-row query limit
   const QUERY_LIMIT = 2000;
@@ -351,7 +367,7 @@ export default function RunnerDeliveredOrders() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter]);
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
 
   // Clear filters helper
   const clearAllFilters = useCallback(() => {
@@ -361,7 +377,8 @@ export default function RunnerDeliveredOrders() {
     setSalespersonFilters([]);
     setSkuFilter('all');
     setClaimStatusFilter('all');
-  }, []);
+    setDateRange({ from: null, to: null, label: 'Lifetime' });
+  }, [setDateRange]);
 
   // Clamp current page if it exceeds total pages
   useEffect(() => {
@@ -725,52 +742,54 @@ export default function RunnerDeliveredOrders() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="h-8 w-8 text-green-600" />
-            <div>
-              <h1 className="text-2xl font-bold">Delivered Orders</h1>
-              <p className="text-muted-foreground">
-                View all orders that have been successfully delivered
-              </p>
+      <div className="space-y-5">
+        {/* Hero Header */}
+        <PageHero
+          icon={<CheckCircle className="h-6 w-6 text-[hsl(var(--status-success))]" />}
+          title="Delivered Orders"
+          subtitle={`${dateRange.label} • ${deliveredOrders.length} orders in view`}
+          image={capybaraRunner}
+          imageAlt="Runner capybara"
+          actions={
+            <div className="flex items-center gap-2 flex-wrap">
+              {(isAdminOrManager || role === 'runner') && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                      <ChevronDown className="h-4 w-4 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleExportSelected} disabled={exportSelectedIds.size === 0}>
+                      Export Selected ({exportSelectedIds.size})
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportAll}>
+                      Export All ({deliveredOrders.length})
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <TeamViewToggle
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                selectedMember={selectedMember}
+                onMemberChange={setSelectedMember}
+              />
             </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {(isAdminOrManager || role === 'runner') && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                    <ChevronDown className="h-4 w-4 ml-1" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleExportSelected} disabled={exportSelectedIds.size === 0}>
-                    Export Selected ({exportSelectedIds.size})
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportAll}>
-                    Export All ({deliveredOrders.length})
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <TeamViewToggle
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              selectedMember={selectedMember}
-              onMemberChange={setSelectedMember}
-            />
-          </div>
-        </div>
+          }
+        >
+          {/* Date Range Presets inside hero */}
+          <DateRangePresets value={dateRange} onChange={setDateRange} />
+        </PageHero>
 
-        {/* Data truncation warning - table may show fewer rows than KPI totals */}
+        {/* Data truncation warning */}
         {isDataTruncated && (
-          <Card className="border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20">
+          <Card className="border-[hsl(var(--status-warning)/0.5)] bg-[hsl(var(--status-warning)/0.08)]">
             <CardContent className="p-3 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              <AlertTriangle className="h-4 w-4 text-[hsl(var(--status-warning))] shrink-0" />
+              <p className="text-sm text-muted-foreground">
                 Table shows up to {QUERY_LIMIT} rows. KPI totals reflect all {summary?.total_delivered ?? '2000+'} delivered orders.
                 Apply filters to narrow results.
               </p>
@@ -778,48 +797,74 @@ export default function RunnerDeliveredOrders() {
           </Card>
         )}
 
-        {/* Stats - Server-side aggregation with ALL filters for accurate totals */}
-        <div className="grid gap-4 grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Delivered {hasActiveFilters && <span className="text-xs">(filtered)</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {displaySummaryLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold text-green-600">{displaySummary?.total_delivered ?? 0}</div>
-              )}
+        {/* KPI Cards — Visual upgrade */}
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+          <Card className="relative overflow-hidden border-[hsl(var(--status-success)/0.3)] bg-gradient-to-br from-[hsl(var(--status-success)/0.1)] to-transparent">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-[hsl(var(--status-success)/0.08)] rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-5 pb-4 relative">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Total Delivered {hasActiveFilters && <span>(filtered)</span>}
+                  </p>
+                  {displaySummaryLoading ? (
+                    <Skeleton className="h-9 w-20 mt-1" />
+                  ) : (
+                    <p className="text-3xl font-extrabold text-[hsl(var(--status-success))] tracking-tight mt-1">
+                      {displaySummary?.total_delivered ?? 0}
+                    </p>
+                  )}
+                </div>
+                <div className="p-2.5 rounded-xl bg-[hsl(var(--status-success)/0.15)]">
+                  <CheckCircle className="h-6 w-6 text-[hsl(var(--status-success))]" />
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Pending Claim {hasActiveFilters && <span className="text-xs">(filtered)</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {displaySummaryLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold">{displaySummary?.pending_claim ?? 0}</div>
-              )}
+
+          <Card className="relative overflow-hidden border-primary/30 bg-gradient-to-br from-primary/10 to-transparent">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-primary/8 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-5 pb-4 relative">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Pending Claim {hasActiveFilters && <span>(filtered)</span>}
+                  </p>
+                  {displaySummaryLoading ? (
+                    <Skeleton className="h-9 w-16 mt-1" />
+                  ) : (
+                    <p className="text-3xl font-extrabold text-primary tracking-tight mt-1">
+                      {displaySummary?.pending_claim ?? 0}
+                    </p>
+                  )}
+                </div>
+                <div className="p-2.5 rounded-xl bg-primary/15">
+                  <FileCheck className="h-6 w-6 text-primary" />
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Value {hasActiveFilters && <span className="text-xs">(filtered)</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {displaySummaryLoading ? (
-                <Skeleton className="h-8 w-24" />
-              ) : (
-                <div className="text-2xl font-bold">{formatBND(displaySummary?.total_amount ?? 0)}</div>
-              )}
+
+          <Card className="relative overflow-hidden border-border/50 hover:border-primary/30 transition-colors">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-secondary/50 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-5 pb-4 relative">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Total Value {hasActiveFilters && <span>(filtered)</span>}
+                  </p>
+                  {displaySummaryLoading ? (
+                    <Skeleton className="h-9 w-28 mt-1" />
+                  ) : (
+                    <p className="text-3xl font-extrabold tracking-tight mt-1">
+                      {formatBND(displaySummary?.total_amount ?? 0)}
+                    </p>
+                  )}
+                </div>
+                <div className="p-2.5 rounded-xl bg-secondary/50">
+                  <DollarSign className="h-6 w-6 text-muted-foreground" />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

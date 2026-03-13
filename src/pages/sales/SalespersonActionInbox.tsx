@@ -21,12 +21,15 @@ import { ActionResolutionDialog } from '@/components/sales/ActionResolutionDialo
 import { BulkActionResolutionDialog } from '@/components/sales/BulkActionResolutionDialog';
 import { 
   AlertCircle, MessageSquare, User, Search,
-  CalendarClock, Loader2, RefreshCw, Play, ListChecks, XCircle, Calendar, AlertTriangle
+  CalendarClock, Loader2, RefreshCw, Play, ListChecks, XCircle, Calendar, AlertTriangle, Flame
 } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { WhatsAppPhoneLink, WhatsAppPhoneLinkCompact } from '@/components/orders/WhatsAppPhoneLink';
+import { PageHero } from '@/components/dashboard/PageHero';
+import capybaraRunner from '@/assets/capybara-runner.png';
+import { CapybaraState } from '@/components/dashboard/CapybaraState';
 
 // Reason types for action required
 type ActionRequiredSource = 'FAILED_DELIVERY' | 'RESCHEDULED' | 'RUNNER_FLAGGED' | 'MANUAL';
@@ -308,9 +311,7 @@ export default function SalespersonActionInbox() {
   if (isLoading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <CapybaraState type="loading" title="Loading actions..." description="Checking for orders that need your attention" />
       </AppLayout>
     );
   }
@@ -318,64 +319,64 @@ export default function SalespersonActionInbox() {
   return (
     <AppLayout>
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 md:h-8 md:w-8 text-orange-500" />
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold">Action Required</h1>
-              <p className="text-sm text-muted-foreground">Orders requiring your attention</p>
+        {/* Hero Header */}
+        <PageHero
+          icon={<Flame className="h-6 w-6 text-[hsl(var(--status-warning))]" />}
+          title="Action Required"
+          subtitle={`${actionRequiredOrders.length} orders requiring your attention`}
+          image={capybaraRunner}
+          imageAlt="Runner capybara"
+          actions={
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <TeamViewToggle
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                selectedMember={selectedMember}
+                onMemberChange={setSelectedMember}
+              />
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCw className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Refresh</span>
+              </Button>
             </div>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <TeamViewToggle
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              selectedMember={selectedMember}
-              onMemberChange={setSelectedMember}
-            />
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Refresh</span>
-            </Button>
-          </div>
-        </div>
+          }
+        />
 
         {/* Stats - responsive grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-          <Card className="border-orange-200 bg-orange-50 dark:bg-orange-900/10">
+          <Card className="border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.08)]">
             <CardContent className="p-3 md:p-4">
-              <div className="text-xl md:text-2xl font-bold text-orange-600">{actionRequiredOrders.length}</div>
+              <div className="text-xl md:text-2xl font-bold text-[hsl(var(--status-warning))]">{actionRequiredOrders.length}</div>
               <div className="text-xs md:text-sm text-muted-foreground">Total Pending</div>
             </CardContent>
           </Card>
-          <Card className="border-red-200 bg-red-50 dark:bg-red-900/10">
+          <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="p-3 md:p-4 flex items-center gap-2">
-              <XCircle className="h-4 w-4 md:h-5 md:w-5 text-red-500" />
+              <XCircle className="h-4 w-4 md:h-5 md:w-5 text-destructive" />
               <div>
-                <div className="text-xl md:text-2xl font-bold text-red-600">
+                <div className="text-xl md:text-2xl font-bold text-destructive">
                   {actionRequiredOrders.filter(o => getActionSource(o) === 'FAILED_DELIVERY').length}
                 </div>
                 <div className="text-xs md:text-sm text-muted-foreground">Failed</div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/10">
+          <Card className="border-[hsl(var(--status-pending)/0.3)] bg-[hsl(var(--status-pending)/0.08)]">
             <CardContent className="p-3 md:p-4 flex items-center gap-2">
-              <Calendar className="h-4 w-4 md:h-5 md:w-5 text-yellow-500" />
+              <Calendar className="h-4 w-4 md:h-5 md:w-5 text-[hsl(var(--status-pending))]" />
               <div>
-                <div className="text-xl md:text-2xl font-bold text-yellow-600">
+                <div className="text-xl md:text-2xl font-bold text-[hsl(var(--status-pending))]">
                   {actionRequiredOrders.filter(o => getActionSource(o) === 'RESCHEDULED').length}
                 </div>
                 <div className="text-xs md:text-sm text-muted-foreground">Rescheduled</div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/10">
+          <Card className="border-primary/30 bg-primary/5">
             <CardContent className="p-3 md:p-4 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 md:h-5 md:w-5 text-blue-500" />
+              <AlertTriangle className="h-4 w-4 md:h-5 md:w-5 text-primary" />
               <div>
-                <div className="text-xl md:text-2xl font-bold text-blue-600">
+                <div className="text-xl md:text-2xl font-bold text-primary">
                   {actionRequiredOrders.filter(o => 
                     getActionSource(o) === 'RUNNER_FLAGGED' || getActionSource(o) === 'MANUAL'
                   ).length}
