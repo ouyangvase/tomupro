@@ -377,7 +377,8 @@ export default function RunnerDeliveredOrders() {
     setSalespersonFilters([]);
     setSkuFilter('all');
     setClaimStatusFilter('all');
-  }, []);
+    setDateRange({ from: null, to: null, label: 'Lifetime' });
+  }, [setDateRange]);
 
   // Clamp current page if it exceeds total pages
   useEffect(() => {
