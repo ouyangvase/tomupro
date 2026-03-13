@@ -50,23 +50,6 @@ export function useSidebarBadges(): Record<string, number> {
     staleTime: 30000,
   });
 
-  // Pending approvals count (manager/admin)
-  const { data: approvalsCount } = useQuery({
-    queryKey: ['sidebar-badge', 'pending-approvals', user?.id, role],
-    queryFn: async () => {
-      if (!user) return 0;
-      const { count, error } = await supabase
-        .from('stock_adjustments')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending');
-      if (error) return 0;
-      return count || 0;
-    },
-    enabled: !!user && (role === 'admin' || role === 'manager'),
-    refetchInterval: 60000,
-    staleTime: 30000,
-  });
-
   // Pending claim batches (admin)
   const { data: claimBatchCount } = useQuery({
     queryKey: ['sidebar-badge', 'claim-batches', user?.id],
@@ -75,7 +58,7 @@ export function useSidebarBadges(): Record<string, number> {
       const { count, error } = await supabase
         .from('claim_batches')
         .select('id', { count: 'exact', head: true })
-        .eq('status', 'submitted');
+        .eq('status', 'ADMIN_ACK_PENDING');
       if (error) return 0;
       return count || 0;
     },
