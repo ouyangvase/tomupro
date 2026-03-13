@@ -7,7 +7,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHero } from '@/components/dashboard/PageHero';
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { CapybaraState } from '@/components/dashboard/CapybaraState';
-import { Trophy, Medal, Award, Lock, Crown, Flame, Target, ChevronUp, Zap } from 'lucide-react';
+import { Trophy, Medal, Award, Lock, Crown, Flame, Target, ChevronUp, Zap, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import capybaraDriver from '@/assets/capybara-driver.png';
 
