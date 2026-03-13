@@ -41,7 +41,7 @@ export default function ManagerRankingBoard() {
   const isMobile = useIsMobile();
   const isAdmin = profile?.role === 'admin';
 
-  const [period, setPeriod] = useState<RankingPeriod>('last7');
+  const [period, setPeriod] = useState<RankingPeriod>('monthly');
   const [metric, setMetric] = useState<RankingMetric>('leadership_score');
   const [selectedManager, setSelectedManager] = useState<ManagerRankingData | null>(null);
   const [participantsOpen, setParticipantsOpen] = useState(false);
