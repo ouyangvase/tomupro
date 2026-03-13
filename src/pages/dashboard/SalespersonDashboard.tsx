@@ -24,85 +24,96 @@ export function SalespersonDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* ── 1. HERO PANEL (handled by parent RoleHeroBanner) ── */}
       <LivePulse lastUpdated={lastUpdated} isRefreshing={isLoading} />
 
-      {/* ── 2. ACTION CARDS ── */}
-      <MissionSection icon={AlertCircle} title="Action Required" urgencyCount={
-        ((dashData?.failedOrdersCount ?? 0) + (dashData?.pendingDeliveryCount ?? 0) + (dashData?.pendingClaimCount ?? 0)) || undefined
-      }>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card 
-            className={cn(
-              "cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 relative overflow-hidden group",
-              (dashData?.failedOrdersCount ?? 0) > 0 
-                ? "border-destructive/50 bg-gradient-to-br from-destructive/10 to-destructive/5" 
-                : "border-border/50"
-            )}
-            onClick={() => navigate('/sales/action-required')}
-          >
-            {(dashData?.failedOrdersCount ?? 0) > 0 && (
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-destructive to-destructive/50" />
-            )}
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Failed Orders</p>
-                  {isLoading ? <Skeleton className="h-10 w-16 mt-1" /> : (
-                    <p className={cn("text-4xl font-bold tracking-tight", (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground")}>
-                      <AnimatedCounter value={dashData?.failedOrdersCount ?? 0} />
-                    </p>
-                  )}
-                </div>
-                <div className={cn("p-3 rounded-2xl transition-colors", (dashData?.failedOrdersCount ?? 0) > 0 ? "bg-destructive/20 group-hover:bg-destructive/30" : "bg-secondary")}>
-                  <XCircle className={cn("h-7 w-7", (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground/50")} />
-                </div>
-              </div>
-              {(dashData?.failedOrdersCount ?? 0) > 0 && (
-                <Button size="sm" variant="destructive" className="w-full gap-2 shadow-lg">
-                  Resolve Now <ArrowRight className="h-4 w-4" />
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group border-border/50 hover:border-primary/30"
-            onClick={() => navigate('/sales/ready')}
-          >
-            <CardContent className="pt-6">
+      {/* Section 1: Performance KPIs */}
+      <MissionSection icon={TrendingUp} title="Performance Summary">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {/* Today's Sales */}
+          <Card className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-primary/30 shadow-lg">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-6 relative">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Pending Delivery</p>
-                  {isLoading ? <Skeleton className="h-10 w-16 mt-1" /> : (
-                    <p className="text-4xl font-bold text-primary tracking-tight">
-                      <AnimatedCounter value={dashData?.pendingDeliveryCount ?? 0} />
+                  <p className="text-sm font-medium text-primary/80">Today Sales</p>
+                  {isLoading ? <Skeleton className="h-9 w-32 mt-1" /> : (
+                    <p className="text-3xl font-bold text-primary tracking-tight">
+                      <AnimatedCounter value={dashData?.todaySalesAmount ?? 0} formatter={(v) => formatBND(v)} />
                     </p>
                   )}
+                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+                    <CheckCircle className="h-3.5 w-3.5 text-[hsl(var(--status-success))]" />
+                    {dashData?.todayDeliveredCount ?? 0} delivered
+                  </p>
                 </div>
-                <div className="p-3 rounded-2xl bg-primary/15 group-hover:bg-primary/25 transition-colors">
-                  <Truck className="h-7 w-7 text-primary" />
+                <div className="p-3 rounded-2xl bg-primary/20">
+                  <DollarSign className="h-8 w-8 text-primary" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group border-border/50"
-            onClick={() => navigate('/runner/delivered-orders')}
-          >
-            <CardContent className="pt-6">
+          {/* MTD Sales */}
+          <Card className="relative overflow-hidden bg-gradient-to-br from-[hsl(var(--status-success)/0.15)] to-[hsl(var(--status-success)/0.05)] border-[hsl(var(--status-success)/0.3)]">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-[hsl(var(--status-success)/0.1)] rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-6 relative">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Pending Claim</p>
-                  {isLoading ? <Skeleton className="h-10 w-16 mt-1" /> : (
-                    <p className="text-4xl font-bold text-[hsl(var(--status-pending))] tracking-tight">
-                      <AnimatedCounter value={dashData?.pendingClaimCount ?? 0} />
+                  <p className="text-sm font-medium text-[hsl(var(--status-success))]">Month-to-Date</p>
+                  {isLoading ? <Skeleton className="h-9 w-32 mt-1" /> : (
+                    <p className="text-3xl font-bold text-[hsl(var(--status-success))] tracking-tight">
+                      <AnimatedCounter value={dashData?.mtdSalesAmount ?? 0} formatter={(v) => formatBND(v)} />
                     </p>
                   )}
                 </div>
-                <div className="p-3 rounded-2xl bg-[hsl(var(--status-pending)/0.15)] group-hover:bg-[hsl(var(--status-pending)/0.25)] transition-colors">
-                  <Receipt className="h-7 w-7 text-[hsl(var(--status-pending))]" />
+                <div className="p-3 rounded-2xl bg-[hsl(var(--status-success)/0.2)]">
+                  <TrendingUp className="h-8 w-8 text-[hsl(var(--status-success))]" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Delivered MTD */}
+          <Card className="relative overflow-hidden border-border/50 hover:border-primary/30 transition-colors">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-secondary/50 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-6 relative">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Delivered (MTD)</p>
+                  {isLoading ? <Skeleton className="h-9 w-16 mt-1" /> : (
+                    <p className="text-3xl font-bold tracking-tight">
+                      <AnimatedCounter value={dashData?.mtdDeliveredCount ?? 0} />
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2">orders this month</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-[hsl(var(--status-success)/0.15)]">
+                  <CheckCircle className="h-8 w-8 text-[hsl(var(--status-success))]" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Commission */}
+          <Card className="relative overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-primary/40">
+            <div className="absolute top-0 right-0 w-28 h-28 bg-primary/15 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-6 relative">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-primary/80">Commission (MTD)</p>
+                  {isLoading ? <Skeleton className="h-9 w-32 mt-1" /> : (
+                    <p className="text-3xl font-bold text-primary tracking-tight">
+                      <AnimatedCounter value={dashData?.totalCommission ?? 0} formatter={(v) => formatBND(v)} />
+                    </p>
+                  )}
+                  <div className="flex gap-2 text-xs mt-2">
+                    <span className="px-2 py-0.5 rounded-full bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))] font-medium">
+                      ✓ {formatBND(dashData?.finalCommission ?? 0)}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-primary/20">
+                  <Trophy className="h-8 w-8 text-primary" />
                 </div>
               </div>
             </CardContent>
@@ -110,7 +121,7 @@ export function SalespersonDashboard() {
         </div>
       </MissionSection>
 
-      {/* ── 3. VISUAL PIPELINE — Target Progress ── */}
+      {/* Section 2: Target Progress */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
@@ -215,94 +226,82 @@ export function SalespersonDashboard() {
         )}
       </div>
 
-      {/* ── 4. PERFORMANCE CARDS ── */}
-      <MissionSection icon={TrendingUp} title="Performance Summary">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* Today's Sales */}
-          <Card className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-primary/30 shadow-lg">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-            <CardContent className="pt-6 relative">
-              <div className="flex items-center justify-between">
+      {/* Section 3: Action Required */}
+      <MissionSection icon={AlertCircle} title="Action Required" urgencyCount={
+        ((dashData?.failedOrdersCount ?? 0) + (dashData?.pendingDeliveryCount ?? 0) + (dashData?.pendingClaimCount ?? 0)) || undefined
+      }>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card 
+            className={cn(
+              "cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 relative overflow-hidden group",
+              (dashData?.failedOrdersCount ?? 0) > 0 
+                ? "border-destructive/50 bg-gradient-to-br from-destructive/10 to-destructive/5" 
+                : "border-border/50"
+            )}
+            onClick={() => navigate('/sales/action-required')}
+          >
+            {(dashData?.failedOrdersCount ?? 0) > 0 && (
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-destructive to-destructive/50" />
+            )}
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-primary/80">Today Sales</p>
-                  {isLoading ? <Skeleton className="h-9 w-32 mt-1" /> : (
-                    <p className="text-3xl font-bold text-primary tracking-tight">
-                      <AnimatedCounter value={dashData?.todaySalesAmount ?? 0} formatter={(v) => formatBND(v)} />
+                  <p className="text-sm font-medium text-muted-foreground">Failed Orders</p>
+                  {isLoading ? <Skeleton className="h-10 w-16 mt-1" /> : (
+                    <p className={cn("text-4xl font-bold tracking-tight", (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground")}>
+                      <AnimatedCounter value={dashData?.failedOrdersCount ?? 0} />
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
-                    <CheckCircle className="h-3.5 w-3.5 text-[hsl(var(--status-success))]" />
-                    {dashData?.todayDeliveredCount ?? 0} delivered
-                  </p>
                 </div>
-                <div className="p-3 rounded-2xl bg-primary/20">
-                  <DollarSign className="h-8 w-8 text-primary" />
+                <div className={cn("p-3 rounded-2xl transition-colors", (dashData?.failedOrdersCount ?? 0) > 0 ? "bg-destructive/20 group-hover:bg-destructive/30" : "bg-secondary")}>
+                  <XCircle className={cn("h-7 w-7", (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground/50")} />
+                </div>
+              </div>
+              {(dashData?.failedOrdersCount ?? 0) > 0 && (
+                <Button size="sm" variant="destructive" className="w-full gap-2 shadow-lg">
+                  Resolve Now <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group border-border/50 hover:border-primary/30"
+            onClick={() => navigate('/sales/ready')}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Pending Delivery</p>
+                  {isLoading ? <Skeleton className="h-10 w-16 mt-1" /> : (
+                    <p className="text-4xl font-bold text-primary tracking-tight">
+                      <AnimatedCounter value={dashData?.pendingDeliveryCount ?? 0} />
+                    </p>
+                  )}
+                </div>
+                <div className="p-3 rounded-2xl bg-primary/15 group-hover:bg-primary/25 transition-colors">
+                  <Truck className="h-7 w-7 text-primary" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* MTD Sales */}
-          <Card className="relative overflow-hidden bg-gradient-to-br from-[hsl(var(--status-success)/0.15)] to-[hsl(var(--status-success)/0.05)] border-[hsl(var(--status-success)/0.3)]">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-[hsl(var(--status-success)/0.1)] rounded-full -translate-y-1/2 translate-x-1/2" />
-            <CardContent className="pt-6 relative">
+          <Card 
+            className="cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group border-border/50"
+            onClick={() => navigate('/runner/delivered-orders')}
+          >
+            <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-[hsl(var(--status-success))]">Month-to-Date</p>
-                  {isLoading ? <Skeleton className="h-9 w-32 mt-1" /> : (
-                    <p className="text-3xl font-bold text-[hsl(var(--status-success))] tracking-tight">
-                      <AnimatedCounter value={dashData?.mtdSalesAmount ?? 0} formatter={(v) => formatBND(v)} />
+                  <p className="text-sm font-medium text-muted-foreground">Pending Claim</p>
+                  {isLoading ? <Skeleton className="h-10 w-16 mt-1" /> : (
+                    <p className="text-4xl font-bold text-[hsl(var(--status-pending))] tracking-tight">
+                      <AnimatedCounter value={dashData?.pendingClaimCount ?? 0} />
                     </p>
                   )}
                 </div>
-                <div className="p-3 rounded-2xl bg-[hsl(var(--status-success)/0.2)]">
-                  <TrendingUp className="h-8 w-8 text-[hsl(var(--status-success))]" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Delivered MTD */}
-          <Card className="relative overflow-hidden border-border/50 hover:border-primary/30 transition-colors">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-secondary/50 rounded-full -translate-y-1/2 translate-x-1/2" />
-            <CardContent className="pt-6 relative">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Delivered (MTD)</p>
-                  {isLoading ? <Skeleton className="h-9 w-16 mt-1" /> : (
-                    <p className="text-3xl font-bold tracking-tight">
-                      <AnimatedCounter value={dashData?.mtdDeliveredCount ?? 0} />
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-2">orders this month</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-[hsl(var(--status-success)/0.15)]">
-                  <CheckCircle className="h-8 w-8 text-[hsl(var(--status-success))]" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Commission */}
-          <Card className="relative overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-primary/40">
-            <div className="absolute top-0 right-0 w-28 h-28 bg-primary/15 rounded-full -translate-y-1/2 translate-x-1/2" />
-            <CardContent className="pt-6 relative">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-primary/80">Commission (MTD)</p>
-                  {isLoading ? <Skeleton className="h-9 w-32 mt-1" /> : (
-                    <p className="text-3xl font-bold text-primary tracking-tight">
-                      <AnimatedCounter value={dashData?.totalCommission ?? 0} formatter={(v) => formatBND(v)} />
-                    </p>
-                  )}
-                  <div className="flex gap-2 text-xs mt-2">
-                    <span className="px-2 py-0.5 rounded-full bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))] font-medium">
-                      ✓ {formatBND(dashData?.finalCommission ?? 0)}
-                    </span>
-                  </div>
-                </div>
-                <div className="p-3 rounded-2xl bg-primary/20">
-                  <Trophy className="h-8 w-8 text-primary" />
+                <div className="p-3 rounded-2xl bg-[hsl(var(--status-pending)/0.15)] group-hover:bg-[hsl(var(--status-pending)/0.25)] transition-colors">
+                  <Receipt className="h-7 w-7 text-[hsl(var(--status-pending))]" />
                 </div>
               </div>
             </CardContent>
@@ -310,7 +309,7 @@ export function SalespersonDashboard() {
         </div>
       </MissionSection>
 
-      {/* ── 5. ALERTS — Stock Snapshot ── */}
+      {/* Section 4: Stock Snapshot */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -364,7 +363,7 @@ export function SalespersonDashboard() {
         </CardContent>
       </Card>
 
-      {/* ── 6. ACTIVITY FEED — Ranking + Leaderboard ── */}
+      {/* Section 5: Ranking */}
       {dashData?.ranking && dashData.ranking.totalSalespersons > 1 && (
         <Card>
           <CardHeader className="pb-2">
@@ -412,6 +411,7 @@ export function SalespersonDashboard() {
         </Card>
       )}
 
+      {/* Section 6: Leaderboard */}
       <LeaderboardDashboardCard />
     </div>
   );

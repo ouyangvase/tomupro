@@ -35,7 +35,19 @@ export function ManagerDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* ── 1. HERO PANEL (handled by parent RoleHeroBanner) ── */}
+      {/* Team Alerts */}
+      {(actionStats?.systemTotal ?? 0) > 0 && (
+        <ActionRequiredCard
+          total={actionStats?.systemTotal ?? 0}
+          failedDelivery={actionStats?.failedDelivery}
+          rescheduled={actionStats?.rescheduled}
+          runnerFlagged={actionStats?.runnerFlagged}
+          isLoading={actionLoading}
+          href="/sales/action-required"
+          title="Team Alerts"
+          subtitle="Orders from your team requiring attention"
+        />
+      )}
 
       {/* Period Toggle */}
       <div className="flex items-center justify-between">
@@ -47,26 +59,7 @@ export function ManagerDashboard() {
         </Tabs>
       </div>
 
-      {/* ── 2. ACTION CARDS — Quick Actions ── */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10">
-              <Zap className="h-4 w-4 text-primary" />
-            </div>
-            Quick Actions
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1.5">
-          <QuickActionTile icon={Package} title="New Order" subtitle="Create a booking" href="/sales/booking" />
-          <QuickActionTile icon={AlertTriangle} title="Team Alerts" subtitle="Resolve pending items" href="/sales/action-required" badge={actionStats?.systemTotal} iconColor="text-[hsl(var(--status-warning))]" iconBg="bg-[hsl(var(--status-warning)/0.1)]" />
-          <QuickActionTile icon={Users} title="Team Oversight" subtitle="Monitor team activity" href="/manager/oversight" />
-          <QuickActionTile icon={Award} title="Ranking Board" subtitle="Leadership rankings" href="/manager/ranking-board" iconColor="text-primary" iconBg="bg-primary/10" />
-          <QuickActionTile icon={CheckCircle} title="Stock Balance" subtitle="Inventory overview" href="/inventory" iconColor="text-[hsl(var(--status-success))]" iconBg="bg-[hsl(var(--status-success)/0.1)]" />
-        </CardContent>
-      </Card>
-
-      {/* ── 3. VISUAL PIPELINE — Team Overview KPIs ── */}
+      {/* Team Overview KPIs */}
       <MissionSection icon={Activity} title="Team Overview">
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           <Card className="border-primary/20 bg-gradient-to-br from-primary/8 to-transparent">
@@ -143,7 +136,7 @@ export function ManagerDashboard() {
         </div>
       </MissionSection>
 
-      {/* ── 4. PERFORMANCE CARDS — Leadership Score + Team Health ── */}
+      {/* Leadership Score + Team Health */}
       <div className="grid gap-5 md:grid-cols-2">
         {/* Leadership Score */}
         <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
@@ -250,66 +243,72 @@ export function ManagerDashboard() {
         </Card>
       </div>
 
-      {/* ── 5. ALERTS — Team Alerts ── */}
-      {(actionStats?.systemTotal ?? 0) > 0 && (
-        <ActionRequiredCard
-          total={actionStats?.systemTotal ?? 0}
-          failedDelivery={actionStats?.failedDelivery}
-          rescheduled={actionStats?.rescheduled}
-          runnerFlagged={actionStats?.runnerFlagged}
-          isLoading={actionLoading}
-          href="/sales/action-required"
-          title="Team Alerts"
-          subtitle="Orders from your team requiring attention"
-        />
-      )}
-
-      {/* ── 6. ACTIVITY FEED — Recent Activity ── */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+      {/* Quick Actions & Activity */}
+      <div className="grid gap-5 md:grid-cols-2">
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
             <CardTitle className="text-base font-bold flex items-center gap-2">
               <div className="p-2 rounded-xl bg-primary/10">
-                <Clock className="h-4 w-4 text-primary" />
+                <Zap className="h-4 w-4 text-primary" />
               </div>
-              Recent Activity
+              Quick Actions
             </CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {activityLoading ? (
-            <div className="space-y-2">
-              {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-11 w-full rounded-xl" />)}
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            <QuickActionTile icon={Package} title="New Order" subtitle="Create a booking" href="/sales/booking" />
+            <QuickActionTile icon={AlertTriangle} title="Team Alerts" subtitle="Resolve pending items" href="/sales/action-required" badge={actionStats?.systemTotal} iconColor="text-[hsl(var(--status-warning))]" iconBg="bg-[hsl(var(--status-warning)/0.1)]" />
+            <QuickActionTile icon={Users} title="Team Oversight" subtitle="Monitor team activity" href="/manager/oversight" />
+            <QuickActionTile icon={Award} title="Ranking Board" subtitle="Leadership rankings" href="/manager/ranking-board" iconColor="text-primary" iconBg="bg-primary/10" />
+            <QuickActionTile icon={CheckCircle} title="Stock Balance" subtitle="Inventory overview" href="/inventory" iconColor="text-[hsl(var(--status-success))]" iconBg="bg-[hsl(var(--status-success)/0.1)]" />
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-primary/10">
+                  <Clock className="h-4 w-4 text-primary" />
+                </div>
+                Recent Activity
+              </CardTitle>
             </div>
-          ) : activity && activity.length > 0 ? (
-            <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
-              {activity.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors">
-                  <div className="flex items-center gap-2.5">
-                    <Badge 
-                      variant={item.action.includes('create') || item.action.includes('insert') ? 'default' : item.action.includes('delete') ? 'destructive' : 'secondary'}
-                      className="text-[10px] font-semibold px-2 py-0.5"
-                    >
-                      {item.action}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {item.entity_type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+          </CardHeader>
+          <CardContent>
+            {activityLoading ? (
+              <div className="space-y-2">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-11 w-full rounded-xl" />)}
+              </div>
+            ) : activity && activity.length > 0 ? (
+              <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
+                {activity.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors">
+                    <div className="flex items-center gap-2.5">
+                      <Badge 
+                        variant={item.action.includes('create') || item.action.includes('insert') ? 'default' : item.action.includes('delete') ? 'destructive' : 'secondary'}
+                        className="text-[10px] font-semibold px-2 py-0.5"
+                      >
+                        {item.action}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        {item.entity_type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground/60 shrink-0">
+                      {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
                     </span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground/60 shrink-0">
-                    {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Clock className="h-8 w-8 mx-auto mb-2 text-muted-foreground/20" />
-              <p className="text-sm text-muted-foreground">No recent activity</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Clock className="h-8 w-8 mx-auto mb-2 text-muted-foreground/20" />
+                <p className="text-sm text-muted-foreground">No recent activity</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

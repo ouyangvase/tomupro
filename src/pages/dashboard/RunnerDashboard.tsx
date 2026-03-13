@@ -35,10 +35,9 @@ export function RunnerDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* ── 1. HERO PANEL (handled by parent) ── */}
       <LivePulse lastUpdated={lastUpdated} isRefreshing={isLoading} />
 
-      {/* ── 2. ACTION CARDS — What should I do now? ── */}
+      {/* Section 1: Today's Mission */}
       <MissionSection icon={Zap} title="What should I do now?" urgencyCount={(dashData?.todayStats.pendingAssignment ?? 0) + (dashData?.todayStats.failedToday ?? 0) || undefined}>
         <div className="grid gap-4 md:grid-cols-4">
           <Card 
@@ -111,27 +110,27 @@ export function RunnerDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Success Rate */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Today's Success Rate</span>
+              <span className={cn("text-sm font-bold",
+                completionRate >= 90 ? "text-[hsl(var(--status-success))]" : completionRate >= 70 ? "text-[hsl(var(--status-warning))]" : "text-destructive"
+              )}>
+                <AnimatedCounter value={completionRate} suffix="%" />
+              </span>
+            </div>
+            <Progress value={completionRate} className="h-2" />
+            <p className="text-xs text-muted-foreground mt-2">
+              {dashData?.todayStats.deliveredToday ?? 0} delivered, {dashData?.todayStats.failedToday ?? 0} failed out of {totalAttempts} attempts
+            </p>
+          </CardContent>
+        </Card>
       </MissionSection>
 
-      {/* ── 3. VISUAL PIPELINE — Success Rate ── */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Today's Success Rate</span>
-            <span className={cn("text-sm font-bold",
-              completionRate >= 90 ? "text-[hsl(var(--status-success))]" : completionRate >= 70 ? "text-[hsl(var(--status-warning))]" : "text-destructive"
-            )}>
-              <AnimatedCounter value={completionRate} suffix="%" />
-            </span>
-          </div>
-          <Progress value={completionRate} className="h-2" />
-          <p className="text-xs text-muted-foreground mt-2">
-            {dashData?.todayStats.deliveredToday ?? 0} delivered, {dashData?.todayStats.failedToday ?? 0} failed out of {totalAttempts} attempts
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* ── 4. PERFORMANCE CARDS — Earnings ── */}
+      {/* Section 2: Earnings */}
       <MissionSection icon={TrendingUp} title="How much have I earned today?">
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="relative overflow-hidden bg-gradient-to-br from-[hsl(var(--status-success)/0.15)] via-[hsl(var(--status-success)/0.08)] to-transparent border-[hsl(var(--status-success)/0.3)] shadow-md">
@@ -215,7 +214,7 @@ export function RunnerDashboard() {
         </div>
       </MissionSection>
 
-      {/* ── 5. ALERTS — Blockers ── */}
+      {/* Section 3: Blockers */}
       <MissionSection icon={Ban} title="What is blocking my payout?">
         {((dashData?.blockerStats.failedOrdersCount ?? 0) > 0 || 
           (dashData?.blockerStats.missingDeliveryChargesCount ?? 0) > 0) ? (
@@ -278,7 +277,7 @@ export function RunnerDashboard() {
         )}
       </MissionSection>
 
-      {/* ── 6. ACTIVITY FEED — Quick Actions ── */}
+      {/* Section 4: Quick Actions */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Quick Actions</CardTitle>

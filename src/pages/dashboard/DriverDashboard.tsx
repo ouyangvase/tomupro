@@ -27,65 +27,7 @@ export function DriverDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* ── 1. HERO PANEL (handled by parent RoleHeroBanner) ── */}
-
-      {/* ── 2. ACTION CARDS — Start Your Day ── */}
-      <MissionSection icon={Zap} title="Start Your Day">
-        <div className="grid gap-3 md:grid-cols-3">
-          <Card 
-            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group border-primary/20 bg-gradient-to-br from-primary/8 to-transparent"
-            onClick={() => navigate('/driver/inbox')}
-          >
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-primary">My Deliveries</p>
-                  <p className="text-xs text-muted-foreground mt-1">View assigned orders</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-primary/15 group-hover:bg-primary/25 transition-colors">
-                  <Inbox className="h-6 w-6 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card 
-            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group"
-            onClick={() => navigate('/driver/route')}
-          >
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold">Optimized Route</p>
-                  <p className="text-xs text-muted-foreground mt-1">Plan your deliveries</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-secondary group-hover:bg-primary/10 transition-colors">
-                  <Navigation className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card 
-            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group"
-            onClick={() => navigate('/driver/analytics')}
-          >
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold">My Analytics</p>
-                  <p className="text-xs text-muted-foreground mt-1">Track your performance</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-secondary group-hover:bg-primary/10 transition-colors">
-                  <Target className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </MissionSection>
-
-      {/* ── 3. VISUAL PIPELINE — This Week's Mission Stats ── */}
+      {/* Today's Delivery Stats */}
       <MissionSection icon={Truck} title="This Week's Mission">
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           <Card 
@@ -168,31 +110,85 @@ export function DriverDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Success Rate Bar */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Weekly Success Rate</span>
+              {isLoading ? <Skeleton className="h-5 w-12" /> : (
+                <span className={cn("text-sm font-bold",
+                  successRate >= 90 ? "text-[hsl(var(--status-success))]" : successRate >= 70 ? "text-[hsl(var(--status-warning))]" : "text-destructive"
+                )}>
+                  <AnimatedCounter value={successRate} suffix="%" />
+                </span>
+              )}
+            </div>
+            <Progress value={successRate} className="h-2.5" />
+            <p className="text-xs text-muted-foreground mt-1.5">
+              {todayDelivered} delivered, {todayFailed} failed of {totalAttempts} attempts
+            </p>
+          </CardContent>
+        </Card>
       </MissionSection>
 
-      {/* ── 4. PERFORMANCE CARDS — Success Rate ── */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Weekly Success Rate</span>
-            {isLoading ? <Skeleton className="h-5 w-12" /> : (
-              <span className={cn("text-sm font-bold",
-                successRate >= 90 ? "text-[hsl(var(--status-success))]" : successRate >= 70 ? "text-[hsl(var(--status-warning))]" : "text-destructive"
-              )}>
-                <AnimatedCounter value={successRate} suffix="%" />
-              </span>
-            )}
-          </div>
-          <Progress value={successRate} className="h-2.5" />
-          <p className="text-xs text-muted-foreground mt-1.5">
-            {todayDelivered} delivered, {todayFailed} failed of {totalAttempts} attempts
-          </p>
-        </CardContent>
-      </Card>
+      {/* Navigation Cards */}
+      <MissionSection icon={Zap} title="Start Your Day">
+        <div className="grid gap-3 md:grid-cols-3">
+          <Card 
+            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group border-primary/20 bg-gradient-to-br from-primary/8 to-transparent"
+            onClick={() => navigate('/driver/inbox')}
+          >
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-primary">My Deliveries</p>
+                  <p className="text-xs text-muted-foreground mt-1">View assigned orders</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-primary/15 group-hover:bg-primary/25 transition-colors">
+                  <Inbox className="h-6 w-6 text-primary" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card 
+            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group"
+            onClick={() => navigate('/driver/route')}
+          >
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">Optimized Route</p>
+                  <p className="text-xs text-muted-foreground mt-1">Plan your deliveries</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-secondary group-hover:bg-primary/10 transition-colors">
+                  <Navigation className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card 
+            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group"
+            onClick={() => navigate('/driver/analytics')}
+          >
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">My Analytics</p>
+                  <p className="text-xs text-muted-foreground mt-1">Track your performance</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-secondary group-hover:bg-primary/10 transition-colors">
+                  <Target className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </MissionSection>
 
-      {/* ── 5. ALERTS (none for driver currently) ── */}
-
-      {/* ── 6. ACTIVITY FEED — Quick Actions ── */}
+      {/* Quick Actions */}
       <Card className="border-border/50">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-bold flex items-center gap-2">
