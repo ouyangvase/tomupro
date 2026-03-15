@@ -41,7 +41,6 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <VisibilityDebugPanel />
       
       {/* Operations Alerts */}
       {(actionStats?.systemTotal ?? 0) > 0 && (
