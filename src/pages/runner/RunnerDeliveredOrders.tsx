@@ -82,6 +82,15 @@ import { useDeliveryCharges as useApprovedChargeMap } from '@/hooks/useDeliveryC
 // Claim status filter options for the dropdown
 type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
 
+// Map claim status filter to actual reconciliation_status values
+const claimStatusToReconciliation: Record<ClaimStatusFilter, string[] | null> = {
+  all: null,
+  NOT_CLAIMED: ['NOT_CLAIMED'],
+  CLAIM_SUBMITTED: ['ADMIN_ACK_PENDING', 'SP_ACK_PENDING'],
+  APPROVED: ['CLAIMED', 'SETTLED'],
+  REJECTED: ['DISPUTE'],
+};
+
 const claimStatusFilterOptions: { label: string; value: ClaimStatusFilter }[] = [
   { label: 'All', value: 'all' },
   { label: 'Not Claimed', value: 'NOT_CLAIMED' },
