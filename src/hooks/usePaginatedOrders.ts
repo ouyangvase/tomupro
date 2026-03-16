@@ -14,6 +14,8 @@ export interface PaginatedOrderFilters {
   runnerStatusIn?: RunnerStatus[];
   excludeRunnerStatuses?: RunnerStatus[];
   reconciliationStatus?: ReconciliationStatus;
+  reconciliationStatusIn?: ReconciliationStatus[];
+  excludeStatus?: OrderStatus;
   driverId?: string;
   searchQuery?: string;
   areaFilter?: string;
