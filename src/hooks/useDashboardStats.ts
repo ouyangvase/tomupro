@@ -115,7 +115,7 @@ export function useManagerStats() {
           readyOrders: 0,
           pendingDelivery: 0,
           pendingReconciliation: 0,
-          disputes: 0,
+          
           productsCount: 0,
           deliveredOrders: 0,
           cancelledOrders: 0,
