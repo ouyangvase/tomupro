@@ -468,7 +468,7 @@ function DriverMobileDashboard() {
         title="Today's Deliveries"
         value={0}
         subtitle="Your delivery performance"
-        viewAllLink="/driver/inbox"
+        viewAllLink="/delivery?tab=inbox"
         viewAllLabel="Start Delivering"
         icon={<Truck className="h-5 w-5" />}
         accentColor="gold"
