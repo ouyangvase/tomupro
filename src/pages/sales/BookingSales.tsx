@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { Plus, Clock, Search, X, Upload, Download, ShoppingBag, ArrowRight, CalendarClock, UserX, UserCheck } from 'lucide-react';
+import { Plus, Clock, Search, X, Upload, Download, ShoppingBag, ArrowRight, CalendarClock, UserX, UserCheck, Filter } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -25,12 +25,14 @@ import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { RescheduleOrderDialog } from '@/components/sales/RescheduleOrderDialog';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
+import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useUserDirectory } from '@/hooks/useUserDirectory';
 import type { Order } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
 
@@ -38,6 +40,7 @@ export default function BookingSales() {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const { data: userDirectory = [] } = useUserDirectory();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -47,6 +50,7 @@ export default function BookingSales() {
   const [rescheduleOrder, setRescheduleOrder] = useState<Order | null>(null);
   const [mobileSearch, setMobileSearch] = useState('');
   const [serverSearch, setServerSearch] = useState('');
+  const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
 
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
@@ -58,7 +62,29 @@ export default function BookingSales() {
   }, 50);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
-  
+
+  const filteredOrders = useMemo(() => {
+    return applyOrderFilters(orders, panelFilters);
+  }, [orders, panelFilters]);
+
+  const areaOptions = useMemo(() => {
+    const uniqueAreas = [...new Set(orders.map(o => o.area).filter(Boolean))];
+    return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
+  }, [orders]);
+
+  const salespersonOptions = useMemo(() => {
+    if (role === 'manager') {
+      return userDirectory
+        .filter(u => u.role === 'salesperson' || u.role === 'manager')
+        .map(sp => ({
+          label: sp.id === profile?.id ? `${sp.display_name} (Me)` : sp.display_name,
+          value: sp.id,
+        }));
+    }
+    const salespersons = userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
+    return salespersons.map(sp => ({ label: sp.display_name, value: sp.id }));
+  }, [userDirectory, role, profile?.id]);
+
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
   const cancelOrders = useCancelOrders();
@@ -335,6 +361,18 @@ export default function BookingSales() {
               className="pl-9 h-10 rounded-full border-border/60 bg-card"
             />
           </div>
+
+          <OrderFiltersPanel
+            filters={panelFilters}
+            onFiltersChange={setPanelFilters}
+            areaOptions={areaOptions}
+            salespersonOptions={salespersonOptions}
+            showSalespersonFilter={role === 'admin' || role === 'manager'}
+            showOrderStatus={false}
+            showRunnerStatus={true}
+            showReconciliationStatus={false}
+          />
+
           {isEditable && (
             <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm" className="rounded-full">
               <Upload className="h-4 w-4 mr-1" />
@@ -398,7 +436,7 @@ export default function BookingSales() {
 
         {/* Dispatch Board */}
         <DispatchBoard
-          orders={orders}
+          orders={filteredOrders}
           loading={isLoading}
           selectedRows={selectedRows}
           onSelectionChange={setSelectedRows}

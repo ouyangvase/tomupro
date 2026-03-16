@@ -313,7 +313,7 @@ export default function ReadySales() {
             showReconciliationStatus={true}
           />
 
-          {isMobile && isEditable && (
+          {isEditable && (
             <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm" className="rounded-full">
               <Upload className="h-4 w-4 mr-1" />
               Import
