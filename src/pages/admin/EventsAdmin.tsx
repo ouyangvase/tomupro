@@ -8,7 +8,7 @@ import {
   Plus, Calendar, Megaphone, Eye, Users, BarChart3, 
   CheckCircle, Clock, Archive, MoreVertical, Send
 } from 'lucide-react';
-import { useAdminEvents, usePublishEvent, type EventWithDetails } from '@/hooks/useEvents';
+import { useAdminEvents, usePublishEvent, useDeleteEvent, type EventWithDetails } from '@/hooks/useEvents';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
