@@ -423,6 +423,7 @@ export default function RunnerDeliveredOrders() {
       toast.success(`Successfully claimed ${selectedClaimableOrders.length} order(s)`);
       setSelectedIds(new Set());
       setBulkClaimOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     } catch (error) {
       console.error('Bulk claim error:', error);
