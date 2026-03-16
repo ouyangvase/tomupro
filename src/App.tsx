@@ -12,71 +12,28 @@ import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
 import { ProfileGate } from "@/components/auth/ProfileGate";
 import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
 import { MaintenanceOverlay } from "@/components/MaintenanceOverlay";
+import { AppLayout } from "@/components/layout/AppLayout";
+import { lazy, Suspense } from "react";
 
 // Pages
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
-import BookingSales from "./pages/sales/BookingSales";
-import ReadySales from "./pages/sales/ReadySales";
-import CancelledSales from "./pages/sales/CancelledSales";
-import SalespersonActionInbox from "./pages/sales/SalespersonActionInbox";
-import InventoryBalance from "./pages/InventoryBalance";
-import RunnerInbox from "./pages/runner/RunnerInbox";
-import RunnerInbound from "./pages/runner/RunnerInbound";
-import RunnerClaimBatches from "./pages/runner/RunnerClaimBatches";
-import RunnerFailedOrders from "./pages/runner/RunnerFailedOrders";
-import DriverManagement from "./pages/runner/DriverManagement";
-import DriverPickups from "./pages/runner/DriverPickups";
-import RunnerDriverInbox from "./pages/runner/RunnerDriverInbox";
-import RunnerAllocatedStock from "./pages/runner/RunnerAllocatedStock";
-import DriverInbox from "./pages/driver/DriverInbox";
-import DriverPickupsPage from "./pages/driver/DriverPickupsPage";
-import DriverReturnsPage from "./pages/driver/DriverReturnsPage";
-import DriverRankingPage from "./pages/driver/DriverRankingPage";
-import DriverRoutePage from "./pages/driver/DriverRoutePage";
-import DriverAnalyticsPage from "./pages/driver/DriverAnalyticsPage";
-import DriverOnboarding from "./pages/driver/DriverOnboarding";
-import DriverReturns from "./pages/runner/DriverReturns";
-import DriverRanking from "./pages/runner/DriverRanking";
-import DriverLocationsPage from "./pages/runner/DriverLocationsPage";
-import InboundPending from "./pages/inbound/InboundPending";
-import InboundHistory from "./pages/inbound/InboundHistory";
-
-import ReconciliationAdmin from "./pages/reconciliation/ReconciliationAdmin";
-import ClaimBatchesAdmin from "./pages/admin/ClaimBatchesAdmin";
-import ClaimBatchesHistory from "./pages/admin/ClaimBatchesHistory";
-import AdminRunnerInbox from "./pages/admin/AdminRunnerInbox";
-import DisputeCenter from "./pages/disputes/DisputeCenter";
-
-import StockAdjustment from "./pages/inventory/StockAdjustment";
-import ReasonsSettings from "./pages/settings/ReasonsSettings";
-import UsersSettings from "./pages/settings/UsersSettings";
-import BindingsSettings from "./pages/settings/BindingsSettings";
-import ProfilePage from "./pages/settings/ProfilePage";
-import ProductsPage from "./pages/products/ProductsPage";
-import NotificationCenter from "./pages/notifications/NotificationCenter";
-import ManagerOversight from "./pages/manager/ManagerOversight";
-import ManagerDashboard from "./pages/manager/ManagerDashboard";
-import ManagerImpactBoard from "./pages/manager/ManagerImpactBoard";
-import ManagerRankingBoard from "./pages/manager/ManagerRankingBoard";
-import PendingStockApprovals from "./pages/manager/PendingStockApprovals";
-import AdminOverview from "./pages/admin/AdminOverview";
-import RunnerDeliveryCharges from "./pages/runner/RunnerDeliveryCharges";
-import RunnerDeliveredOrders from "./pages/runner/RunnerDeliveredOrders";
-import DeliveryChargesAdmin from "./pages/admin/DeliveryChargesAdmin";
-import DeliveryFeesReport from "./pages/admin/DeliveryFeesReport";
-import WarehouseManagement from "./pages/admin/WarehouseManagement";
-import CommissionSettings from "./pages/admin/CommissionSettings";
-import LeaderboardSettings from "./pages/admin/LeaderboardSettings";
-import LeaderboardPage from "./pages/leaderboard/LeaderboardPage";
-import InviteCodesAdmin from "./pages/admin/InviteCodesAdmin";
-import DataSharingAdmin from "./pages/admin/DataSharingAdmin";
-import StockIntegrityScan from "./pages/admin/StockIntegrityScan";
-import StockIntegrityAudit from "./pages/admin/StockIntegrityAudit";
-import RunnerCashSettlement from "./pages/runner/RunnerCashSettlement";
-import RunnerCashDriver from "./pages/runner/RunnerCashDriver";
 import NotFound from "./pages/NotFound";
-import EventsAdmin from "./pages/admin/EventsAdmin";
+
+// Module pages
+const OrdersModule = lazy(() => import("./pages/modules/OrdersModule"));
+const DispatchModule = lazy(() => import("./pages/modules/DispatchModule"));
+const DeliveryModule = lazy(() => import("./pages/modules/DeliveryModule"));
+const PerformanceModule = lazy(() => import("./pages/modules/PerformanceModule"));
+const TeamModule = lazy(() => import("./pages/modules/TeamModule"));
+const FinanceModule = lazy(() => import("./pages/modules/FinanceModule"));
+const InventoryModule = lazy(() => import("./pages/modules/InventoryModule"));
+const SystemModule = lazy(() => import("./pages/modules/SystemModule"));
+
+// Standalone pages that remain as direct routes
+import ProfilePage from "./pages/settings/ProfilePage";
+import NotificationCenter from "./pages/notifications/NotificationCenter";
+import DriverOnboarding from "./pages/driver/DriverOnboarding";
 import EventCreate from "./pages/admin/EventCreate";
 import EventDetail from "./pages/admin/EventDetail";
 import UserEventsPage from "./pages/events/UserEventsPage";
@@ -87,12 +44,17 @@ import { FloatingHelpButton } from "./components/guide/FloatingHelpButton";
 
 const queryClient = new QueryClient();
 
+const ModuleLoading = () => (
+  <div className="flex items-center justify-center py-16">
+    <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+  </div>
+);
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, profileStatus, profileError, retryProfile, resetSession } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
   const { isMaintenanceMode, isLoading: maintenanceLoading } = useMaintenanceMode();
   
-  // Step 1: Auth is still initializing (or maintenance status loading)
   if (loading || maintenanceLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -104,19 +66,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   
-  // Step 2b: Maintenance mode - block all non-admin users
   const isAdmin = profile?.role === "admin";
   if (user && profileStatus === 'ready' && isMaintenanceMode && !isAdmin) {
     return <MaintenanceOverlay />;
   }
 
-  // Step 3: No user - redirect to auth
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Step 3: User exists but profile is not ready - show ProfileGate
-  // This handles: loading, error, missing, password_reset_required states with recovery actions
   if (profileStatus !== 'ready') {
     return (
       <ProfileGate
@@ -131,10 +89,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Step 4: Only check runner binding for drivers
   const isDriver = profile?.role === "driver";
   
-  // Show loading while checking driver-runner link (only for drivers)
   if (isDriver && checkingLink) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -146,17 +102,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Show onboarding ONLY for drivers not linked to a runner
   if (isDriver && needsOnboarding) {
     return <DriverOnboarding />;
   }
 
-  // Users with 'user' role can only access profile page
   if (profile?.role === "user") {
     return <Navigate to="/settings/profile" replace />;
   }
   
-  // For drivers, wrap with location permission gate
   if (isDriver) {
     return <LocationPermissionGate>{children}</LocationPermissionGate>;
   }
@@ -164,82 +117,102 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ProtectedModule({ children }: { children: React.ReactNode }) {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <Suspense fallback={<ModuleLoading />}>
+          {children}
+        </Suspense>
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-      <Route path="/sales/booking" element={<ProtectedRoute><BookingSales /></ProtectedRoute>} />
-      <Route path="/sales/ready" element={<ProtectedRoute><ReadySales /></ProtectedRoute>} />
-      <Route path="/sales/cancelled" element={<ProtectedRoute><CancelledSales /></ProtectedRoute>} />
-      <Route path="/sales/action-required" element={<ProtectedRoute><SalespersonActionInbox /></ProtectedRoute>} />
-      <Route path="/runner/inbox" element={<ProtectedRoute><RunnerInbox /></ProtectedRoute>} />
-      <Route path="/runner/failed-orders" element={<ProtectedRoute><RunnerFailedOrders /></ProtectedRoute>} />
-      <Route path="/runner/inbound" element={<ProtectedRoute><RunnerInbound /></ProtectedRoute>} />
-      <Route path="/runner/claims" element={<ProtectedRoute><RunnerClaimBatches /></ProtectedRoute>} />
-      <Route path="/runner/drivers" element={<ProtectedRoute><DriverManagement /></ProtectedRoute>} />
-      <Route path="/runner/driver-pickups" element={<ProtectedRoute><DriverPickups /></ProtectedRoute>} />
-      <Route path="/runner/driver-inbox" element={<ProtectedRoute><RunnerDriverInbox /></ProtectedRoute>} />
-      <Route path="/runner/driver-returns" element={<ProtectedRoute><DriverReturns /></ProtectedRoute>} />
-      <Route path="/runner/allocated-stock" element={<ProtectedRoute><RunnerAllocatedStock /></ProtectedRoute>} />
-      <Route path="/runner/driver-ranking" element={<ProtectedRoute><DriverRanking /></ProtectedRoute>} />
-      <Route path="/runner/driver-locations" element={<ProtectedRoute><DriverLocationsPage /></ProtectedRoute>} />
-      <Route path="/driver/inbox" element={<ProtectedRoute><DriverInbox /></ProtectedRoute>} />
-      <Route path="/driver/pickups" element={<ProtectedRoute><DriverPickupsPage /></ProtectedRoute>} />
-      <Route path="/driver/returns" element={<ProtectedRoute><DriverReturnsPage /></ProtectedRoute>} />
-      <Route path="/driver/ranking" element={<ProtectedRoute><DriverRankingPage /></ProtectedRoute>} />
-      <Route path="/driver/route" element={<ProtectedRoute><DriverRoutePage /></ProtectedRoute>} />
-      <Route path="/driver/analytics" element={<ProtectedRoute><DriverAnalyticsPage /></ProtectedRoute>} />
-      <Route path="/reconciliation/admin" element={<ProtectedRoute><ReconciliationAdmin /></ProtectedRoute>} />
-      <Route path="/admin/claim-batches" element={<ProtectedRoute><ClaimBatchesAdmin /></ProtectedRoute>} />
-      <Route path="/admin/claim-batches-history" element={<ProtectedRoute><ClaimBatchesHistory /></ProtectedRoute>} />
-      <Route path="/admin/runner-inbox" element={<ProtectedRoute><AdminRunnerInbox /></ProtectedRoute>} />
-      <Route path="/disputes" element={<ProtectedRoute><DisputeCenter /></ProtectedRoute>} />
       
-      <Route path="/inbound/pending" element={<ProtectedRoute><InboundPending /></ProtectedRoute>} />
-      <Route path="/inbound/history" element={<ProtectedRoute><InboundHistory /></ProtectedRoute>} />
-      <Route path="/inventory" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
-      <Route path="/inventory-balance" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
-      <Route path="/inventory/balance" element={<ProtectedRoute><InventoryBalance /></ProtectedRoute>} />
-      <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
-      <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
-      <Route path="/settings/reasons" element={<ProtectedRoute><ReasonsSettings /></ProtectedRoute>} />
-      <Route path="/settings/users" element={<ProtectedRoute><UsersSettings /></ProtectedRoute>} />
-      <Route path="/settings/bindings" element={<ProtectedRoute><BindingsSettings /></ProtectedRoute>} />
+      {/* Module routes */}
+      <Route path="/orders" element={<ProtectedModule><OrdersModule /></ProtectedModule>} />
+      <Route path="/dispatch" element={<ProtectedModule><DispatchModule /></ProtectedModule>} />
+      <Route path="/delivery" element={<ProtectedModule><DeliveryModule /></ProtectedModule>} />
+      <Route path="/performance" element={<ProtectedModule><PerformanceModule /></ProtectedModule>} />
+      <Route path="/team" element={<ProtectedModule><TeamModule /></ProtectedModule>} />
+      <Route path="/finance" element={<ProtectedModule><FinanceModule /></ProtectedModule>} />
+      <Route path="/inventory" element={<ProtectedModule><InventoryModule /></ProtectedModule>} />
+      <Route path="/system" element={<ProtectedModule><SystemModule /></ProtectedModule>} />
+
+      {/* Standalone pages */}
       <Route path="/settings/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><NotificationCenter /></ProtectedRoute>} />
-      <Route path="/manager/dashboard" element={<ProtectedRoute><ManagerDashboard /></ProtectedRoute>} />
-      <Route path="/manager/impact-board" element={<ProtectedRoute><ManagerImpactBoard /></ProtectedRoute>} />
-      <Route path="/manager/ranking-board" element={<ProtectedRoute><ManagerRankingBoard /></ProtectedRoute>} />
-      <Route path="/manager/oversight" element={<ProtectedRoute><ManagerOversight /></ProtectedRoute>} />
-      <Route path="/manager/pending-approvals" element={<ProtectedRoute><PendingStockApprovals /></ProtectedRoute>} />
-      <Route path="/admin/overview" element={<ProtectedRoute><AdminOverview /></ProtectedRoute>} />
-      <Route path="/runner/delivery-charges" element={<ProtectedRoute><RunnerDeliveryCharges /></ProtectedRoute>} />
-      <Route path="/runner/delivered-orders" element={<ProtectedRoute><RunnerDeliveredOrders /></ProtectedRoute>} />
-      <Route path="/admin/delivery-charges" element={<ProtectedRoute><DeliveryChargesAdmin /></ProtectedRoute>} />
-      <Route path="/admin/delivery-fees-report" element={<ProtectedRoute><DeliveryFeesReport /></ProtectedRoute>} />
-      <Route path="/admin/warehouses" element={<ProtectedRoute><WarehouseManagement /></ProtectedRoute>} />
-      <Route path="/settings/commission" element={<ProtectedRoute><CommissionSettings /></ProtectedRoute>} />
-      <Route path="/admin/leaderboard-settings" element={<ProtectedRoute><LeaderboardSettings /></ProtectedRoute>} />
-      <Route path="/admin/invite-codes" element={<ProtectedRoute><InviteCodesAdmin /></ProtectedRoute>} />
-      <Route path="/admin/data-sharing" element={<ProtectedRoute><DataSharingAdmin /></ProtectedRoute>} />
-      <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
-      <Route path="/admin/stock-integrity" element={<ProtectedRoute><StockIntegrityScan /></ProtectedRoute>} />
-      <Route path="/admin/stock-audit" element={<ProtectedRoute><StockIntegrityAudit /></ProtectedRoute>} />
-      <Route path="/runner/cash-settlement" element={<ProtectedRoute><RunnerCashSettlement /></ProtectedRoute>} />
-      <Route path="/runner/cash-driver" element={<ProtectedRoute><RunnerCashDriver /></ProtectedRoute>} />
-      
-      {/* Events */}
-      <Route path="/admin/events" element={<ProtectedRoute><EventsAdmin /></ProtectedRoute>} />
       <Route path="/admin/events/create" element={<ProtectedRoute><EventCreate /></ProtectedRoute>} />
       <Route path="/admin/events/:eventId" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
       <Route path="/admin/events/:eventId/analytics" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
       <Route path="/events" element={<ProtectedRoute><UserEventsPage /></ProtectedRoute>} />
-      
-      {/* Guide Center */}
       <Route path="/guide" element={<ProtectedRoute><GuideCenterPage /></ProtectedRoute>} />
-      
-      <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+
+      {/* Legacy redirects — keep old bookmarks working */}
+      <Route path="/sales/booking" element={<Navigate to="/orders?tab=booking" replace />} />
+      <Route path="/sales/ready" element={<Navigate to="/orders?tab=ready" replace />} />
+      <Route path="/sales/cancelled" element={<Navigate to="/orders?tab=cancelled" replace />} />
+      <Route path="/sales/action-required" element={<Navigate to="/orders?tab=action-required" replace />} />
+      <Route path="/runner/delivered-orders" element={<Navigate to="/orders?tab=delivered" replace />} />
+      <Route path="/runner/inbox" element={<Navigate to="/dispatch?tab=inbox" replace />} />
+      <Route path="/admin/runner-inbox" element={<Navigate to="/dispatch?tab=inbox" replace />} />
+      <Route path="/runner/inbound" element={<Navigate to="/dispatch?tab=inbound" replace />} />
+      <Route path="/runner/driver-inbox" element={<Navigate to="/dispatch?tab=driver-inbox" replace />} />
+      <Route path="/runner/drivers" element={<Navigate to="/dispatch?tab=drivers" replace />} />
+      <Route path="/runner/failed-orders" element={<Navigate to="/dispatch?tab=failed" replace />} />
+      <Route path="/runner/driver-locations" element={<Navigate to="/dispatch?tab=map" replace />} />
+      <Route path="/driver/inbox" element={<Navigate to="/delivery?tab=inbox" replace />} />
+      <Route path="/driver/route" element={<Navigate to="/delivery?tab=route" replace />} />
+      <Route path="/driver/pickups" element={<Navigate to="/delivery?tab=pickups" replace />} />
+      <Route path="/driver/returns" element={<Navigate to="/delivery?tab=returns" replace />} />
+      <Route path="/driver/analytics" element={<Navigate to="/delivery?tab=analytics" replace />} />
+      <Route path="/leaderboard" element={<Navigate to="/performance?tab=leaderboard" replace />} />
+      <Route path="/manager/ranking-board" element={<Navigate to="/performance?tab=ranking" replace />} />
+      <Route path="/manager/impact-board" element={<Navigate to="/performance?tab=impact" replace />} />
+      <Route path="/runner/driver-ranking" element={<Navigate to="/performance?tab=driver-ranking" replace />} />
+      <Route path="/driver/ranking" element={<Navigate to="/performance?tab=ranking" replace />} />
+      <Route path="/settings/users" element={<Navigate to="/team?tab=users" replace />} />
+      <Route path="/manager/pending-approvals" element={<Navigate to="/team?tab=approvals" replace />} />
+      <Route path="/manager/oversight" element={<Navigate to="/team?tab=oversight" replace />} />
+      <Route path="/disputes" element={<Navigate to="/team?tab=disputes" replace />} />
+      <Route path="/reconciliation/admin" element={<Navigate to="/finance?tab=reconciliation" replace />} />
+      <Route path="/admin/claim-batches" element={<Navigate to="/finance?tab=claims" replace />} />
+      <Route path="/admin/claim-batches-history" element={<Navigate to="/finance?tab=claims-history" replace />} />
+      <Route path="/admin/delivery-charges" element={<Navigate to="/finance?tab=delivery-charges" replace />} />
+      <Route path="/admin/delivery-fees-report" element={<Navigate to="/finance?tab=delivery-report" replace />} />
+      <Route path="/admin/overview" element={<Navigate to="/finance?tab=overview" replace />} />
+      <Route path="/runner/claims" element={<Navigate to="/finance?tab=my-claims" replace />} />
+      <Route path="/runner/cash-settlement" element={<Navigate to="/finance?tab=cash-settlement" replace />} />
+      <Route path="/runner/cash-driver" element={<Navigate to="/finance?tab=cash-driver" replace />} />
+      <Route path="/runner/delivery-charges" element={<Navigate to="/finance?tab=delivery-charges" replace />} />
+      <Route path="/runner/driver-pickups" element={<Navigate to="/finance?tab=driver-pickups" replace />} />
+      <Route path="/runner/driver-returns" element={<Navigate to="/finance?tab=driver-returns" replace />} />
+      <Route path="/runner/allocated-stock" element={<Navigate to="/finance?tab=allocated-stock" replace />} />
+      <Route path="/inventory-balance" element={<Navigate to="/inventory?tab=balance" replace />} />
+      <Route path="/inventory/balance" element={<Navigate to="/inventory?tab=balance" replace />} />
+      <Route path="/inbound/pending" element={<Navigate to="/inventory?tab=inbound" replace />} />
+      <Route path="/inbound/history" element={<Navigate to="/inventory?tab=inbound-history" replace />} />
+      <Route path="/inventory/adjustment" element={<Navigate to="/inventory?tab=adjustments" replace />} />
+      <Route path="/admin/warehouses" element={<Navigate to="/inventory?tab=warehouses" replace />} />
+      <Route path="/products" element={<Navigate to="/inventory?tab=products" replace />} />
+      <Route path="/admin/stock-audit" element={<Navigate to="/system?tab=stock-audit" replace />} />
+      <Route path="/admin/stock-integrity" element={<Navigate to="/system?tab=stock-rebuild" replace />} />
+      <Route path="/admin/events" element={<Navigate to="/system?tab=events" replace />} />
+      <Route path="/settings/bindings" element={<Navigate to="/system?tab=bindings" replace />} />
+      <Route path="/admin/invite-codes" element={<Navigate to="/system?tab=invite-codes" replace />} />
+      <Route path="/settings/commission" element={<Navigate to="/system?tab=commission" replace />} />
+      <Route path="/admin/leaderboard-settings" element={<Navigate to="/system?tab=leaderboard" replace />} />
+      <Route path="/admin/data-sharing" element={<Navigate to="/system?tab=data-sharing" replace />} />
+      <Route path="/settings/reasons" element={<Navigate to="/system?tab=reasons" replace />} />
+      <Route path="/manager/dashboard" element={<Navigate to="/" replace />} />
+
+      <Route path="/settings/*" element={<Navigate to="/settings/profile" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
@@ -254,7 +227,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <RoleChangeBanner />
-              <BrowserRouter>
+            <BrowserRouter>
               <EventPopupModal />
               <OnboardingFlow />
               <FloatingHelpButton />

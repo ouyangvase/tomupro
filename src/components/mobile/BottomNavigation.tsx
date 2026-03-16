@@ -12,40 +12,38 @@ interface NavItem {
 
 const salespersonTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
-  { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/sales/booking' },
-  { id: 'stock', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory/balance' },
+  { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/orders' },
+  { id: 'stock', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
 ];
 
 const managerTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
-  { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/sales/booking' },
-  { id: 'team', label: 'Team', icon: <Users className="h-5 w-5" />, href: '/manager/oversight' },
-  { id: 'stock', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory/balance' },
+  { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/orders' },
+  { id: 'team', label: 'Team', icon: <Users className="h-5 w-5" />, href: '/team' },
+  { id: 'stock', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
 ];
 
 const runnerTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
-  { id: 'inbox', label: 'Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/runner/inbox' },
-  { id: 'delivered', label: 'Delivered', icon: <Truck className="h-5 w-5" />, href: '/runner/delivered' },
-  { id: 'stock', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/runner/allocated-stock' },
+  { id: 'dispatch', label: 'Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/dispatch' },
+  { id: 'finance', label: 'Finance', icon: <Boxes className="h-5 w-5" />, href: '/finance' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
 ];
 
 const driverTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
-  { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/driver/inbox' },
-  { id: 'route', label: 'Route', icon: <Truck className="h-5 w-5" />, href: '/driver/route' },
-  { id: 'stats', label: 'Stats', icon: <BarChart3 className="h-5 w-5" />, href: '/driver/analytics' },
+  { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery' },
+  { id: 'stats', label: 'Stats', icon: <BarChart3 className="h-5 w-5" />, href: '/performance' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
 ];
 
 const adminTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
-  { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/sales/booking' },
-  { id: 'stock', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory/balance' },
-  { id: 'users', label: 'Users', icon: <Users className="h-5 w-5" />, href: '/settings/users' },
+  { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/orders' },
+  { id: 'stock', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory' },
+  { id: 'system', label: 'System', icon: <Settings className="h-5 w-5" />, href: '/system' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
 ];
 
