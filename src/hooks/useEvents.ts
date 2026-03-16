@@ -101,7 +101,7 @@ export function useAdminEvent(eventId: string | undefined) {
         .eq('id', eventId)
         .single();
       if (error) throw error;
-      return data as EventWithDetails;
+      return data as unknown as EventWithDetails;
     },
     enabled: !!eventId,
   });
