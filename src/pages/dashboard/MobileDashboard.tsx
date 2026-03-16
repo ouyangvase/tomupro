@@ -342,7 +342,7 @@ function ManagerMobileDashboard() {
         value={dashData?.teamOverview.realizedGmv ?? 0}
         isCurrency
         subtitle={`${dashData?.teamOverview.deliveredOrders ?? 0} orders delivered`}
-        viewAllLink="/manager/oversight"
+        viewAllLink="/team?tab=oversight"
         viewAllLabel="Team Oversight"
         icon={<TrendingUp className="h-5 w-5" />}
         isLoading={isLoading}
