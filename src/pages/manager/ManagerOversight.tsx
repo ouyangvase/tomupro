@@ -467,36 +467,6 @@ export default function ManagerOversight() {
                 </Card>
               )}
 
-              {/* Open Disputes */}
-              {salespersonMetrics.filter(sp => sp.disputes > 0).length > 0 && (
-                <Card className="border-yellow-500/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-yellow-600">
-                      <FileWarning className="h-5 w-5" />
-                      Open Disputes
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {salespersonMetrics
-                        .filter(sp => sp.disputes > 0)
-                        .sort((a, b) => b.disputes - a.disputes)
-                        .map(sp => (
-                          <div 
-                            key={sp.userId} 
-                            className="flex items-center justify-between p-3 bg-yellow-500/5 rounded-lg cursor-pointer hover:bg-yellow-500/10"
-                            onClick={() => navigate('/disputes')}
-                          >
-                            <span className="font-medium">{sp.displayName}</span>
-                            <Badge variant="outline" className="border-yellow-500 text-yellow-600">
-                              {sp.disputes} disputes
-                            </Badge>
-                          </div>
-                        ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
               {highPrioritySalespersons.length === 0 && salespersonMetrics.filter(sp => sp.disputes > 0).length === 0 && (
                 <Card>
