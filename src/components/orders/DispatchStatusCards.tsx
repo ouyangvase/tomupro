@@ -45,33 +45,42 @@ interface DispatchStatusCardsProps {
   unassigned: number;
   assigned: number;
   codOrders: number;
+  labels?: {
+    total?: string;
+    unassigned?: string;
+    assigned?: string;
+    fourth?: string;
+  };
+  icons?: {
+    fourth?: React.ReactNode;
+  };
 }
 
-export function DispatchStatusCards({ totalReady, unassigned, assigned, codOrders }: DispatchStatusCardsProps) {
+export function DispatchStatusCards({ totalReady, unassigned, assigned, codOrders, labels, icons }: DispatchStatusCardsProps) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <StatusCard
-        label="Ready Orders"
+        label={labels?.total || "Ready Orders"}
         value={totalReady}
         icon={<Package className="h-5 w-5" />}
         color="primary"
       />
       <StatusCard
-        label="Unassigned"
+        label={labels?.unassigned || "Unassigned"}
         value={unassigned}
         icon={<UserX className="h-5 w-5" />}
         color="warning"
       />
       <StatusCard
-        label="Assigned"
+        label={labels?.assigned || "Assigned"}
         value={assigned}
         icon={<UserCheck className="h-5 w-5" />}
         color="success"
       />
       <StatusCard
-        label="COD Orders"
+        label={labels?.fourth || "COD Orders"}
         value={codOrders}
-        icon={<Banknote className="h-5 w-5" />}
+        icon={icons?.fourth || <Banknote className="h-5 w-5" />}
         color="accent"
       />
     </div>
