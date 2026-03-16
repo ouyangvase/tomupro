@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { Plus, Clock, Search, X, Upload, Download, ShoppingBag, ArrowRight, CalendarClock, UserX, UserCheck } from 'lucide-react';
+import { Plus, Clock, Search, X, Upload, Download, ShoppingBag, ArrowRight, CalendarClock, UserX, UserCheck, Filter } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
