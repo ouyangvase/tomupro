@@ -224,7 +224,7 @@ function AdminMobileDashboard() {
       <div className="space-y-3">
         <h3 className="text-base font-bold text-foreground">Key Metrics</h3>
         <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
-          <MetricCard label="Today Orders" value={stats?.todayOrders ?? 0} icon={<ShoppingCart className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Booking" value={stats?.bookingOrders ?? 0} icon={<ShoppingCart className="h-4 w-4" />} isLoading={isLoading} />
           <MetricCard label="Delivered" value={stats?.deliveredOrders ?? 0} icon={<CheckCircle className="h-4 w-4" />} isLoading={isLoading} />
           <MetricCard label="Pending" value={stats?.readyOrders ?? 0} icon={<Clock className="h-4 w-4" />} isLoading={isLoading} />
           <MetricCard label="Total Users" value={stats?.totalUsers ?? 0} icon={<Users className="h-4 w-4" />} isLoading={isLoading} />
