@@ -32,6 +32,7 @@ import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useUserDirectory } from '@/hooks/useUserDirectory';
 import type { Order } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
 
@@ -39,6 +40,7 @@ export default function BookingSales() {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const { data: userDirectory = [] } = useUserDirectory();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -48,6 +50,7 @@ export default function BookingSales() {
   const [rescheduleOrder, setRescheduleOrder] = useState<Order | null>(null);
   const [mobileSearch, setMobileSearch] = useState('');
   const [serverSearch, setServerSearch] = useState('');
+  const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
 
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
