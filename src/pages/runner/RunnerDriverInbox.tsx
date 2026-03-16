@@ -347,9 +347,9 @@ export default function RunnerDriverInbox() {
             {/* Assignment Bar */}
             <Card className="border-primary/20 bg-primary/[0.02]">
               <CardContent className="p-4">
-                <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
                   <Select value={selectedDriver} onValueChange={setSelectedDriver}>
-                    <SelectTrigger className="w-[200px] rounded-lg">
+                    <SelectTrigger className="w-[180px] rounded-lg">
                       <SelectValue placeholder="Select driver..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -363,6 +363,17 @@ export default function RunnerDriverInbox() {
                       Load: {selectedDriverOrderCount || 0} orders
                     </Badge>
                   )}
+                  <Select value={assignAreaFilter} onValueChange={setAssignAreaFilter}>
+                    <SelectTrigger className="w-[140px] rounded-lg">
+                      <SelectValue placeholder="All Areas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Areas</SelectItem>
+                      {assignAreaOptions.map(a => (
+                        <SelectItem key={a as string} value={a as string}>{a}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button onClick={handleBulkAssign} disabled={selectedRows.length === 0 || !selectedDriver || bulkAssign.isPending} className="rounded-full">
                     {bulkAssign.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Truck className="h-4 w-4 mr-1" />}
                     Assign {selectedRows.length} Order(s)
