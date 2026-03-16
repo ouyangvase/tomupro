@@ -81,6 +81,9 @@ import EventCreate from "./pages/admin/EventCreate";
 import EventDetail from "./pages/admin/EventDetail";
 import UserEventsPage from "./pages/events/UserEventsPage";
 import { EventPopupModal } from "./components/events/EventPopupModal";
+import GuideCenterPage from "./pages/guide/GuideCenterPage";
+import { OnboardingFlow } from "./components/guide/OnboardingFlow";
+import { FloatingHelpButton } from "./components/guide/FloatingHelpButton";
 
 const queryClient = new QueryClient();
 
