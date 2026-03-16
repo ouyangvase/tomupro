@@ -394,6 +394,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const [itemsInitialized, setItemsInitialized] = useState(false);
   const [deletedItemIds, setDeletedItemIds] = useState<string[]>([]);
   const [showDeliveredWarning, setShowDeliveredWarning] = useState(false);
+  const [areaSearchOpen, setAreaSearchOpen] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<OrderFormValues | null>(null);
 
   const isDelivered = order?.runner_status === 'DELIVERED';
