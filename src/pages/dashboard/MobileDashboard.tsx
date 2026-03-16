@@ -426,8 +426,8 @@ function RunnerMobileDashboard() {
             Action Required
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <AlertCard label="Failed Orders" value={stats?.blockerStats.failedOrdersCount ?? 0} icon={<XCircle className="h-4 w-4" />} href="/runner/failed" severity="error" />
-            <AlertCard label="Pending Claims" value={stats?.earningsStats.pendingClaimCount ?? 0} icon={<Receipt className="h-4 w-4" />} href="/runner/claim-batches" severity="warning" />
+            <AlertCard label="Failed Orders" value={stats?.blockerStats.failedOrdersCount ?? 0} icon={<XCircle className="h-4 w-4" />} href="/dispatch?tab=failed" severity="error" />
+            <AlertCard label="Pending Claims" value={stats?.earningsStats.pendingClaimCount ?? 0} icon={<Receipt className="h-4 w-4" />} href="/finance?tab=my-claims" severity="warning" />
           </div>
         </div>
       )}
