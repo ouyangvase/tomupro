@@ -189,7 +189,7 @@ export default function RunnerDriverInbox() {
   const [areaFilter, setAreaFilter] = useState<string>('all');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-
+  const [assignAreaFilter, setAssignAreaFilter] = useState<string>('all');
   const { data: selectedDriverOrderCount } = useDriverOrderCount(selectedDriver || undefined);
 
   useEffect(() => {
