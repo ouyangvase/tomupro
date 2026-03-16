@@ -81,11 +81,34 @@ export default function EventDetail() {
             </div>
             {event.subtitle && <p className="text-sm text-muted-foreground mt-0.5">{event.subtitle}</p>}
           </div>
-          {event.status === 'draft' && (
-            <Button onClick={() => publishEvent.mutate(event.id)} disabled={publishEvent.isPending} className="rounded-full gap-2">
-              <Send className="h-4 w-4" /> Publish
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {event.status === 'draft' && (
+              <Button onClick={() => publishEvent.mutate(event.id)} disabled={publishEvent.isPending} className="rounded-full gap-2">
+                <Send className="h-4 w-4" /> Publish
+              </Button>
+            )}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="icon" className="rounded-full text-destructive hover:text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this event?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete "{event.title}" and all its responses, delivery records, and settings. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
 
         {/* Cover Image */}

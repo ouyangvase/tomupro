@@ -322,53 +322,7 @@ export function usePublishEvent() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (eventId: string) => {
-      // Fetch audience rules
-      const { data: rules, error: rulesErr } = await supabase
-        .from('event_audience_rules')
-        .select('*')
-        .eq('event_id', eventId);
-      if (rulesErr) throw rulesErr;
-
-      // Resolve target users
-      let includeUserIds: string[] = [];
-      let excludeUserIds: string[] = [];
-
-      for (const rule of rules || []) {
-        let userIds: string[] = [];
-        if (rule.audience_type === 'all') {
-          const { data } = await supabase.from('profiles').select('id');
-          userIds = (data || []).map(p => p.id);
-        } else if (rule.audience_type === 'role') {
-          const { data } = await supabase.from('user_roles').select('user_id').eq('role', rule.audience_value as any);
-          userIds = (data || []).map(r => r.user_id);
-        } else if (rule.audience_type === 'user') {
-          userIds = [rule.audience_value!];
-        } else if (rule.audience_type === 'manager_group') {
-          const { data } = await supabase.from('group_members').select('member_user_id').eq('group_id', rule.audience_value);
-          userIds = (data || []).map(g => g.member_user_id);
-        }
-
-        if (rule.rule_type === 'include') {
-          includeUserIds = [...includeUserIds, ...userIds];
-        } else {
-          excludeUserIds = [...excludeUserIds, ...userIds];
-        }
-      }
-
-      const finalUserIds = [...new Set(includeUserIds)].filter(id => !excludeUserIds.includes(id));
-
-      // Create delivery records
-      if (finalUserIds.length > 0) {
-        const deliveries = finalUserIds.map(userId => ({
-          event_id: eventId,
-          user_id: userId,
-        }));
-        // Insert in batches of 500
-        for (let i = 0; i < deliveries.length; i += 500) {
-          const batch = deliveries.slice(i, i + 500);
-          await supabase.from('event_user_delivery').upsert(batch, { onConflict: 'event_id,user_id' });
-        }
-      }
+      const delivered = await resolveAudienceAndDeliver(eventId);
 
       // Update event status
       const { error } = await supabase
@@ -377,14 +331,39 @@ export function usePublishEvent() {
         .eq('id', eventId);
       if (error) throw error;
 
-      return { delivered: finalUserIds.length };
+      return { delivered };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin-events'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-event'] });
       toast.success(`Published! Delivered to ${data.delivered} users.`);
     },
     onError: (err: Error) => {
       toast.error('Failed to publish: ' + err.message);
+    },
+  });
+}
+
+// Delete event with cascade
+export function useDeleteEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (eventId: string) => {
+      // Delete in FK order
+      await supabase.from('event_responses').delete().eq('event_id', eventId);
+      await supabase.from('event_user_delivery').delete().eq('event_id', eventId);
+      await supabase.from('event_audience_rules').delete().eq('event_id', eventId);
+      await supabase.from('event_settings').delete().eq('event_id', eventId);
+      const { error } = await supabase.from('events').delete().eq('id', eventId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-events'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-event'] });
+      toast.success('Event deleted');
+    },
+    onError: (err: Error) => {
+      toast.error('Failed to delete: ' + err.message);
     },
   });
 }

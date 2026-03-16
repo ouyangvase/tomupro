@@ -183,6 +183,12 @@ export default function EventsAdmin() {
                                   <Send className="h-4 w-4 mr-2" /> Publish Now
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuItem
+                                onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${event.title}"?`)) deleteEvent.mutate(event.id); }}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" /> Delete
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
