@@ -42,7 +42,7 @@ export default function NotificationCenter() {
   const unreadCount = useMemo(() => notifications.filter(n => !n.is_read).length, [notifications]);
   const highPriorityCount = useMemo(() => notifications.filter(n => n.priority === 'HIGH').length, [notifications]);
   const actionRequiredCount = useMemo(() => notifications.filter(n => 
-    n.type === 'CLAIM_SUBMITTED' || n.type === 'INBOUND_PENDING' || n.type === 'DISPUTE' || n.type === 'RUNNER_ASSIGNED'
+    n.type === 'CLAIM_SUBMITTED' || n.type === 'INBOUND_PENDING' || n.type === 'RUNNER_ASSIGNED'
   ).length, [notifications]);
 
   // Filtering
