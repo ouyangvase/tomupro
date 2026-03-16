@@ -311,7 +311,7 @@ export default function RunnerDriverInbox() {
 
         {/* Stats Cards */}
         <DispatchStatusCards
-          totalReady={orders.length}
+          totalReady={activeOrdersCount}
           unassigned={assignableOrders.length}
           assigned={driverUpdatesOrders.length}
           codOrders={pendingAcceptanceOrders.length}
