@@ -185,7 +185,7 @@ export default function ReasonsSettings() {
           <TabsList>
             <TabsTrigger value="CANCEL">Cancel Reasons</TabsTrigger>
             <TabsTrigger value="FAILED_DELIVERY">Failed Delivery</TabsTrigger>
-            <TabsTrigger value="DISPUTE">Dispute</TabsTrigger>
+            
           </TabsList>
 
           <TabsContent value={activeTab} className="mt-4">

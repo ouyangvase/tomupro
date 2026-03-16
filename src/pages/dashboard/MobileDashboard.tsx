@@ -177,7 +177,7 @@ function AdminMobileDashboard() {
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
     { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/inventory?tab=products' },
     { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=claims' },
-    { id: 'disputes', label: 'Disputes', icon: <AlertTriangle className="h-5 w-5" />, href: '/team?tab=disputes', badge: stats?.disputes, badgeColor: 'warning' },
+    
     { id: 'bindings', label: 'Bindings', icon: <Settings className="h-5 w-5" />, href: '/system?tab=bindings' },
     { id: 'overview', label: 'Overview', icon: <BarChart3 className="h-5 w-5" />, href: '/finance?tab=overview' },
   ];

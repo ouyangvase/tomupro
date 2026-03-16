@@ -317,9 +317,6 @@ export default function AdminOverview() {
                           <TableCell className="text-center">
                             {spOverdue > 0 ? <Badge variant="destructive">{spOverdue}</Badge> : '—'}
                           </TableCell>
-                          <TableCell className="text-center">
-                            {spDisputes > 0 ? <Badge variant="destructive">{spDisputes}</Badge> : '—'}
-                          </TableCell>
                         </TableRow>
                       );
                     })}
