@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users, FileText, Package, Check } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users, FileText, Package, Check, MapPin } from 'lucide-react';
 import { parseCSVRaw, downloadTemplate, HEADER_ALIASES } from '@/lib/csv';
 import { validateOrderLines, type ValidatedOrderLine } from '@/lib/csvValidation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +22,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useValidAreas } from '@/hooks/useValidAreas';
+import { toUpperLatin } from '@/lib/uppercase';
 import { ColumnMappingStep, areRequiredFieldsMapped, applyColumnMapping } from './ColumnMappingStep';
 import { cn } from '@/lib/utils';
 import capybaraImport from '@/assets/capybara-import.png';
