@@ -251,7 +251,7 @@ export default function ManagerOversight() {
                       <TableHead className="text-center">Action Required</TableHead>
                       <TableHead className="text-center">Booking</TableHead>
                       <TableHead className="text-center">Ready</TableHead>
-                      <TableHead className="text-center">Disputes</TableHead>
+                      
                       <TableHead className="text-center">Delivered Today</TableHead>
                       <TableHead className="text-center">Health</TableHead>
                       <TableHead></TableHead>
