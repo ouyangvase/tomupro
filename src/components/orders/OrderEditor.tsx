@@ -825,7 +825,6 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                         const areaValue = field.value || '';
                         const upperArea = toUpperLatin(areaValue);
                         const areaIsInvalid = upperArea.length > 0 && !isValidArea(upperArea, validAreas);
-                        const [areaSearchOpen, setAreaSearchOpen] = useState(false);
                         const filteredAreas = validAreas.filter(a =>
                           a.toUpperCase().includes(upperArea.toUpperCase())
                         );
