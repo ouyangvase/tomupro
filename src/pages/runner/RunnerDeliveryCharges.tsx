@@ -340,6 +340,32 @@ export default function RunnerDeliveryCharges() {
           </Table>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteArea} onOpenChange={() => setDeleteArea(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete area charge: {deleteArea}</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all delivery charge records (active, pending, and history) for this area. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteArea && profile?.id) {
+                  deleteCharges.mutate({ runnerId: profile.id, area: deleteArea });
+                  setDeleteArea(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
