@@ -147,7 +147,6 @@ export default function RunnerDeliveredOrders() {
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
-  const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
   const { dateRange, setDateRange } = useDateRangeState();
   
   // Build server-side paginated filter
