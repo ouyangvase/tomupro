@@ -236,6 +236,9 @@ function AppRoutes() {
       <Route path="/admin/events/:eventId/analytics" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
       <Route path="/events" element={<ProtectedRoute><UserEventsPage /></ProtectedRoute>} />
       
+      {/* Guide Center */}
+      <Route path="/guide" element={<ProtectedRoute><GuideCenterPage /></ProtectedRoute>} />
+      
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
