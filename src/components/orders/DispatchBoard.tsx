@@ -1,8 +1,6 @@
-import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { DispatchBoardRow } from './DispatchBoardRow';
 import capybaraEmpty from '@/assets/capybara-empty.png';
@@ -16,7 +14,6 @@ interface DispatchBoardProps {
   onSelectionChange: (ids: string[]) => void;
   onRowClick: (order: Order) => void;
   selectable: boolean;
-  // Server pagination
   page: number;
   pageSize: number;
   totalCount: number;
@@ -53,11 +50,11 @@ export function DispatchBoard({
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-4">
-        <img src={capybaraLoading} alt="Loading" className="h-24 w-24 object-contain opacity-60 animate-pulse" />
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <img src={capybaraLoading} alt="Loading" className="h-20 w-20 object-contain opacity-50 animate-pulse" />
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span className="text-muted-foreground font-medium">Loading dispatch board...</span>
+          <span className="text-sm text-muted-foreground font-medium">Loading dispatch board...</span>
         </div>
       </div>
     );
@@ -65,39 +62,37 @@ export function DispatchBoard({
 
   if (orders.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-4">
-        <img src={capybaraEmpty} alt="No orders" className="h-28 w-28 object-contain opacity-70" />
-        <div className="text-center">
-          <p className="text-lg font-semibold text-foreground">No orders to dispatch</p>
-          <p className="text-sm text-muted-foreground mt-1">All clear! Check back later for new orders.</p>
-        </div>
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <img src={capybaraEmpty} alt="No orders" className="h-24 w-24 object-contain opacity-60" />
+        <p className="text-base font-semibold text-foreground">No orders to dispatch</p>
+        <p className="text-sm text-muted-foreground">All clear! Check back later for new orders.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       {/* Header bar */}
       {selectable && (
-        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-secondary/40 border border-border/50">
+        <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-secondary/50 border border-border">
           <Checkbox
             checked={isAllSelected}
             onCheckedChange={handleSelectAll}
-            className="h-5 w-5"
+            className="h-4 w-4"
           />
           <span className="text-sm font-medium text-muted-foreground">
             {selectedRows.length > 0
               ? `${selectedRows.length} selected`
-              : `Select All (${totalCount})`}
+              : `Select all (${totalCount})`}
           </span>
         </div>
       )}
 
       {/* Column labels */}
-      <div className="flex items-center gap-4 px-4 py-2 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-        {selectable && <div className="w-5 shrink-0" />}
+      <div className="flex items-center gap-4 px-4 py-2 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
+        {selectable && <div className="w-4 shrink-0" />}
         <div className="w-[120px] shrink-0">Order</div>
-        <div className="flex-1">Address / Items</div>
+        <div className="flex-1">Details</div>
         <div className="w-[120px] shrink-0 text-right">Amount</div>
         <div className="w-[140px] shrink-0">Runner</div>
         <div className="w-[110px] shrink-0 text-right">Status</div>
@@ -105,7 +100,7 @@ export function DispatchBoard({
       </div>
 
       {/* Rows */}
-      <div className={cn('space-y-2', isFetching && 'opacity-60 pointer-events-none')}>
+      <div className={cn('space-y-1', isFetching && 'opacity-50 pointer-events-none transition-opacity')}>
         {orders.map(order => (
           <DispatchBoardRow
             key={order.id}
@@ -126,7 +121,7 @@ export function DispatchBoard({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-2 pt-3">
+        <div className="flex items-center justify-between px-1 pt-4">
           <span className="text-sm text-muted-foreground tabular-nums">
             {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalCount)} of {totalCount}
           </span>
@@ -139,8 +134,8 @@ export function DispatchBoard({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm px-3 tabular-nums">
-              Page {page} of {totalPages}
+            <span className="text-sm px-3 tabular-nums font-medium">
+              {page} / {totalPages}
             </span>
             <Button
               variant="outline"
