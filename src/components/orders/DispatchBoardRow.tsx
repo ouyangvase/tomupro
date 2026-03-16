@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Phone } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
@@ -57,82 +58,101 @@ export function DispatchBoardRow({ order, isSelected, selectable, onSelect, onCl
   return (
     <div
       className={cn(
-        'group rounded-lg border bg-card p-4 transition-all cursor-pointer',
+        'group rounded-lg border bg-card transition-all cursor-pointer',
         'hover:shadow-sm hover:border-primary/15',
         isSelected && 'ring-2 ring-primary/20 border-primary/20 bg-primary/[0.02]'
       )}
       onClick={onClick}
     >
-      <div className="flex items-center gap-4">
-        {/* Checkbox */}
-        {selectable && (
-          <div className="shrink-0" onClick={e => e.stopPropagation()}>
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={onSelect}
-              className="h-4 w-4"
-            />
-          </div>
-        )}
+      {/* Main row - two lines for better info density */}
+      <div className="px-4 py-3">
+        {/* Line 1: Order ref, customer, amount, status */}
+        <div className="flex items-center gap-4">
+          {selectable && (
+            <div className="shrink-0" onClick={e => e.stopPropagation()}>
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={onSelect}
+                className="h-4 w-4"
+              />
+            </div>
+          )}
 
-        {/* Order ID + Area */}
-        <div className="w-[120px] shrink-0">
-          <span className="text-base font-bold font-mono text-foreground">{order.order_code}</span>
-          <div className="mt-0.5">
-            {order.area && (
-              <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0">
-                {order.area}
-              </Badge>
+          {/* Order ID + Area */}
+          <div className="w-[110px] shrink-0">
+            <span className="text-sm font-bold font-mono text-foreground">{order.order_code}</span>
+            <div className="mt-0.5">
+              {order.area && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0">
+                  {order.area}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Customer Info Block */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-semibold text-foreground truncate max-w-[200px]">
+                {order.customer_name || 'No name'}
+              </p>
+              {order.phone && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                  <Phone className="h-3 w-3" />
+                  {order.phone}
+                </span>
+              )}
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate cursor-help">
+                  {order.address || 'No address'}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[400px]">
+                <p className="whitespace-pre-wrap">{order.address || 'No address'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          {/* Amount + Payment */}
+          <div className="w-[110px] shrink-0 text-right">
+            <span className="text-sm font-bold tabular-nums text-foreground">
+              {formatBND(order.total_amount)}
+            </span>
+            <div className="mt-0.5">
+              <span className="text-[10px] text-muted-foreground font-medium">{order.payment_method}</span>
+            </div>
+          </div>
+
+          {/* Runner */}
+          <div className="w-[130px] shrink-0">
+            {order.runner ? (
+              <RunnerAvatar name={order.runner.display_name} />
+            ) : (
+              <span className="text-sm text-muted-foreground">Unassigned</span>
             )}
           </div>
-        </div>
 
-        {/* Address + Items */}
-        <div className="flex-1 min-w-0">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <p className="text-sm text-foreground truncate cursor-help">
-                {order.address || 'No address'}
-              </p>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-[400px]">
-              <p className="whitespace-pre-wrap">{order.address || 'No address'}</p>
-            </TooltipContent>
-          </Tooltip>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-            {displayText}
-          </p>
-        </div>
+          {/* Status */}
+          <div className="w-[100px] shrink-0 text-right">
+            <DeliveryStatusBadge status={order.runner_status} />
+          </div>
 
-        {/* Amount */}
-        <div className="w-[120px] shrink-0 text-right">
-          <span className="text-base font-bold tabular-nums text-foreground">
-            {formatBND(order.total_amount)}
-          </span>
-          <div className="mt-0.5">
-            <span className="text-[10px] text-muted-foreground font-medium">{order.payment_method}</span>
+          {/* Date */}
+          <div className="w-[80px] shrink-0 text-right hidden xl:block">
+            <span className="text-xs text-muted-foreground">
+              {format(new Date(order.created_at), 'MMM dd')}
+            </span>
           </div>
         </div>
 
-        {/* Runner */}
-        <div className="w-[140px] shrink-0">
-          {order.runner ? (
-            <RunnerAvatar name={order.runner.display_name} />
-          ) : (
-            <span className="text-sm text-muted-foreground">Unassigned</span>
-          )}
-        </div>
-
-        {/* Status */}
-        <div className="w-[110px] shrink-0 text-right">
-          <DeliveryStatusBadge status={order.runner_status} />
-        </div>
-
-        {/* Date */}
-        <div className="w-[90px] shrink-0 text-right hidden xl:block">
-          <span className="text-xs text-muted-foreground">
-            {format(new Date(order.created_at), 'MMM dd')}
-          </span>
+        {/* Line 2: Items summary */}
+        <div className={cn("flex items-center gap-4 mt-1.5", selectable && "pl-8")}>
+          <div className="w-[110px] shrink-0" />
+          <p className="text-xs text-muted-foreground/70 truncate flex-1">
+            {displayText}
+          </p>
         </div>
       </div>
     </div>

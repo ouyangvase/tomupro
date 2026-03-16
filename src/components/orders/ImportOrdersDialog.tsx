@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users, FileText, Package, Check } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users, FileText, Package, Check, MapPin } from 'lucide-react';
 import { parseCSVRaw, downloadTemplate, HEADER_ALIASES } from '@/lib/csv';
 import { validateOrderLines, type ValidatedOrderLine } from '@/lib/csvValidation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +22,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useValidAreas } from '@/hooks/useValidAreas';
+import { toUpperLatin } from '@/lib/uppercase';
 import { ColumnMappingStep, areRequiredFieldsMapped, applyColumnMapping } from './ColumnMappingStep';
 import { cn } from '@/lib/utils';
 import capybaraImport from '@/assets/capybara-import.png';
@@ -81,6 +83,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: teamMembers = [] } = useTeamMembers();
+  const { data: validAreas = [] } = useValidAreas();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -280,6 +283,26 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         return;
       }
 
+      // Area validation: check all areas against valid list
+      if (validAreas.length > 0) {
+        const areaErrors: string[] = [];
+        const orderRefToRows = new Map<number, ValidatedOrderLine>();
+        validation.valid.forEach((row, i) => orderRefToRows.set(i + 2, row));
+        
+        for (let i = 0; i < validation.valid.length; i++) {
+          const row = validation.valid[i];
+          const areaValue = toUpperLatin(row.area?.trim() || '');
+          if (areaValue && !validAreas.some(a => a.toUpperCase() === areaValue.toUpperCase())) {
+            areaErrors.push(`Row ${i + 2}: Area "${areaValue}" does not exist in TOMUPRO. Replace with a valid area from the area list.`);
+          }
+        }
+        if (areaErrors.length > 0) {
+          setErrors(['Import FAILED: Invalid area values detected. No orders were imported.', '', ...areaErrors]);
+          setImporting(false);
+          return;
+        }
+      }
+
       const orderGroups = new Map<string, {
         orderRef: string;
         orderData: ValidatedOrderLine;
@@ -288,7 +311,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       const duplicateSkuErrors: string[] = [];
 
       for (const row of validation.valid) {
-        const orderRef = row.order_ref.trim();
+        const orderRef = toUpperLatin(row.order_ref.trim());
         const skuValue = row.sku_name_or_code?.trim();
         if (!skuValue) {
           duplicateSkuErrors.push(`Order ${orderRef}: SKU code is required for all order items.`);
@@ -343,13 +366,13 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           const { data: order, error: orderError } = await supabase
             .from('orders')
             .insert([{
-              order_code: orderRef,
-              customer_name: group.orderData.customer_name,
+              order_code: toUpperLatin(orderRef),
+              customer_name: toUpperLatin(group.orderData.customer_name),
               phone: group.orderData.phone,
-              address: group.orderData.address,
-              area: group.orderData.area || null,
-              channel: group.orderData.channel || null,
-              notes: group.orderData.notes || null,
+              address: toUpperLatin(group.orderData.address),
+              area: toUpperLatin(group.orderData.area) || null,
+              channel: toUpperLatin(group.orderData.channel) || null,
+              notes: toUpperLatin(group.orderData.notes) || null,
               order_date: group.orderData.order_date || new Date().toISOString().split('T')[0],
               payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
