@@ -33,7 +33,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <h1 className="text-base font-bold tracking-tight text-foreground">
                   TOMU<span className="text-primary">PRO</span>
                 </h1>
-                <span className="text-xs text-muted-foreground font-medium px-2 py-0.5 rounded-md bg-secondary">ops</span>
+                
               </div>
               <GlobalSearchBar variant="desktop" className="hidden md:block ml-4" />
             </div>
