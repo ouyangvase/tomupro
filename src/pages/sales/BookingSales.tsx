@@ -62,7 +62,29 @@ export default function BookingSales() {
   }, 50);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
-  
+
+  const filteredOrders = useMemo(() => {
+    return applyOrderFilters(orders, panelFilters);
+  }, [orders, panelFilters]);
+
+  const areaOptions = useMemo(() => {
+    const uniqueAreas = [...new Set(orders.map(o => o.area).filter(Boolean))];
+    return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
+  }, [orders]);
+
+  const salespersonOptions = useMemo(() => {
+    if (role === 'manager') {
+      return userDirectory
+        .filter(u => u.role === 'salesperson' || u.role === 'manager')
+        .map(sp => ({
+          label: sp.id === profile?.id ? `${sp.display_name} (Me)` : sp.display_name,
+          value: sp.id,
+        }));
+    }
+    const salespersons = userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
+    return salespersons.map(sp => ({ label: sp.display_name, value: sp.id }));
+  }, [userDirectory, role, profile?.id]);
+
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
   const cancelOrders = useCancelOrders();
