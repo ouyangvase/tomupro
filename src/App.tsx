@@ -42,7 +42,14 @@ import GuideCenterPage from "./pages/guide/GuideCenterPage";
 import { OnboardingFlow } from "./components/guide/OnboardingFlow";
 import { FloatingHelpButton } from "./components/guide/FloatingHelpButton";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const ModuleLoading = () => (
   <div className="flex items-center justify-center py-16">

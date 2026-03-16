@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
@@ -47,21 +47,23 @@ export default function SystemModule() {
             ))}
           </TabsList>
         </div>
-        <EmbeddedProvider>
-          <Suspense fallback={<Loading />}>
-            <TabsContent value="stock-audit" className="mt-4"><StockIntegrityAudit /></TabsContent>
-            <TabsContent value="stock-rebuild" className="mt-4"><StockIntegrityScan /></TabsContent>
-            <TabsContent value="events" className="mt-4"><EventsAdmin /></TabsContent>
-            <TabsContent value="bindings" className="mt-4"><BindingsSettings /></TabsContent>
-            <TabsContent value="invite-codes" className="mt-4"><InviteCodesAdmin /></TabsContent>
-            <TabsContent value="commission" className="mt-4"><CommissionSettings /></TabsContent>
-            <TabsContent value="leaderboard" className="mt-4"><LeaderboardSettings /></TabsContent>
-            <TabsContent value="data-sharing" className="mt-4"><DataSharingAdmin /></TabsContent>
-            <TabsContent value="reasons" className="mt-4"><ReasonsSettings /></TabsContent>
-            <TabsContent value="profile" className="mt-4"><ProfilePage /></TabsContent>
-          </Suspense>
-        </EmbeddedProvider>
       </Tabs>
+      <EmbeddedProvider>
+        <Suspense fallback={<Loading />}>
+          <div className="mt-4">
+            {activeTab === 'stock-audit' && <StockIntegrityAudit />}
+            {activeTab === 'stock-rebuild' && <StockIntegrityScan />}
+            {activeTab === 'events' && <EventsAdmin />}
+            {activeTab === 'bindings' && <BindingsSettings />}
+            {activeTab === 'invite-codes' && <InviteCodesAdmin />}
+            {activeTab === 'commission' && <CommissionSettings />}
+            {activeTab === 'leaderboard' && <LeaderboardSettings />}
+            {activeTab === 'data-sharing' && <DataSharingAdmin />}
+            {activeTab === 'reasons' && <ReasonsSettings />}
+            {activeTab === 'profile' && <ProfilePage />}
+          </div>
+        </Suspense>
+      </EmbeddedProvider>
     </div>
   );
 }

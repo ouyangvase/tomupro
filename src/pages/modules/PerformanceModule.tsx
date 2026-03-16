@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,12 +25,11 @@ export default function PerformanceModule() {
     if (role === 'driver') return [{ id: 'ranking', label: 'Ranking' }];
     if (role === 'runner') return [{ id: 'driver-ranking', label: 'Driver Ranking' }];
     if (role === 'salesperson') return [{ id: 'leaderboard', label: 'Leaderboard' }];
-    const tabs = [
+    return [
       { id: 'leaderboard', label: 'Leaderboard' },
       { id: 'ranking', label: 'Ranking Board' },
       { id: 'impact', label: 'Impact Board' },
     ];
-    return tabs;
   };
 
   const tabs = getTabs();
@@ -49,17 +48,17 @@ export default function PerformanceModule() {
             </TabsList>
           </div>
         )}
-        <EmbeddedProvider>
-          <Suspense fallback={<Loading />}>
-            <TabsContent value="leaderboard" className="mt-4"><LeaderboardPage /></TabsContent>
-            <TabsContent value="ranking" className="mt-4">
-              {role === 'driver' ? <DriverRankingPage /> : <ManagerRankingBoard />}
-            </TabsContent>
-            <TabsContent value="impact" className="mt-4"><ManagerImpactBoard /></TabsContent>
-            <TabsContent value="driver-ranking" className="mt-4"><DriverRanking /></TabsContent>
-          </Suspense>
-        </EmbeddedProvider>
       </Tabs>
+      <EmbeddedProvider>
+        <Suspense fallback={<Loading />}>
+          <div className="mt-4">
+            {activeTab === 'leaderboard' && <LeaderboardPage />}
+            {activeTab === 'ranking' && (role === 'driver' ? <DriverRankingPage /> : <ManagerRankingBoard />)}
+            {activeTab === 'impact' && <ManagerImpactBoard />}
+            {activeTab === 'driver-ranking' && <DriverRanking />}
+          </div>
+        </Suspense>
+      </EmbeddedProvider>
     </div>
   );
 }

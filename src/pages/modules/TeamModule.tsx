@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
@@ -35,15 +35,17 @@ export default function TeamModule() {
             ))}
           </TabsList>
         </div>
-        <EmbeddedProvider>
-          <Suspense fallback={<Loading />}>
-            <TabsContent value="users" className="mt-4"><UsersSettings /></TabsContent>
-            <TabsContent value="approvals" className="mt-4"><PendingStockApprovals /></TabsContent>
-            <TabsContent value="oversight" className="mt-4"><ManagerOversight /></TabsContent>
-            <TabsContent value="disputes" className="mt-4"><DisputeCenter /></TabsContent>
-          </Suspense>
-        </EmbeddedProvider>
       </Tabs>
+      <EmbeddedProvider>
+        <Suspense fallback={<Loading />}>
+          <div className="mt-4">
+            {activeTab === 'users' && <UsersSettings />}
+            {activeTab === 'approvals' && <PendingStockApprovals />}
+            {activeTab === 'oversight' && <ManagerOversight />}
+            {activeTab === 'disputes' && <DisputeCenter />}
+          </div>
+        </Suspense>
+      </EmbeddedProvider>
     </div>
   );
 }

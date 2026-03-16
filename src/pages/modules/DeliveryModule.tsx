@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
@@ -37,16 +37,18 @@ export default function DeliveryModule() {
             ))}
           </TabsList>
         </div>
-        <EmbeddedProvider>
-          <Suspense fallback={<Loading />}>
-            <TabsContent value="inbox" className="mt-4"><DriverInbox /></TabsContent>
-            <TabsContent value="route" className="mt-4"><DriverRoutePage /></TabsContent>
-            <TabsContent value="pickups" className="mt-4"><DriverPickupsPage /></TabsContent>
-            <TabsContent value="returns" className="mt-4"><DriverReturnsPage /></TabsContent>
-            <TabsContent value="analytics" className="mt-4"><DriverAnalyticsPage /></TabsContent>
-          </Suspense>
-        </EmbeddedProvider>
       </Tabs>
+      <EmbeddedProvider>
+        <Suspense fallback={<Loading />}>
+          <div className="mt-4">
+            {activeTab === 'inbox' && <DriverInbox />}
+            {activeTab === 'route' && <DriverRoutePage />}
+            {activeTab === 'pickups' && <DriverPickupsPage />}
+            {activeTab === 'returns' && <DriverReturnsPage />}
+            {activeTab === 'analytics' && <DriverAnalyticsPage />}
+          </div>
+        </Suspense>
+      </EmbeddedProvider>
     </div>
   );
 }
