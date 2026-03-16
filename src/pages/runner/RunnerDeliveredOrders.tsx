@@ -705,18 +705,6 @@ export default function RunnerDeliveredOrders() {
           <DateRangePresets value={dateRange} onChange={setDateRange} />
         </PageHero>
 
-        {/* Data truncation warning */}
-        {isDataTruncated && (
-          <Card className="border-[hsl(var(--status-warning)/0.5)] bg-[hsl(var(--status-warning)/0.08)]">
-            <CardContent className="p-3 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-[hsl(var(--status-warning))] shrink-0" />
-              <p className="text-sm text-muted-foreground">
-                Table shows up to {QUERY_LIMIT} rows. KPI totals reflect all {summary?.total_delivered ?? '2000+'} delivered orders.
-                Apply filters to narrow results.
-              </p>
-            </CardContent>
-          </Card>
-        )}
 
         {/* KPI Cards — Visual upgrade */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
