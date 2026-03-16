@@ -456,12 +456,11 @@ export default function RunnerDeliveredOrders() {
     );
   };
 
-  // Extract unique areas for filter
+  // Use valid areas from database for filter options
+  const { data: validAreas = [] } = useValidAreas();
   const areaOptions = useMemo(() => {
-    if (!orders) return [];
-    const uniqueAreas = [...new Set(orders.filter(o => o.runner_status === 'DELIVERED').map(o => o.area).filter(Boolean))];
-    return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
-  }, [orders]);
+    return validAreas.sort().map(area => ({ label: area, value: area }));
+  }, [validAreas]);
 
   // Salesperson filter options - scoped based on role
   const salespersonOptions = useMemo(() => {
