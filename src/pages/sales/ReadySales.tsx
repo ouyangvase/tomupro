@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
@@ -13,7 +12,7 @@ import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -30,10 +29,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Truck, UserCheck, Lock, Plus, AlertTriangle, ChevronDown, ChevronUp, Send, Search, X, Upload, ShoppingCart } from 'lucide-react';
+import { Plus, UserCheck, Search, X, Upload, Download, ShoppingCart, Zap } from 'lucide-react';
 import { PageHero } from '@/components/dashboard/PageHero';
+import { DispatchStatusCards } from '@/components/orders/DispatchStatusCards';
+import { DispatchBoard } from '@/components/orders/DispatchBoard';
 import capybaraSales from '@/assets/capybara-sales.png';
-import { Input } from '@/components/ui/input';
 import {
   Tooltip,
   TooltipContent,
@@ -42,7 +42,6 @@ import {
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
-import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
@@ -69,13 +68,10 @@ export default function ReadySales() {
   const [mobileSearch, setMobileSearch] = useState('');
   const [serverSearch, setServerSearch] = useState('');
   
-  // For manager assign dialog: manually selected salesperson
   const [managerSelectedSalesperson, setManagerSelectedSalesperson] = useState<string>('');
   
-  // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
-  // Use paginated orders hook
   const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
     status: 'READY',
     salespersonIds: isManager ? salespersonIds : undefined,
@@ -85,26 +81,20 @@ export default function ReadySales() {
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 
-  // For client-side panel filters that still apply
   const filteredOrders = useMemo(() => {
-    let result = applyOrderFilters(orders, panelFilters);
-    return result;
+    return applyOrderFilters(orders, panelFilters);
   }, [orders, panelFilters]);
 
-  // Extract unique areas for filter dropdown
   const areaOptions = useMemo(() => {
     const uniqueAreas = [...new Set(orders.map(o => o.area).filter(Boolean))];
     return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
   }, [orders]);
 
-  // Team member IDs for manager visibility
   const { data: teamMembers = [] } = useTeamMembers();
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
 
-  // Salesperson filter options - TEAM SCOPED for managers
   const salespersonOptions = useMemo(() => {
     if (role === 'manager') {
-      // Manager: only show self + team members
       const teamIds = [profile?.id, ...teamMemberIds];
       return userDirectory
         .filter(u => teamIds.includes(u.id))
@@ -113,7 +103,6 @@ export default function ReadySales() {
           value: sp.id,
         }));
     }
-    // Admin sees all salespersons/managers
     const salespersons = userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
     return salespersons.map(sp => ({
       label: sp.display_name,
@@ -121,10 +110,8 @@ export default function ReadySales() {
     }));
   }, [userDirectory, role, profile?.id, teamMemberIds]);
   
-  // Determine which salesperson to use for bindings lookup
   const selectedOrdersData = orders.filter((o) => selectedRows.includes(o.id));
   
-  // Check if all selected orders belong to the same salesperson
   const uniqueSalespersonIds = useMemo(() => {
     return [...new Set(selectedOrdersData.map(o => o.salesperson_id))];
   }, [selectedOrdersData]);
@@ -132,27 +119,16 @@ export default function ReadySales() {
   const hasMixedSalespersons = uniqueSalespersonIds.length > 1;
   const autoDetectedSalespersonId = uniqueSalespersonIds.length === 1 ? uniqueSalespersonIds[0] : undefined;
   
-  // Get team salespersons for manager's dropdown
   const teamSalespersons = useMemo(() => {
     if (role !== 'manager' && role !== 'admin') return [];
-    // Get unique salespersons from current orders
     const spIds = [...new Set(orders.map(o => o.salesperson_id))];
     return userDirectory.filter(u => spIds.includes(u.id));
   }, [orders, userDirectory, role]);
   
-  // Get the salesperson ID for binding lookup
   const getBindingSalespersonId = () => {
-    if (role === 'salesperson') {
-      return profile?.id;
-    }
-    // For admin/manager with dialog open and manual selection
-    if (managerSelectedSalesperson) {
-      return managerSelectedSalesperson;
-    }
-    // Auto-detect if all selected orders are from same salesperson
-    if (autoDetectedSalespersonId) {
-      return autoDetectedSalespersonId;
-    }
+    if (role === 'salesperson') return profile?.id;
+    if (managerSelectedSalesperson) return managerSelectedSalesperson;
+    if (autoDetectedSalespersonId) return autoDetectedSalespersonId;
     return undefined;
   };
   
@@ -165,14 +141,12 @@ export default function ReadySales() {
 
   const bindingOwnerIsManager = bindingOwner?.role === 'manager';
 
-  // Fetch bindings for salesperson-owned orders
   const { data: bindings = [], isLoading: bindingsLoading } = useBindings(
     bindingSalespersonId && !bindingOwnerIsManager
       ? { salespersonId: bindingSalespersonId, active: true }
       : undefined
   );
 
-  // Fetch bindings for manager-owned orders
   const { data: managerRunnerBindings = [], isLoading: managerRunnerBindingsLoading } = useManagerRunnerBindings(
     bindingSalespersonId && bindingOwnerIsManager
       ? { managerId: bindingSalespersonId }
@@ -195,145 +169,6 @@ export default function ReadySales() {
 
   const isEditable = role === 'admin' || role === 'salesperson' || role === 'manager';
 
-  const columns: Column<Order>[] = [
-    { 
-      key: 'created_at', 
-      header: 'Imported', 
-      sortable: true, 
-      width: '120px',
-      render: (o) => format(new Date(o.created_at), 'MMM dd, HH:mm') 
-    },
-    { 
-      key: 'order_code', 
-      header: 'Order Ref', 
-      sortable: true,
-      render: (o) => <span className="font-mono text-sm">{o.order_code}</span>
-    },
-    { 
-      key: 'area', 
-      header: 'Area', 
-      sortable: true, 
-      filterable: true, 
-      filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a!, value: a! })) 
-    },
-    { 
-      key: 'address', 
-      header: 'Address', 
-      render: (o) => (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="text-sm truncate max-w-[200px] block cursor-help">
-              {o.address || '-'}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-[400px]">
-            <p className="whitespace-pre-wrap">{o.address || 'No address'}</p>
-          </TooltipContent>
-        </Tooltip>
-      )
-    },
-    { 
-      key: 'items_summary', 
-      header: 'Items', 
-      render: (o) => {
-        const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(o.order_items);
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className={`text-sm cursor-help ${hasError ? 'text-destructive' : ''}`}>
-                {hasError && <AlertTriangle className="h-3 w-3 inline mr-1" />}
-                <span className="font-medium">{displayText}</span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-[400px]">
-              <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
-            </TooltipContent>
-          </Tooltip>
-        );
-      }
-    },
-    { 
-      key: 'total_amount', 
-      header: 'Amount (BND)', 
-      sortable: true, 
-      render: (o) => <span className="font-medium">{formatBND(o.total_amount)}</span>
-    },
-    { 
-      key: 'payment_method', 
-      header: 'Payment', 
-      width: '80px',
-      render: (o) => <Badge variant="outline">{o.payment_method}</Badge> 
-    },
-    { 
-      key: 'runner_id', 
-      header: 'Runner', 
-      filterable: true,
-      filterOptions: runnerOptions.map(o => ({ label: o.label, value: o.id })),
-      render: (o) => {
-        if (!o.runner) return <span className="text-muted-foreground">Unassigned</span>;
-        return (
-          <div className="flex items-center gap-2">
-            <Truck className="h-4 w-4 text-muted-foreground" />
-            <span>{o.runner.display_name}</span>
-          </div>
-        );
-      }
-    },
-    { 
-      key: 'runner_status', 
-      header: 'Delivery', 
-      width: '180px',
-      filterable: true,
-      filterOptions: [
-        { label: 'Unassigned', value: 'UNASSIGNED' },
-        { label: 'Assigned', value: 'ASSIGNED' },
-        { label: 'Taken', value: 'TAKEN' },
-        { label: 'Delivered', value: 'DELIVERED' },
-        { label: 'Failed', value: 'FAILED_DELIVERY' },
-      ],
-      render: (o) => (
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <StatusBadge status={o.runner_status} type="runner" />
-            {o.runner_status === 'FAILED_DELIVERY' && (
-              <FailedDeliveryInfo order={o} compact />
-            )}
-          </div>
-          {/* Show runner remark and next delivery date */}
-          {(o.runner_comment || o.next_delivery_date) && (
-            <div className="text-xs space-y-0.5">
-              {o.runner_comment && (
-                <div className="text-primary font-medium truncate max-w-[200px]" title={o.runner_comment}>
-                  Note: {o.runner_comment}
-                </div>
-              )}
-              {o.next_delivery_date && (
-                <div className="text-muted-foreground">
-                  Next: {format(new Date(o.next_delivery_date), 'dd MMM')}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )
-    },
-    { 
-      key: 'reconciliation_status', 
-      header: 'Reconciliation', 
-      width: '140px',
-      filterable: true,
-      filterOptions: [
-        { label: 'Not Claimed', value: 'NOT_CLAIMED' },
-        { label: 'Claimed', value: 'CLAIMED' },
-        { label: 'SP Ack Pending', value: 'SP_ACK_PENDING' },
-        { label: 'Admin Ack Pending', value: 'ADMIN_ACK_PENDING' },
-        { label: 'Settled', value: 'SETTLED' },
-        { label: 'Dispute', value: 'DISPUTE' },
-      ],
-      render: (o) => <StatusBadge status={o.reconciliation_status} type="reconciliation" /> 
-    },
-  ];
-
   const handleRowClick = (order: Order) => {
     if (!isEditable) return;
     setEditingOrder(order);
@@ -342,15 +177,10 @@ export default function ReadySales() {
 
   const handleAssignRunner = () => {
     if (!selectedRunner || selectedRows.length === 0) return;
-    
     bulkUpdateOrders.mutate({
       ids: selectedRows,
-      updates: {
-        runner_id: selectedRunner,
-        runner_status: 'ASSIGNED',
-      },
+      updates: { runner_id: selectedRunner, runner_status: 'ASSIGNED' },
     });
-    
     setAssignDialogOpen(false);
     setSelectedRunner('');
     setSelectedRows([]);
@@ -377,9 +207,7 @@ export default function ReadySales() {
     setSelectedRows([]);
   };
 
-  const handleExport = () => {
-    exportOrderLines(orders, 'ready_orders');
-  };
+  const handleExport = () => exportOrderLines(orders, 'ready_orders');
 
   const handleExportSelected = () => {
     if (selectedRows.length === 0) {
@@ -394,22 +222,12 @@ export default function ReadySales() {
     setEditorOpen(true);
   };
 
+  // Stats
   const unassignedCount = orders.filter(o => o.runner_status === 'UNASSIGNED').length;
+  const assignedCount = orders.filter(o => o.runner_status !== 'UNASSIGNED').length;
+  const codCount = orders.filter(o => o.payment_method === 'COD').length;
 
   const isMobile = useIsMobile();
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
-
-  const toggleCardExpanded = (id: string) => {
-    setExpandedCards(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
 
   const toggleSelection = (id: string, checked: boolean) => {
     if (checked) {
@@ -431,13 +249,14 @@ export default function ReadySales() {
 
   return (
     <AppLayout>
-      <div className="space-y-4">
+      <div className="space-y-5">
+        {/* Page Hero - Dispatch Board Header */}
         <PageHero
           icon={<ShoppingCart className="h-6 w-6 text-primary" />}
-          title="Ready Sales"
-          subtitle={`${orders.length} orders ready for delivery • ${unassignedCount} awaiting runner assignment`}
+          title="Ready Orders"
+          subtitle="Operations Dispatch Board"
           image={capybaraSales}
-          imageAlt="Sales capybara"
+          imageAlt="Capybara dispatcher"
           actions={
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <TeamViewToggle
@@ -452,59 +271,95 @@ export default function ReadySales() {
                     <Plus className="h-4 w-4 mr-2" />
                     {isMobile ? 'New' : 'New Order'}
                   </Button>
-                  {isMobile && (
-                    <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm">
-                      <Upload className="h-4 w-4 mr-2" />
-                      Import
-                    </Button>
-                  )}
+                  <Button onClick={handleExport} variant="outline" size={isMobile ? "sm" : "default"}>
+                    <Download className="h-4 w-4 mr-2" />
+                    {isMobile ? '' : 'Export'}
+                  </Button>
                 </div>
               )}
             </div>
           }
         />
 
-        <OrderFiltersPanel
-          filters={panelFilters}
-          onFiltersChange={setPanelFilters}
-          areaOptions={areaOptions}
-          salespersonOptions={salespersonOptions}
-          showSalespersonFilter={role === 'admin' || role === 'manager'}
-          showOrderStatus={false}
-          showRunnerStatus={true}
-          showReconciliationStatus={true}
+        {/* Status Summary Cards */}
+        <DispatchStatusCards
+          totalReady={pagination.totalCount || orders.length}
+          unassigned={unassignedCount}
+          assigned={assignedCount}
+          codOrders={codCount}
         />
 
-        {/* Bulk Actions - Mobile */}
-        {isMobile && isEditable && selectedRows.length > 0 && (
-          <Card className="p-3 border-primary/50 bg-primary/5">
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-primary">
+        {/* Smart Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search */}
+          <div className="relative min-w-[200px] flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search orders..."
+              value={serverSearch}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9 h-10 rounded-full border-border/60 bg-card"
+            />
+          </div>
+
+          <OrderFiltersPanel
+            filters={panelFilters}
+            onFiltersChange={setPanelFilters}
+            areaOptions={areaOptions}
+            salespersonOptions={salespersonOptions}
+            showSalespersonFilter={role === 'admin' || role === 'manager'}
+            showOrderStatus={false}
+            showRunnerStatus={true}
+            showReconciliationStatus={true}
+          />
+
+          {isMobile && isEditable && (
+            <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm" className="rounded-full">
+              <Upload className="h-4 w-4 mr-1" />
+              Import
+            </Button>
+          )}
+        </div>
+
+        {/* Bulk Actions Bar */}
+        {selectedRows.length > 0 && isEditable && (
+          <Card className="p-3 border-primary/30 bg-primary/5 rounded-xl">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-bold text-primary">
                 {selectedRows.length} order{selectedRows.length !== 1 ? 's' : ''} selected
               </span>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => setAssignDialogOpen(true)}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button size="sm" onClick={() => setAssignDialogOpen(true)} className="rounded-full">
                   <UserCheck className="h-4 w-4 mr-1" />
-                  Assign
+                  Assign Runner
                 </Button>
-                <Button size="sm" variant="outline" onClick={handleExportSelected}>
+                <Button size="sm" variant="outline" onClick={handleExportSelected} className="rounded-full">
                   Export
                 </Button>
-                <Button size="sm" variant="outline" onClick={handleDispute}>
-                  Dispute
-                </Button>
-                <Button size="sm" variant="destructive" onClick={() => setCancelDialogOpen(true)}>
+                {role !== 'manager' && role !== 'salesperson' && (
+                  <Button size="sm" variant="outline" onClick={handleDispute} className="rounded-full">
+                    Dispute
+                  </Button>
+                )}
+                <Button size="sm" variant="destructive" onClick={() => setCancelDialogOpen(true)} className="rounded-full">
                   Cancel
                 </Button>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedRows([])}
+                className="ml-auto text-muted-foreground"
+              >
+                Clear
+              </Button>
             </div>
           </Card>
         )}
 
-        {/* Mobile Card View */}
+        {/* Orders Board */}
         {isMobile ? (
           <div className="space-y-3">
-            {/* Mobile Search Bar */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -539,9 +394,6 @@ export default function ReadySales() {
             ) : (
               filteredOrders.map((order) => {
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
-                const isExpanded = expandedCards.has(order.id);
-                const isSelected = selectedRows.includes(order.id);
-
                 return (
                   <MobileOrderCard
                     key={order.id}
@@ -550,7 +402,7 @@ export default function ReadySales() {
                     areaBadge={order.area ? <Badge variant="outline" className="text-xs">{order.area}</Badge> : undefined}
                     statusBadge={<StatusBadge status={order.runner_status} type="runner" />}
                     selectable={isEditable}
-                    isSelected={isSelected}
+                    isSelected={selectedRows.includes(order.id)}
                     onSelectionChange={(checked) => toggleSelection(order.id, checked)}
                     onClick={() => handleRowClick(order)}
                     primaryFields={[
@@ -574,91 +426,19 @@ export default function ReadySales() {
             )}
           </div>
         ) : (
-          /* Desktop Table View */
-          <DataGrid
-            data={filteredOrders}
-            columns={columns}
-            keyField="id"
-            selectable={isEditable}
+          <DispatchBoard
+            orders={filteredOrders}
+            loading={isLoading}
             selectedRows={selectedRows}
             onSelectionChange={setSelectedRows}
             onRowClick={handleRowClick}
-            loading={isLoading}
-            emptyMessage="No ready orders"
-            onExport={handleExport}
-            onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
-            onSearchChange={handleSearchChange}
-            serverPagination={{
-              enabled: true,
-              page: pagination.page,
-              pageSize: pagination.pageSize,
-              totalCount: pagination.totalCount,
-              totalPages: pagination.totalPages,
-              onPageChange: setPage,
-              onPageSizeChange: setPageSize,
-              isFetching,
-            }}
-            bulkActions={
-              isEditable && selectedRows.length > 0 ? (
-                (() => {
-                  const selectedOrdersInfo = orders.filter(o => selectedRows.includes(o.id));
-                  const hasDeliveredOrders = selectedOrdersInfo.some(o => o.runner_status === 'DELIVERED');
-                  const isAdmin = role === 'admin';
-                  const canCancel = isAdmin || !hasDeliveredOrders;
-                  
-                  return (
-                    <div className="flex gap-2 items-center">
-                      <Button 
-                        size="sm" 
-                        onClick={() => setAssignDialogOpen(true)}
-                      >
-                        <UserCheck className="h-4 w-4 mr-2" />
-                        Assign Runner
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={handleExportSelected}>
-                        Export Selected
-                      </Button>
-                      {role !== 'manager' && role !== 'salesperson' && (
-                        <Button size="sm" variant="outline" onClick={handleDispute}>
-                          Mark Dispute
-                        </Button>
-                      )}
-                      {canCancel ? (
-                        <Button 
-                          size="sm" 
-                          variant="destructive" 
-                          onClick={() => setCancelDialogOpen(true)}
-                        >
-                          Cancel
-                        </Button>
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span>
-                              <Button 
-                                size="sm" 
-                                variant="destructive" 
-                                disabled
-                              >
-                                Cancel
-                              </Button>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Delivered order is locked. Only admin can modify.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      {hasDeliveredOrders && !isAdmin && (
-                        <Badge variant="secondary" className="ml-2">
-                          Selection includes delivered orders
-                        </Badge>
-                      )}
-                    </div>
-                  );
-                })()
-              ) : undefined
-            }
+            selectable={isEditable}
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            totalCount={pagination.totalCount}
+            totalPages={pagination.totalPages}
+            onPageChange={setPage}
+            isFetching={isFetching}
           />
         )}
       </div>
@@ -702,7 +482,6 @@ export default function ReadySales() {
           </DialogHeader>
           
           <div className="py-4 space-y-4">
-            {/* For manager/admin: Show salesperson selector when orders are from mixed salespersons */}
             {(role === 'manager' || role === 'admin') && hasMixedSalespersons && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-destructive">
@@ -710,7 +489,7 @@ export default function ReadySales() {
                 </label>
                 <Select value={managerSelectedSalesperson} onValueChange={(value) => {
                   setManagerSelectedSalesperson(value);
-                  setSelectedRunner(''); // Reset runner when salesperson changes
+                  setSelectedRunner('');
                 }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select salesperson..." />
@@ -726,7 +505,6 @@ export default function ReadySales() {
               </div>
             )}
             
-            {/* Show detected salesperson for manager/admin when all orders are from same salesperson */}
             {(role === 'manager' || role === 'admin') && !hasMixedSalespersons && autoDetectedSalespersonId && (
               <div className="text-sm text-muted-foreground">
                 Showing runners bound to: <span className="font-medium text-foreground">
@@ -743,9 +521,7 @@ export default function ReadySales() {
                 </SelectTrigger>
                 <SelectContent>
                 {runnersLoading ? (
-                  <div className="p-2 text-sm text-muted-foreground">
-                    Loading runners...
-                  </div>
+                  <div className="p-2 text-sm text-muted-foreground">Loading runners...</div>
                 ) : !bindingSalespersonId ? (
                   <div className="p-2 text-sm text-muted-foreground">
                     {hasMixedSalespersons
