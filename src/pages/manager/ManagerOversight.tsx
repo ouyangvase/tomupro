@@ -184,13 +184,6 @@ export default function ManagerOversight() {
             value={totals.rescheduled} 
             icon={Clock} 
           />
-          <MetricCard 
-            title="Open Disputes" 
-            value={totals.disputes} 
-            icon={AlertTriangle} 
-            variant="error"
-            onClick={() => navigate('/disputes')}
-          />
         </div>
 
         {/* High Priority Alert */}
