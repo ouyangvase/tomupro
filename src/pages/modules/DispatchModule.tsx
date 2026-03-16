@@ -11,6 +11,7 @@ const DriverLocationsPage = lazy(() => import('@/pages/runner/DriverLocationsPag
 const RunnerDriverInbox = lazy(() => import('@/pages/runner/RunnerDriverInbox'));
 const DriverManagement = lazy(() => import('@/pages/runner/DriverManagement'));
 const RunnerFailedOrders = lazy(() => import('@/pages/runner/RunnerFailedOrders'));
+const RunnerDeliveredOrders = lazy(() => import('@/pages/runner/RunnerDeliveredOrders'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
