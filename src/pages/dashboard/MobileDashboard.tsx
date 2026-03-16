@@ -196,7 +196,7 @@ function AdminMobileDashboard() {
         title="Total Orders"
         value={totalOrders}
         subtitle="System-wide activity"
-        viewAllLink="/admin/overview"
+        viewAllLink="/finance?tab=overview"
         viewAllLabel="View Overview"
         icon={<BarChart3 className="h-5 w-5" />}
         isLoading={isLoading}
