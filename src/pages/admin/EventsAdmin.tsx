@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Plus, Calendar, Megaphone, Eye, Users, BarChart3, 
-  CheckCircle, Clock, Archive, MoreVertical, Send
+  CheckCircle, Clock, Archive, MoreVertical, Send, Trash2
 } from 'lucide-react';
 import { useAdminEvents, usePublishEvent, useDeleteEvent, type EventWithDetails } from '@/hooks/useEvents';
 import { format } from 'date-fns';
