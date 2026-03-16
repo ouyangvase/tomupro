@@ -4450,6 +4450,31 @@ export type Database = {
               salesperson_name: string
             }[]
           }
+      get_my_active_popup_events: {
+        Args: never
+        Returns: {
+          allow_maybe: boolean
+          current_status: string
+          delivered_at: string
+          delivery_id: string
+          dismissed_at: string
+          dismissible: boolean
+          event_cover_image_url: string
+          event_description: string
+          event_end_at: string
+          event_id: string
+          event_location: string
+          event_start_at: string
+          event_subtitle: string
+          event_title: string
+          event_type: string
+          force_acknowledge: boolean
+          popup_shown_count: number
+          require_response: boolean
+          seen_at: string
+          show_as_popup: boolean
+        }[]
+      }
       get_share_scopes: {
         Args: { p_subject_id: string; p_viewer_id: string }
         Returns: {
@@ -4619,6 +4644,10 @@ export type Database = {
       repair_missing_stock_deductions: {
         Args: { p_dry_run?: boolean }
         Returns: Json
+      }
+      resolve_event_audience_and_deliver: {
+        Args: { p_event_id: string }
+        Returns: number
       }
       search_visible_orders: {
         Args: { p_limit?: number; p_query: string }

@@ -173,53 +173,13 @@ export function useEventResponseStats(eventId: string | undefined) {
   });
 }
 
-// Shared helper: resolve audience rules → user IDs
-async function resolveAudienceAndDeliver(eventId: string) {
-  const { data: rules, error: rulesErr } = await supabase
-    .from('event_audience_rules')
-    .select('*')
-    .eq('event_id', eventId);
-  if (rulesErr) throw rulesErr;
-
-  let includeUserIds: string[] = [];
-  let excludeUserIds: string[] = [];
-
-  for (const rule of rules || []) {
-    let userIds: string[] = [];
-    if (rule.audience_type === 'all') {
-      const { data } = await supabase.from('profiles').select('id');
-      userIds = (data || []).map(p => p.id);
-    } else if (rule.audience_type === 'role') {
-      const { data } = await supabase.from('user_roles').select('user_id').eq('role', rule.audience_value as any);
-      userIds = (data || []).map(r => r.user_id);
-    } else if (rule.audience_type === 'user') {
-      userIds = [rule.audience_value!];
-    } else if (rule.audience_type === 'manager_group') {
-      const { data } = await supabase.from('group_members').select('member_user_id').eq('group_id', rule.audience_value);
-      userIds = (data || []).map(g => g.member_user_id);
-    }
-
-    if (rule.rule_type === 'include') {
-      includeUserIds = [...includeUserIds, ...userIds];
-    } else {
-      excludeUserIds = [...excludeUserIds, ...userIds];
-    }
-  }
-
-  const finalUserIds = [...new Set(includeUserIds)].filter(id => !excludeUserIds.includes(id));
-
-  if (finalUserIds.length > 0) {
-    const deliveries = finalUserIds.map(userId => ({
-      event_id: eventId,
-      user_id: userId,
-    }));
-    for (let i = 0; i < deliveries.length; i += 500) {
-      const batch = deliveries.slice(i, i + 500);
-      await supabase.from('event_user_delivery').upsert(batch, { onConflict: 'event_id,user_id' });
-    }
-  }
-
-  return finalUserIds.length;
+// Server-side audience resolution via RPC
+async function resolveAudienceAndDeliver(eventId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('resolve_event_audience_and_deliver', {
+    p_event_id: eventId,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
 }
 
 // Create event mutation
@@ -387,26 +347,39 @@ export function useMyEvents() {
   });
 }
 
-// User: my popup events (unseen, published, not expired)
+// User: my popup events via server-side RPC
+export interface PopupEvent {
+  delivery_id: string;
+  event_id: string;
+  delivered_at: string;
+  seen_at: string | null;
+  dismissed_at: string | null;
+  current_status: string;
+  popup_shown_count: number;
+  event_title: string;
+  event_subtitle: string | null;
+  event_description: string | null;
+  event_type: string;
+  event_cover_image_url: string | null;
+  show_as_popup: boolean;
+  dismissible: boolean;
+  force_acknowledge: boolean;
+  require_response: boolean;
+  allow_maybe: boolean;
+  event_start_at: string | null;
+  event_end_at: string | null;
+  event_location: string | null;
+}
+
 export function useMyPopupEvents() {
   const { user } = useAuth();
   return useQuery({
     queryKey: ['my-popup-events', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from('event_user_delivery')
-        .select('*, events:event_id(*, event_settings(*))')
-        .eq('user_id', user.id)
-        .is('dismissed_at', null)
-        .in('current_status', ['delivered', 'seen']);
+      const { data, error } = await supabase.rpc('get_my_active_popup_events');
       if (error) throw error;
-      // Filter for popup-enabled events
-      return (data || []).filter((d: any) => {
-        const evt = d.events;
-        const settings = evt?.event_settings?.[0];
-        return evt?.status === 'published' && settings?.show_as_popup;
-      });
+      return (data || []) as PopupEvent[];
     },
     enabled: !!user,
     refetchInterval: 60000,
