@@ -120,11 +120,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function ProtectedModule({ children }: { children: React.ReactNode }) {
   return (
     <ProtectedRoute>
-      <AppLayout>
+      <ResponsiveLayout>
         <Suspense fallback={<ModuleLoading />}>
           {children}
         </Suspense>
-      </AppLayout>
+      </ResponsiveLayout>
     </ProtectedRoute>
   );
 }
