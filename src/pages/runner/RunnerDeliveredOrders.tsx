@@ -146,7 +146,7 @@ export default function RunnerDeliveredOrders() {
   const [exportSelectedIds, setExportSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
   const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
   const { dateRange, setDateRange } = useDateRangeState();
   
