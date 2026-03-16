@@ -173,6 +173,55 @@ export function useEventResponseStats(eventId: string | undefined) {
   });
 }
 
+// Shared helper: resolve audience rules → user IDs
+async function resolveAudienceAndDeliver(eventId: string) {
+  const { data: rules, error: rulesErr } = await supabase
+    .from('event_audience_rules')
+    .select('*')
+    .eq('event_id', eventId);
+  if (rulesErr) throw rulesErr;
+
+  let includeUserIds: string[] = [];
+  let excludeUserIds: string[] = [];
+
+  for (const rule of rules || []) {
+    let userIds: string[] = [];
+    if (rule.audience_type === 'all') {
+      const { data } = await supabase.from('profiles').select('id');
+      userIds = (data || []).map(p => p.id);
+    } else if (rule.audience_type === 'role') {
+      const { data } = await supabase.from('user_roles').select('user_id').eq('role', rule.audience_value as any);
+      userIds = (data || []).map(r => r.user_id);
+    } else if (rule.audience_type === 'user') {
+      userIds = [rule.audience_value!];
+    } else if (rule.audience_type === 'manager_group') {
+      const { data } = await supabase.from('group_members').select('member_user_id').eq('group_id', rule.audience_value);
+      userIds = (data || []).map(g => g.member_user_id);
+    }
+
+    if (rule.rule_type === 'include') {
+      includeUserIds = [...includeUserIds, ...userIds];
+    } else {
+      excludeUserIds = [...excludeUserIds, ...userIds];
+    }
+  }
+
+  const finalUserIds = [...new Set(includeUserIds)].filter(id => !excludeUserIds.includes(id));
+
+  if (finalUserIds.length > 0) {
+    const deliveries = finalUserIds.map(userId => ({
+      event_id: eventId,
+      user_id: userId,
+    }));
+    for (let i = 0; i < deliveries.length; i += 500) {
+      const batch = deliveries.slice(i, i + 500);
+      await supabase.from('event_user_delivery').upsert(batch, { onConflict: 'event_id,user_id' });
+    }
+  }
+
+  return finalUserIds.length;
+}
+
 // Create event mutation
 export function useCreateEvent() {
   const queryClient = useQueryClient();
@@ -206,6 +255,11 @@ export function useCreateEvent() {
           .from('event_audience_rules')
           .insert(rules as any);
         if (rulesError) throw rulesError;
+      }
+
+      // 4. If publishing immediately, resolve audience and create deliveries
+      if (eventData.status === 'published') {
+        await resolveAudienceAndDeliver(eventData.id);
       }
 
       return eventData;
