@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
@@ -8,14 +7,19 @@ import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { Plus, AlertTriangle, Clock, Search, ShoppingBag, Upload } from 'lucide-react';
+import { Plus, Clock, Search, X, Upload, Download, ShoppingBag, ArrowRight, CalendarClock, UserX, UserCheck } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { PageHero } from '@/components/dashboard/PageHero';
+import { DispatchStatusCards } from '@/components/orders/DispatchStatusCards';
+import { DispatchBoard } from '@/components/orders/DispatchBoard';
+import capybaraDispatcher from '@/assets/capybara-dispatcher.png';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
@@ -44,10 +48,8 @@ export default function BookingSales() {
   const [mobileSearch, setMobileSearch] = useState('');
   const [serverSearch, setServerSearch] = useState('');
 
-  // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
 
-  // Use paginated orders hook
   const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
     status: 'BOOKING',
     salespersonIds: isManager ? salespersonIds : undefined,
@@ -63,161 +65,10 @@ export default function BookingSales() {
 
   const isEditable = role === 'admin' || role === 'salesperson' || role === 'manager';
 
-  const columns: Column<Order>[] = [
-    { 
-      key: 'created_at', 
-      header: 'Imported', 
-      sortable: true, 
-      width: '120px',
-      render: (o) => format(new Date(o.created_at), 'MMM dd, HH:mm') 
-    },
-    { 
-      key: 'order_code', 
-      header: 'Order Ref', 
-      sortable: true,
-      render: (o) => <span className="font-mono text-sm">{o.order_code}</span>
-    },
-    { 
-      key: 'area', 
-      header: 'Area', 
-      sortable: true,
-      editable: isEditable,
-      filterable: true, 
-      filterOptions: [...new Set(orders.map(o => o.area).filter(Boolean))].map(a => ({ label: a as string, value: a as string })) 
-    },
-    { 
-      key: 'address', 
-      header: 'Address', 
-      render: (o) => (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="text-sm truncate max-w-[200px] block cursor-help">
-              {o.address || '-'}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-[400px]">
-            <p className="whitespace-pre-wrap">{o.address || 'No address'}</p>
-          </TooltipContent>
-        </Tooltip>
-      )
-    },
-    { 
-      key: 'items_summary', 
-      header: 'Items', 
-      render: (o) => {
-        const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(o.order_items);
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className={`text-sm cursor-help ${hasError ? 'text-destructive' : ''}`}>
-                {hasError && <AlertTriangle className="h-3 w-3 inline mr-1" />}
-                <span className="font-medium">{displayText}</span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-[400px]">
-              <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
-            </TooltipContent>
-          </Tooltip>
-        );
-      }
-    },
-    { 
-      key: 'total_amount', 
-      header: 'Amount (BND)', 
-      sortable: true, 
-      render: (o) => <span className="font-medium">{formatBND(o.total_amount)}</span>
-    },
-    { 
-      key: 'payment_method', 
-      header: 'Payment', 
-      width: '80px',
-      render: (o) => <Badge variant="outline">{o.payment_method}</Badge> 
-    },
-    { 
-      key: 'runner_id', 
-      header: 'Runner', 
-      render: (o) => {
-        if (!o.runner) return <span className="text-muted-foreground">—</span>;
-        return <span>{o.runner.display_name}</span>;
-      }
-    },
-    { 
-      key: 'runner_status', 
-      header: 'Delivery', 
-      width: '120px',
-      filterable: true,
-      filterOptions: [
-        { label: 'Unassigned', value: 'UNASSIGNED' },
-        { label: 'Assigned', value: 'ASSIGNED' },
-        { label: 'Taken', value: 'TAKEN' },
-        { label: 'Delivered', value: 'DELIVERED' },
-        { label: 'Failed', value: 'FAILED_DELIVERY' },
-      ],
-      render: (o) => <StatusBadge status={o.runner_status} type="runner" /> 
-    },
-    {
-      key: 'next_delivery_date',
-      header: 'Next Schedule',
-      width: '160px',
-      sortable: true,
-      render: (o) => {
-        const isAutoReschedule = o.operational_status === 'BOOKING_AUTO_RESCHEDULE';
-        if (!o.next_delivery_date) {
-          return (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={(e) => {
-                e.stopPropagation();
-                setRescheduleOrder(o);
-                setRescheduleDialogOpen(true);
-              }}
-            >
-              <Clock className="h-3 w-3 mr-1" />
-              Schedule
-            </Button>
-          );
-        }
-        return (
-          <div className="flex items-center gap-1">
-            {isAutoReschedule && (
-              <Badge variant="secondary" className="text-xs px-1">
-                Auto
-              </Badge>
-            )}
-            <span className="text-sm text-muted-foreground">
-              {format(new Date(o.next_delivery_date), 'dd MMM')}
-            </span>
-          </div>
-        );
-      }
-    },
-    { 
-      key: 'reconciliation_status', 
-      header: 'Reconciliation', 
-      width: '140px',
-      filterable: true,
-      filterOptions: [
-        { label: 'Not Claimed', value: 'NOT_CLAIMED' },
-        { label: 'Claimed', value: 'CLAIMED' },
-        { label: 'SP Ack Pending', value: 'SP_ACK_PENDING' },
-        { label: 'Admin Ack Pending', value: 'ADMIN_ACK_PENDING' },
-        { label: 'Settled', value: 'SETTLED' },
-        { label: 'Dispute', value: 'DISPUTE' },
-      ],
-      render: (o) => <StatusBadge status={o.reconciliation_status} type="reconciliation" /> 
-    },
-  ];
-
   const handleRowClick = (order: Order) => {
     if (!isEditable) return;
     setEditingOrder(order);
     setEditorOpen(true);
-  };
-
-  const handleCellEdit = (id: string, field: string, value: unknown) => {
-    updateOrder.mutate({ id, [field]: value } as any);
   };
 
   const handleConvertToReady = () => {
@@ -249,9 +100,7 @@ export default function BookingSales() {
     setSelectedRows([]);
   };
 
-  const handleExport = () => {
-    exportOrderLines(orders, 'booking_orders');
-  };
+  const handleExport = () => exportOrderLines(orders, 'booking_orders');
 
   const handleExportSelected = () => {
     if (selectedRows.length === 0) {
@@ -265,6 +114,11 @@ export default function BookingSales() {
     setEditingOrder(null);
     setEditorOpen(true);
   };
+
+  // Stats
+  const unassignedCount = orders.filter(o => o.runner_status === 'UNASSIGNED').length;
+  const assignedCount = orders.filter(o => o.runner_status !== 'UNASSIGNED').length;
+  const scheduledCount = orders.filter(o => o.next_delivery_date).length;
 
   const toggleSelection = (id: string, checked: boolean) => {
     if (checked) {
@@ -289,7 +143,6 @@ export default function BookingSales() {
     return (
       <AppLayout>
         <div className="space-y-4 pb-20">
-          {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShoppingBag className="h-5 w-5 text-primary" />
@@ -312,7 +165,6 @@ export default function BookingSales() {
             )}
           </div>
 
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -323,7 +175,6 @@ export default function BookingSales() {
             />
           </div>
 
-          {/* Select all */}
           {isEditable && orders.length > 0 && (
             <MobileSelectAllCard
               isAllSelected={isAllSelected}
@@ -333,7 +184,6 @@ export default function BookingSales() {
             />
           )}
 
-          {/* Order cards */}
           {isLoading ? (
             <div className="flex items-center justify-center gap-3 py-12">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -381,7 +231,6 @@ export default function BookingSales() {
             </div>
           )}
 
-          {/* Bulk actions bar */}
           {isEditable && (
             <MobileBulkActionsBar
               selectedCount={selectedRows.length}
@@ -403,7 +252,6 @@ export default function BookingSales() {
           order={editingOrder}
           mode={editingOrder ? 'edit' : 'create'}
         />
-
         <CancelOrderDialog
           open={cancelDialogOpen}
           onOpenChange={setCancelDialogOpen}
@@ -411,12 +259,10 @@ export default function BookingSales() {
           onConfirm={handleCancelConfirm}
           loading={cancelOrders.isPending}
         />
-
         <ImportOrdersDialog
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
         />
-
         <RescheduleOrderDialog
           open={rescheduleDialogOpen}
           onOpenChange={setRescheduleDialogOpen}
@@ -426,128 +272,144 @@ export default function BookingSales() {
     );
   }
 
-  // Desktop view
+  // Desktop view — Dispatch Board style
   return (
     <AppLayout>
-      <div className="space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Booking Sales</h1>
-            <p className="text-muted-foreground">Orders pending pickup confirmation</p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <TeamViewToggle
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              selectedMember={selectedMember}
-              onMemberChange={setSelectedMember}
+      <div className="space-y-5">
+        {/* Page Hero */}
+        <PageHero
+          icon={<ShoppingBag className="h-6 w-6 text-primary" />}
+          title="Booking Sales"
+          subtitle="Pending Pickup Confirmation Board"
+          image={capybaraDispatcher}
+          imageAlt="Capybara dispatcher"
+          actions={
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <TeamViewToggle
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                selectedMember={selectedMember}
+                onMemberChange={setSelectedMember}
+              />
+              {isEditable && (
+                <div className="flex gap-2">
+                  <Button onClick={handleCreateNew}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Order
+                  </Button>
+                  <Button onClick={handleExport} variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </Button>
+                </div>
+              )}
+            </div>
+          }
+        />
+
+        {/* Status Summary Cards */}
+        <DispatchStatusCards
+          totalReady={pagination.totalCount || orders.length}
+          unassigned={unassignedCount}
+          assigned={assignedCount}
+          codOrders={scheduledCount}
+          labels={{
+            total: 'Booking Orders',
+            unassigned: 'Unassigned',
+            assigned: 'Assigned',
+            fourth: 'Scheduled',
+          }}
+          icons={{
+            fourth: <CalendarClock className="h-5 w-5" />,
+          }}
+        />
+
+        {/* Search + Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[200px] flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search orders..."
+              value={serverSearch}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9 h-10 rounded-full border-border/60 bg-card"
             />
-            {isEditable && (
-              <Button onClick={handleCreateNew}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Order
-              </Button>
-            )}
           </div>
+          {isEditable && (
+            <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm" className="rounded-full">
+              <Upload className="h-4 w-4 mr-1" />
+              Import
+            </Button>
+          )}
         </div>
 
-        <DataGrid
-          data={orders}
-          columns={columns}
-          keyField="id"
-          selectable={isEditable}
+        {/* Bulk Actions */}
+        {selectedRows.length > 0 && isEditable && (
+          <Card className="p-3 border-primary/30 bg-primary/5 rounded-xl">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-bold text-primary">
+                {selectedRows.length} order{selectedRows.length !== 1 ? 's' : ''} selected
+              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button size="sm" onClick={handleConvertToReady} className="rounded-full">
+                  <ArrowRight className="h-4 w-4 mr-1" />
+                  Convert to Ready
+                </Button>
+                {selectedRows.length === 1 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => {
+                      const order = orders.find(o => o.id === selectedRows[0]);
+                      if (order) {
+                        setRescheduleOrder(order);
+                        setRescheduleDialogOpen(true);
+                      }
+                    }}
+                  >
+                    <Clock className="h-3 w-3 mr-1" />
+                    Reschedule
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={handleExportSelected} className="rounded-full">
+                  Export
+                </Button>
+                {role !== 'manager' && role !== 'salesperson' && (
+                  <Button size="sm" variant="outline" onClick={handleDispute} className="rounded-full">
+                    Dispute
+                  </Button>
+                )}
+                <Button size="sm" variant="destructive" onClick={() => setCancelDialogOpen(true)} className="rounded-full">
+                  Cancel
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedRows([])}
+                className="ml-auto text-muted-foreground"
+              >
+                Clear
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {/* Dispatch Board */}
+        <DispatchBoard
+          orders={orders}
+          loading={isLoading}
           selectedRows={selectedRows}
           onSelectionChange={setSelectedRows}
           onRowClick={handleRowClick}
-          onCellEdit={isEditable ? handleCellEdit : undefined}
-          loading={isLoading}
-          emptyMessage="No booking orders"
-          onExport={handleExport}
-          onImport={isEditable ? () => setImportDialogOpen(true) : undefined}
-          onSearchChange={handleSearchChange}
-          serverPagination={{
-            enabled: true,
-            page: pagination.page,
-            pageSize: pagination.pageSize,
-            totalCount: pagination.totalCount,
-            totalPages: pagination.totalPages,
-            onPageChange: setPage,
-            onPageSizeChange: setPageSize,
-            isFetching,
-          }}
-          bulkActions={
-            isEditable && selectedRows.length > 0 ? (
-              (() => {
-                const selectedOrdersInfo = orders.filter(o => selectedRows.includes(o.id));
-                const hasDeliveredOrders = selectedOrdersInfo.some(o => o.runner_status === 'DELIVERED');
-                const isAdmin = role === 'admin';
-                const canCancel = isAdmin || !hasDeliveredOrders;
-                
-                return (
-                  <div className="flex gap-2 items-center">
-                    <Button size="sm" onClick={handleConvertToReady}>
-                      Convert to Ready
-                    </Button>
-                    {selectedRows.length === 1 && (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => {
-                          const order = orders.find(o => o.id === selectedRows[0]);
-                          if (order) {
-                            setRescheduleOrder(order);
-                            setRescheduleDialogOpen(true);
-                          }
-                        }}
-                      >
-                        <Clock className="h-3 w-3 mr-1" />
-                        Reschedule
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" onClick={handleExportSelected}>
-                      Export Selected
-                    </Button>
-                    {role !== 'manager' && role !== 'salesperson' && (
-                      <Button size="sm" variant="outline" onClick={handleDispute}>
-                        Mark Dispute
-                      </Button>
-                    )}
-                    {canCancel ? (
-                      <Button 
-                        size="sm" 
-                        variant="destructive" 
-                        onClick={() => setCancelDialogOpen(true)}
-                      >
-                        Cancel
-                      </Button>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span>
-                            <Button 
-                              size="sm" 
-                              variant="destructive" 
-                              disabled
-                            >
-                              Cancel
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delivered order is locked. Only admin can modify.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                    {hasDeliveredOrders && !isAdmin && (
-                      <Badge variant="secondary" className="ml-2">
-                        Selection includes delivered orders
-                      </Badge>
-                    )}
-                  </div>
-                );
-              })()
-            ) : undefined
-          }
+          selectable={isEditable}
+          page={pagination.page}
+          pageSize={pagination.pageSize}
+          totalCount={pagination.totalCount}
+          totalPages={pagination.totalPages}
+          onPageChange={setPage}
+          isFetching={isFetching}
         />
       </div>
 
@@ -557,7 +419,6 @@ export default function BookingSales() {
         order={editingOrder}
         mode={editingOrder ? 'edit' : 'create'}
       />
-
       <CancelOrderDialog
         open={cancelDialogOpen}
         onOpenChange={setCancelDialogOpen}
@@ -565,12 +426,10 @@ export default function BookingSales() {
         onConfirm={handleCancelConfirm}
         loading={cancelOrders.isPending}
       />
-
       <ImportOrdersDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
       />
-
       <RescheduleOrderDialog
         open={rescheduleDialogOpen}
         onOpenChange={setRescheduleDialogOpen}
