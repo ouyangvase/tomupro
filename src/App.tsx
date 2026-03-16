@@ -12,7 +12,7 @@ import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
 import { ProfileGate } from "@/components/auth/ProfileGate";
 import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
 import { MaintenanceOverlay } from "@/components/MaintenanceOverlay";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { ResponsiveLayout } from "@/components/layout/ResponsiveLayout";
 import { lazy, Suspense } from "react";
 
 // Pages
@@ -120,11 +120,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function ProtectedModule({ children }: { children: React.ReactNode }) {
   return (
     <ProtectedRoute>
-      <AppLayout>
+      <ResponsiveLayout>
         <Suspense fallback={<ModuleLoading />}>
           {children}
         </Suspense>
-      </AppLayout>
+      </ResponsiveLayout>
     </ProtectedRoute>
   );
 }
