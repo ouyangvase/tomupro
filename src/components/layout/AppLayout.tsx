@@ -18,21 +18,24 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Warm premium header */}
-          <header className="h-14 md:h-16 border-b border-border/50 bg-card/80 backdrop-blur-sm flex items-center justify-between px-3 md:px-6 shrink-0 sticky top-0 z-40">
-            <div className="flex items-center gap-2 md:gap-4">
-              <SidebarTrigger className="text-muted-foreground hover:text-primary h-10 w-10 md:h-auto md:w-auto transition-colors" />
-              <h1 className="text-base md:text-lg font-bold tracking-tight">
-                TOMU<span className="text-primary">PRO</span>
-              </h1>
+          {/* Clean top header */}
+          <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 md:px-6 shrink-0 sticky top-0 z-40">
+            <div className="flex items-center gap-3">
+              <SidebarTrigger className="text-muted-foreground hover:text-foreground h-9 w-9 transition-colors" />
+              <div className="hidden md:flex items-center gap-2">
+                <h1 className="text-base font-bold tracking-tight text-foreground">
+                  TOMU<span className="text-primary">PRO</span>
+                </h1>
+                <span className="text-xs text-muted-foreground font-medium px-2 py-0.5 rounded-md bg-secondary">ops</span>
+              </div>
               <GlobalSearchBar variant="desktop" className="hidden md:block ml-4" />
             </div>
-            <div className="flex items-center gap-1 md:gap-2">
+            <div className="flex items-center gap-1">
               <ThemeToggle />
               <NotificationBell />
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-3 md:p-6 lg:p-8">
+          <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
             {children}
           </main>
         </div>

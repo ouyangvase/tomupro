@@ -22,7 +22,7 @@ export function QuickActionTile({
   href,
   badge,
   iconColor = 'text-primary',
-  iconBg = 'bg-primary/15',
+  iconBg = 'bg-primary/10',
   className,
 }: QuickActionTileProps) {
   const navigate = useNavigate();
@@ -31,28 +31,27 @@ export function QuickActionTile({
     <button
       onClick={() => navigate(href)}
       className={cn(
-        "group w-full flex items-center gap-4 p-4 rounded-xl",
-        "bg-gradient-to-r from-secondary/40 to-secondary/20",
-        "hover:from-primary/15 hover:to-primary/5",
-        "border border-border/40 hover:border-primary/30",
-        "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5",
+        "group w-full flex items-center gap-3 p-3.5 rounded-lg",
+        "bg-secondary/50 hover:bg-secondary",
+        "border border-transparent hover:border-border",
+        "transition-all duration-150",
         className
       )}
     >
       <div className={cn(
-        "flex items-center justify-center h-11 w-11 rounded-xl transition-colors",
-        iconBg, "group-hover:bg-primary/20"
+        "flex items-center justify-center h-10 w-10 rounded-lg transition-colors shrink-0",
+        iconBg
       )}>
-        <Icon className={cn("h-5 w-5", iconColor, "group-hover:text-primary transition-colors")} />
+        <Icon className={cn("h-4.5 w-4.5", iconColor)} />
       </div>
       <div className="flex-1 text-left min-w-0">
-        <p className="font-semibold text-foreground group-hover:text-primary transition-colors text-sm truncate">{title}</p>
+        <p className="font-medium text-foreground text-sm truncate">{title}</p>
         <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
       </div>
       {badge !== undefined && badge > 0 && (
-        <Badge variant="destructive" className="shrink-0 shadow-sm">{badge}</Badge>
+        <Badge variant="destructive" className="shrink-0 text-xs">{badge}</Badge>
       )}
-      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all shrink-0" />
     </button>
   );
 }

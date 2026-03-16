@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, XCircle, Calendar, MessageSquare, ChevronRight, Flame } from 'lucide-react';
+import { AlertCircle, XCircle, Calendar, MessageSquare, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ActionRequiredCardProps {
@@ -34,87 +34,71 @@ export function ActionRequiredCard({
   return (
     <Card 
       className={cn(
-        "cursor-pointer transition-all duration-300 hover:shadow-xl hover:-translate-y-1 group relative overflow-hidden",
+        "cursor-pointer transition-all duration-200 hover:shadow-md group relative overflow-hidden",
         hasItems 
-          ? "border-[hsl(var(--status-warning))] bg-gradient-to-br from-[hsl(var(--status-warning)/0.15)] via-[hsl(var(--status-warning)/0.08)] to-transparent border-2" 
-          : "border-border/50 hover:border-primary/30"
+          ? "border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.03)]" 
+          : "border-border"
       )}
       onClick={() => navigate(href)}
     >
-      {/* Decorative elements */}
+      {/* Top accent */}
       {hasItems && (
-        <>
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[hsl(var(--status-warning))] via-destructive to-[hsl(var(--status-warning))]" />
-          <div className="absolute top-0 right-0 w-40 h-40 bg-[hsl(var(--status-warning)/0.1)] rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
-        </>
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-[hsl(var(--status-warning))]" />
       )}
       
-      <CardHeader className="pb-3 relative">
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className={cn(
-            "text-base font-bold flex items-center gap-3",
+            "text-base font-semibold flex items-center gap-2",
             hasItems ? "text-[hsl(var(--status-warning))]" : "text-muted-foreground"
           )}>
-            <div className={cn(
-              "p-2 rounded-xl transition-colors",
-              hasItems 
-                ? "bg-[hsl(var(--status-warning)/0.2)]" 
-                : "bg-secondary/50"
-            )}>
-              {hasItems ? (
-                <Flame className="h-5 w-5 animate-pulse" />
-              ) : (
-                <AlertCircle className="h-5 w-5" />
-              )}
-            </div>
+            <AlertCircle className="h-4 w-4" />
             {title}
           </CardTitle>
-          <div className="p-2 rounded-full bg-secondary/50 group-hover:bg-primary/15 transition-colors">
-            <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 group-hover:text-primary transition-all" />
-          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-4 relative">
+      <CardContent className="space-y-3">
         {isLoading ? (
-          <Skeleton className="h-14 w-24 rounded-xl" />
+          <Skeleton className="h-12 w-20 rounded-lg" />
         ) : (
           <>
             <div className="flex items-end gap-2">
               <span className={cn(
-                "text-5xl font-bold tracking-tight",
-                hasItems ? "text-[hsl(var(--status-warning))]" : "text-muted-foreground"
+                "text-4xl font-bold tracking-tight tabular-nums",
+                hasItems ? "text-foreground" : "text-muted-foreground"
               )}>
                 {total}
               </span>
               {hasItems && (
-                <span className="text-sm text-muted-foreground mb-2">orders</span>
+                <span className="text-sm text-muted-foreground mb-1">orders</span>
               )}
             </div>
             <p className="text-sm text-muted-foreground">{subtitle}</p>
             
             {hasItems && (
-              <div className="flex flex-wrap gap-2 pt-3 border-t border-[hsl(var(--status-warning)/0.2)]">
+              <div className="flex flex-wrap gap-1.5 pt-3 border-t border-border">
                 {failedDelivery > 0 && (
-                  <Badge className="bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25 flex items-center gap-1.5 px-3 py-1.5">
-                    <XCircle className="h-3.5 w-3.5" />
+                  <Badge className="bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/15 text-xs gap-1">
+                    <XCircle className="h-3 w-3" />
                     {failedDelivery} Failed
                   </Badge>
                 )}
                 {rescheduled > 0 && (
-                  <Badge className="bg-[hsl(var(--status-pending)/0.15)] text-[hsl(var(--status-pending))] border-[hsl(var(--status-pending)/0.3)] hover:bg-[hsl(var(--status-pending)/0.25)] flex items-center gap-1.5 px-3 py-1.5">
-                    <Calendar className="h-3.5 w-3.5" />
+                  <Badge className="bg-[hsl(var(--status-pending)/0.1)] text-[hsl(var(--status-pending))] border-[hsl(var(--status-pending)/0.2)] text-xs gap-1">
+                    <Calendar className="h-3 w-3" />
                     {rescheduled} Reschedule
                   </Badge>
                 )}
                 {runnerFlagged > 0 && (
-                  <Badge className="bg-primary/15 text-primary border-primary/30 hover:bg-primary/25 flex items-center gap-1.5 px-3 py-1.5">
-                    <MessageSquare className="h-3.5 w-3.5" />
+                  <Badge className="bg-primary/10 text-primary border-primary/20 text-xs gap-1">
+                    <MessageSquare className="h-3 w-3" />
                     {runnerFlagged} Notes
                   </Badge>
                 )}
                 {cancelled > 0 && (
-                  <Badge variant="secondary" className="flex items-center gap-1.5 px-3 py-1.5">
+                  <Badge variant="secondary" className="text-xs">
                     {cancelled} Cancelled
                   </Badge>
                 )}
@@ -127,7 +111,6 @@ export function ActionRequiredCard({
   );
 }
 
-// Compact version for inline use
 export function ActionRequiredBadge({ 
   total, 
   onClick 
@@ -140,7 +123,7 @@ export function ActionRequiredBadge({
   return (
     <Badge 
       variant="destructive" 
-      className="cursor-pointer animate-pulse shadow-lg"
+      className="cursor-pointer text-xs"
       onClick={onClick}
     >
       <AlertCircle className="h-3 w-3 mr-1" />

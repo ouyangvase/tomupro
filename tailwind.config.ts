@@ -57,7 +57,6 @@ export default {
           border: 'hsl(var(--sidebar-border))',
           ring: 'hsl(var(--sidebar-ring))'
         },
-        // Status colors for semantic use only
         status: {
           success: 'hsl(var(--status-success))',
           error: 'hsl(var(--status-error))',
@@ -74,9 +73,8 @@ export default {
         sm: 'calc(var(--radius) - 4px)'
       },
       fontSize: {
-        // Large display numbers for KPIs
-        'display': ['3rem', { lineHeight: '1', fontWeight: '700', letterSpacing: '-0.02em' }],
-        'display-lg': ['4rem', { lineHeight: '1', fontWeight: '700', letterSpacing: '-0.02em' }],
+        'display': ['3rem', { lineHeight: '1', fontWeight: '700', letterSpacing: '-0.025em' }],
+        'display-lg': ['4rem', { lineHeight: '1', fontWeight: '700', letterSpacing: '-0.025em' }],
       },
       spacing: {
         '18': '4.5rem',
@@ -104,8 +102,8 @@ export default {
           to: { opacity: '0', transform: 'translateY(4px)' }
         },
         'glow-pulse': {
-          '0%, 100%': { boxShadow: '0 0 20px hsl(38 70% 59% / 0.15)' },
-          '50%': { boxShadow: '0 0 30px hsl(38 70% 59% / 0.25)' }
+          '0%, 100%': { boxShadow: '0 0 16px hsl(34 55% 51% / 0.15)' },
+          '50%': { boxShadow: '0 0 28px hsl(34 55% 51% / 0.25)' }
         }
       },
       animation: {
@@ -124,12 +122,11 @@ export default {
         xl: 'var(--shadow-xl)',
         '2xl': 'var(--shadow-2xl)',
         'glow': 'var(--shadow-glow)',
-        'glass': '0 4px 30px rgba(0, 0, 0, 0.1)'
       },
       fontFamily: {
         sans: [
-          'Plus Jakarta Sans',
           'Inter',
+          'Plus Jakarta Sans',
           'ui-sans-serif',
           'system-ui',
           '-apple-system',
@@ -153,10 +150,6 @@ export default {
           'monospace'
         ]
       },
-      backdropBlur: {
-        'glass': '14px',
-        'glass-strong': '20px'
-      }
     }
   },
   plugins: [require("tailwindcss-animate")],
