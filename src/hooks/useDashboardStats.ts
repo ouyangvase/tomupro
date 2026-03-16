@@ -132,7 +132,6 @@ export function useManagerStats() {
         readyRes,
         pendingDeliveryRes,
         pendingReconRes,
-        disputesRes,
         productsRes,
         deliveredRes,
         cancelledRes,
