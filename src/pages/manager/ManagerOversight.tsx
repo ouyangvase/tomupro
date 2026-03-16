@@ -87,7 +87,7 @@ export default function ManagerOversight() {
       bookingOrders: spOrders.filter(o => o.status === 'BOOKING').length,
       readyOrders: spOrders.filter(o => o.status === 'READY').length,
       pendingDelivery: spOrders.filter(o => o.status === 'READY' && o.runner_status !== 'DELIVERED').length,
-      disputes: spOrders.filter(o => o.reconciliation_status === 'DISPUTE').length,
+      
       deliveredToday: spOrders.filter(o => o.delivered_at && o.delivered_at.split('T')[0] === today).length,
     };
   });
