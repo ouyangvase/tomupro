@@ -40,7 +40,7 @@ interface SalespersonMetrics {
   bookingOrders: number;
   readyOrders: number;
   pendingDelivery: number;
-  disputes: number;
+  
   deliveredToday: number;
 }
 
