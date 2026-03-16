@@ -254,8 +254,10 @@ const App = () => (
             <Toaster />
             <Sonner />
             <RoleChangeBanner />
-            <BrowserRouter>
+              <BrowserRouter>
               <EventPopupModal />
+              <OnboardingFlow />
+              <FloatingHelpButton />
               <AppRoutes />
             </BrowserRouter>
           </TooltipProvider>
