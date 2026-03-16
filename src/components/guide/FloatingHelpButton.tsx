@@ -48,16 +48,16 @@ export function FloatingHelpButton() {
       <SheetTrigger asChild>
         <button
           className={cn(
-            "fixed bottom-6 right-6 z-50",
-            "h-14 w-14 rounded-full shadow-lg",
-            "bg-primary hover:bg-primary/90 text-primary-foreground",
+            "fixed bottom-20 right-4 z-40",
+            "h-10 w-10 rounded-full shadow-md",
+            "bg-primary/80 hover:bg-primary text-primary-foreground",
             "flex items-center justify-center",
             "transition-all hover:scale-105 active:scale-95",
-            "md:bottom-8 md:right-8"
+            "md:bottom-6 md:right-6 md:h-11 md:w-11"
           )}
           aria-label="Need Help?"
         >
-          <img src={capybaraHero} alt="Help" className="h-9 w-9 object-contain" />
+          <img src={capybaraHero} alt="Help" className="h-7 w-7 object-contain" />
         </button>
       </SheetTrigger>
       <SheetContent className="w-[380px] sm:w-[420px] p-0">
