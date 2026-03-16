@@ -226,9 +226,9 @@ export function useUpdateEvent() {
   return useMutation({
     mutationFn: async (payload: {
       eventId: string;
-      event: Partial<EventRow>;
-      settings: Partial<EventSettings>;
-      audienceRules: Partial<EventAudienceRule>[];
+      event: Record<string, any>;
+      settings: Record<string, any>;
+      audienceRules: { audience_type: string; audience_value?: string | null; rule_type: string }[];
     }) => {
       const { error: eventError } = await supabase
         .from('events')
