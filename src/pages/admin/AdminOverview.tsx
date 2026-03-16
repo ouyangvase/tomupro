@@ -293,7 +293,7 @@ export default function AdminOverview() {
                       <TableHead className="text-center">Booking</TableHead>
                       <TableHead className="text-center">Ready</TableHead>
                       <TableHead className="text-center">Overdue</TableHead>
-                      <TableHead className="text-center">Disputes</TableHead>
+                      
                     </TableRow>
                   </TableHeader>
                   <TableBody>
