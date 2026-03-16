@@ -283,6 +283,26 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         return;
       }
 
+      // Area validation: check all areas against valid list
+      if (validAreas.length > 0) {
+        const areaErrors: string[] = [];
+        const orderRefToRows = new Map<number, ValidatedOrderLine>();
+        validation.valid.forEach((row, i) => orderRefToRows.set(i + 2, row));
+        
+        for (let i = 0; i < validation.valid.length; i++) {
+          const row = validation.valid[i];
+          const areaValue = toUpperLatin(row.area?.trim() || '');
+          if (areaValue && !validAreas.some(a => a.toUpperCase() === areaValue.toUpperCase())) {
+            areaErrors.push(`Row ${i + 2}: Area "${areaValue}" does not exist in TOMUPRO. Replace with a valid area from the area list.`);
+          }
+        }
+        if (areaErrors.length > 0) {
+          setErrors(['Import FAILED: Invalid area values detected. No orders were imported.', '', ...areaErrors]);
+          setImporting(false);
+          return;
+        }
+      }
+
       const orderGroups = new Map<string, {
         orderRef: string;
         orderData: ValidatedOrderLine;
