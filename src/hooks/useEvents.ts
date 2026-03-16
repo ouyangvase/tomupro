@@ -285,7 +285,7 @@ export function usePublishEvent() {
           const { data } = await supabase.from('profiles').select('id');
           userIds = (data || []).map(p => p.id);
         } else if (rule.audience_type === 'role') {
-          const { data } = await supabase.from('user_roles').select('user_id').eq('role', rule.audience_value);
+          const { data } = await supabase.from('user_roles').select('user_id').eq('role', rule.audience_value as any);
           userIds = (data || []).map(r => r.user_id);
         } else if (rule.audience_type === 'user') {
           userIds = [rule.audience_value!];
