@@ -189,7 +189,7 @@ export default function RunnerDriverInbox() {
   const [areaFilter, setAreaFilter] = useState<string>('all');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-
+  const [assignAreaFilter, setAssignAreaFilter] = useState<string>('all');
   const { data: selectedDriverOrderCount } = useDriverOrderCount(selectedDriver || undefined);
 
   useEffect(() => {
@@ -210,6 +210,9 @@ export default function RunnerDriverInbox() {
         (order.driver_id === null || order.driver_status === 'UNASSIGNED' || order.driver_status === 'DRIVER_FAILED' ||
           order.operational_status === 'DRIVER_FAILED' || order.operational_status === 'RESCHEDULED' || order.operational_status === 'NEW');
     });
+    if (assignAreaFilter !== 'all') {
+      filtered = filtered.filter(o => o.area === assignAreaFilter);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(o =>
@@ -220,7 +223,7 @@ export default function RunnerDriverInbox() {
       );
     }
     return filtered;
-  }, [orders, searchQuery]);
+  }, [orders, searchQuery, assignAreaFilter]);
 
   // TAB B: Driver updates
   const driverUpdatesOrders = useMemo(() => {
@@ -240,7 +243,10 @@ export default function RunnerDriverInbox() {
     return orders.filter(order => order.driver_status === 'DRIVER_DELIVERED' && order.runner_accept_status === 'PENDING');
   }, [orders]);
 
-  const areaOptions = useMemo(() => [...new Set(orders.map(o => o.area).filter(Boolean))].sort(), [orders]);
+  const assignAreaOptions = useMemo(() => [...new Set(orders.map(o => o.area).filter(Boolean))].sort(), [orders]);
+
+  // Active orders = non-delivered, non-cancelled (real count for stats)
+  const activeOrdersCount = useMemo(() => orders.filter(o => o.runner_status !== 'DELIVERED' && o.status !== 'CANCELLED').length, [orders]);
 
   // Handlers
   const handleSelectAll = (checked: boolean) => setSelectedRows(checked ? assignableOrders.map(o => o.id) : []);
@@ -305,7 +311,7 @@ export default function RunnerDriverInbox() {
 
         {/* Stats Cards */}
         <DispatchStatusCards
-          totalReady={orders.length}
+          totalReady={activeOrdersCount}
           unassigned={assignableOrders.length}
           assigned={driverUpdatesOrders.length}
           codOrders={pendingAcceptanceOrders.length}
@@ -341,9 +347,9 @@ export default function RunnerDriverInbox() {
             {/* Assignment Bar */}
             <Card className="border-primary/20 bg-primary/[0.02]">
               <CardContent className="p-4">
-                <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
                   <Select value={selectedDriver} onValueChange={setSelectedDriver}>
-                    <SelectTrigger className="w-[200px] rounded-lg">
+                    <SelectTrigger className="w-[180px] rounded-lg">
                       <SelectValue placeholder="Select driver..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -357,6 +363,17 @@ export default function RunnerDriverInbox() {
                       Load: {selectedDriverOrderCount || 0} orders
                     </Badge>
                   )}
+                  <Select value={assignAreaFilter} onValueChange={setAssignAreaFilter}>
+                    <SelectTrigger className="w-[140px] rounded-lg">
+                      <SelectValue placeholder="All Areas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Areas</SelectItem>
+                      {assignAreaOptions.map(a => (
+                        <SelectItem key={a as string} value={a as string}>{a}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button onClick={handleBulkAssign} disabled={selectedRows.length === 0 || !selectedDriver || bulkAssign.isPending} className="rounded-full">
                     {bulkAssign.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Truck className="h-4 w-4 mr-1" />}
                     Assign {selectedRows.length} Order(s)
@@ -444,7 +461,7 @@ export default function RunnerDriverInbox() {
                     <SelectTrigger className="w-[130px] rounded-lg"><SelectValue placeholder="All Areas" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Areas</SelectItem>
-                      {areaOptions.map(a => <SelectItem key={a as string} value={a as string}>{a}</SelectItem>)}
+                      {assignAreaOptions.map(a => <SelectItem key={a as string} value={a as string}>{a}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Select value={reviewStatusFilter} onValueChange={setReviewStatusFilter}>

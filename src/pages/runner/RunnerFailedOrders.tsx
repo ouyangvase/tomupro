@@ -7,21 +7,33 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useAuth } from '@/contexts/AuthContext';
+import { useValidAreas } from '@/hooks/useValidAreas';
+import { useMyDrivers } from '@/hooks/useDrivers';
 import type { Order } from '@/types/database';
-import { XCircle, RefreshCw, Calendar, AlertTriangle, Ban, Search } from 'lucide-react';
+import { XCircle, RefreshCw, Calendar, Search } from 'lucide-react';
 import capybaraEmpty from '@/assets/capybara-empty.png';
 import { OrderEditor } from '@/components/orders/OrderEditor';
+import { OrderFiltersPanel, type OrderFilters } from '@/components/filters/OrderFiltersPanel';
 
 export default function RunnerFailedOrders() {
   const { user } = useAuth();
   const [serverSearch, setServerSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [filters, setFilters] = useState<OrderFilters>({});
+  const { data: validAreas = [] } = useValidAreas();
+  const { data: myDrivers = [] } = useMyDrivers();
 
-  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders({
+  const areaOptions = useMemo(() => validAreas.map(a => ({ label: a, value: a })), [validAreas]);
+  const driverOptions = useMemo(() => myDrivers.map(d => ({ label: d.driver?.display_name || 'Unknown', value: d.driver_id })), [myDrivers]);
+
+  const { data: orders, isLoading, isFetching, pagination, setPage, refetch } = usePaginatedOrders({
     runnerId: user?.id,
     runnerStatusIn: ['FAILED_DELIVERY'] as any[],
     searchQuery: serverSearch || undefined,
+    areaFilter: filters.area,
+    driverId: filters.driverId,
+    reconciliationStatus: filters.reconciliationStatus as any,
   }, 50);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
@@ -82,6 +94,19 @@ export default function RunnerFailedOrders() {
             />
           </div>
         </div>
+
+        {/* Filters */}
+        <OrderFiltersPanel
+          filters={filters}
+          onFiltersChange={setFilters}
+          areaOptions={areaOptions}
+          driverOptions={driverOptions}
+          showDriverFilter
+          showRunnerStatus={false}
+          showDriverStatus={false}
+          showOrderStatus={false}
+          showReconciliationStatus
+        />
 
         {/* Dispatch Board - visual card rows */}
         <DispatchBoard
