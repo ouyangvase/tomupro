@@ -436,7 +436,7 @@ export default function BookingSales() {
 
         {/* Dispatch Board */}
         <DispatchBoard
-          orders={orders}
+          orders={filteredOrders}
           loading={isLoading}
           selectedRows={selectedRows}
           onSelectionChange={setSelectedRows}
