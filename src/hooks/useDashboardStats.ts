@@ -9,7 +9,7 @@ export interface DashboardStats {
   readyOrders: number;
   pendingDelivery: number;
   pendingReconciliation: number;
-  disputes: number;
+  
   productsCount: number;
   // Runner specific
   assignedToday: number;
