@@ -153,6 +153,15 @@ const sections: NavSection[] = [
     ],
   },
   {
+    id: "events",
+    label: "Events",
+    icon: Calendar,
+    items: [
+      { title: "Events Admin", url: "/admin/events", icon: Megaphone, roles: ["admin"] },
+      { title: "Events", url: "/events", icon: Calendar, roles: ["admin", "manager", "salesperson", "runner", "driver"] },
+    ],
+  },
+  {
     id: "system",
     label: "System",
     icon: Settings,
