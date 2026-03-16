@@ -1308,7 +1308,7 @@ export default function RunnerDeliveredOrders() {
             <CardContent className="py-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Showing {startIndex + 1}-{Math.min(endIndex, deliveredOrders.length)} of {deliveredOrders.length} orders
+                  Showing {startIndex + 1}–{Math.min(startIndex + deliveredOrders.length, pagination.totalCount)} of {pagination.totalCount.toLocaleString()} orders
                 </p>
                 <Pagination>
                   <PaginationContent>
