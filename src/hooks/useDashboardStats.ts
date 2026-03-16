@@ -67,12 +67,6 @@ export function useSalespersonStats() {
           .eq('salesperson_id', user.id)
           .in('reconciliation_status', ['SP_ACK_PENDING', 'ADMIN_ACK_PENDING']),
         
-        // Disputes
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('salesperson_id', user.id)
-          .eq('reconciliation_status', 'DISPUTE'),
         
         // Active products count
         supabase
