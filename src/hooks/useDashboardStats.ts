@@ -80,7 +80,6 @@ export function useSalespersonStats() {
         readyOrders: readyRes.count || 0,
         pendingDelivery: pendingDeliveryRes.count || 0,
         pendingReconciliation: pendingReconRes.count || 0,
-        disputes: disputesRes.count || 0,
         productsCount: productsRes.count || 0,
       };
     },

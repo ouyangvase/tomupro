@@ -220,43 +220,6 @@ export default function ReconciliationAdmin() {
         />
       </div>
 
-      {/* Dispute Dialog */}
-      <Dialog open={disputeDialogOpen} onOpenChange={setDisputeDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Dispute Orders</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Reason</Label>
-              <Select value={disputeReason} onValueChange={setDisputeReason}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reason..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {disputeReasons?.map(r => (
-                    <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Notes</Label>
-              <Textarea 
-                value={disputeNotes} 
-                onChange={(e) => setDisputeNotes(e.target.value)}
-                placeholder="Add notes about the dispute..."
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDisputeDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDispute} disabled={!disputeReason}>
-              Confirm Dispute
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AppLayout>
   );
 }
