@@ -454,11 +454,11 @@ function DriverMobileDashboard() {
   const { profile } = useAuth();
 
   const quickActions: QuickAction[] = [
-    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/driver/inbox' },
-    { id: 'route', label: 'Route', icon: <Navigation className="h-5 w-5" />, href: '/driver/route' },
-    { id: 'pickups', label: 'Pickups', icon: <PackageCheck className="h-5 w-5" />, href: '/driver/pickups' },
-    { id: 'returns', label: 'Returns', icon: <RotateCcw className="h-5 w-5" />, href: '/driver/returns' },
-    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/driver/analytics' },
+    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/delivery?tab=inbox' },
+    { id: 'route', label: 'Route', icon: <Navigation className="h-5 w-5" />, href: '/delivery?tab=route' },
+    { id: 'pickups', label: 'Pickups', icon: <PackageCheck className="h-5 w-5" />, href: '/delivery?tab=pickups' },
+    { id: 'returns', label: 'Returns', icon: <RotateCcw className="h-5 w-5" />, href: '/delivery?tab=returns' },
+    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery?tab=analytics' },
     { id: 'profile', label: 'Profile', icon: <Settings className="h-5 w-5" />, href: '/settings/profile' },
   ];
 
