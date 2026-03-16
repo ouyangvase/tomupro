@@ -32,6 +32,7 @@ export default function DispatchModule() {
     { id: 'drivers', label: 'Drivers' },
     { id: 'failed', label: 'Failed Orders' },
     { id: 'map', label: 'Live Map' },
+    { id: 'delivered', label: 'Delivered Orders' },
   ];
 
   const adminTabs = [
