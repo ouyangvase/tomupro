@@ -276,7 +276,7 @@ export default function ManagerOversight() {
                     ) : (
                       filteredMetrics.map((sp) => {
                         // Calculate health score (0-100)
-                        const issueCount = sp.actionRequired + sp.disputes;
+                        const issueCount = sp.actionRequired;
                         const healthScore = Math.max(0, 100 - (issueCount * 10));
                         
                         return (
