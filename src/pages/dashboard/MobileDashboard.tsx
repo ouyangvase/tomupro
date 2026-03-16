@@ -264,7 +264,7 @@ function SalespersonMobileDashboard() {
         value={dashData?.todaySalesAmount ?? 0}
         isCurrency
         subtitle={`${dashData?.todayDeliveredCount ?? 0} orders delivered`}
-        viewAllLink="/sales/delivered"
+        viewAllLink="/orders?tab=delivered"
         viewAllLabel="View Delivered"
         icon={<DollarSign className="h-5 w-5" />}
         isLoading={isLoading}
