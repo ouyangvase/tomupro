@@ -43,11 +43,6 @@ export default function ReconciliationAdmin() {
   const bulkUpdate = useBulkUpdateOrders();
 
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
-  const [disputeReason, setDisputeReason] = useState('');
-  const [disputeNotes, setDisputeNotes] = useState('');
-
-  const { data: disputeReasons } = useReasons('DISPUTE', true);
 
   // Group by salesperson
   const groupedBySP = useMemo(() => {
@@ -96,39 +91,6 @@ export default function ReconciliationAdmin() {
     );
   };
 
-  const handleDispute = () => {
-    if (selectedOrders.length === 0) return;
-    
-    selectedOrders.forEach(id => {
-      logAudit({
-        entity_type: 'order',
-        entity_id: id,
-        action: 'RECONCILIATION_DISPUTED',
-        before_json: { reconciliation_status: 'ADMIN_ACK_PENDING' },
-        after_json: { reconciliation_status: 'DISPUTE', dispute_reason: disputeReason, dispute_notes: disputeNotes },
-      });
-    });
-
-    bulkUpdate.mutate(
-      {
-        ids: selectedOrders,
-        updates: { 
-          reconciliation_status: 'DISPUTE' as any,
-          dispute_reason: disputeReason,
-          dispute_notes: disputeNotes,
-        },
-      },
-      {
-        onSuccess: () => {
-          setSelectedOrders([]);
-          setDisputeDialogOpen(false);
-          setDisputeReason('');
-          setDisputeNotes('');
-          refetch();
-        },
-      }
-    );
-  };
 
   const columns: Column<Order>[] = [
     {
@@ -252,58 +214,12 @@ export default function ReconciliationAdmin() {
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Approve ({selectedOrders.length})
                 </Button>
-                <Button 
-                  variant="destructive" 
-                  onClick={() => setDisputeDialogOpen(true)}
-                  disabled={bulkUpdate.isPending}
-                  size="sm"
-                >
-                  <AlertTriangle className="h-4 w-4 mr-2" />
-                  Dispute ({selectedOrders.length})
-                </Button>
               </div>
             ) : undefined
           }
         />
       </div>
 
-      {/* Dispute Dialog */}
-      <Dialog open={disputeDialogOpen} onOpenChange={setDisputeDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Dispute Orders</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Reason</Label>
-              <Select value={disputeReason} onValueChange={setDisputeReason}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reason..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {disputeReasons?.map(r => (
-                    <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Notes</Label>
-              <Textarea 
-                value={disputeNotes} 
-                onChange={(e) => setDisputeNotes(e.target.value)}
-                placeholder="Add notes about the dispute..."
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDisputeDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDispute} disabled={!disputeReason}>
-              Confirm Dispute
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AppLayout>
   );
 }

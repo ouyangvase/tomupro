@@ -177,7 +177,7 @@ function AdminMobileDashboard() {
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
     { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/inventory?tab=products' },
     { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=claims' },
-    { id: 'disputes', label: 'Disputes', icon: <AlertTriangle className="h-5 w-5" />, href: '/team?tab=disputes', badge: stats?.disputes, badgeColor: 'warning' },
+    
     { id: 'bindings', label: 'Bindings', icon: <Settings className="h-5 w-5" />, href: '/system?tab=bindings' },
     { id: 'overview', label: 'Overview', icon: <BarChart3 className="h-5 w-5" />, href: '/finance?tab=overview' },
   ];
@@ -207,7 +207,7 @@ function AdminMobileDashboard() {
       />
 
       {/* Alerts */}
-      {((actionStats?.failedDelivery ?? 0) > 0 || (stats?.disputes ?? 0) > 0) && (
+      {((actionStats?.failedDelivery ?? 0) > 0) && (
         <div className="space-y-3">
           <h3 className="text-base font-bold text-foreground flex items-center gap-2">
             <Zap className="h-4 w-4 text-[hsl(var(--status-error))]" />
@@ -215,7 +215,6 @@ function AdminMobileDashboard() {
           </h3>
           <div className="grid grid-cols-2 gap-3">
             <AlertCard label="Failed Deliveries" value={actionStats?.failedDelivery ?? 0} icon={<XCircle className="h-4 w-4" />} href="/sales/action-required" severity="error" />
-            <AlertCard label="Disputes" value={stats?.disputes ?? 0} icon={<AlertTriangle className="h-4 w-4" />} href="/disputes" severity="warning" />
           </div>
         </div>
       )}

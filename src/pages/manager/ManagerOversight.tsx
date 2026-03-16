@@ -40,7 +40,7 @@ interface SalespersonMetrics {
   bookingOrders: number;
   readyOrders: number;
   pendingDelivery: number;
-  disputes: number;
+  
   deliveredToday: number;
 }
 
@@ -87,7 +87,7 @@ export default function ManagerOversight() {
       bookingOrders: spOrders.filter(o => o.status === 'BOOKING').length,
       readyOrders: spOrders.filter(o => o.status === 'READY').length,
       pendingDelivery: spOrders.filter(o => o.status === 'READY' && o.runner_status !== 'DELIVERED').length,
-      disputes: spOrders.filter(o => o.reconciliation_status === 'DISPUTE').length,
+      
       deliveredToday: spOrders.filter(o => o.delivered_at && o.delivered_at.split('T')[0] === today).length,
     };
   });
@@ -107,8 +107,7 @@ export default function ManagerOversight() {
     runnerFlagged: acc.runnerFlagged + m.runnerFlagged,
     bookingOrders: acc.bookingOrders + m.bookingOrders,
     readyOrders: acc.readyOrders + m.readyOrders,
-    disputes: acc.disputes + m.disputes,
-  }), { actionRequired: 0, failedDelivery: 0, rescheduled: 0, runnerFlagged: 0, bookingOrders: 0, readyOrders: 0, disputes: 0 });
+  }), { actionRequired: 0, failedDelivery: 0, rescheduled: 0, runnerFlagged: 0, bookingOrders: 0, readyOrders: 0 });
 
   const MetricCard = ({ title, value, icon: Icon, variant = 'default', onClick }: { 
     title: string; 
@@ -185,13 +184,6 @@ export default function ManagerOversight() {
             value={totals.rescheduled} 
             icon={Clock} 
           />
-          <MetricCard 
-            title="Open Disputes" 
-            value={totals.disputes} 
-            icon={AlertTriangle} 
-            variant="error"
-            onClick={() => navigate('/disputes')}
-          />
         </div>
 
         {/* High Priority Alert */}
@@ -259,7 +251,7 @@ export default function ManagerOversight() {
                       <TableHead className="text-center">Action Required</TableHead>
                       <TableHead className="text-center">Booking</TableHead>
                       <TableHead className="text-center">Ready</TableHead>
-                      <TableHead className="text-center">Disputes</TableHead>
+                      
                       <TableHead className="text-center">Delivered Today</TableHead>
                       <TableHead className="text-center">Health</TableHead>
                       <TableHead></TableHead>
@@ -284,7 +276,7 @@ export default function ManagerOversight() {
                     ) : (
                       filteredMetrics.map((sp) => {
                         // Calculate health score (0-100)
-                        const issueCount = sp.actionRequired + sp.disputes;
+                        const issueCount = sp.actionRequired;
                         const healthScore = Math.max(0, 100 - (issueCount * 10));
                         
                         return (
@@ -323,11 +315,6 @@ export default function ManagerOversight() {
                             <TableCell className="text-center">
                               {sp.readyOrders > 0 ? (
                                 <Badge variant="secondary">{sp.readyOrders}</Badge>
-                              ) : '-'}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {sp.disputes > 0 ? (
-                                <Badge variant="destructive">{sp.disputes}</Badge>
                               ) : '-'}
                             </TableCell>
                             <TableCell className="text-center">
@@ -480,38 +467,8 @@ export default function ManagerOversight() {
                 </Card>
               )}
 
-              {/* Open Disputes */}
-              {salespersonMetrics.filter(sp => sp.disputes > 0).length > 0 && (
-                <Card className="border-yellow-500/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-yellow-600">
-                      <FileWarning className="h-5 w-5" />
-                      Open Disputes
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {salespersonMetrics
-                        .filter(sp => sp.disputes > 0)
-                        .sort((a, b) => b.disputes - a.disputes)
-                        .map(sp => (
-                          <div 
-                            key={sp.userId} 
-                            className="flex items-center justify-between p-3 bg-yellow-500/5 rounded-lg cursor-pointer hover:bg-yellow-500/10"
-                            onClick={() => navigate('/disputes')}
-                          >
-                            <span className="font-medium">{sp.displayName}</span>
-                            <Badge variant="outline" className="border-yellow-500 text-yellow-600">
-                              {sp.disputes} disputes
-                            </Badge>
-                          </div>
-                        ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
-              {highPrioritySalespersons.length === 0 && salespersonMetrics.filter(sp => sp.disputes > 0).length === 0 && (
+              {highPrioritySalespersons.length === 0 && (
                 <Card>
                   <CardContent className="py-8 text-center text-muted-foreground">
                     <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />

@@ -57,9 +57,6 @@ export function NotificationBell() {
     if (statusTo === 'ASSIGNED' || type === 'RUNNER_ASSIGNED') {
       return <Truck className="h-4 w-4 text-primary flex-shrink-0" />;
     }
-    if (type === 'DISPUTE') {
-      return <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />;
-    }
     if (type === 'CLAIM_SUBMITTED' || type === 'CLAIM_ACKED') {
       return <DollarSign className="h-4 w-4 text-primary flex-shrink-0" />;
     }

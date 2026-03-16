@@ -42,7 +42,7 @@ export default function NotificationCenter() {
   const unreadCount = useMemo(() => notifications.filter(n => !n.is_read).length, [notifications]);
   const highPriorityCount = useMemo(() => notifications.filter(n => n.priority === 'HIGH').length, [notifications]);
   const actionRequiredCount = useMemo(() => notifications.filter(n => 
-    n.type === 'CLAIM_SUBMITTED' || n.type === 'INBOUND_PENDING' || n.type === 'DISPUTE' || n.type === 'RUNNER_ASSIGNED'
+    n.type === 'CLAIM_SUBMITTED' || n.type === 'INBOUND_PENDING' || n.type === 'RUNNER_ASSIGNED'
   ).length, [notifications]);
 
   // Filtering
@@ -51,7 +51,7 @@ export default function NotificationCenter() {
     switch (activeFilter) {
       case 'unread': filtered = notifications.filter(n => !n.is_read); break;
       case 'action': filtered = notifications.filter(n => 
-        n.type === 'CLAIM_SUBMITTED' || n.type === 'INBOUND_PENDING' || n.type === 'DISPUTE' || n.type === 'RUNNER_ASSIGNED'
+        n.type === 'CLAIM_SUBMITTED' || n.type === 'INBOUND_PENDING' || n.type === 'RUNNER_ASSIGNED'
       ); break;
       case 'high': filtered = notifications.filter(n => n.priority === 'HIGH'); break;
       case 'orders': filtered = notifications.filter(n => n.entity_type === 'ORDER'); break;
@@ -101,7 +101,7 @@ export default function NotificationCenter() {
     if (statusTo === 'DELIVERED' || type === 'DELIVERED') return <CheckCircle className="h-5 w-5 text-green-500" />;
     if (statusTo === 'FAILED_DELIVERY' || type === 'FAILED_DELIVERY') return <XCircle className="h-5 w-5 text-destructive" />;
     if (statusTo === 'ASSIGNED' || type === 'RUNNER_ASSIGNED') return <Truck className="h-5 w-5 text-primary" />;
-    if (type === 'DISPUTE') return <AlertTriangle className="h-5 w-5 text-destructive" />;
+    
     if (type === 'CLAIM_SUBMITTED' || type === 'CLAIM_ACKED') return <DollarSign className="h-5 w-5 text-primary" />;
     if (type === 'INBOUND_PENDING' || type === 'INBOUND_ACKED') return <Archive className="h-5 w-5 text-muted-foreground" />;
     if (type === 'DAILY_DIGEST') return <Clock className="h-5 w-5 text-muted-foreground" />;

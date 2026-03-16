@@ -176,14 +176,6 @@ export default function AdminOverview() {
             icon={DollarSign}
             onClick={() => navigate('/admin/claim-batches')}
           />
-          <IssueCard
-            label="Disputes"
-            value={metrics.disputeOpen}
-            alert={metrics.disputeOpen > 0}
-            alertLabel="Open"
-            icon={AlertTriangle}
-            onClick={() => navigate('/disputes')}
-          />
         </div>
 
         {/* ── Orders Pipeline ── */}
@@ -301,7 +293,7 @@ export default function AdminOverview() {
                       <TableHead className="text-center">Booking</TableHead>
                       <TableHead className="text-center">Ready</TableHead>
                       <TableHead className="text-center">Overdue</TableHead>
-                      <TableHead className="text-center">Disputes</TableHead>
+                      
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -310,7 +302,7 @@ export default function AdminOverview() {
                       const spBooking = spOrders.filter(o => o.status === 'BOOKING').length;
                       const spReady = spOrders.filter(o => o.status === 'READY').length;
                       const spOverdue = spOrders.filter(o => o.status === 'BOOKING' && o.expected_pickup_date && o.expected_pickup_date < today).length;
-                      const spDisputes = spOrders.filter(o => o.reconciliation_status === 'DISPUTE').length;
+                      
 
                       return (
                         <TableRow key={sp.id}>
@@ -324,9 +316,6 @@ export default function AdminOverview() {
                           <TableCell className="text-center">{spReady}</TableCell>
                           <TableCell className="text-center">
                             {spOverdue > 0 ? <Badge variant="destructive">{spOverdue}</Badge> : '—'}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {spDisputes > 0 ? <Badge variant="destructive">{spDisputes}</Badge> : '—'}
                           </TableCell>
                         </TableRow>
                       );

@@ -9,7 +9,7 @@ export interface DashboardStats {
   readyOrders: number;
   pendingDelivery: number;
   pendingReconciliation: number;
-  disputes: number;
+  
   productsCount: number;
   // Runner specific
   assignedToday: number;
@@ -36,7 +36,6 @@ export function useSalespersonStats() {
         readyRes,
         pendingDeliveryRes,
         pendingReconRes,
-        disputesRes,
         productsRes,
       ] = await Promise.all([
         // Booking orders count
@@ -68,12 +67,6 @@ export function useSalespersonStats() {
           .eq('salesperson_id', user.id)
           .in('reconciliation_status', ['SP_ACK_PENDING', 'ADMIN_ACK_PENDING']),
         
-        // Disputes
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('salesperson_id', user.id)
-          .eq('reconciliation_status', 'DISPUTE'),
         
         // Active products count
         supabase
@@ -87,7 +80,6 @@ export function useSalespersonStats() {
         readyOrders: readyRes.count || 0,
         pendingDelivery: pendingDeliveryRes.count || 0,
         pendingReconciliation: pendingReconRes.count || 0,
-        disputes: disputesRes.count || 0,
         productsCount: productsRes.count || 0,
       };
     },
@@ -123,7 +115,7 @@ export function useManagerStats() {
           readyOrders: 0,
           pendingDelivery: 0,
           pendingReconciliation: 0,
-          disputes: 0,
+          
           productsCount: 0,
           deliveredOrders: 0,
           cancelledOrders: 0,
@@ -140,7 +132,6 @@ export function useManagerStats() {
         readyRes,
         pendingDeliveryRes,
         pendingReconRes,
-        disputesRes,
         productsRes,
         deliveredRes,
         cancelledRes,
@@ -178,12 +169,7 @@ export function useManagerStats() {
           .in('salesperson_id', visibleIds)
           .in('reconciliation_status', ['SP_ACK_PENDING', 'ADMIN_ACK_PENDING']),
         
-        // Disputes
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .in('salesperson_id', visibleIds)
-          .eq('reconciliation_status', 'DISPUTE'),
+        
         
         // Active products count for team
         supabase
@@ -243,7 +229,6 @@ export function useManagerStats() {
         readyOrders: readyRes.count || 0,
         pendingDelivery: pendingDeliveryRes.count || 0,
         pendingReconciliation: pendingReconRes.count || 0,
-        disputes: disputesRes.count || 0,
         productsCount: productsRes.count || 0,
         deliveredOrders: deliveredRes.count || 0,
         cancelledOrders: cancelledRes.count || 0,
@@ -334,7 +319,6 @@ export function useAdminStats() {
         cancelledRes,
         pendingDeliveryRes,
         deliveredRes,
-        disputesRes,
         productsRes,
         claimsRes,
         inboundsRes,
@@ -371,11 +355,7 @@ export function useAdminStats() {
           .select('id', { count: 'exact', head: true })
           .eq('runner_status', 'DELIVERED'),
         
-        // Disputes
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('reconciliation_status', 'DISPUTE'),
+        
         
         // Products
         supabase
@@ -405,7 +385,7 @@ export function useAdminStats() {
         cancelledOrders: cancelledRes.count || 0,
         pendingDelivery: pendingDeliveryRes.count || 0,
         deliveredOrders: deliveredRes.count || 0,
-        disputes: disputesRes.count || 0,
+        
         productsCount: productsRes.count || 0,
         totalClaims: claimsRes.count || 0,
         totalInbounds: inboundsRes.count || 0,

@@ -187,7 +187,7 @@ function AppRoutes() {
       <Route path="/settings/users" element={<Navigate to="/team?tab=users" replace />} />
       <Route path="/manager/pending-approvals" element={<Navigate to="/team?tab=approvals" replace />} />
       <Route path="/manager/oversight" element={<Navigate to="/team?tab=oversight" replace />} />
-      <Route path="/disputes" element={<Navigate to="/team?tab=disputes" replace />} />
+      <Route path="/disputes" element={<Navigate to="/team" replace />} />
       <Route path="/reconciliation/admin" element={<Navigate to="/finance?tab=reconciliation" replace />} />
       <Route path="/admin/claim-batches" element={<Navigate to="/finance?tab=claims" replace />} />
       <Route path="/admin/claim-batches-history" element={<Navigate to="/finance?tab=claims-history" replace />} />

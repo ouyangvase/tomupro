@@ -31,7 +31,7 @@ export function AdminDashboard() {
   ];
 
   const secondaryMetrics = [
-    { label: 'Disputes', value: stats?.disputes, icon: AlertTriangle, color: 'text-destructive', bgColor: 'bg-destructive/10', href: '/disputes' },
+    
     { label: 'Products', value: stats?.productsCount, icon: BarChart3, color: 'text-muted-foreground', bgColor: 'bg-secondary', href: '/products' },
     { label: 'Claims', value: stats?.totalClaims, icon: Receipt, color: 'text-primary', bgColor: 'bg-primary/10', href: '/reconciliation/admin' },
     { label: 'Inbound', value: stats?.totalInbounds, icon: PackageCheck, color: 'text-[hsl(var(--status-warning))]', bgColor: 'bg-[hsl(var(--status-warning)/0.1)]', href: '/inbound/pending' },

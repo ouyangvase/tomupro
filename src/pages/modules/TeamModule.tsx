@@ -6,7 +6,6 @@ import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 const UsersSettings = lazy(() => import('@/pages/settings/UsersSettings'));
 const PendingStockApprovals = lazy(() => import('@/pages/manager/PendingStockApprovals'));
 const ManagerOversight = lazy(() => import('@/pages/manager/ManagerOversight'));
-const DisputeCenter = lazy(() => import('@/pages/disputes/DisputeCenter'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -18,7 +17,6 @@ const tabs = [
   { id: 'users', label: 'Users' },
   { id: 'approvals', label: 'Pending Approvals' },
   { id: 'oversight', label: 'Team Oversight' },
-  { id: 'disputes', label: 'Dispute Center' },
 ];
 
 export default function TeamModule() {
@@ -42,7 +40,6 @@ export default function TeamModule() {
             {activeTab === 'users' && <UsersSettings />}
             {activeTab === 'approvals' && <PendingStockApprovals />}
             {activeTab === 'oversight' && <ManagerOversight />}
-            {activeTab === 'disputes' && <DisputeCenter />}
           </div>
         </Suspense>
       </EmbeddedProvider>
