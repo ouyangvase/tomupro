@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,25 +62,25 @@ export default function FinanceModule() {
             ))}
           </TabsList>
         </div>
-        <EmbeddedProvider>
-          <Suspense fallback={<Loading />}>
-            <TabsContent value="reconciliation" className="mt-4"><ReconciliationAdmin /></TabsContent>
-            <TabsContent value="claims" className="mt-4"><ClaimBatchesAdmin /></TabsContent>
-            <TabsContent value="claims-history" className="mt-4"><ClaimBatchesHistory /></TabsContent>
-            <TabsContent value="delivery-charges" className="mt-4">
-              {role === 'runner' ? <RunnerDeliveryCharges /> : <DeliveryChargesAdmin />}
-            </TabsContent>
-            <TabsContent value="delivery-report" className="mt-4"><DeliveryFeesReport /></TabsContent>
-            <TabsContent value="overview" className="mt-4"><AdminOverview /></TabsContent>
-            <TabsContent value="my-claims" className="mt-4"><RunnerClaimBatches /></TabsContent>
-            <TabsContent value="cash-settlement" className="mt-4"><RunnerCashSettlement /></TabsContent>
-            <TabsContent value="cash-driver" className="mt-4"><RunnerCashDriver /></TabsContent>
-            <TabsContent value="driver-pickups" className="mt-4"><DriverPickups /></TabsContent>
-            <TabsContent value="driver-returns" className="mt-4"><DriverReturns /></TabsContent>
-            <TabsContent value="allocated-stock" className="mt-4"><RunnerAllocatedStock /></TabsContent>
-          </Suspense>
-        </EmbeddedProvider>
       </Tabs>
+      <EmbeddedProvider>
+        <Suspense fallback={<Loading />}>
+          <div className="mt-4">
+            {currentTab === 'reconciliation' && <ReconciliationAdmin />}
+            {currentTab === 'claims' && <ClaimBatchesAdmin />}
+            {currentTab === 'claims-history' && <ClaimBatchesHistory />}
+            {currentTab === 'delivery-charges' && (role === 'runner' ? <RunnerDeliveryCharges /> : <DeliveryChargesAdmin />)}
+            {currentTab === 'delivery-report' && <DeliveryFeesReport />}
+            {currentTab === 'overview' && <AdminOverview />}
+            {currentTab === 'my-claims' && <RunnerClaimBatches />}
+            {currentTab === 'cash-settlement' && <RunnerCashSettlement />}
+            {currentTab === 'cash-driver' && <RunnerCashDriver />}
+            {currentTab === 'driver-pickups' && <DriverPickups />}
+            {currentTab === 'driver-returns' && <DriverReturns />}
+            {currentTab === 'allocated-stock' && <RunnerAllocatedStock />}
+          </div>
+        </Suspense>
+      </EmbeddedProvider>
     </div>
   );
 }

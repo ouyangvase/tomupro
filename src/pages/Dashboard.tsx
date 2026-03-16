@@ -8,11 +8,13 @@ import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { RoleHeroBanner } from '@/components/dashboard/RoleHeroBanner';
 import capybaraLoading from '@/assets/capybara-loading.png';
 
-import { AdminDashboard } from '@/pages/dashboard/AdminDashboard';
-import { SalespersonDashboard } from '@/pages/dashboard/SalespersonDashboard';
-import { RunnerDashboard } from '@/pages/dashboard/RunnerDashboard';
-import { ManagerDashboard } from '@/pages/dashboard/ManagerDashboard';
-import { DriverDashboard } from '@/pages/dashboard/DriverDashboard';
+import { lazy, Suspense } from 'react';
+
+const AdminDashboard = lazy(() => import('@/pages/dashboard/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const SalespersonDashboard = lazy(() => import('@/pages/dashboard/SalespersonDashboard').then(m => ({ default: m.SalespersonDashboard })));
+const RunnerDashboard = lazy(() => import('@/pages/dashboard/RunnerDashboard').then(m => ({ default: m.RunnerDashboard })));
+const ManagerDashboard = lazy(() => import('@/pages/dashboard/ManagerDashboard').then(m => ({ default: m.ManagerDashboard })));
+const DriverDashboard = lazy(() => import('@/pages/dashboard/DriverDashboard').then(m => ({ default: m.DriverDashboard })));
 
 function DashboardLoading() {
   return (

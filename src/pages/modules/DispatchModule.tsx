@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -51,23 +51,19 @@ export default function DispatchModule() {
             ))}
           </TabsList>
         </div>
-        <EmbeddedProvider>
-          <Suspense fallback={<Loading />}>
-            <TabsContent value="inbox" className="mt-4">
-              {role === 'admin' ? <AdminRunnerInbox /> : <RunnerInbox />}
-            </TabsContent>
-            <TabsContent value="inbound" className="mt-4"><RunnerInbound /></TabsContent>
-            {role === 'runner' && (
-              <>
-                <TabsContent value="driver-inbox" className="mt-4"><RunnerDriverInbox /></TabsContent>
-                <TabsContent value="drivers" className="mt-4"><DriverManagement /></TabsContent>
-                <TabsContent value="failed" className="mt-4"><RunnerFailedOrders /></TabsContent>
-              </>
-            )}
-            <TabsContent value="map" className="mt-4"><DriverLocationsPage /></TabsContent>
-          </Suspense>
-        </EmbeddedProvider>
       </Tabs>
+      <EmbeddedProvider>
+        <Suspense fallback={<Loading />}>
+          <div className="mt-4">
+            {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : <RunnerInbox />)}
+            {activeTab === 'inbound' && <RunnerInbound />}
+            {activeTab === 'driver-inbox' && role === 'runner' && <RunnerDriverInbox />}
+            {activeTab === 'drivers' && role === 'runner' && <DriverManagement />}
+            {activeTab === 'failed' && role === 'runner' && <RunnerFailedOrders />}
+            {activeTab === 'map' && <DriverLocationsPage />}
+          </div>
+        </Suspense>
+      </EmbeddedProvider>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,17 +44,19 @@ export default function InventoryModule() {
             ))}
           </TabsList>
         </div>
-        <EmbeddedProvider>
-          <Suspense fallback={<Loading />}>
-            <TabsContent value="balance" className="mt-4"><InventoryBalance /></TabsContent>
-            <TabsContent value="inbound" className="mt-4"><InboundPending /></TabsContent>
-            <TabsContent value="inbound-history" className="mt-4"><InboundHistory /></TabsContent>
-            <TabsContent value="adjustments" className="mt-4"><StockAdjustment /></TabsContent>
-            <TabsContent value="warehouses" className="mt-4"><WarehouseManagement /></TabsContent>
-            <TabsContent value="products" className="mt-4"><ProductsPage /></TabsContent>
-          </Suspense>
-        </EmbeddedProvider>
       </Tabs>
+      <EmbeddedProvider>
+        <Suspense fallback={<Loading />}>
+          <div className="mt-4">
+            {activeTab === 'balance' && <InventoryBalance />}
+            {activeTab === 'inbound' && <InboundPending />}
+            {activeTab === 'inbound-history' && <InboundHistory />}
+            {activeTab === 'adjustments' && <StockAdjustment />}
+            {activeTab === 'warehouses' && <WarehouseManagement />}
+            {activeTab === 'products' && <ProductsPage />}
+          </div>
+        </Suspense>
+      </EmbeddedProvider>
     </div>
   );
 }

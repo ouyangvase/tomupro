@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
@@ -37,16 +37,18 @@ export default function OrdersModule() {
             ))}
           </TabsList>
         </div>
-        <EmbeddedProvider>
-          <Suspense fallback={<Loading />}>
-            <TabsContent value="booking" className="mt-4"><BookingSales /></TabsContent>
-            <TabsContent value="ready" className="mt-4"><ReadySales /></TabsContent>
-            <TabsContent value="delivered" className="mt-4"><RunnerDeliveredOrders /></TabsContent>
-            <TabsContent value="cancelled" className="mt-4"><CancelledSales /></TabsContent>
-            <TabsContent value="action-required" className="mt-4"><SalespersonActionInbox /></TabsContent>
-          </Suspense>
-        </EmbeddedProvider>
       </Tabs>
+      <EmbeddedProvider>
+        <Suspense fallback={<Loading />}>
+          <div className="mt-4">
+            {activeTab === 'booking' && <BookingSales />}
+            {activeTab === 'ready' && <ReadySales />}
+            {activeTab === 'delivered' && <RunnerDeliveredOrders />}
+            {activeTab === 'cancelled' && <CancelledSales />}
+            {activeTab === 'action-required' && <SalespersonActionInbox />}
+          </div>
+        </Suspense>
+      </EmbeddedProvider>
     </div>
   );
 }
