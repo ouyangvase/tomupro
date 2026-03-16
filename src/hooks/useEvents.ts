@@ -347,26 +347,39 @@ export function useMyEvents() {
   });
 }
 
-// User: my popup events (unseen, published, not expired)
+// User: my popup events via server-side RPC
+export interface PopupEvent {
+  delivery_id: string;
+  event_id: string;
+  delivered_at: string;
+  seen_at: string | null;
+  dismissed_at: string | null;
+  current_status: string;
+  popup_shown_count: number;
+  event_title: string;
+  event_subtitle: string | null;
+  event_description: string | null;
+  event_type: string;
+  event_cover_image_url: string | null;
+  show_as_popup: boolean;
+  dismissible: boolean;
+  force_acknowledge: boolean;
+  require_response: boolean;
+  allow_maybe: boolean;
+  event_start_at: string | null;
+  event_end_at: string | null;
+  event_location: string | null;
+}
+
 export function useMyPopupEvents() {
   const { user } = useAuth();
   return useQuery({
     queryKey: ['my-popup-events', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from('event_user_delivery')
-        .select('*, events:event_id(*, event_settings(*))')
-        .eq('user_id', user.id)
-        .is('dismissed_at', null)
-        .in('current_status', ['delivered', 'seen']);
+      const { data, error } = await supabase.rpc('get_my_active_popup_events');
       if (error) throw error;
-      // Filter for popup-enabled events
-      return (data || []).filter((d: any) => {
-        const evt = d.events;
-        const settings = evt?.event_settings?.[0];
-        return evt?.status === 'published' && settings?.show_as_popup;
-      });
+      return (data || []) as PopupEvent[];
     },
     enabled: !!user,
     refetchInterval: 60000,
