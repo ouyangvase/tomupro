@@ -770,7 +770,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                             <FormControl>
                               <div className="relative">
                                 <Input {...field} placeholder="+673 XXX XXXX" className="h-10 rounded-xl pr-10" />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-green-600/60 font-medium">WA</span>
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-status-success/60 font-medium">WA</span>
                               </div>
                             </FormControl>
                             <FormMessage className="text-xs" />
