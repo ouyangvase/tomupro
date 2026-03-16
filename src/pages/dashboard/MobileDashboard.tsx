@@ -359,8 +359,8 @@ function ManagerMobileDashboard() {
             Action Required
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <AlertCard label="Failed Deliveries" value={actionStats?.failedDelivery ?? 0} icon={<XCircle className="h-4 w-4" />} href="/sales/action-required" severity="error" />
-            <AlertCard label="Rescheduled" value={actionStats?.rescheduled ?? 0} icon={<Clock className="h-4 w-4" />} href="/sales/action-required" severity="warning" />
+            <AlertCard label="Failed Deliveries" value={actionStats?.failedDelivery ?? 0} icon={<XCircle className="h-4 w-4" />} href="/orders?tab=action-required" severity="error" />
+            <AlertCard label="Rescheduled" value={actionStats?.rescheduled ?? 0} icon={<Clock className="h-4 w-4" />} href="/orders?tab=action-required" severity="warning" />
           </div>
         </div>
       )}
