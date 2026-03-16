@@ -107,8 +107,7 @@ export default function ManagerOversight() {
     runnerFlagged: acc.runnerFlagged + m.runnerFlagged,
     bookingOrders: acc.bookingOrders + m.bookingOrders,
     readyOrders: acc.readyOrders + m.readyOrders,
-    disputes: acc.disputes + m.disputes,
-  }), { actionRequired: 0, failedDelivery: 0, rescheduled: 0, runnerFlagged: 0, bookingOrders: 0, readyOrders: 0, disputes: 0 });
+  }), { actionRequired: 0, failedDelivery: 0, rescheduled: 0, runnerFlagged: 0, bookingOrders: 0, readyOrders: 0 });
 
   const MetricCard = ({ title, value, icon: Icon, variant = 'default', onClick }: { 
     title: string; 
