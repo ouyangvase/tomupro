@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { PageHero } from '@/components/dashboard/PageHero';
+import capybaraRunner from '@/assets/capybara-runner.png';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
