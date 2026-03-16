@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Eye, EyeOff, ChevronRight } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +14,9 @@ interface HeroSummaryCardProps {
   isLoading?: boolean;
   isCurrency?: boolean;
   accentColor?: 'gold' | 'green' | 'blue' | 'purple';
+  illustration?: string;
+  greeting?: string;
+  greetingSubtitle?: string;
 }
 
 export function HeroSummaryCard({
@@ -27,22 +29,18 @@ export function HeroSummaryCard({
   isLoading = false,
   isCurrency = false,
   accentColor = 'gold',
+  illustration,
+  greeting,
+  greetingSubtitle,
 }: HeroSummaryCardProps) {
   const [isHidden, setIsHidden] = useState(false);
   const navigate = useNavigate();
 
-  const gradientClasses = {
-    gold: 'from-amber-500/20 via-amber-400/10 to-transparent dark:from-amber-500/30 dark:via-amber-400/15',
-    green: 'from-emerald-500/20 via-emerald-400/10 to-transparent dark:from-emerald-500/30',
-    blue: 'from-blue-500/20 via-blue-400/10 to-transparent dark:from-blue-500/30',
-    purple: 'from-purple-500/20 via-purple-400/10 to-transparent dark:from-purple-500/30',
-  };
-
   const accentTextClasses = {
-    gold: 'text-amber-600 dark:text-amber-400',
-    green: 'text-emerald-600 dark:text-emerald-400',
-    blue: 'text-blue-600 dark:text-blue-400',
-    purple: 'text-purple-600 dark:text-purple-400',
+    gold: 'text-primary',
+    green: 'text-[hsl(var(--status-success))]',
+    blue: 'text-[hsl(200_60%_50%)]',
+    purple: 'text-[hsl(280_60%_55%)]',
   };
 
   const displayValue = isHidden ? '••••••' : (typeof value === 'number' && isCurrency 
@@ -50,72 +48,78 @@ export function HeroSummaryCard({
     : value);
 
   return (
-    <Card className={cn(
-      "relative overflow-hidden border-0 shadow-lg",
-      "bg-gradient-to-br",
-      gradientClasses[accentColor]
-    )}>
-      {/* Background decoration */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-primary/10 to-transparent rounded-full -translate-y-1/2 translate-x-1/2" />
-      
-      <div className="relative p-5">
-        {/* Header row */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            {icon && (
-              <div className={cn("p-2 rounded-lg bg-background/50", accentTextClasses[accentColor])}>
-                {icon}
-              </div>
-            )}
-            <span className="text-sm font-medium text-muted-foreground">{title}</span>
-          </div>
-          <button
-            onClick={() => setIsHidden(!isHidden)}
-            className="p-1.5 hover:bg-background/50 rounded-full transition-colors"
-            aria-label={isHidden ? 'Show value' : 'Hide value'}
-          >
-            {isHidden ? (
-              <EyeOff className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <Eye className="h-4 w-4 text-muted-foreground" />
-            )}
-          </button>
-        </div>
+    <div className="relative overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-primary/5 to-secondary/20 shadow-sm">
+      {/* Background blobs */}
+      <div className="absolute top-0 right-0 w-40 h-40 bg-primary/8 rounded-full blur-3xl translate-x-1/4 -translate-y-1/4" />
+      <div className="absolute bottom-0 left-1/4 w-24 h-24 bg-[hsl(var(--status-success)/0.06)] rounded-full blur-2xl" />
 
-        {/* Main value */}
-        <div className="mb-2">
-          {isLoading ? (
-            <Skeleton className="h-10 w-40" />
-          ) : (
-            <span className={cn(
-              "text-3xl font-bold tracking-tight",
-              accentTextClasses[accentColor]
-            )}>
-              {displayValue}
-            </span>
+      <div className="relative p-5">
+        {/* Greeting row */}
+        {greeting && (
+          <div className="mb-3">
+            <h2 className="text-sm text-muted-foreground font-medium">{greeting}</h2>
+            {greetingSubtitle && (
+              <p className="text-xs text-muted-foreground/70 mt-0.5">{greetingSubtitle}</p>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-end justify-between">
+          <div className="flex-1">
+            {/* Title + icon */}
+            <div className="flex items-center gap-2 mb-2">
+              {icon && (
+                <div className={cn("p-1.5 rounded-lg bg-card/60", accentTextClasses[accentColor])}>
+                  {icon}
+                </div>
+              )}
+              <span className="text-sm font-medium text-muted-foreground">{title}</span>
+              <button
+                onClick={() => setIsHidden(!isHidden)}
+                className="p-1 hover:bg-card/50 rounded-full transition-colors ml-auto"
+              >
+                {isHidden ? <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Eye className="h-3.5 w-3.5 text-muted-foreground" />}
+              </button>
+            </div>
+
+            {/* Value */}
+            {isLoading ? (
+              <Skeleton className="h-12 w-32 mb-1" />
+            ) : (
+              <span className={cn("text-4xl font-extrabold tracking-tight", accentTextClasses[accentColor])}>
+                {displayValue}
+              </span>
+            )}
+
+            {subtitle && (
+              <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
+            )}
+
+            {viewAllLink && (
+              <button
+                onClick={() => navigate(viewAllLink)}
+                className={cn(
+                  "flex items-center gap-1 text-sm font-semibold mt-3 transition-colors",
+                  accentTextClasses[accentColor],
+                  "hover:opacity-80"
+                )}
+              >
+                {viewAllLabel}
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Illustration */}
+          {illustration && (
+            <img
+              src={illustration}
+              alt=""
+              className="h-20 w-20 object-contain opacity-80 shrink-0 ml-2 drop-shadow-sm"
+            />
           )}
         </div>
-
-        {/* Subtitle */}
-        {subtitle && (
-          <p className="text-sm text-muted-foreground mb-3">{subtitle}</p>
-        )}
-
-        {/* View All link */}
-        {viewAllLink && (
-          <button
-            onClick={() => navigate(viewAllLink)}
-            className={cn(
-              "flex items-center gap-1 text-sm font-medium transition-colors",
-              accentTextClasses[accentColor],
-              "hover:opacity-80"
-            )}
-          >
-            {viewAllLabel}
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        )}
       </div>
-    </Card>
+    </div>
   );
 }

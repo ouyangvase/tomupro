@@ -19,6 +19,12 @@ import { formatBND } from '@/lib/currency';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { cn } from '@/lib/utils';
 import { GlobalSearchBar } from '@/components/GlobalSearchBar';
+import capybaraAdmin from '@/assets/capybara-admin.png';
+import capybaraRunner from '@/assets/capybara-runner.png';
+import capybaraDriver from '@/assets/capybara-driver.png';
+import capybaraSales from '@/assets/capybara-sales.png';
+import capybaraManager from '@/assets/capybara-manager.png';
+import capybaraLoading from '@/assets/capybara-loading.png';
 import {
   ShoppingCart,
   Package,
@@ -41,69 +47,202 @@ import {
   TrendingUp,
   RotateCcw,
   Loader2,
+  ArrowRight,
+  Zap,
 } from 'lucide-react';
 
-// Loading component for mobile
+// Loading component
 function MobileDashboardLoading() {
   return (
     <MobileLayout>
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-4">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading dashboard...</p>
+        <img src={capybaraLoading} alt="Loading" className="h-24 w-24 object-contain opacity-60 animate-pulse" />
+        <p className="text-muted-foreground font-medium">Loading dashboard...</p>
       </div>
     </MobileLayout>
   );
 }
 
-// Stat tile for mobile grid
-interface MobileStatTileProps {
+// Alert card for urgent items
+interface AlertCardProps {
   label: string;
-  value: number | string;
+  value: number;
   icon: React.ReactNode;
   href: string;
-  color?: 'default' | 'success' | 'warning' | 'destructive';
-  isLoading?: boolean;
+  severity: 'error' | 'warning' | 'info';
 }
 
-function MobileStatTile({ label, value, icon, href, color = 'default', isLoading }: MobileStatTileProps) {
+function AlertCard({ label, value, icon, href, severity }: AlertCardProps) {
   const navigate = useNavigate();
-  
-  const colorClasses = {
-    default: 'border-border/50',
-    success: 'border-status-success/30 bg-status-success/5',
-    warning: 'border-status-warning/30 bg-status-warning/5',
-    destructive: 'border-destructive/30 bg-destructive/5',
+  if (value === 0) return null;
+
+  const colors = {
+    error: 'border-[hsl(var(--status-error)/0.3)] bg-[hsl(var(--status-error)/0.06)]',
+    warning: 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.06)]',
+    info: 'border-primary/20 bg-primary/5',
   };
-  
-  const valueColorClasses = {
-    default: 'text-foreground',
-    success: 'text-status-success',
-    warning: 'text-status-warning',
-    destructive: 'text-destructive',
+  const textColors = {
+    error: 'text-[hsl(var(--status-error))]',
+    warning: 'text-[hsl(var(--status-warning))]',
+    info: 'text-primary',
   };
 
   return (
-    <Card 
-      className={cn("cursor-pointer active:scale-95 transition-transform", colorClasses[color])}
+    <button
       onClick={() => navigate(href)}
+      className={cn(
+        'flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] w-full text-left',
+        colors[severity]
+      )}
     >
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="p-2 rounded-lg bg-muted/50">{icon}</div>
-        </div>
-        {isLoading ? (
-          <Skeleton className="h-8 w-16 mb-1" />
-        ) : (
-          <p className={cn("text-2xl font-bold", valueColorClasses[color])}>{value}</p>
-        )}
-        <p className="text-xs text-muted-foreground truncate">{label}</p>
-      </CardContent>
-    </Card>
+      <div className={cn('p-2 rounded-xl bg-card/60', textColors[severity])}>
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={cn('text-2xl font-extrabold tabular-nums', textColors[severity])}>{value}</p>
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      </div>
+      <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+    </button>
   );
 }
 
-// Salesperson Mobile Dashboard
+// Pipeline progress bar
+interface PipelineProps {
+  stages: { label: string; value: number; color: string }[];
+}
+
+function OperationsPipeline({ stages }: PipelineProps) {
+  const total = stages.reduce((sum, s) => sum + s.value, 0) || 1;
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-base font-bold text-foreground">Operations Pipeline</h3>
+      <div className="flex h-3 rounded-full overflow-hidden bg-secondary/50">
+        {stages.map((stage, i) => (
+          <div
+            key={stage.label}
+            className={cn('h-full transition-all', stage.color, i === 0 && 'rounded-l-full', i === stages.length - 1 && 'rounded-r-full')}
+            style={{ width: `${Math.max((stage.value / total) * 100, 2)}%` }}
+          />
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {stages.map((stage) => (
+          <div key={stage.label} className="text-center">
+            <p className="text-lg font-bold tabular-nums">{stage.value}</p>
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{stage.label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Metric card for horizontal scroll
+interface MetricCardProps {
+  label: string;
+  value: number | string;
+  icon: React.ReactNode;
+  isLoading?: boolean;
+}
+
+function MetricCard({ label, value, icon, isLoading }: MetricCardProps) {
+  return (
+    <div className="min-w-[140px] p-4 rounded-2xl bg-card border border-border/40 shadow-sm shrink-0">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="p-1.5 rounded-lg bg-primary/10 text-primary">{icon}</div>
+      </div>
+      {isLoading ? (
+        <Skeleton className="h-7 w-16 mb-1" />
+      ) : (
+        <p className="text-xl font-bold tabular-nums">{value}</p>
+      )}
+      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+    </div>
+  );
+}
+
+// ===== ADMIN DASHBOARD =====
+function AdminMobileDashboard() {
+  const { profile } = useAuth();
+  const { data: stats, isLoading } = useAdminStats();
+  const { data: actionStats } = useAdminActionRequiredStats();
+
+  const totalOrders = (stats?.bookingOrders ?? 0) + (stats?.readyOrders ?? 0) + (stats?.deliveredOrders ?? 0);
+
+  const quickActions: QuickAction[] = [
+    { id: 'orders', label: 'Orders', icon: <ShoppingCart className="h-5 w-5" />, href: '/sales/booking' },
+    { id: 'users', label: 'Users', icon: <Users className="h-5 w-5" />, href: '/settings/users' },
+    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
+    { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/products' },
+    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/admin/claim-batches' },
+    { id: 'disputes', label: 'Disputes', icon: <AlertTriangle className="h-5 w-5" />, href: '/disputes', badge: stats?.disputes, badgeColor: 'warning' },
+    { id: 'bindings', label: 'Bindings', icon: <Settings className="h-5 w-5" />, href: '/settings/bindings' },
+    { id: 'overview', label: 'Overview', icon: <BarChart3 className="h-5 w-5" />, href: '/admin/overview' },
+  ];
+
+  const pipelineStages = [
+    { label: 'Booking', value: stats?.bookingOrders ?? 0, color: 'bg-[hsl(var(--status-pending))]' },
+    { label: 'Ready', value: stats?.readyOrders ?? 0, color: 'bg-primary' },
+    { label: 'Dispatch', value: stats?.assignedOrders ?? 0, color: 'bg-[hsl(var(--status-success))]' },
+    { label: 'Delivered', value: stats?.deliveredOrders ?? 0, color: 'bg-[hsl(200_60%_50%)]' },
+  ];
+
+  return (
+    <div className="p-4 space-y-6">
+      {/* Hero */}
+      <HeroSummaryCard
+        title="Total Orders"
+        value={totalOrders}
+        subtitle="System-wide activity"
+        viewAllLink="/admin/overview"
+        viewAllLabel="View Overview"
+        icon={<BarChart3 className="h-5 w-5" />}
+        isLoading={isLoading}
+        accentColor="gold"
+        illustration={capybaraAdmin}
+        greeting={`Hello, ${profile?.display_name?.split(' ')[0] || 'Admin'}`}
+        greetingSubtitle="Command Center · Monitor operations and keep the system moving."
+      />
+
+      {/* Alerts */}
+      {((actionStats?.failedDelivery ?? 0) > 0 || (stats?.disputes ?? 0) > 0) && (
+        <div className="space-y-3">
+          <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+            <Zap className="h-4 w-4 text-[hsl(var(--status-error))]" />
+            Action Required
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            <AlertCard label="Failed Deliveries" value={actionStats?.failedDelivery ?? 0} icon={<XCircle className="h-4 w-4" />} href="/sales/action-required" severity="error" />
+            <AlertCard label="Disputes" value={stats?.disputes ?? 0} icon={<AlertTriangle className="h-4 w-4" />} href="/disputes" severity="warning" />
+          </div>
+        </div>
+      )}
+
+      {/* Metrics scroll */}
+      <div className="space-y-3">
+        <h3 className="text-base font-bold text-foreground">Key Metrics</h3>
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+          <MetricCard label="Today Orders" value={stats?.todayOrders ?? 0} icon={<ShoppingCart className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Delivered" value={stats?.deliveredOrders ?? 0} icon={<CheckCircle className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Pending" value={stats?.readyOrders ?? 0} icon={<Clock className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Total Users" value={stats?.totalUsers ?? 0} icon={<Users className="h-4 w-4" />} isLoading={isLoading} />
+        </div>
+      </div>
+
+      {/* Pipeline */}
+      <OperationsPipeline stages={pipelineStages} />
+
+      {/* Quick Actions */}
+      <QuickActionsGrid actions={quickActions} columns={4} />
+    </div>
+  );
+}
+
+// ===== SALESPERSON DASHBOARD =====
 function SalespersonMobileDashboard() {
+  const { profile } = useAuth();
   const { data: dashData, isLoading } = useSalespersonDashboard();
   const { data: actionStats } = useSalespersonActionRequiredStats();
 
@@ -120,10 +259,6 @@ function SalespersonMobileDashboard() {
 
   return (
     <div className="p-4 space-y-6">
-      {/* Global Search Bar */}
-      <GlobalSearchBar variant="mobile" />
-
-      {/* Hero Summary - Today Sales */}
       <HeroSummaryCard
         title="Today Sales"
         value={dashData?.todaySalesAmount ?? 0}
@@ -134,73 +269,47 @@ function SalespersonMobileDashboard() {
         icon={<DollarSign className="h-5 w-5" />}
         isLoading={isLoading}
         accentColor="gold"
+        illustration={capybaraSales}
+        greeting={`Hello, ${profile?.display_name?.split(' ')[0] || 'User'}`}
+        greetingSubtitle="Sales Dashboard · Track your performance today."
       />
 
-      {/* Quick Actions */}
-      <QuickActionsGrid actions={quickActions} columns={4} />
-
-      {/* Key Stats Grid */}
+      {/* Metrics scroll */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">Overview</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <MobileStatTile
-            label="Month Sales"
-            value={formatBND(dashData?.mtdSalesAmount ?? 0)}
-            icon={<TrendingUp className="h-4 w-4 text-status-success" />}
-            href="/sales/delivered"
-            color="success"
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Commission"
-            value={formatBND(dashData?.totalCommission ?? 0)}
-            icon={<DollarSign className="h-4 w-4 text-primary" />}
-            href="/"
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Failed Orders"
-            value={dashData?.failedOrdersCount ?? 0}
-            icon={<XCircle className="h-4 w-4 text-destructive" />}
-            href="/sales/action-required"
-            color={(dashData?.failedOrdersCount ?? 0) > 0 ? 'destructive' : 'default'}
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Pending Delivery"
-            value={dashData?.pendingDeliveryCount ?? 0}
-            icon={<Clock className="h-4 w-4 text-status-warning" />}
-            href="/sales/ready"
-            color={(dashData?.pendingDeliveryCount ?? 0) > 0 ? 'warning' : 'default'}
-            isLoading={isLoading}
-          />
+        <h3 className="text-base font-bold text-foreground">Key Metrics</h3>
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+          <MetricCard label="Month Sales" value={formatBND(dashData?.mtdSalesAmount ?? 0)} icon={<TrendingUp className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Commission" value={formatBND(dashData?.totalCommission ?? 0)} icon={<DollarSign className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Failed" value={dashData?.failedOrdersCount ?? 0} icon={<XCircle className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Pending" value={dashData?.pendingDeliveryCount ?? 0} icon={<Clock className="h-4 w-4" />} isLoading={isLoading} />
         </div>
       </div>
 
+      <QuickActionsGrid actions={quickActions} columns={4} />
+
       {/* Target Progress */}
       {dashData?.monthlyTarget && (
-        <Card className="border-primary/20">
+        <Card className="border-primary/20 rounded-2xl overflow-hidden">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Target className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Monthly Target</span>
+                <span className="text-sm font-bold">Monthly Target</span>
               </div>
-              <Badge variant="outline" className="text-primary">
+              <Badge variant="outline" className="text-primary font-bold">
                 {(dashData.targetProgress ?? 0).toFixed(0)}%
               </Badge>
             </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div 
+            <div className="h-3 bg-secondary/50 rounded-full overflow-hidden">
+              <div
                 className="h-full bg-primary rounded-full transition-all"
                 style={{ width: `${Math.min(dashData.targetProgress ?? 0, 100)}%` }}
               />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              {dashData.targetType === 'ORDER_COUNT' 
+              {dashData.targetType === 'ORDER_COUNT'
                 ? `${dashData.mtdDeliveredCount ?? 0} / ${dashData.monthlyTarget} orders`
-                : `${formatBND(dashData.mtdSalesAmount ?? 0)} / ${formatBND(dashData.monthlyTarget)}`
-              }
+                : `${formatBND(dashData.mtdSalesAmount ?? 0)} / ${formatBND(dashData.monthlyTarget)}`}
             </p>
           </CardContent>
         </Card>
@@ -209,8 +318,9 @@ function SalespersonMobileDashboard() {
   );
 }
 
-// Manager Mobile Dashboard
+// ===== MANAGER DASHBOARD =====
 function ManagerMobileDashboard() {
+  const { profile } = useAuth();
   const { data: dashData, isLoading } = useManagerDashboard('mtd');
   const { data: actionStats } = useManagerActionRequiredStats();
 
@@ -227,10 +337,6 @@ function ManagerMobileDashboard() {
 
   return (
     <div className="p-4 space-y-6">
-      {/* Global Search Bar */}
-      <GlobalSearchBar variant="mobile" />
-
-      {/* Hero - Team GMV */}
       <HeroSummaryCard
         title="Team GMV (MTD)"
         value={dashData?.teamOverview.realizedGmv ?? 0}
@@ -241,53 +347,42 @@ function ManagerMobileDashboard() {
         icon={<TrendingUp className="h-5 w-5" />}
         isLoading={isLoading}
         accentColor="gold"
+        illustration={capybaraManager}
+        greeting={`Hello, ${profile?.display_name?.split(' ')[0] || 'Manager'}`}
+        greetingSubtitle="Manager Dashboard · Your team at a glance."
       />
 
-      {/* Quick Actions */}
+      {((actionStats?.failedDelivery ?? 0) > 0 || (actionStats?.rescheduled ?? 0) > 0) && (
+        <div className="space-y-3">
+          <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+            <Zap className="h-4 w-4 text-[hsl(var(--status-error))]" />
+            Action Required
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            <AlertCard label="Failed Deliveries" value={actionStats?.failedDelivery ?? 0} icon={<XCircle className="h-4 w-4" />} href="/sales/action-required" severity="error" />
+            <AlertCard label="Rescheduled" value={actionStats?.rescheduled ?? 0} icon={<Clock className="h-4 w-4" />} href="/sales/action-required" severity="warning" />
+          </div>
+        </div>
+      )}
+
       <QuickActionsGrid actions={quickActions} columns={4} />
 
-      {/* Team Stats */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold">Team Overview</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <MobileStatTile
-            label="Booking"
-            value={dashData?.teamOverview.bookingOrders ?? 0}
-            icon={<Package className="h-4 w-4 text-blue-500" />}
-            href="/sales/booking"
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Ready"
-            value={dashData?.teamOverview.readyOrders ?? 0}
-            icon={<Truck className="h-4 w-4 text-primary" />}
-            href="/sales/ready"
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Failed"
-            value={actionStats?.failedDelivery ?? 0}
-            icon={<XCircle className="h-4 w-4 text-destructive" />}
-            href="/sales/action-required"
-            color={(actionStats?.failedDelivery ?? 0) > 0 ? 'destructive' : 'default'}
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Rescheduled"
-            value={actionStats?.rescheduled ?? 0}
-            icon={<Clock className="h-4 w-4 text-status-warning" />}
-            href="/sales/action-required"
-            color={(actionStats?.rescheduled ?? 0) > 0 ? 'warning' : 'default'}
-            isLoading={isLoading}
-          />
+        <h3 className="text-base font-bold text-foreground">Key Metrics</h3>
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+          <MetricCard label="Booking" value={dashData?.teamOverview.bookingOrders ?? 0} icon={<Package className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Ready" value={dashData?.teamOverview.readyOrders ?? 0} icon={<Truck className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Delivered" value={dashData?.teamOverview.deliveredOrders ?? 0} icon={<CheckCircle className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Failed" value={actionStats?.failedDelivery ?? 0} icon={<XCircle className="h-4 w-4" />} isLoading={isLoading} />
         </div>
       </div>
     </div>
   );
 }
 
-// Runner Mobile Dashboard
+// ===== RUNNER DASHBOARD =====
 function RunnerMobileDashboard() {
+  const { profile } = useAuth();
   const { data: stats, isLoading } = useRunnerDashboardStats();
 
   const quickActions: QuickAction[] = [
@@ -301,12 +396,15 @@ function RunnerMobileDashboard() {
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/runner/allocated-stock' },
   ];
 
+  const pipelineStages = [
+    { label: 'Pending', value: stats?.todayStats.pendingAssignment ?? 0, color: 'bg-[hsl(var(--status-warning))]' },
+    { label: 'In Progress', value: stats?.todayStats.inProgress ?? 0, color: 'bg-primary' },
+    { label: 'Delivered', value: stats?.todayStats.deliveredToday ?? 0, color: 'bg-[hsl(var(--status-success))]' },
+    { label: 'Failed', value: stats?.todayStats.failedToday ?? 0, color: 'bg-[hsl(var(--status-error))]' },
+  ];
+
   return (
     <div className="p-4 space-y-6">
-      {/* Global Search Bar */}
-      <GlobalSearchBar variant="mobile" />
-
-      {/* Hero - Assigned Jobs */}
       <HeroSummaryCard
         title="In Progress"
         value={stats?.todayStats.inProgress ?? 0}
@@ -316,54 +414,45 @@ function RunnerMobileDashboard() {
         icon={<Inbox className="h-5 w-5" />}
         isLoading={isLoading}
         accentColor="gold"
+        illustration={capybaraRunner}
+        greeting={`Hello, ${profile?.display_name?.split(' ')[0] || 'Runner'}`}
+        greetingSubtitle="Dispatch Center · Manage your operations."
       />
 
-      {/* Quick Actions */}
+      {((stats?.blockerStats.failedOrdersCount ?? 0) > 0 || (stats?.earningsStats.pendingClaimCount ?? 0) > 0) && (
+        <div className="space-y-3">
+          <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+            <Zap className="h-4 w-4 text-[hsl(var(--status-error))]" />
+            Action Required
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            <AlertCard label="Failed Orders" value={stats?.blockerStats.failedOrdersCount ?? 0} icon={<XCircle className="h-4 w-4" />} href="/runner/failed" severity="error" />
+            <AlertCard label="Pending Claims" value={stats?.earningsStats.pendingClaimCount ?? 0} icon={<Receipt className="h-4 w-4" />} href="/runner/claim-batches" severity="warning" />
+          </div>
+        </div>
+      )}
+
+      <OperationsPipeline stages={pipelineStages} />
+
       <QuickActionsGrid actions={quickActions} columns={4} />
 
-      {/* Stats Grid */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold">Today's Stats</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <MobileStatTile
-            label="Delivered"
-            value={stats?.todayStats.deliveredToday ?? 0}
-            icon={<CheckCircle className="h-4 w-4 text-status-success" />}
-            href="/runner/delivered"
-            color="success"
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Failed"
-            value={stats?.todayStats.failedToday ?? 0}
-            icon={<XCircle className="h-4 w-4 text-destructive" />}
-            href="/runner/failed"
-            color={(stats?.todayStats.failedToday ?? 0) > 0 ? 'destructive' : 'default'}
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Pending Assign"
-            value={stats?.todayStats.pendingAssignment ?? 0}
-            icon={<Truck className="h-4 w-4 text-primary" />}
-            href="/runner/inbox"
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Pending Claims"
-            value={stats?.earningsStats.pendingClaimCount ?? 0}
-            icon={<Receipt className="h-4 w-4 text-status-warning" />}
-            href="/runner/claim-batches"
-            color={(stats?.earningsStats.pendingClaimCount ?? 0) > 0 ? 'warning' : 'default'}
-            isLoading={isLoading}
-          />
+        <h3 className="text-base font-bold text-foreground">Key Metrics</h3>
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+          <MetricCard label="Delivered Today" value={stats?.todayStats.deliveredToday ?? 0} icon={<CheckCircle className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Failed Today" value={stats?.todayStats.failedToday ?? 0} icon={<XCircle className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Pending Assign" value={stats?.todayStats.pendingAssignment ?? 0} icon={<Truck className="h-4 w-4" />} isLoading={isLoading} />
+          <MetricCard label="Claims" value={stats?.earningsStats.pendingClaimCount ?? 0} icon={<Receipt className="h-4 w-4" />} isLoading={isLoading} />
         </div>
       </div>
     </div>
   );
 }
 
-// Driver Mobile Dashboard
+// ===== DRIVER DASHBOARD =====
 function DriverMobileDashboard() {
+  const { profile } = useAuth();
+
   const quickActions: QuickAction[] = [
     { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/driver/inbox' },
     { id: 'route', label: 'Route', icon: <Navigation className="h-5 w-5" />, href: '/driver/route' },
@@ -375,10 +464,6 @@ function DriverMobileDashboard() {
 
   return (
     <div className="p-4 space-y-6">
-      {/* Global Search Bar */}
-      <GlobalSearchBar variant="mobile" />
-
-      {/* Hero */}
       <HeroSummaryCard
         title="Today's Deliveries"
         value={0}
@@ -387,115 +472,33 @@ function DriverMobileDashboard() {
         viewAllLabel="Start Delivering"
         icon={<Truck className="h-5 w-5" />}
         accentColor="gold"
+        illustration={capybaraDriver}
+        greeting={`Hello, ${profile?.display_name?.split(' ')[0] || 'Driver'}`}
+        greetingSubtitle="Driver Dashboard · Hit the road and deliver."
       />
 
-      {/* Quick Actions */}
       <QuickActionsGrid actions={quickActions} columns={3} />
     </div>
   );
 }
 
-// Admin Mobile Dashboard
-function AdminMobileDashboard() {
-  const { data: stats, isLoading } = useAdminStats();
-  const { data: actionStats } = useAdminActionRequiredStats();
-
-  const quickActions: QuickAction[] = [
-    { id: 'orders', label: 'Orders', icon: <ShoppingCart className="h-5 w-5" />, href: '/sales/booking' },
-    { id: 'users', label: 'Users', icon: <Users className="h-5 w-5" />, href: '/settings/users' },
-    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
-    { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/products' },
-    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/admin/claim-batches' },
-    { id: 'disputes', label: 'Disputes', icon: <AlertTriangle className="h-5 w-5" />, href: '/disputes', badge: stats?.disputes, badgeColor: 'warning' },
-    { id: 'bindings', label: 'Bindings', icon: <Settings className="h-5 w-5" />, href: '/settings/bindings' },
-    { id: 'overview', label: 'Overview', icon: <BarChart3 className="h-5 w-5" />, href: '/admin/overview' },
-  ];
-
-  return (
-    <div className="p-4 space-y-6">
-      {/* Global Search Bar */}
-      <GlobalSearchBar variant="mobile" />
-
-      {/* Hero - System Overview */}
-      <HeroSummaryCard
-        title="Total Orders"
-        value={(stats?.bookingOrders ?? 0) + (stats?.readyOrders ?? 0) + (stats?.deliveredOrders ?? 0)}
-        subtitle="System-wide activity"
-        viewAllLink="/admin/overview"
-        viewAllLabel="View Overview"
-        icon={<BarChart3 className="h-5 w-5" />}
-        isLoading={isLoading}
-        accentColor="gold"
-      />
-
-      {/* Quick Actions */}
-      <QuickActionsGrid actions={quickActions} columns={4} />
-
-      {/* Stats Grid */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold">Action Required</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <MobileStatTile
-            label="Failed Deliveries"
-            value={actionStats?.failedDelivery ?? 0}
-            icon={<XCircle className="h-4 w-4 text-destructive" />}
-            href="/sales/action-required"
-            color={(actionStats?.failedDelivery ?? 0) > 0 ? 'destructive' : 'default'}
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Disputes"
-            value={stats?.disputes ?? 0}
-            icon={<AlertTriangle className="h-4 w-4 text-status-warning" />}
-            href="/disputes"
-            color={(stats?.disputes ?? 0) > 0 ? 'warning' : 'default'}
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Total Users"
-            value={stats?.totalUsers ?? 0}
-            icon={<Users className="h-4 w-4 text-primary" />}
-            href="/settings/users"
-            isLoading={isLoading}
-          />
-          <MobileStatTile
-            label="Rescheduled"
-            value={actionStats?.rescheduled ?? 0}
-            icon={<Clock className="h-4 w-4 text-muted-foreground" />}
-            href="/sales/action-required"
-            isLoading={isLoading}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Main Mobile Dashboard Component
+// ===== MAIN =====
 export function MobileDashboard() {
   const { role, profileStatus } = useAuth();
   
   useRealtimeUpdates();
 
-  // CRITICAL: Show loading spinner while profile is being resolved
-  // Never default to any role - wait for the actual role
   if (profileStatus === 'loading' || profileStatus === 'idle' || !role) {
     return <MobileDashboardLoading />;
   }
 
   const renderDashboard = () => {
     switch (role) {
-      case 'driver':
-        return <DriverMobileDashboard />;
-      case 'runner':
-        return <RunnerMobileDashboard />;
-      case 'admin':
-        return <AdminMobileDashboard />;
-      case 'manager':
-        return <ManagerMobileDashboard />;
-      case 'salesperson':
-        return <SalespersonMobileDashboard />;
-      // No default case - all roles are explicitly handled
+      case 'driver': return <DriverMobileDashboard />;
+      case 'runner': return <RunnerMobileDashboard />;
+      case 'admin': return <AdminMobileDashboard />;
+      case 'manager': return <ManagerMobileDashboard />;
+      case 'salesperson': return <SalespersonMobileDashboard />;
     }
   };
 

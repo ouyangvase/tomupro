@@ -33,18 +33,18 @@ export function QuickActionsGrid({
   const badgeColorClasses = {
     default: 'bg-primary text-primary-foreground',
     destructive: 'bg-destructive text-destructive-foreground',
-    warning: 'bg-amber-500 text-white',
+    warning: 'bg-[hsl(var(--status-warning))] text-card',
   };
 
   return (
     <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between px-1">
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <h3 className="text-base font-bold text-foreground">{title}</h3>
         {(hasMore || viewAllLink) && (
           <button
             onClick={() => viewAllLink && navigate(viewAllLink)}
-            className="flex items-center gap-0.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            className="flex items-center gap-0.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
           >
             View All
             <ChevronRight className="h-3 w-3" />
@@ -62,8 +62,8 @@ export function QuickActionsGrid({
             key={action.id}
             onClick={() => navigate(action.href)}
             className={cn(
-              "relative flex flex-col items-center gap-2 p-3 rounded-xl",
-              "bg-card hover:bg-muted/50 border border-border/40",
+              "relative flex flex-col items-center gap-2.5 p-4 rounded-2xl",
+              "bg-card border border-border/40",
               "transition-all duration-200 active:scale-95",
               "shadow-sm hover:shadow-md"
             )}
@@ -71,8 +71,8 @@ export function QuickActionsGrid({
             {/* Badge */}
             {action.badge !== undefined && action.badge > 0 && (
               <span className={cn(
-                "absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1",
-                "text-[10px] font-bold rounded-full flex items-center justify-center",
+                "absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] px-1",
+                "text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm",
                 badgeColorClasses[action.badgeColor || 'default']
               )}>
                 {action.badge > 99 ? '99+' : action.badge}
@@ -80,12 +80,12 @@ export function QuickActionsGrid({
             )}
 
             {/* Icon */}
-            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
               {action.icon}
             </div>
 
             {/* Label */}
-            <span className="text-xs font-medium text-center text-foreground leading-tight line-clamp-2">
+            <span className="text-xs font-semibold text-center text-foreground leading-tight line-clamp-2">
               {action.label}
             </span>
           </button>
