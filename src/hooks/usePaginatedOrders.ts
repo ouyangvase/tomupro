@@ -144,26 +144,32 @@ export function usePaginatedOrders(
       }
 
       // Visibility: team filtering
-      if (filters.salespersonIds && filters.salespersonIds.length > 0) {
-        if (visibleUserIds !== null && Array.isArray(visibleUserIds)) {
-          const allowedIds = filters.salespersonIds.filter(id => visibleUserIds.includes(id));
-          if (allowedIds.length > 0) {
-            query = query.in('salesperson_id', allowedIds);
+      // Skip salesperson visibility filtering when runnerId is set
+      // (runner views orders assigned to them, not orders they created)
+      const skipVisibilityFilter = !!filters.runnerId;
+
+      if (!skipVisibilityFilter) {
+        if (filters.salespersonIds && filters.salespersonIds.length > 0) {
+          if (visibleUserIds !== null && Array.isArray(visibleUserIds)) {
+            const allowedIds = filters.salespersonIds.filter(id => visibleUserIds.includes(id));
+            if (allowedIds.length > 0) {
+              query = query.in('salesperson_id', allowedIds);
+            } else {
+              return { orders: [] as Order[], count: 0 };
+            }
           } else {
-            return { orders: [] as Order[], count: 0 };
+            query = query.in('salesperson_id', filters.salespersonIds);
           }
-        } else {
-          query = query.in('salesperson_id', filters.salespersonIds);
-        }
-      } else if (filters.salespersonId) {
-        if (visibleUserIds !== null && Array.isArray(visibleUserIds)) {
-          if (!visibleUserIds.includes(filters.salespersonId)) {
-            return { orders: [] as Order[], count: 0 };
+        } else if (filters.salespersonId) {
+          if (visibleUserIds !== null && Array.isArray(visibleUserIds)) {
+            if (!visibleUserIds.includes(filters.salespersonId)) {
+              return { orders: [] as Order[], count: 0 };
+            }
           }
+          query = query.eq('salesperson_id', filters.salespersonId);
+        } else if (visibleUserIds !== null && Array.isArray(visibleUserIds) && visibleUserIds.length > 0) {
+          query = query.in('salesperson_id', visibleUserIds);
         }
-        query = query.eq('salesperson_id', filters.salespersonId);
-      } else if (visibleUserIds !== null && Array.isArray(visibleUserIds) && visibleUserIds.length > 0) {
-        query = query.in('salesperson_id', visibleUserIds);
       }
 
       if (filters.runnerId) query = query.eq('runner_id', filters.runnerId);
