@@ -91,39 +91,6 @@ export default function ReconciliationAdmin() {
     );
   };
 
-  const handleDispute = () => {
-    if (selectedOrders.length === 0) return;
-    
-    selectedOrders.forEach(id => {
-      logAudit({
-        entity_type: 'order',
-        entity_id: id,
-        action: 'RECONCILIATION_DISPUTED',
-        before_json: { reconciliation_status: 'ADMIN_ACK_PENDING' },
-        after_json: { reconciliation_status: 'DISPUTE', dispute_reason: disputeReason, dispute_notes: disputeNotes },
-      });
-    });
-
-    bulkUpdate.mutate(
-      {
-        ids: selectedOrders,
-        updates: { 
-          reconciliation_status: 'DISPUTE' as any,
-          dispute_reason: disputeReason,
-          dispute_notes: disputeNotes,
-        },
-      },
-      {
-        onSuccess: () => {
-          setSelectedOrders([]);
-          setDisputeDialogOpen(false);
-          setDisputeReason('');
-          setDisputeNotes('');
-          refetch();
-        },
-      }
-    );
-  };
 
   const columns: Column<Order>[] = [
     {
