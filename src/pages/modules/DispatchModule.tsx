@@ -63,6 +63,7 @@ export default function DispatchModule() {
             {activeTab === 'drivers' && role === 'runner' && <DriverManagement />}
             {activeTab === 'failed' && role === 'runner' && <RunnerFailedOrders />}
             {activeTab === 'map' && <DriverLocationsPage />}
+            {activeTab === 'delivered' && role === 'runner' && <RunnerDeliveredOrders />}
           </div>
         </Suspense>
       </EmbeddedProvider>
