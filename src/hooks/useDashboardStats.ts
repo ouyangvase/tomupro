@@ -385,7 +385,7 @@ export function useAdminStats() {
         cancelledOrders: cancelledRes.count || 0,
         pendingDelivery: pendingDeliveryRes.count || 0,
         deliveredOrders: deliveredRes.count || 0,
-        disputes: disputesRes.count || 0,
+        
         productsCount: productsRes.count || 0,
         totalClaims: claimsRes.count || 0,
         totalInbounds: inboundsRes.count || 0,
