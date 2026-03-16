@@ -294,38 +294,59 @@ export default function RunnerDriverInbox() {
     <AppLayout>
       <div className="p-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Truck className="h-8 w-8 text-primary" />
-            <div>
-              <h1 className="text-2xl font-bold">Driver Inbox</h1>
-              <p className="text-muted-foreground">Assign orders & track driver updates</p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
+        <PageHero
+          icon={<Truck className="h-6 w-6 text-primary" />}
+          title="Driver Inbox"
+          subtitle="Assign orders & track driver updates"
+          image={capybaraDriver}
+          imageAlt="Driver Capybara"
+          actions={
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          }
+        />
 
         {/* Stats Cards */}
         <div className="grid grid-cols-3 gap-4">
-          <Card>
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent hover:shadow-md transition-shadow">
             <CardContent className="p-4">
-              <div className="text-2xl font-bold">{assignableOrders.length}</div>
-              <div className="text-sm text-muted-foreground">To Assign</div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-primary/10">
+                  <Package className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <AnimatedCounter value={assignableOrders.length} className="text-2xl font-bold" />
+                  <div className="text-xs text-muted-foreground">To Assign</div>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-blue-200/50 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/10 hover:shadow-md transition-shadow">
             <CardContent className="p-4">
-              <div className="text-2xl font-bold text-blue-600">{driverUpdatesOrders.length}</div>
-              <div className="text-sm text-muted-foreground">With Drivers</div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/20">
+                  <Users className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <AnimatedCounter value={driverUpdatesOrders.length} className="text-2xl font-bold text-blue-600" />
+                  <div className="text-xs text-muted-foreground">With Drivers</div>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card className="border-amber-200 bg-amber-50 dark:bg-amber-900/10">
+          <Card className="border-[hsl(var(--status-warning)/0.3)] bg-gradient-to-br from-[hsl(var(--status-warning)/0.08)] to-transparent hover:shadow-md transition-shadow">
             <CardContent className="p-4">
-              <div className="text-2xl font-bold text-amber-600">{pendingAcceptanceOrders.length}</div>
-              <div className="text-sm text-muted-foreground">Pending Accept</div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-[hsl(var(--status-warning)/0.15)]">
+                  <Clock className="h-5 w-5 text-[hsl(var(--status-warning))]" />
+                </div>
+                <div>
+                  <AnimatedCounter value={pendingAcceptanceOrders.length} className="text-2xl font-bold text-[hsl(var(--status-warning))]" />
+                  <div className="text-xs text-muted-foreground">Pending Accept</div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

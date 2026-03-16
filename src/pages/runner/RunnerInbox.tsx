@@ -522,13 +522,18 @@ export default function RunnerInbox() {
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
-        <div className="flex items-center gap-3">
-          <Package className="h-8 w-8 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Runner Inbox</h1>
-            <p className="text-muted-foreground">Manage your assigned deliveries</p>
-          </div>
-        </div>
+        <PageHero
+          icon={<Package className="h-6 w-6 text-primary" />}
+          title="Runner Inbox"
+          subtitle="Manage your assigned deliveries"
+          image={capybaraRunner}
+          imageAlt="Runner Capybara"
+          actions={
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="px-2 py-1 rounded-lg bg-primary/10 text-primary font-medium">{orders.length} orders</span>
+            </div>
+          }
+        />
 
         <DataGrid
           data={orders}

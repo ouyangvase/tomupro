@@ -190,52 +190,56 @@ export default function RunnerFailedOrders() {
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <XCircle className="h-8 w-8 text-destructive" />
-            <div>
-              <h1 className="text-2xl font-bold">Failed & Cancelled Orders</h1>
-              <p className="text-muted-foreground">Orders that need attention or have been cancelled</p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
-        </div>
+        <PageHero
+          icon={<XCircle className="h-6 w-6 text-destructive" />}
+          title="Failed & Cancelled Orders"
+          subtitle="Orders that need attention or have been cancelled"
+          image={capybaraEmpty}
+          imageAlt="Failed Orders Capybara"
+          actions={
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+          }
+        />
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="border-destructive/30 bg-gradient-to-br from-destructive/5 to-transparent">
+          <Card className="border-destructive/30 bg-gradient-to-br from-destructive/5 to-transparent hover:shadow-md transition-shadow">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
+                <div className="p-2 rounded-xl bg-destructive/10">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                </div>
                 <div>
-                  <p className="text-2xl font-bold text-destructive">{failedDeliveries.length}</p>
+                  <AnimatedCounter value={failedDeliveries.length} className="text-2xl font-bold text-destructive" />
                   <p className="text-xs text-muted-foreground">Failed Deliveries</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <Ban className="h-5 w-5 text-muted-foreground" />
+                <div className="p-2 rounded-xl bg-muted">
+                  <Ban className="h-5 w-5 text-muted-foreground" />
+                </div>
                 <div>
-                  <p className="text-2xl font-bold">{cancelledOrders.length}</p>
+                  <AnimatedCounter value={cancelledOrders.length} className="text-2xl font-bold" />
                   <p className="text-xs text-muted-foreground">Cancelled</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent hover:shadow-md transition-shadow">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <Calendar className="h-5 w-5 text-primary" />
+                <div className="p-2 rounded-xl bg-primary/10">
+                  <Calendar className="h-5 w-5 text-primary" />
+                </div>
                 <div>
-                  <p className="text-2xl font-bold">
-                    {orders.filter(o => o.next_delivery_date).length}
-                  </p>
+                  <AnimatedCounter value={orders.filter(o => o.next_delivery_date).length} className="text-2xl font-bold text-primary" />
                   <p className="text-xs text-muted-foreground">Rescheduled</p>
                 </div>
               </div>
