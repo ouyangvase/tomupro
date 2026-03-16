@@ -25,6 +25,7 @@ import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { RescheduleOrderDialog } from '@/components/sales/RescheduleOrderDialog';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
+import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
 import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
