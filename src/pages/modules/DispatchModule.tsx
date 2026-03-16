@@ -11,6 +11,7 @@ const DriverLocationsPage = lazy(() => import('@/pages/runner/DriverLocationsPag
 const RunnerDriverInbox = lazy(() => import('@/pages/runner/RunnerDriverInbox'));
 const DriverManagement = lazy(() => import('@/pages/runner/DriverManagement'));
 const RunnerFailedOrders = lazy(() => import('@/pages/runner/RunnerFailedOrders'));
+const RunnerDeliveredOrders = lazy(() => import('@/pages/runner/RunnerDeliveredOrders'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -31,6 +32,7 @@ export default function DispatchModule() {
     { id: 'drivers', label: 'Drivers' },
     { id: 'failed', label: 'Failed Orders' },
     { id: 'map', label: 'Live Map' },
+    { id: 'delivered', label: 'Delivered Orders' },
   ];
 
   const adminTabs = [
@@ -61,6 +63,7 @@ export default function DispatchModule() {
             {activeTab === 'drivers' && role === 'runner' && <DriverManagement />}
             {activeTab === 'failed' && role === 'runner' && <RunnerFailedOrders />}
             {activeTab === 'map' && <DriverLocationsPage />}
+            {activeTab === 'delivered' && role === 'runner' && <RunnerDeliveredOrders />}
           </div>
         </Suspense>
       </EmbeddedProvider>
