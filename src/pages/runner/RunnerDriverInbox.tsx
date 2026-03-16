@@ -450,7 +450,7 @@ export default function RunnerDriverInbox() {
                     <SelectTrigger className="w-[130px] rounded-lg"><SelectValue placeholder="All Areas" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Areas</SelectItem>
-                      {areaOptions.map(a => <SelectItem key={a as string} value={a as string}>{a}</SelectItem>)}
+                      {assignAreaOptions.map(a => <SelectItem key={a as string} value={a as string}>{a}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Select value={reviewStatusFilter} onValueChange={setReviewStatusFilter}>
