@@ -361,6 +361,18 @@ export default function BookingSales() {
               className="pl-9 h-10 rounded-full border-border/60 bg-card"
             />
           </div>
+
+          <OrderFiltersPanel
+            filters={panelFilters}
+            onFiltersChange={setPanelFilters}
+            areaOptions={areaOptions}
+            salespersonOptions={salespersonOptions}
+            showSalespersonFilter={role === 'admin' || role === 'manager'}
+            showOrderStatus={false}
+            showRunnerStatus={true}
+            showReconciliationStatus={false}
+          />
+
           {isEditable && (
             <Button onClick={() => setImportDialogOpen(true)} variant="outline" size="sm" className="rounded-full">
               <Upload className="h-4 w-4 mr-1" />
