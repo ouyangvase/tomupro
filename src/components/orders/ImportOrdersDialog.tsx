@@ -311,7 +311,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       const duplicateSkuErrors: string[] = [];
 
       for (const row of validation.valid) {
-        const orderRef = row.order_ref.trim();
+        const orderRef = toUpperLatin(row.order_ref.trim());
         const skuValue = row.sku_name_or_code?.trim();
         if (!skuValue) {
           duplicateSkuErrors.push(`Order ${orderRef}: SKU code is required for all order items.`);
