@@ -4,6 +4,8 @@ import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { PageHero } from '@/components/dashboard/PageHero';
+import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
@@ -16,6 +18,7 @@ import { XCircle, RefreshCw, Calendar, AlertTriangle, Ban } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { format, parseISO } from 'date-fns';
+import capybaraEmpty from '@/assets/capybara-empty.png';
 
 const statusColors: Record<string, string> = {
   FAILED_DELIVERY: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
