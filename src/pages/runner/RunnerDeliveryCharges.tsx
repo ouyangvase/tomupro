@@ -40,10 +40,12 @@ export default function RunnerDeliveryCharges() {
   const [historyArea, setHistoryArea] = useState<string | null>(null);
   const [newArea, setNewArea] = useState('');
   const [newAmount, setNewAmount] = useState('');
+  const [deleteArea, setDeleteArea] = useState<string | null>(null);
 
   const { data: allCharges = [], isLoading } = useDeliveryCharges({ runnerId: profile?.id });
   const { data: activeCharges = [] } = useActiveDeliveryCharges(profile?.id);
   const createCharge = useCreateDeliveryCharge();
+  const deleteCharges = useDeleteDeliveryChargesByArea();
 
   // Group charges by area for display
   const chargesByArea = allCharges.reduce((acc, charge) => {
