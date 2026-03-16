@@ -185,7 +185,7 @@ function AdminMobileDashboard() {
   const pipelineStages = [
     { label: 'Booking', value: stats?.bookingOrders ?? 0, color: 'bg-[hsl(var(--status-pending))]' },
     { label: 'Ready', value: stats?.readyOrders ?? 0, color: 'bg-primary' },
-    { label: 'Dispatch', value: stats?.assignedOrders ?? 0, color: 'bg-[hsl(var(--status-success))]' },
+    { label: 'Dispatch', value: stats?.pendingDelivery ?? 0, color: 'bg-[hsl(var(--status-success))]' },
     { label: 'Delivered', value: stats?.deliveredOrders ?? 0, color: 'bg-[hsl(200_60%_50%)]' },
   ];
 
