@@ -169,12 +169,7 @@ export function useManagerStats() {
           .in('salesperson_id', visibleIds)
           .in('reconciliation_status', ['SP_ACK_PENDING', 'ADMIN_ACK_PENDING']),
         
-        // Disputes
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .in('salesperson_id', visibleIds)
-          .eq('reconciliation_status', 'DISPUTE'),
+        
         
         // Active products count for team
         supabase
