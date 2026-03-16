@@ -325,14 +325,14 @@ function ManagerMobileDashboard() {
   const { data: actionStats } = useManagerActionRequiredStats();
 
   const quickActions: QuickAction[] = [
-    { id: 'team-booking', label: 'Booking', icon: <Package className="h-5 w-5" />, href: '/sales/booking', badge: dashData?.teamOverview.bookingOrders },
-    { id: 'team-ready', label: 'Ready', icon: <Truck className="h-5 w-5" />, href: '/sales/ready', badge: dashData?.teamOverview.readyOrders },
-    { id: 'team-delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/sales/delivered' },
-    { id: 'oversight', label: 'Oversight', icon: <Users className="h-5 w-5" />, href: '/manager/oversight' },
-    { id: 'action', label: 'Actions', icon: <AlertTriangle className="h-5 w-5" />, href: '/sales/action-required', badge: actionStats?.systemTotal, badgeColor: 'warning' },
+    { id: 'team-booking', label: 'Booking', icon: <Package className="h-5 w-5" />, href: '/orders?tab=booking', badge: dashData?.teamOverview.bookingOrders },
+    { id: 'team-ready', label: 'Ready', icon: <Truck className="h-5 w-5" />, href: '/orders?tab=ready', badge: dashData?.teamOverview.readyOrders },
+    { id: 'team-delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/orders?tab=delivered' },
+    { id: 'oversight', label: 'Oversight', icon: <Users className="h-5 w-5" />, href: '/team?tab=oversight' },
+    { id: 'action', label: 'Actions', icon: <AlertTriangle className="h-5 w-5" />, href: '/orders?tab=action-required', badge: actionStats?.systemTotal, badgeColor: 'warning' },
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
-    { id: 'approvals', label: 'Approvals', icon: <FileCheck className="h-5 w-5" />, href: '/manager/pending-approvals' },
-    { id: 'ranking', label: 'Ranking', icon: <BarChart3 className="h-5 w-5" />, href: '/manager/ranking-board' },
+    { id: 'approvals', label: 'Approvals', icon: <FileCheck className="h-5 w-5" />, href: '/team?tab=approvals' },
+    { id: 'ranking', label: 'Ranking', icon: <BarChart3 className="h-5 w-5" />, href: '/performance?tab=ranking' },
   ];
 
   return (
