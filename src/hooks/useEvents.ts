@@ -193,7 +193,7 @@ export function useCreateEvent() {
       // 2. Create settings
       const { error: settingsError } = await supabase
         .from('event_settings')
-        .insert({ ...payload.settings, event_id: eventData.id });
+        .insert({ ...payload.settings, event_id: eventData.id } as any);
       if (settingsError) throw settingsError;
 
       // 3. Create audience rules
