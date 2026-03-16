@@ -81,6 +81,9 @@ import EventCreate from "./pages/admin/EventCreate";
 import EventDetail from "./pages/admin/EventDetail";
 import UserEventsPage from "./pages/events/UserEventsPage";
 import { EventPopupModal } from "./components/events/EventPopupModal";
+import GuideCenterPage from "./pages/guide/GuideCenterPage";
+import { OnboardingFlow } from "./components/guide/OnboardingFlow";
+import { FloatingHelpButton } from "./components/guide/FloatingHelpButton";
 
 const queryClient = new QueryClient();
 
@@ -233,6 +236,9 @@ function AppRoutes() {
       <Route path="/admin/events/:eventId/analytics" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
       <Route path="/events" element={<ProtectedRoute><UserEventsPage /></ProtectedRoute>} />
       
+      {/* Guide Center */}
+      <Route path="/guide" element={<ProtectedRoute><GuideCenterPage /></ProtectedRoute>} />
+      
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
@@ -248,8 +254,10 @@ const App = () => (
             <Toaster />
             <Sonner />
             <RoleChangeBanner />
-            <BrowserRouter>
+              <BrowserRouter>
               <EventPopupModal />
+              <OnboardingFlow />
+              <FloatingHelpButton />
               <AppRoutes />
             </BrowserRouter>
           </TooltipProvider>

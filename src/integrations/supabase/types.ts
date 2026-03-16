@@ -2497,6 +2497,39 @@ export type Database = {
           },
         ]
       }
+      onboarding_sessions: {
+        Row: {
+          created_at: string | null
+          finished_at: string | null
+          id: string
+          role: string
+          skipped_at: string | null
+          started_at: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          finished_at?: string | null
+          id?: string
+          role: string
+          skipped_at?: string | null
+          started_at?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          finished_at?: string | null
+          id?: string
+          role?: string
+          skipped_at?: string | null
+          started_at?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string
@@ -3798,6 +3831,42 @@ export type Database = {
           email?: string | null
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      user_guide_progress: {
+        Row: {
+          completed: boolean | null
+          completed_at: string | null
+          created_at: string | null
+          current_step: number | null
+          dismissed_at: string | null
+          guide_id: string
+          id: string
+          last_viewed_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          current_step?: number | null
+          dismissed_at?: string | null
+          guide_id: string
+          id?: string
+          last_viewed_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          current_step?: number | null
+          dismissed_at?: string | null
+          guide_id?: string
+          id?: string
+          last_viewed_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }

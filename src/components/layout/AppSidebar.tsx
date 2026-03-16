@@ -6,7 +6,7 @@ import {
   Award, ClipboardCheck, BarChart3, AlertTriangle, Receipt, DollarSign,
   RotateCcw, Layers, PackageCheck, Wrench, History, Ticket, Share2,
   Settings, FileText, LogOut, Loader2, ChevronDown, Star, Plus,
-  Database, ShieldCheck, WarehouseIcon, Calendar, Megaphone
+  Database, ShieldCheck, WarehouseIcon, Calendar, Megaphone, GraduationCap
 } from "lucide-react";
 import { Warehouse as WarehouseIconLucide } from "lucide-react";
 import capybaraHero from "@/assets/capybara-hero.png";
@@ -159,6 +159,14 @@ const sections: NavSection[] = [
     items: [
       { title: "Events Admin", url: "/admin/events", icon: Megaphone, roles: ["admin"] },
       { title: "Events", url: "/events", icon: Calendar, roles: ["admin", "manager", "salesperson", "runner", "driver"] },
+    ],
+  },
+  {
+    id: "guide",
+    label: "Help",
+    icon: GraduationCap,
+    items: [
+      { title: "Guide Center", url: "/guide", icon: GraduationCap, roles: ["admin", "manager", "salesperson", "runner", "driver"] },
     ],
   },
   {
