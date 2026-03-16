@@ -220,9 +220,98 @@ export default function RunnerDeliveredOrders() {
   // Current page orders (already paginated server-side)
   const paginatedOrders = deliveredOrders;
 
+  const { data: userDirectory = [] } = useUserDirectory();
+  const { data: myDrivers = [] } = useMyDrivers();
+  const { data: products = [] } = useProducts();
+  const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : {});
+
+  // Fetch active delivery charges for runner (for export)
+  const { data: activeCharges = [] } = useActiveDeliveryCharges(
+    role === 'runner' ? user?.id : undefined
+  );
+
+  // Build delivery charges lookup map: "runnerId:area" -> charge_amount
+  const deliveryChargesMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const charge of activeCharges) {
+      map.set(`${charge.runner_id}:${charge.area}`, charge.charge_amount);
+    }
+    return map;
+  }, [activeCharges]);
+
+  // Build server-side summary params for KPIs
+  const summaryParams = useMemo(() => {
+    const params: {
+      runnerId?: string;
+      salespersonId?: string;
+      salespersonIds?: string[];
+      search?: string;
+      area?: string;
+      claimStatus?: string;
+      driverId?: string;
+      skuCode?: string;
+    } = {};
+
+    if (role === 'runner') params.runnerId = user?.id;
+    else if (role === 'salesperson') params.salespersonId = user?.id;
+    else if (role === 'manager') {
+      if (salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
+      else if (salespersonIds && salespersonIds.length > 0) params.salespersonIds = salespersonIds;
+    } else if (role === 'admin' && salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
+
+    if (role === 'runner' && salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
+    if (searchQuery.trim()) params.search = searchQuery.trim();
+    if (areaFilter !== 'all') params.area = areaFilter;
+    if (claimStatusFilter !== 'all') params.claimStatus = claimStatusFilter;
+    if (driverFilter !== 'all') params.driverId = driverFilter;
+    if (skuFilter !== 'all') params.skuCode = skuFilter;
+
+    return params;
+  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, claimStatusFilter, driverFilter, skuFilter]);
+
+  const { data: summary, isLoading: summaryLoading } = useDeliveredSummaryFiltered(summaryParams);
+  const displaySummary = summary;
+  const displaySummaryLoading = summaryLoading;
+
+  const canClaim = role === 'runner';
+
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [revertOrder, setRevertOrder] = useState<Order | null>(null);
+  const revertDelivery = useRevertDelivery();
+
+  // Detect if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    return (
+      searchQuery.trim() !== '' ||
+      areaFilter !== 'all' ||
+      driverFilter !== 'all' ||
+      salespersonFilters.length > 0 ||
+      skuFilter !== 'all' ||
+      claimStatusFilter !== 'all' ||
+      dateRange.from !== null
+    );
+  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
+
+  // Clear filters helper
+  const clearAllFilters = useCallback(() => {
+    setSearchQuery('');
+    setAreaFilter('all');
+    setDriverFilter('all');
+    setSalespersonFilters([]);
+    setSkuFilter('all');
+    setClaimStatusFilter('all');
+    setDateRange({ from: null, to: null, label: 'Lifetime' });
+  }, [setDateRange]);
+
+  // Pagination helpers for UI
+  const totalPages = pagination.totalPages;
+  const currentPage = pagination.page;
+  const startIndex = (currentPage - 1) * pagination.pageSize;
+  const endIndex = startIndex + pagination.pageSize;
+
   // Check if an order has a valid approved delivery charge for its area
   const orderHasValidAreaRate = useCallback((order: Order): boolean => {
-    if (!order.area) return true; // No area = no charge needed
+    if (!order.area) return true;
     const area = order.area.toLowerCase();
     return approvedChargeMap[area] !== undefined;
   }, [approvedChargeMap]);
