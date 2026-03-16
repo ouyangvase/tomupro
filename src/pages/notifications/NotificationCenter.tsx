@@ -51,7 +51,7 @@ export default function NotificationCenter() {
     switch (activeFilter) {
       case 'unread': filtered = notifications.filter(n => !n.is_read); break;
       case 'action': filtered = notifications.filter(n => 
-        n.type === 'CLAIM_SUBMITTED' || n.type === 'INBOUND_PENDING' || n.type === 'DISPUTE' || n.type === 'RUNNER_ASSIGNED'
+        n.type === 'CLAIM_SUBMITTED' || n.type === 'INBOUND_PENDING' || n.type === 'RUNNER_ASSIGNED'
       ); break;
       case 'high': filtered = notifications.filter(n => n.priority === 'HIGH'); break;
       case 'orders': filtered = notifications.filter(n => n.entity_type === 'ORDER'); break;
