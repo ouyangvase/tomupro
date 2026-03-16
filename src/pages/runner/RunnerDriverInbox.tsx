@@ -243,7 +243,10 @@ export default function RunnerDriverInbox() {
     return orders.filter(order => order.driver_status === 'DRIVER_DELIVERED' && order.runner_accept_status === 'PENDING');
   }, [orders]);
 
-  const areaOptions = useMemo(() => [...new Set(orders.map(o => o.area).filter(Boolean))].sort(), [orders]);
+  const assignAreaOptions = useMemo(() => [...new Set(orders.map(o => o.area).filter(Boolean))].sort(), [orders]);
+
+  // Active orders = non-delivered, non-cancelled (real count for stats)
+  const activeOrdersCount = useMemo(() => orders.filter(o => o.runner_status !== 'DELIVERED' && o.status !== 'CANCELLED').length, [orders]);
 
   // Handlers
   const handleSelectAll = (checked: boolean) => setSelectedRows(checked ? assignableOrders.map(o => o.id) : []);
