@@ -668,7 +668,7 @@ export default function RunnerDeliveredOrders() {
         <PageHero
           icon={<CheckCircle className="h-6 w-6 text-[hsl(var(--status-success))]" />}
           title="Delivered Orders"
-          subtitle={`${dateRange.label} • ${deliveredOrders.length} orders in view`}
+          subtitle={`${dateRange.label} • ${pagination.totalCount.toLocaleString()} orders total`}
           image={capybaraRunner}
           imageAlt="Runner capybara"
           actions={
