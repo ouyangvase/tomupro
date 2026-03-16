@@ -505,6 +505,17 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
   const onSubmit = async (values: OrderFormValues) => {
     try {
+      // Area validation
+      const areaValue = toUpperLatin(values.area?.trim() || '');
+      if (areaValue && !isValidArea(areaValue, validAreas)) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Area',
+          description: `The area "${areaValue}" does not exist in TOMUPRO. Please select a valid area from the system list or ask Admin to create it.`,
+        });
+        return;
+      }
+
       const itemsWithoutProduct = items.filter(item => !item.product_id);
       if (itemsWithoutProduct.length > 0) {
         toast({
@@ -539,9 +550,16 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
       let orderId = order?.id;
 
+      // Apply uppercase normalization to all text fields
       const orderData = {
         ...values,
-        order_code: values.order_code,
+        order_code: toUpperLatin(values.order_code),
+        customer_name: toUpperLatin(values.customer_name),
+        phone: values.phone,
+        address: toUpperLatin(values.address),
+        area: areaValue || null,
+        channel: toUpperLatin(values.channel || ''),
+        notes: toUpperLatin(values.notes || ''),
         expected_pickup_date: values.expected_pickup_date ? format(values.expected_pickup_date, 'yyyy-MM-dd') : null,
         total_qty: totals.total_qty,
         total_amount: totals.total_amount,
