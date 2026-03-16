@@ -468,7 +468,7 @@ export default function ManagerOversight() {
               )}
 
 
-              {highPrioritySalespersons.length === 0 && salespersonMetrics.filter(sp => sp.disputes > 0).length === 0 && (
+              {highPrioritySalespersons.length === 0 && (
                 <Card>
                   <CardContent className="py-8 text-center text-muted-foreground">
                     <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />
