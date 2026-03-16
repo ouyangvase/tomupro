@@ -319,7 +319,6 @@ export function useAdminStats() {
         cancelledRes,
         pendingDeliveryRes,
         deliveredRes,
-        disputesRes,
         productsRes,
         claimsRes,
         inboundsRes,
