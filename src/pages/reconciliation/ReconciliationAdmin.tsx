@@ -43,11 +43,6 @@ export default function ReconciliationAdmin() {
   const bulkUpdate = useBulkUpdateOrders();
 
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
-  const [disputeReason, setDisputeReason] = useState('');
-  const [disputeNotes, setDisputeNotes] = useState('');
-
-  const { data: disputeReasons } = useReasons('DISPUTE', true);
 
   // Group by salesperson
   const groupedBySP = useMemo(() => {
