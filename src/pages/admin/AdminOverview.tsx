@@ -176,14 +176,6 @@ export default function AdminOverview() {
             icon={DollarSign}
             onClick={() => navigate('/admin/claim-batches')}
           />
-          <IssueCard
-            label="Disputes"
-            value={metrics.disputeOpen}
-            alert={metrics.disputeOpen > 0}
-            alertLabel="Open"
-            icon={AlertTriangle}
-            onClick={() => navigate('/disputes')}
-          />
         </div>
 
         {/* ── Orders Pipeline ── */}
