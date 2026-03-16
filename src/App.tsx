@@ -249,6 +249,7 @@ const App = () => (
             <Sonner />
             <RoleChangeBanner />
             <BrowserRouter>
+              <EventPopupModal />
               <AppRoutes />
             </BrowserRouter>
           </TooltipProvider>
