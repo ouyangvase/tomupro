@@ -2,6 +2,9 @@ import React from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import DriverMapView from "@/components/maps/DriverMapView";
 import { useAuth } from "@/contexts/AuthContext";
+import { PageHero } from "@/components/dashboard/PageHero";
+import { MapPin } from "lucide-react";
+import capybaraDispatcher from "@/assets/capybara-dispatcher.png";
 
 const DriverLocationsPage: React.FC = () => {
   const { user } = useAuth();
@@ -9,12 +12,13 @@ const DriverLocationsPage: React.FC = () => {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Driver Locations</h1>
-          <p className="text-muted-foreground">
-            Live view of your drivers' positions and assigned orders
-          </p>
-        </div>
+        <PageHero
+          icon={<MapPin className="h-6 w-6 text-primary" />}
+          title="Driver Live Map"
+          subtitle="Real-time driver locations and delivery tracking"
+          image={capybaraDispatcher}
+          imageAlt="Dispatcher Capybara"
+        />
 
         <DriverMapView runnerId={user?.id} />
       </div>
