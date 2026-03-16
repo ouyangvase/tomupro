@@ -820,14 +820,80 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                     <FormField
                       control={form.control}
                       name="area"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium text-muted-foreground">Area / District</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="e.g. Gadong, Kiulap" className="h-10 rounded-xl" />
-                          </FormControl>
-                        </FormItem>
-                      )}
+                      render={({ field }) => {
+                        const areaValue = field.value || '';
+                        const upperArea = toUpperLatin(areaValue);
+                        const areaIsInvalid = upperArea.length > 0 && !isValidArea(upperArea, validAreas);
+                        const [areaSearchOpen, setAreaSearchOpen] = useState(false);
+                        const filteredAreas = validAreas.filter(a =>
+                          a.toUpperCase().includes(upperArea.toUpperCase())
+                        );
+
+                        return (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                              <MapPin className="h-3 w-3" />
+                              Area / District
+                            </FormLabel>
+                            <FormControl>
+                              <Popover open={areaSearchOpen} onOpenChange={setAreaSearchOpen}>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    className={cn(
+                                      "h-10 w-full justify-between text-left font-normal rounded-xl border-border/60",
+                                      !areaValue && "text-muted-foreground",
+                                      areaIsInvalid && "border-destructive/50 bg-destructive/5"
+                                    )}
+                                  >
+                                    <span className="truncate">{areaValue || 'Select area...'}</span>
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-40" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[280px] p-0 rounded-xl shadow-lg" align="start">
+                                  <Command>
+                                    <CommandInput
+                                      placeholder="Search areas..."
+                                      className="h-10"
+                                      value={areaValue}
+                                      onValueChange={(v) => field.onChange(toUpperLatin(v))}
+                                    />
+                                    <CommandList>
+                                      <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
+                                        No matching area found. Ask Admin to add it.
+                                      </CommandEmpty>
+                                      <CommandGroup>
+                                        {filteredAreas.slice(0, 30).map((area) => (
+                                          <CommandItem
+                                            key={area}
+                                            value={area}
+                                            onSelect={() => {
+                                              field.onChange(area);
+                                              setAreaSearchOpen(false);
+                                            }}
+                                            className="text-sm"
+                                          >
+                                            <Check className={cn("mr-2 h-4 w-4", upperArea === area ? "opacity-100" : "opacity-0")} />
+                                            {area}
+                                          </CommandItem>
+                                        ))}
+                                      </CommandGroup>
+                                    </CommandList>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
+                            </FormControl>
+                            {areaIsInvalid && (
+                              <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                Area "{upperArea}" not found. Select a valid area or ask Admin to create it.
+                              </p>
+                            )}
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Only valid TOMUPRO areas can be used</p>
+                          </FormItem>
+                        );
+                      }}
                     />
                   </div>
                 </SectionCard>
