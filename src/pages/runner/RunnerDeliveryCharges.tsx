@@ -21,9 +21,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Clock, CheckCircle, XCircle, History } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Plus, Clock, CheckCircle, XCircle, History, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDeliveryCharges, useActiveDeliveryCharges, useCreateDeliveryCharge } from '@/hooks/useDeliveryCharges';
+import { useDeliveryCharges, useActiveDeliveryCharges, useCreateDeliveryCharge, useDeleteDeliveryChargesByArea } from '@/hooks/useDeliveryCharges';
 import { format } from 'date-fns';
 import type { DeliveryChargeStatus } from '@/types/delivery-charges';
 
