@@ -27,6 +27,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
 export default function EventsAdmin() {
   const { data: events = [], isLoading } = useAdminEvents();
   const publishEvent = usePublishEvent();
+  const deleteEvent = useDeleteEvent();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'all' | 'event' | 'announcement'>('all');
 
