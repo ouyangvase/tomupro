@@ -177,6 +177,10 @@ export function usePaginatedOrders(
       if (filters.runnerId) query = query.eq('runner_id', filters.runnerId);
       if (filters.driverId) query = query.eq('driver_id', filters.driverId);
       if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
+      if (filters.reconciliationStatusIn && filters.reconciliationStatusIn.length > 0) {
+        query = query.in('reconciliation_status', filters.reconciliationStatusIn);
+      }
+      if (filters.excludeStatus) query = query.neq('status', filters.excludeStatus);
 
       // Search
       if (filters.searchQuery?.trim()) {
