@@ -386,14 +386,14 @@ function RunnerMobileDashboard() {
   const { data: stats, isLoading } = useRunnerDashboardStats();
 
   const quickActions: QuickAction[] = [
-    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/runner/inbox', badge: stats?.todayStats.inProgress },
-    { id: 'delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/runner/delivered' },
-    { id: 'failed', label: 'Failed', icon: <XCircle className="h-5 w-5" />, href: '/runner/failed', badge: stats?.blockerStats.failedOrdersCount, badgeColor: 'destructive' },
-    { id: 'inbound', label: 'Inbound', icon: <Package className="h-5 w-5" />, href: '/runner/inbound' },
-    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/runner/claim-batches' },
-    { id: 'charges', label: 'Charges', icon: <DollarSign className="h-5 w-5" />, href: '/runner/delivery-charges' },
-    { id: 'drivers', label: 'Drivers', icon: <Navigation className="h-5 w-5" />, href: '/runner/drivers' },
-    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/runner/allocated-stock' },
+    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/dispatch?tab=inbox', badge: stats?.todayStats.inProgress },
+    { id: 'delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/orders?tab=delivered' },
+    { id: 'failed', label: 'Failed', icon: <XCircle className="h-5 w-5" />, href: '/dispatch?tab=failed', badge: stats?.blockerStats.failedOrdersCount, badgeColor: 'destructive' },
+    { id: 'inbound', label: 'Inbound', icon: <Package className="h-5 w-5" />, href: '/dispatch?tab=inbound' },
+    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=my-claims' },
+    { id: 'charges', label: 'Charges', icon: <DollarSign className="h-5 w-5" />, href: '/finance?tab=delivery-charges' },
+    { id: 'drivers', label: 'Drivers', icon: <Navigation className="h-5 w-5" />, href: '/dispatch?tab=drivers' },
+    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/finance?tab=allocated-stock' },
   ];
 
   const pipelineStages = [
