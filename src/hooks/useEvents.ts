@@ -185,7 +185,7 @@ export function useCreateEvent() {
       // 1. Create event
       const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .insert(payload.event)
+        .insert(payload.event as any)
         .select()
         .single();
       if (eventError) throw eventError;
