@@ -26,6 +26,14 @@ export default function EventDetail() {
   const { data: responseStats } = useEventResponseStats(eventId);
   const { data: responses = [] } = useEventResponses(eventId);
   const publishEvent = usePublishEvent();
+  const deleteEvent = useDeleteEvent();
+
+  const handleDelete = () => {
+    if (!eventId) return;
+    deleteEvent.mutate(eventId, {
+      onSuccess: () => navigate('/admin/events'),
+    });
+  };
 
   if (isLoading) {
     return (
