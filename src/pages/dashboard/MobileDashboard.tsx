@@ -172,14 +172,14 @@ function AdminMobileDashboard() {
   const totalOrders = (stats?.bookingOrders ?? 0) + (stats?.readyOrders ?? 0) + (stats?.deliveredOrders ?? 0);
 
   const quickActions: QuickAction[] = [
-    { id: 'orders', label: 'Orders', icon: <ShoppingCart className="h-5 w-5" />, href: '/sales/booking' },
-    { id: 'users', label: 'Users', icon: <Users className="h-5 w-5" />, href: '/settings/users' },
+    { id: 'orders', label: 'Orders', icon: <ShoppingCart className="h-5 w-5" />, href: '/orders' },
+    { id: 'users', label: 'Users', icon: <Users className="h-5 w-5" />, href: '/team?tab=users' },
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
-    { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/products' },
-    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/admin/claim-batches' },
-    { id: 'disputes', label: 'Disputes', icon: <AlertTriangle className="h-5 w-5" />, href: '/disputes', badge: stats?.disputes, badgeColor: 'warning' },
-    { id: 'bindings', label: 'Bindings', icon: <Settings className="h-5 w-5" />, href: '/settings/bindings' },
-    { id: 'overview', label: 'Overview', icon: <BarChart3 className="h-5 w-5" />, href: '/admin/overview' },
+    { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/inventory?tab=products' },
+    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=claims' },
+    { id: 'disputes', label: 'Disputes', icon: <AlertTriangle className="h-5 w-5" />, href: '/team?tab=disputes', badge: stats?.disputes, badgeColor: 'warning' },
+    { id: 'bindings', label: 'Bindings', icon: <Settings className="h-5 w-5" />, href: '/system?tab=bindings' },
+    { id: 'overview', label: 'Overview', icon: <BarChart3 className="h-5 w-5" />, href: '/finance?tab=overview' },
   ];
 
   const pipelineStages = [
