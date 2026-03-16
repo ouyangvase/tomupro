@@ -355,11 +355,7 @@ export function useAdminStats() {
           .select('id', { count: 'exact', head: true })
           .eq('runner_status', 'DELIVERED'),
         
-        // Disputes
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('reconciliation_status', 'DISPUTE'),
+        
         
         // Products
         supabase
