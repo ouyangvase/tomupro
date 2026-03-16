@@ -247,14 +247,14 @@ function SalespersonMobileDashboard() {
   const { data: actionStats } = useSalespersonActionRequiredStats();
 
   const quickActions: QuickAction[] = [
-    { id: 'new-order', label: 'New Order', icon: <ShoppingCart className="h-5 w-5" />, href: '/sales/booking' },
-    { id: 'booking', label: 'Booking', icon: <Package className="h-5 w-5" />, href: '/sales/booking' },
-    { id: 'ready', label: 'Ready', icon: <Truck className="h-5 w-5" />, href: '/sales/ready' },
-    { id: 'delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/sales/delivered' },
-    { id: 'action', label: 'Actions', icon: <AlertTriangle className="h-5 w-5" />, href: '/sales/action-required', badge: actionStats?.total, badgeColor: 'warning' },
+    { id: 'new-order', label: 'New Order', icon: <ShoppingCart className="h-5 w-5" />, href: '/orders?tab=booking' },
+    { id: 'booking', label: 'Booking', icon: <Package className="h-5 w-5" />, href: '/orders?tab=booking' },
+    { id: 'ready', label: 'Ready', icon: <Truck className="h-5 w-5" />, href: '/orders?tab=ready' },
+    { id: 'delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/orders?tab=delivered' },
+    { id: 'action', label: 'Actions', icon: <AlertTriangle className="h-5 w-5" />, href: '/orders?tab=action-required', badge: actionStats?.total, badgeColor: 'warning' },
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
-    { id: 'products', label: 'Products', icon: <PackageCheck className="h-5 w-5" />, href: '/products' },
-    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/claims/history' },
+    { id: 'products', label: 'Products', icon: <PackageCheck className="h-5 w-5" />, href: '/inventory?tab=products' },
+    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=claims' },
   ];
 
   return (
