@@ -36,7 +36,6 @@ export function useSalespersonStats() {
         readyRes,
         pendingDeliveryRes,
         pendingReconRes,
-        disputesRes,
         productsRes,
       ] = await Promise.all([
         // Booking orders count
