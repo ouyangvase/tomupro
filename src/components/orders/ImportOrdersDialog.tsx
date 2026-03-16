@@ -366,13 +366,13 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           const { data: order, error: orderError } = await supabase
             .from('orders')
             .insert([{
-              order_code: orderRef,
-              customer_name: group.orderData.customer_name,
+              order_code: toUpperLatin(orderRef),
+              customer_name: toUpperLatin(group.orderData.customer_name),
               phone: group.orderData.phone,
-              address: group.orderData.address,
-              area: group.orderData.area || null,
-              channel: group.orderData.channel || null,
-              notes: group.orderData.notes || null,
+              address: toUpperLatin(group.orderData.address),
+              area: toUpperLatin(group.orderData.area) || null,
+              channel: toUpperLatin(group.orderData.channel) || null,
+              notes: toUpperLatin(group.orderData.notes) || null,
               order_date: group.orderData.order_date || new Date().toISOString().split('T')[0],
               payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
