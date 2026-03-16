@@ -5,35 +5,29 @@ import { DispatchStatusCards } from '@/components/orders/DispatchStatusCards';
 import { DispatchBoard } from '@/components/orders/DispatchBoard';
 import capybaraRunner from '@/assets/capybara-runner.png';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useBulkUpdateOrders } from '@/hooks/useOrders';
 import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useAuth } from '@/contexts/AuthContext';
-import { logAudit } from '@/hooks/useAuditLogs';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
-import { useUserDirectory } from '@/hooks/useUserDirectory';
-import { useMyDrivers, useAssignOrderToDriver } from '@/hooks/useDrivers';
+import { useMyDrivers } from '@/hooks/useDrivers';
 import { exportSelectedRunnerOrderLines } from '@/lib/csv';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useValidAreas } from '@/hooks/useValidAreas';
 import type { Order } from '@/types/database';
-import { Package, Truck, Loader2, DollarSign, Search, Download, UserCheck, UserX, Clock } from 'lucide-react';
-import { useMarkDeliveredFast } from '@/hooks/useDeliveredOrders';
+import { Package, Truck, Loader2, DollarSign, Search, Download, Clock, Filter, X } from 'lucide-react';
 import { OrderEditor } from '@/components/orders/OrderEditor';
+import { OrderFiltersPanel, type OrderFilters } from '@/components/filters/OrderFiltersPanel';
 
 export default function RunnerInbox() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const { data: myDrivers = [] } = useMyDrivers();
-  const assignOrderToDriver = useAssignOrderToDriver();
+  const { data: validAreas = [] } = useValidAreas();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -43,15 +37,22 @@ export default function RunnerInbox() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [serverSearch, setServerSearch] = useState('');
+  const [filters, setFilters] = useState<OrderFilters>({});
   
   const bulkUpdateOrders = useBulkUpdateOrders();
   const submitBulkClaim = useSubmitBulkClaim();
-  const markDeliveredFast = useMarkDeliveredFast();
 
-  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders({
+  const areaOptions = useMemo(() => validAreas.map(a => ({ label: a, value: a })), [validAreas]);
+  const driverOptions = useMemo(() => myDrivers.map(d => ({ label: d.driver?.display_name || 'Unknown', value: d.driver_id })), [myDrivers]);
+
+  const { data: orders, isLoading, isFetching, pagination, setPage, refetch } = usePaginatedOrders({
     runnerId: user?.id,
     excludeDeliveredAndFailed: true,
     searchQuery: serverSearch || undefined,
+    runnerStatus: filters.runnerStatus as any,
+    areaFilter: filters.area,
+    driverId: filters.driverId,
+    reconciliationStatus: filters.reconciliationStatus as any,
   }, 50);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
@@ -156,6 +157,19 @@ export default function RunnerInbox() {
             />
           </div>
         </div>
+
+        {/* Filters */}
+        <OrderFiltersPanel
+          filters={filters}
+          onFiltersChange={setFilters}
+          areaOptions={areaOptions}
+          driverOptions={driverOptions}
+          showDriverFilter
+          showRunnerStatus
+          showDriverStatus={false}
+          showOrderStatus={false}
+          showReconciliationStatus
+        />
 
         {/* Bulk Actions */}
         {selectedRows.length > 0 && (
