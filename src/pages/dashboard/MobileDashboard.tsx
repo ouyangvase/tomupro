@@ -409,7 +409,7 @@ function RunnerMobileDashboard() {
         title="In Progress"
         value={stats?.todayStats.inProgress ?? 0}
         subtitle="Orders waiting for delivery"
-        viewAllLink="/runner/inbox"
+        viewAllLink="/dispatch?tab=inbox"
         viewAllLabel="View Inbox"
         icon={<Inbox className="h-5 w-5" />}
         isLoading={isLoading}
