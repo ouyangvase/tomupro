@@ -1406,6 +1406,261 @@ export type Database = {
           },
         ]
       }
+      event_audience_rules: {
+        Row: {
+          audience_type: string
+          audience_value: string | null
+          created_at: string
+          event_id: string
+          id: string
+          rule_type: string
+        }
+        Insert: {
+          audience_type: string
+          audience_value?: string | null
+          created_at?: string
+          event_id: string
+          id?: string
+          rule_type?: string
+        }
+        Update: {
+          audience_type?: string
+          audience_value?: string | null
+          created_at?: string
+          event_id?: string
+          id?: string
+          rule_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_audience_rules_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_responses: {
+        Row: {
+          event_id: string
+          id: string
+          note: string | null
+          responded_at: string
+          response: string
+          user_id: string
+        }
+        Insert: {
+          event_id: string
+          id?: string
+          note?: string | null
+          responded_at?: string
+          response: string
+          user_id: string
+        }
+        Update: {
+          event_id?: string
+          id?: string
+          note?: string | null
+          responded_at?: string
+          response?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_responses_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_responses_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_settings: {
+        Row: {
+          allow_maybe: boolean
+          dismissible: boolean
+          event_end_at: string | null
+          event_id: string
+          event_location: string | null
+          event_start_at: string | null
+          force_acknowledge: boolean
+          id: string
+          max_seats: number | null
+          require_response: boolean
+          response_type: string | null
+          rsvp_deadline: string | null
+          show_as_popup: boolean
+          show_frequency: string
+          show_in_notification_center: boolean
+          show_on_dashboard: boolean
+          show_on_mobile: boolean
+        }
+        Insert: {
+          allow_maybe?: boolean
+          dismissible?: boolean
+          event_end_at?: string | null
+          event_id: string
+          event_location?: string | null
+          event_start_at?: string | null
+          force_acknowledge?: boolean
+          id?: string
+          max_seats?: number | null
+          require_response?: boolean
+          response_type?: string | null
+          rsvp_deadline?: string | null
+          show_as_popup?: boolean
+          show_frequency?: string
+          show_in_notification_center?: boolean
+          show_on_dashboard?: boolean
+          show_on_mobile?: boolean
+        }
+        Update: {
+          allow_maybe?: boolean
+          dismissible?: boolean
+          event_end_at?: string | null
+          event_id?: string
+          event_location?: string | null
+          event_start_at?: string | null
+          force_acknowledge?: boolean
+          id?: string
+          max_seats?: number | null
+          require_response?: boolean
+          response_type?: string | null
+          rsvp_deadline?: string | null
+          show_as_popup?: boolean
+          show_frequency?: string
+          show_in_notification_center?: boolean
+          show_on_dashboard?: boolean
+          show_on_mobile?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_settings_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_user_delivery: {
+        Row: {
+          current_status: string
+          delivered_at: string
+          dismissed_at: string | null
+          event_id: string
+          id: string
+          last_popup_shown_at: string | null
+          popup_shown_count: number
+          seen_at: string | null
+          user_id: string
+        }
+        Insert: {
+          current_status?: string
+          delivered_at?: string
+          dismissed_at?: string | null
+          event_id: string
+          id?: string
+          last_popup_shown_at?: string | null
+          popup_shown_count?: number
+          seen_at?: string | null
+          user_id: string
+        }
+        Update: {
+          current_status?: string
+          delivered_at?: string
+          dismissed_at?: string | null
+          event_id?: string
+          id?: string
+          last_popup_shown_at?: string | null
+          popup_shown_count?: number
+          seen_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_user_delivery_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_user_delivery_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      events: {
+        Row: {
+          cover_image_url: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          end_at: string | null
+          expire_at: string | null
+          id: string
+          publish_at: string | null
+          status: string
+          subtitle: string | null
+          thumbnail_image_url: string | null
+          title: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          cover_image_url?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          end_at?: string | null
+          expire_at?: string | null
+          id?: string
+          publish_at?: string | null
+          status?: string
+          subtitle?: string | null
+          thumbnail_image_url?: string | null
+          title: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          end_at?: string | null
+          expire_at?: string | null
+          id?: string
+          publish_at?: string | null
+          status?: string
+          subtitle?: string | null
+          thumbnail_image_url?: string | null
+          title?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expected_date_history: {
         Row: {
           changed_at: string
