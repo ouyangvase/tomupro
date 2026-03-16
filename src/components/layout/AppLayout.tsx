@@ -5,13 +5,20 @@ import { PushNotificationPrompt } from "@/components/notifications/PushNotificat
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useRealtimeNotifications } from "@/hooks/useNotificationSystem";
 import { GlobalSearchBar } from "@/components/GlobalSearchBar";
+import { useIsEmbedded } from "@/contexts/EmbeddedContext";
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const isEmbedded = useIsEmbedded();
   useRealtimeNotifications();
+
+  // When embedded inside a module page, skip the shell
+  if (isEmbedded) {
+    return <>{children}</>;
+  }
 
   return (
     <SidebarProvider>
