@@ -6,7 +6,7 @@ import {
   Award, ClipboardCheck, BarChart3, AlertTriangle, Receipt, DollarSign,
   RotateCcw, Layers, PackageCheck, Wrench, History, Ticket, Share2,
   Settings, FileText, LogOut, Loader2, ChevronDown, Star, Plus,
-  Database, ShieldCheck, WarehouseIcon
+  Database, ShieldCheck, WarehouseIcon, Calendar, Megaphone
 } from "lucide-react";
 import { Warehouse as WarehouseIconLucide } from "lucide-react";
 import capybaraHero from "@/assets/capybara-hero.png";
