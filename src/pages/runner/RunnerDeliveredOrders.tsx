@@ -16,6 +16,7 @@ import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
+import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
 import { useDeliveredSummaryFiltered } from '@/hooks/useDeliveredOrders';
 import { Skeleton } from '@/components/ui/skeleton';
