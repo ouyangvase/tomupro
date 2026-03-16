@@ -1,16 +1,11 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -18,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users, FileText, Package, Check } from 'lucide-react';
 import { parseCSVRaw, downloadTemplate, HEADER_ALIASES } from '@/lib/csv';
 import { validateOrderLines, type ValidatedOrderLine } from '@/lib/csvValidation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +23,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { ColumnMappingStep, areRequiredFieldsMapped, applyColumnMapping } from './ColumnMappingStep';
+import { cn } from '@/lib/utils';
+import capybaraImport from '@/assets/capybara-import.png';
+import capybaraEmpty from '@/assets/capybara-empty.png';
 
 interface ImportOrdersDialogProps {
   open: boolean;
@@ -37,36 +35,72 @@ interface ImportOrdersDialogProps {
 
 type ImportStep = 'upload' | 'mapping' | 'preview';
 
+/* ─── Step Indicator ─── */
+function StepIndicator({ current }: { current: ImportStep }) {
+  const steps = [
+    { id: 'upload' as const, label: 'Upload File', num: 1 },
+    { id: 'mapping' as const, label: 'Map Columns', num: 2 },
+    { id: 'preview' as const, label: 'Import Orders', num: 3 },
+  ];
+  const currentIdx = steps.findIndex(s => s.id === current);
+
+  return (
+    <div className="flex items-center justify-center gap-0">
+      {steps.map((step, i) => (
+        <div key={step.id} className="flex items-center">
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
+              i <= currentIdx
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted text-muted-foreground"
+            )}>
+              {i < currentIdx ? <Check className="h-4 w-4" /> : step.num}
+            </div>
+            <span className={cn(
+              "text-xs font-medium hidden sm:inline transition-colors",
+              i <= currentIdx ? "text-foreground" : "text-muted-foreground"
+            )}>
+              {step.label}
+            </span>
+          </div>
+          {i < steps.length - 1 && (
+            <div className={cn(
+              "w-8 sm:w-12 h-0.5 mx-2 rounded-full transition-colors",
+              i < currentIdx ? "bg-primary" : "bg-border"
+            )} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKING' }: ImportOrdersDialogProps) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: teamMembers = [] } = useTeamMembers();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // Order owner selection for managers/admins
+  const dropZoneRef = useRef<HTMLDivElement>(null);
+
   const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
-  
-  // Products filtered to selected order owner
   const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
-  
-  // Owner options for selection
+
   const ownerOptions = useMemo(() => {
-    if (role === 'salesperson') return []; // No selection needed
+    if (role === 'salesperson') return [];
     if (role === 'manager' && profile) {
       return [
         { id: profile.id, display_name: `${profile.display_name} (My Orders)` },
         ...teamMembers.map(m => ({ id: m.id, display_name: m.display_name })),
       ];
     }
-    // Admin would need to fetch all users - for now use profile
     if (role === 'admin' && profile) {
       return [{ id: profile.id, display_name: `${profile.display_name} (Me)` }];
     }
     return [];
   }, [role, profile, teamMembers]);
-  
-  // State
+
   const [file, setFile] = useState<File | null>(null);
   const [rawData, setRawData] = useState<{ headers: string[]; rows: Record<string, string>[] } | null>(null);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
@@ -74,40 +108,34 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const [importing, setImporting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [successCount, setSuccessCount] = useState(0);
-  
-  // Reset orderOwnerId when dialog opens
+  const [isDragging, setIsDragging] = useState(false);
+
   useEffect(() => {
     if (open && profile?.id) {
       setOrderOwnerId(profile.id);
     }
   }, [open, profile?.id]);
 
-  // Auto-suggest mappings based on header aliases
   const suggestMappings = (headers: string[]): Record<string, string> => {
     const mapping: Record<string, string> = {};
-    
     for (const header of headers) {
       const normalized = header.toLowerCase().trim().replace(/[\s_-]+/g, ' ').replace(/\s+/g, ' ');
-      
       for (const [standardName, aliases] of Object.entries(HEADER_ALIASES)) {
         const aliasArray = aliases as string[];
-        const matched = aliasArray.some(alias => 
-          alias === normalized || 
-          alias === normalized.replace(/\s/g, '_') || 
+        const matched = aliasArray.some(alias =>
+          alias === normalized ||
+          alias === normalized.replace(/\s/g, '_') ||
           alias === normalized.replace(/\s/g, '')
         );
-        
         if (matched && !Object.values(mapping).includes(standardName)) {
           mapping[header] = standardName;
           break;
         }
       }
     }
-    
     return mapping;
   };
 
-  // Clear all state and reset file input
   const clearErrors = () => {
     setErrors([]);
     setFile(null);
@@ -115,18 +143,16 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     setColumnMapping({});
     setStep('upload');
     setSuccessCount(0);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    // Validate file size (max 5MB)
+  const processFile = useCallback(async (selectedFile: File) => {
     if (selectedFile.size > 5 * 1024 * 1024) {
       toast({ variant: 'destructive', title: 'File too large', description: 'Maximum file size is 5MB' });
+      return;
+    }
+    if (!selectedFile.name.endsWith('.csv')) {
+      toast({ variant: 'destructive', title: 'Invalid format', description: 'Please upload a CSV file' });
       return;
     }
 
@@ -136,133 +162,117 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
     const text = await selectedFile.text();
     const parsed = parseCSVRaw(text);
-    
+
     if (parsed.headers.length === 0) {
       toast({ variant: 'destructive', title: 'Invalid CSV', description: 'No headers found in file' });
       return;
     }
 
     setRawData(parsed);
-    
-    // Auto-suggest column mappings
     const suggestedMapping = suggestMappings(parsed.headers);
     setColumnMapping(suggestedMapping);
-    
-    // Move to mapping step
     setStep('mapping');
+  }, [toast]);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) processFile(selectedFile);
   };
 
-  const handleBackToUpload = () => {
-    setStep('upload');
-    setErrors([]);
-  };
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile) processFile(droppedFile);
+  }, [processFile]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleBackToUpload = () => { setStep('upload'); setErrors([]); };
 
   const handleProceedToPreview = () => {
     if (!rawData || !areRequiredFieldsMapped(columnMapping)) {
       toast({ variant: 'destructive', title: 'Missing required fields', description: 'Please map all required fields' });
       return;
     }
-
-    // Apply mapping and validate
     const mappedRows = applyColumnMapping(rawData.rows, columnMapping);
     const validation = validateOrderLines(mappedRows);
-    
     if (validation.errors.length > 0) {
       setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
     } else {
       setErrors([]);
     }
-    
     setStep('preview');
   };
 
-  const handleBackToMapping = () => {
-    setStep('mapping');
-    setErrors([]);
-  };
+  const handleBackToMapping = () => { setStep('mapping'); setErrors([]); };
 
-  // Get mapped preview data
   const mappedPreview = useMemo(() => {
     if (!rawData) return [];
     return applyColumnMapping(rawData.rows.slice(0, 5), columnMapping);
   }, [rawData, columnMapping]);
 
-  /**
-   * Validates SKU ownership for the selected order owner - ALL-OR-NOTHING approach
-   */
   const validateSkuOwnership = (
     validatedRows: ValidatedOrderLine[],
     ownerProductsList: typeof ownerProducts
   ): { valid: boolean; errors: string[] } => {
     const skuErrors: string[] = [];
-
     for (let i = 0; i < validatedRows.length; i++) {
       const row = validatedRows[i];
       const csvRowNum = i + 2;
       const skuValue = row.sku_name_or_code?.trim();
-
       if (!skuValue) continue;
-
-      const codeMatches = ownerProductsList.filter(
-        (p: any) => p.sku_code?.toLowerCase() === skuValue.toLowerCase()
-      );
-
+      const codeMatches = ownerProductsList.filter((p: any) => p.sku_code?.toLowerCase() === skuValue.toLowerCase());
       if (codeMatches.length === 1) continue;
-
       if (codeMatches.length > 1) {
         skuErrors.push(`Row ${csvRowNum}: Multiple products with sku_code="${skuValue}"; please use unique sku_code`);
         continue;
       }
-
-      const nameMatches = ownerProductsList.filter(
-        (p: any) => p.sku_name.toLowerCase() === skuValue.toLowerCase()
-      );
-
+      const nameMatches = ownerProductsList.filter((p: any) => p.sku_name.toLowerCase() === skuValue.toLowerCase());
       if (nameMatches.length === 0) {
         skuErrors.push(`Row ${csvRowNum}: SKU not found in the selected owner's product list (sku_name_or_code="${skuValue}")`);
       } else if (nameMatches.length > 1) {
         skuErrors.push(`Row ${csvRowNum}: SKU name is ambiguous (${nameMatches.length} matches); please use sku_code (sku_name="${skuValue}")`);
       }
     }
-
     return { valid: skuErrors.length === 0, errors: skuErrors };
   };
 
   const findProductId = (skuNameOrCode: string): string | null => {
     if (!skuNameOrCode.trim()) return null;
     let product = ownerProducts.find((p: any) => p.sku_code?.toLowerCase() === skuNameOrCode.toLowerCase());
-    if (!product) {
-      product = ownerProducts.find((p: any) => p.sku_name.toLowerCase() === skuNameOrCode.toLowerCase());
-    }
+    if (!product) product = ownerProducts.find((p: any) => p.sku_name.toLowerCase() === skuNameOrCode.toLowerCase());
     return product?.id || null;
   };
 
   const handleImport = async () => {
     if (!rawData || !profile) return;
-
     setImporting(true);
     setErrors([]);
     setSuccessCount(0);
 
     try {
-      // Apply column mapping
       const mappedRows = applyColumnMapping(rawData.rows, columnMapping);
-      
-      // Validate all rows
       const validation = validateOrderLines(mappedRows);
       if (validation.errors.length > 0) {
         setErrors(validation.errors.map(e => `Row ${e.row}: ${e.message}`));
         setImporting(false);
         return;
       }
-
       if (validation.valid.length === 0) {
         setErrors(['No valid rows found in the file']);
         setImporting(false);
         return;
       }
 
-      // Always validate SKU ownership against the selected order owner's products
       const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
       if (!skuValidation.valid) {
         setErrors(['Import FAILED: Invalid SKUs found. No orders were imported.', '', ...skuValidation.errors]);
@@ -270,73 +280,54 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         return;
       }
 
-      // Group by order_ref and validate for duplicate SKUs
       const orderGroups = new Map<string, {
         orderRef: string;
         orderData: ValidatedOrderLine;
         items: { sku_name_or_code: string; qty: number; price: number; productId: string | null }[];
       }>();
-      
       const duplicateSkuErrors: string[] = [];
-      
+
       for (const row of validation.valid) {
         const orderRef = row.order_ref.trim();
         const skuValue = row.sku_name_or_code?.trim();
-        
         if (!skuValue) {
           duplicateSkuErrors.push(`Order ${orderRef}: SKU code is required for all order items.`);
           continue;
         }
-        
-        // Find product ID for this SKU
         const productId = findProductId(skuValue);
         if (!productId) {
           duplicateSkuErrors.push(`Order ${orderRef}: SKU "${skuValue}" not found in product list.`);
           continue;
         }
-        
         if (!orderGroups.has(orderRef)) {
           orderGroups.set(orderRef, { orderRef, orderData: row, items: [] });
         }
-
         const group = orderGroups.get(orderRef)!;
-        
-        // Check for duplicate SKU within the same order
         const existingItem = group.items.find(i => i.productId === productId);
         if (existingItem) {
-          duplicateSkuErrors.push(`Order ${orderRef}: Duplicate SKU detected - "${skuValue}" appears more than once. Each SKU can only appear once per order.`);
+          duplicateSkuErrors.push(`Order ${orderRef}: Duplicate SKU detected - "${skuValue}" appears more than once.`);
           continue;
         }
-        
-        group.items.push({
-          sku_name_or_code: skuValue,
-          qty: row.qty,
-          price: row.price,
-          productId,
-        });
+        group.items.push({ sku_name_or_code: skuValue, qty: row.qty, price: row.price, productId });
       }
-      
-      // If there are duplicate SKU errors, reject the entire import
+
       if (duplicateSkuErrors.length > 0) {
         setErrors(['Import FAILED: Validation errors found. No orders were imported.', '', ...duplicateSkuErrors]);
         setImporting(false);
         return;
       }
-      
-      // Check that all orders have at least one valid item
+
       for (const [orderRef, group] of orderGroups) {
         if (group.items.length === 0) {
           duplicateSkuErrors.push(`Order ${orderRef}: No valid SKU items found.`);
         }
       }
-      
       if (duplicateSkuErrors.length > 0) {
         setErrors(['Import FAILED: Orders without valid items. No orders were imported.', '', ...duplicateSkuErrors]);
         setImporting(false);
         return;
       }
 
-      // Create orders
       const newErrors: string[] = [];
       let created = 0;
 
@@ -363,7 +354,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
               salesperson_id: profile.id,
-              order_owner_id: orderOwnerId, // Use selected order owner for SKU validation
+              order_owner_id: orderOwnerId,
               status: defaultStatus,
               total_qty: totalQty,
               total_amount: totalAmount,
@@ -386,7 +377,6 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               line_total: item.price,
             });
           }
-
           created++;
         } catch (err: any) {
           newErrors.push(`Order ${orderRef}: ${err.message}`);
@@ -416,246 +406,365 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   };
 
   const canProceedToPreview = areRequiredFieldsMapped(columnMapping);
+  const selectedOwner = ownerOptions.find(o => o.id === orderOwnerId);
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) clearErrors(); onOpenChange(isOpen); }}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto p-3 sm:p-6">
-        <DialogHeader className="pb-2">
-          <DialogTitle className="text-base sm:text-lg">Import Orders</DialogTitle>
-          <DialogDescription className="text-xs sm:text-sm leading-relaxed">
-            {step === 'upload' && 'Upload a CSV file with orders.'}
-            {step === 'mapping' && 'Map your CSV columns to the required fields.'}
-            {step === 'preview' && 'Review and confirm your import.'}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] p-0 overflow-hidden rounded-2xl border-border/40">
+        {/* ─── Hero Header ─── */}
+        <div className="relative px-6 pt-6 pb-5 bg-gradient-to-br from-primary/8 via-primary/4 to-transparent border-b border-border/40">
+          <div className="flex items-start gap-4">
+            <img
+              src={capybaraImport}
+              alt="Import Assistant"
+              className="h-16 w-16 object-contain drop-shadow-md flex-shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xl font-bold text-foreground tracking-tight">Import Orders from CSV</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Upload a spreadsheet and automatically create orders
+              </p>
+            </div>
+          </div>
 
-        {/* Step indicator */}
-        <div className="flex items-center justify-center gap-1 text-xs mb-2">
-          <span className={`px-2 py-0.5 rounded ${step === 'upload' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            1. Upload
-          </span>
-          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-          <span className={`px-2 py-0.5 rounded ${step === 'mapping' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            2. Map Columns
-          </span>
-          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-          <span className={`px-2 py-0.5 rounded ${step === 'preview' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            3. Import
-          </span>
+          {/* Step Indicator */}
+          <div className="mt-5">
+            <StepIndicator current={step} />
+          </div>
         </div>
 
-        {/* Step: Upload */}
-        {step === 'upload' && (
-          <div className="space-y-4">
-            {/* Order Owner Selection for managers/admins */}
-            {(role === 'manager' || role === 'admin') && ownerOptions.length > 0 && (
-              <div className="p-4 border rounded-lg bg-muted/30">
-                <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-4 w-4 text-primary" />
-                  <Label className="text-sm font-medium">Order Owner</Label>
+        {/* ─── Content ─── */}
+        <div className="overflow-y-auto px-6 py-5 max-h-[calc(90vh-220px)]">
+          {/* ═══ Step: Upload ═══ */}
+          {step === 'upload' && (
+            <div className="space-y-5">
+              {/* Owner Selection Card */}
+              {(role === 'manager' || role === 'admin') && ownerOptions.length > 0 && (
+                <div className="rounded-2xl border-2 border-primary/20 bg-primary/5 p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                      <Users className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Order Owner</h3>
+                      <p className="text-[11px] text-muted-foreground">Only SKUs belonging to this user will be matched</p>
+                    </div>
+                  </div>
+                  <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
+                    <SelectTrigger className="h-11 rounded-xl bg-background border-border/60">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-bold">
+                          {(selectedOwner?.display_name || 'U')[0].toUpperCase()}
+                        </div>
+                        <SelectValue placeholder="Select owner" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                      {ownerOptions.map(opt => (
+                        <SelectItem key={opt.id} value={opt.id} className="rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
+                              {opt.display_name[0].toUpperCase()}
+                            </div>
+                            {opt.display_name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select who owns these orders" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ownerOptions.map(opt => (
-                      <SelectItem key={opt.id} value={opt.id}>
-                        {opt.display_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Only SKUs belonging to this user will be matched during import
-                </p>
+              )}
+
+              {/* Upload Zone */}
+              <div
+                ref={dropZoneRef}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                className={cn(
+                  "relative rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-300 cursor-pointer",
+                  isDragging
+                    ? "border-primary bg-primary/5 scale-[1.01]"
+                    : file
+                      ? "border-primary/40 bg-primary/5"
+                      : "border-border/60 bg-muted/20 hover:border-primary/30 hover:bg-muted/40"
+                )}
+                onClick={() => !file && fileInputRef.current?.click()}
+              >
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+
+                {file ? (
+                  /* File Uploaded State */
+                  <div className="space-y-3">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 mx-auto">
+                      <CheckCircle className="h-7 w-7 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{file.name}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {rawData ? `${rawData.rows.length} rows detected` : 'Processing...'}
+                      </p>
+                      {rawData && (
+                        <p className="text-xs text-primary font-medium mt-0.5">✓ Ready for column mapping</p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearErrors();
+                      }}
+                    >
+                      <X className="h-3.5 w-3.5 mr-1.5" />
+                      Remove & re-upload
+                    </Button>
+                  </div>
+                ) : (
+                  /* Empty Upload State */
+                  <div className="space-y-3">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/60 mx-auto">
+                      <Upload className="h-7 w-7 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        {isDragging ? 'Drop your file here!' : 'Drag your CSV file here'}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">or click to select a file</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                    >
+                      <Upload className="h-3.5 w-3.5 mr-1.5" />
+                      Select File
+                    </Button>
+                    <div className="flex items-center justify-center gap-4 text-[11px] text-muted-foreground/60 pt-1">
+                      <span>CSV (UTF-8)</span>
+                      <span className="h-3 w-px bg-border" />
+                      <span>Max 10,000 rows</span>
+                      <span className="h-3 w-px bg-border" />
+                      <span>Max 5MB</span>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-            
-            <Tabs defaultValue="upload" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 h-8 sm:h-9">
-                <TabsTrigger value="upload" className="text-xs sm:text-sm">Upload CSV</TabsTrigger>
-                <TabsTrigger value="templates" className="text-xs sm:text-sm">Templates</TabsTrigger>
-              </TabsList>
 
-              <TabsContent value="upload" className="space-y-3 mt-3">
-                <div className="border-2 border-dashed rounded-lg p-4 sm:p-6 text-center">
-                  <Input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                  <FileSpreadsheet className="h-6 w-6 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-2 sm:mb-3" />
-                  <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 break-all px-2">
-                    {file ? file.name : 'Select a CSV file to import'}
-                  </p>
-                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-8">
-                    <Upload className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5" />
-                    <span className="text-xs sm:text-sm">Select File</span>
-                  </Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="templates" className="space-y-3 mt-3">
-                <div className="grid gap-2.5">
-                  <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-xs sm:text-sm">Order Lines Template</h4>
-                      <p className="text-xs text-muted-foreground truncate">Multi-SKU per order</p>
+              {/* Template Cards */}
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Download Templates</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-border/50 bg-card p-4 hover:border-border hover:shadow-sm transition-all">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary flex-shrink-0">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-semibold text-foreground">Basic Template</h4>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                          name, phone, address, sku, qty, payment
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mt-2 h-7 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 rounded-lg"
+                          onClick={() => downloadTemplate('orders')}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Download
+                        </Button>
+                      </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => downloadTemplate('order_lines')} className="shrink-0 h-7 sm:h-8">
-                      <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                      <span className="text-xs">Download</span>
-                    </Button>
                   </div>
-                  <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 border rounded-lg">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-xs sm:text-sm">Simple Orders Template</h4>
-                      <p className="text-xs text-muted-foreground truncate">Basic orders</p>
+
+                  <div className="rounded-xl border border-border/50 bg-card p-4 hover:border-border hover:shadow-sm transition-all">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent flex-shrink-0">
+                        <Package className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-semibold text-foreground">Multi-SKU Template</h4>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                          area, channel, pickup date, notes, multiple items
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mt-2 h-7 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 rounded-lg"
+                          onClick={() => downloadTemplate('order_lines')}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Download
+                        </Button>
+                      </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => downloadTemplate('orders')} className="shrink-0 h-7 sm:h-8">
-                      <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                      <span className="text-xs">Download</span>
-                    </Button>
                   </div>
                 </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
+              </div>
+            </div>
+          )}
 
-        {/* Step: Column Mapping */}
-        {step === 'mapping' && rawData && (
-          <div className="space-y-3">
-            <Label className="text-xs font-medium">
-              Map columns from: <span className="text-muted-foreground">{file?.name}</span>
-            </Label>
-            <ColumnMappingStep
-              csvHeaders={rawData.headers}
-              columnMapping={columnMapping}
-              onMappingChange={setColumnMapping}
-              sampleData={rawData.rows.slice(0, 3)}
-            />
-          </div>
-        )}
+          {/* ═══ Step: Column Mapping ═══ */}
+          {step === 'mapping' && rawData && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border/50 bg-muted/20 px-4 py-3 flex items-center gap-3">
+                <FileSpreadsheet className="h-4 w-4 text-primary flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{file?.name}</p>
+                  <p className="text-[11px] text-muted-foreground">{rawData.headers.length} columns · {rawData.rows.length} rows</p>
+                </div>
+              </div>
 
-        {/* Step: Preview & Import */}
-        {step === 'preview' && (
-          <div className="space-y-3">
-            {mappedPreview.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">Preview (mapped data)</Label>
-                <div className="border rounded-lg overflow-x-auto text-xs">
-                  <table className="w-full min-w-[400px]">
-                    <thead className="bg-muted/50">
-                      <tr>
-                        {Object.keys(mappedPreview[0]).slice(0, 6).map((key) => (
-                          <th key={key} className="px-2 py-1.5 text-left font-medium whitespace-nowrap">
-                            {key}
-                          </th>
-                        ))}
-                        {Object.keys(mappedPreview[0]).length > 6 && (
-                          <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">
-                            +{Object.keys(mappedPreview[0]).length - 6} more
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mappedPreview.slice(0, 3).map((row, i) => (
-                        <tr key={i} className="border-t">
-                          {Object.values(row).slice(0, 6).map((val, j) => (
-                            <td key={j} className="px-2 py-1.5 max-w-[80px] truncate">
-                              {val || <span className="text-muted-foreground italic">empty</span>}
-                            </td>
+              <ColumnMappingStep
+                csvHeaders={rawData.headers}
+                columnMapping={columnMapping}
+                onMappingChange={setColumnMapping}
+                sampleData={rawData.rows.slice(0, 3)}
+              />
+            </div>
+          )}
+
+          {/* ═══ Step: Preview & Import ═══ */}
+          {step === 'preview' && (
+            <div className="space-y-4">
+              {mappedPreview.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground">Data Preview</Label>
+                  <div className="border border-border/50 rounded-xl overflow-x-auto">
+                    <table className="w-full min-w-[400px] text-xs">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          {Object.keys(mappedPreview[0]).slice(0, 6).map((key) => (
+                            <th key={key} className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">{key}</th>
                           ))}
-                          {Object.keys(row).length > 6 && (
-                            <td className="px-2 py-1.5 text-muted-foreground">...</td>
+                          {Object.keys(mappedPreview[0]).length > 6 && (
+                            <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                              +{Object.keys(mappedPreview[0]).length - 6} more
+                            </th>
                           )}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  {rawData?.rows.length} total rows
-                </p>
-              </div>
-            )}
-
-            {successCount > 0 && (
-              <div className="bg-primary/10 border border-primary/30 rounded-lg p-2.5 sm:p-3">
-                <div className="flex items-center gap-2 text-primary">
-                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="font-medium text-xs sm:text-sm">Imported {successCount} orders</span>
-                </div>
-              </div>
-            )}
-
-            {errors.length > 0 && (
-              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2.5 sm:p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5 text-destructive">
-                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="font-medium text-xs sm:text-sm">Errors ({errors.filter(e => e.trim()).length})</span>
+                      </thead>
+                      <tbody>
+                        {mappedPreview.slice(0, 3).map((row, i) => (
+                          <tr key={i} className="border-t border-border/30">
+                            {Object.values(row).slice(0, 6).map((val, j) => (
+                              <td key={j} className="px-3 py-2 max-w-[100px] truncate text-foreground">
+                                {val || <span className="text-muted-foreground italic">—</span>}
+                              </td>
+                            ))}
+                            {Object.keys(row).length > 6 && (
+                              <td className="px-3 py-2 text-muted-foreground">…</td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/20"
-                    onClick={clearErrors}
-                  >
-                    <X className="h-3 w-3 mr-1" />
-                    Clear
-                  </Button>
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    Showing 3 of {rawData?.rows.length} total rows
+                  </p>
                 </div>
-                <ul className="text-xs text-destructive space-y-0.5 max-h-24 overflow-y-auto">
-                  {errors.filter(e => e.trim()).slice(0, 10).map((err, i) => (
-                    <li key={i} className="break-words leading-relaxed">{err}</li>
-                  ))}
-                  {errors.filter(e => e.trim()).length > 10 && (
-                    <li className="text-destructive/70 italic">+{errors.filter(e => e.trim()).length - 10} more errors</li>
-                  )}
-                </ul>
-              </div>
+              )}
+
+              {successCount > 0 && (
+                <div className="rounded-xl bg-primary/8 border border-primary/20 p-4 flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <CheckCircle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Successfully imported {successCount} orders</p>
+                    <p className="text-xs text-muted-foreground">Orders are now ready in your inbox</p>
+                  </div>
+                </div>
+              )}
+
+              {errors.length > 0 && (
+                <div className="rounded-xl bg-destructive/8 border border-destructive/20 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-destructive">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                      <span className="font-semibold text-sm">Errors ({errors.filter(e => e.trim()).length})</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                      onClick={clearErrors}
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Reset
+                    </Button>
+                  </div>
+                  <ul className="text-xs text-destructive/90 space-y-1 max-h-28 overflow-y-auto">
+                    {errors.filter(e => e.trim()).slice(0, 10).map((err, i) => (
+                      <li key={i} className="break-words leading-relaxed pl-1">• {err}</li>
+                    ))}
+                    {errors.filter(e => e.trim()).length > 10 && (
+                      <li className="text-destructive/60 italic pl-1">+{errors.filter(e => e.trim()).length - 10} more errors</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ─── Footer Actions ─── */}
+        <div className="border-t border-border/40 px-6 py-4 bg-card flex items-center justify-between gap-3">
+          <div>
+            {step === 'upload' && (
+              <Button variant="outline" onClick={() => onOpenChange(false)} className="h-10 rounded-xl">
+                Cancel
+              </Button>
+            )}
+            {step === 'mapping' && (
+              <Button variant="outline" onClick={handleBackToUpload} className="h-10 rounded-xl">
+                <ArrowLeft className="h-4 w-4 mr-1.5" />
+                Back
+              </Button>
+            )}
+            {step === 'preview' && (
+              <Button variant="outline" onClick={handleBackToMapping} className="h-10 rounded-xl">
+                <ArrowLeft className="h-4 w-4 mr-1.5" />
+                Back
+              </Button>
             )}
           </div>
-        )}
 
-        <DialogFooter className="flex-row gap-2 pt-2 sm:pt-3">
-          {step === 'upload' && (
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="flex-1 sm:flex-none h-8">
-              Cancel
-            </Button>
-          )}
-          
-          {step === 'mapping' && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleBackToUpload} className="flex-1 sm:flex-none h-8">
-                <ArrowLeft className="h-3 w-3 mr-1" />
-                Back
+          <div>
+            {step === 'upload' && file && rawData && (
+              <Button onClick={() => setStep('mapping')} className="h-10 rounded-xl font-semibold">
+                Continue to Column Mapping
+                <ArrowRight className="h-4 w-4 ml-1.5" />
               </Button>
-              <Button size="sm" onClick={handleProceedToPreview} disabled={!canProceedToPreview} className="flex-1 sm:flex-none h-8">
-                Next
-                <ArrowRight className="h-3 w-3 ml-1" />
+            )}
+            {step === 'mapping' && (
+              <Button onClick={handleProceedToPreview} disabled={!canProceedToPreview} className="h-10 rounded-xl font-semibold">
+                Review & Import
+                <ArrowRight className="h-4 w-4 ml-1.5" />
               </Button>
-            </>
-          )}
-          
-          {step === 'preview' && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleBackToMapping} className="flex-1 sm:flex-none h-8">
-                <ArrowLeft className="h-3 w-3 mr-1" />
-                Back
+            )}
+            {step === 'preview' && (
+              <Button onClick={handleImport} disabled={importing || errors.length > 0} className="h-10 rounded-xl font-semibold">
+                {importing ? 'Importing...' : `🚀 Import ${rawData?.rows.length || 0} Orders`}
               </Button>
-              <Button size="sm" onClick={handleImport} disabled={importing || errors.length > 0} className="flex-1 sm:flex-none h-8">
-                {importing ? 'Importing...' : 'Import'}
-              </Button>
-            </>
-          )}
-        </DialogFooter>
+            )}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
