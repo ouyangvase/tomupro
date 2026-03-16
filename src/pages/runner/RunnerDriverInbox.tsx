@@ -210,6 +210,9 @@ export default function RunnerDriverInbox() {
         (order.driver_id === null || order.driver_status === 'UNASSIGNED' || order.driver_status === 'DRIVER_FAILED' ||
           order.operational_status === 'DRIVER_FAILED' || order.operational_status === 'RESCHEDULED' || order.operational_status === 'NEW');
     });
+    if (assignAreaFilter !== 'all') {
+      filtered = filtered.filter(o => o.area === assignAreaFilter);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(o =>
@@ -220,7 +223,7 @@ export default function RunnerDriverInbox() {
       );
     }
     return filtered;
-  }, [orders, searchQuery]);
+  }, [orders, searchQuery, assignAreaFilter]);
 
   // TAB B: Driver updates
   const driverUpdatesOrders = useMemo(() => {
