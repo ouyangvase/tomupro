@@ -207,7 +207,7 @@ function AdminMobileDashboard() {
       />
 
       {/* Alerts */}
-      {((actionStats?.failedDelivery ?? 0) > 0 || (stats?.disputes ?? 0) > 0) && (
+      {((actionStats?.failedDelivery ?? 0) > 0) && (
         <div className="space-y-3">
           <h3 className="text-base font-bold text-foreground flex items-center gap-2">
             <Zap className="h-4 w-4 text-[hsl(var(--status-error))]" />
@@ -215,7 +215,6 @@ function AdminMobileDashboard() {
           </h3>
           <div className="grid grid-cols-2 gap-3">
             <AlertCard label="Failed Deliveries" value={actionStats?.failedDelivery ?? 0} icon={<XCircle className="h-4 w-4" />} href="/sales/action-required" severity="error" />
-            <AlertCard label="Disputes" value={stats?.disputes ?? 0} icon={<AlertTriangle className="h-4 w-4" />} href="/disputes" severity="warning" />
           </div>
         </div>
       )}
