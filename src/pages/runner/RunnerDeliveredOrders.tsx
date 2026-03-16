@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/pagination';
 
 // Pagination constants
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 50;
 
 // Helper function for page number display
 function getPageNumbers(current: number, total: number): (number | '...')[] {
