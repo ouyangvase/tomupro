@@ -1337,7 +1337,7 @@ export default function RunnerDeliveredOrders() {
                     ))}
                     <PaginationItem>
                       <PaginationNext
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                         className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                       />
                     </PaginationItem>
