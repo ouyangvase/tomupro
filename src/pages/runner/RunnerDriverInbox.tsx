@@ -1,5 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { PageHero } from '@/components/dashboard/PageHero';
+import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
+import capybaraDriver from '@/assets/capybara-driver.png';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
