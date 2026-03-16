@@ -83,6 +83,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: teamMembers = [] } = useTeamMembers();
+  const { data: validAreas = [] } = useValidAreas();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
