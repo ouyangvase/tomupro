@@ -226,6 +226,13 @@ function AppRoutes() {
       <Route path="/runner/cash-settlement" element={<ProtectedRoute><RunnerCashSettlement /></ProtectedRoute>} />
       <Route path="/runner/cash-driver" element={<ProtectedRoute><RunnerCashDriver /></ProtectedRoute>} />
       
+      {/* Events */}
+      <Route path="/admin/events" element={<ProtectedRoute><EventsAdmin /></ProtectedRoute>} />
+      <Route path="/admin/events/create" element={<ProtectedRoute><EventCreate /></ProtectedRoute>} />
+      <Route path="/admin/events/:eventId" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
+      <Route path="/admin/events/:eventId/analytics" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
+      <Route path="/events" element={<ProtectedRoute><UserEventsPage /></ProtectedRoute>} />
+      
       <Route path="/settings/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
