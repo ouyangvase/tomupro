@@ -214,15 +214,6 @@ export default function ReconciliationAdmin() {
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Approve ({selectedOrders.length})
                 </Button>
-                <Button 
-                  variant="destructive" 
-                  onClick={() => setDisputeDialogOpen(true)}
-                  disabled={bulkUpdate.isPending}
-                  size="sm"
-                >
-                  <AlertTriangle className="h-4 w-4 mr-2" />
-                  Dispute ({selectedOrders.length})
-                </Button>
               </div>
             ) : undefined
           }
