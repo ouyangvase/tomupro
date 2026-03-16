@@ -302,7 +302,7 @@ export default function AdminOverview() {
                       const spBooking = spOrders.filter(o => o.status === 'BOOKING').length;
                       const spReady = spOrders.filter(o => o.status === 'READY').length;
                       const spOverdue = spOrders.filter(o => o.status === 'BOOKING' && o.expected_pickup_date && o.expected_pickup_date < today).length;
-                      const spDisputes = spOrders.filter(o => o.reconciliation_status === 'DISPUTE').length;
+                      
 
                       return (
                         <TableRow key={sp.id}>
