@@ -84,7 +84,7 @@ export function useAdminEvents() {
         .select('*, event_settings(*), event_audience_rules(*)')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data as EventWithDetails[];
+      return data as unknown as EventWithDetails[];
     },
   });
 }
