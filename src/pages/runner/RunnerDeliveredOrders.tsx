@@ -150,251 +150,75 @@ export default function RunnerDeliveredOrders() {
   const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
   const { dateRange, setDateRange } = useDateRangeState();
   
-  // Fetch orders based on role and view mode:
-  // - Runner: fetch their own orders (runner_id = user.id), with optional salesperson filter
-  // - Salesperson: fetch their own orders (salesperson_id = user.id)
-  // - Manager: fetch based on view mode (my data vs team data)
-  // - Admin: fetch all orders, with optional salesperson filter applied SERVER-SIDE
-  // CRITICAL: Admin must filter server-side to avoid 2000 row truncation bug
-  // NOTE: Search and area are now applied server-side to work across all orders, not just first 2000
-  const ordersFilter = useMemo(() => {
-    // Always filter for DELIVERED status at database level for performance
-    const baseFilter: { 
-      runnerStatus: 'DELIVERED'; 
-      searchQuery?: string;
-      areaFilter?: string;
-      deliveredDateFrom?: string;
-      deliveredDateTo?: string;
-    } = { 
-      runnerStatus: 'DELIVERED' as const 
+  // Build server-side paginated filter
+  const paginatedFilters = useMemo((): PaginatedOrderFilters => {
+    const base: PaginatedOrderFilters = {
+      runnerStatus: 'DELIVERED' as any,
+      excludeStatus: 'CANCELLED' as any,
+      sortField: 'delivered_at',
+      sortDirection: 'desc',
     };
-    
-    // Apply search server-side for better filtering on large datasets
-    if (searchQuery.trim()) {
-      baseFilter.searchQuery = searchQuery.trim();
-    }
-    
-    // Apply area filter server-side
-    if (areaFilter !== 'all') {
-      baseFilter.areaFilter = areaFilter;
-    }
 
-    // Apply date range filter server-side
-    if (dateRange.from) {
-      baseFilter.deliveredDateFrom = dateRange.from.toISOString();
-    }
-    if (dateRange.to) {
-      baseFilter.deliveredDateTo = dateRange.to.toISOString();
-    }
-    
-    if (role === 'runner') {
-      const runnerFilter = { ...baseFilter, runnerId: user?.id };
-      if (salespersonFilters.length > 0) {
-        return { ...runnerFilter, salespersonIds: salespersonFilters };
-      }
-      return runnerFilter;
-    }
-    if (role === 'salesperson') {
-      return { ...baseFilter, salespersonId: user?.id };
-    }
-    if (role === 'manager') {
-      if (salespersonFilters.length > 0) {
-        return { ...baseFilter, salespersonIds: salespersonFilters };
-      }
-      if (salespersonIds && salespersonIds.length > 0) {
-        return { ...baseFilter, salespersonIds };
-      }
-      return baseFilter;
-    }
-    // Admin: apply salesperson filter SERVER-SIDE to avoid truncation bug
-    if (role === 'admin' && salespersonFilters.length > 0) {
-      return { ...baseFilter, salespersonIds: salespersonFilters };
-    }
-    return baseFilter; // admin no filter - fetch all delivered
-  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, dateRange]);
-  
-  const { data: orders, isLoading } = useOrders(ordersFilter as any);
-  const { data: userDirectory = [] } = useUserDirectory();
-  const { data: myDrivers = [] } = useMyDrivers();
-  const { data: products = [] } = useProducts();
-  // Only fetch claim batches for runner role (they're the ones who claim)
-  // Fetch claim batches for all roles - batch ref column is visible to everyone
-  const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : {});
-  
-  // Fetch active delivery charges for runner (for export)
-  const { data: activeCharges = [] } = useActiveDeliveryCharges(
-    role === 'runner' ? user?.id : undefined
-  );
-  
-  // Build delivery charges lookup map: "runnerId:area" -> charge_amount
-  const deliveryChargesMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const charge of activeCharges) {
-      map.set(`${charge.runner_id}:${charge.area}`, charge.charge_amount);
-    }
-    return map;
-  }, [activeCharges]);
-  
-  // Build server-side summary params that include ALL active filters
-  // This ensures KPIs are always accurate, even beyond the 2000-row table limit
-  const summaryParams = useMemo(() => {
-    const params: {
-      runnerId?: string;
-      salespersonId?: string;
-      salespersonIds?: string[];
-      search?: string;
-      area?: string;
-      claimStatus?: string;
-      driverId?: string;
-      skuCode?: string;
-    } = {};
+    // Search
+    if (searchQuery.trim()) base.searchQuery = searchQuery.trim();
+    // Area
+    if (areaFilter !== 'all') base.areaFilter = areaFilter;
+    // Date range
+    if (dateRange.from) base.deliveredDateFrom = dateRange.from.toISOString();
+    if (dateRange.to) base.deliveredDateTo = dateRange.to.toISOString();
+    // Driver
+    if (driverFilter !== 'all') base.driverId = driverFilter;
+    // Claim status mapped to reconciliation statuses
+    const reconStatuses = claimStatusToReconciliation[claimStatusFilter];
+    if (reconStatuses) base.reconciliationStatusIn = reconStatuses as any;
 
-    // Role-based filters
+    // Role-based scoping
     if (role === 'runner') {
-      params.runnerId = user?.id;
+      base.runnerId = user?.id;
+      if (salespersonFilters.length > 0) base.salespersonIds = salespersonFilters;
     } else if (role === 'salesperson') {
-      params.salespersonId = user?.id;
+      base.salespersonId = user?.id;
     } else if (role === 'manager') {
       if (salespersonFilters.length > 0) {
-        params.salespersonIds = salespersonFilters;
+        base.salespersonIds = salespersonFilters;
       } else if (salespersonIds && salespersonIds.length > 0) {
-        params.salespersonIds = salespersonIds;
+        base.salespersonIds = salespersonIds;
       }
     } else if (role === 'admin' && salespersonFilters.length > 0) {
-      params.salespersonIds = salespersonFilters;
+      base.salespersonIds = salespersonFilters;
     }
 
-    // Runner role salesperson filter (applied server-side)
-    if (role === 'runner' && salespersonFilters.length > 0) {
-      params.salespersonIds = salespersonFilters;
-    }
+    return base;
+  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, dateRange, driverFilter, claimStatusFilter]);
 
-    // All filter params for accurate server-side aggregation
-    if (searchQuery.trim()) params.search = searchQuery.trim();
-    if (areaFilter !== 'all') params.area = areaFilter;
-    if (claimStatusFilter !== 'all') params.claimStatus = claimStatusFilter;
-    if (driverFilter !== 'all') params.driverId = driverFilter;
-    if (skuFilter !== 'all') params.skuCode = skuFilter;
+  const {
+    data: paginatedData,
+    isLoading,
+    isFetching,
+    pagination,
+    setPage: setCurrentPage,
+    setPageSize,
+    refetch,
+  } = usePaginatedOrders(paginatedFilters, PAGE_SIZE);
 
-    return params;
-  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, claimStatusFilter, driverFilter, skuFilter]);
+  // Alias for compatibility - orders on current page
+  const orders = paginatedData;
   
-  // Fetch accurate summary stats from server with ALL filters applied
-  const { data: summary, isLoading: summaryLoading } = useDeliveredSummaryFiltered(summaryParams);
-  
-  // Determine if current user can claim orders (only runners can claim)
-  const canClaim = role === 'runner';
-  
-  // Revert delivery state for admin
-  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
-  const [revertOrder, setRevertOrder] = useState<Order | null>(null);
-  const revertDelivery = useRevertDelivery();
-
-  // Helper function to check if order matches claim status filter
-  const matchesClaimStatusFilter = (status: ReconciliationStatus, filter: ClaimStatusFilter): boolean => {
-    if (filter === 'all') return true;
-    if (filter === 'NOT_CLAIMED') return status === 'NOT_CLAIMED';
-    if (filter === 'CLAIM_SUBMITTED') return status === 'ADMIN_ACK_PENDING' || status === 'SP_ACK_PENDING';
-    if (filter === 'APPROVED') return status === 'CLAIMED' || status === 'SETTLED';
-    if (filter === 'REJECTED') return status === 'DISPUTE';
-    return true;
-  };
-
-  // Filter to only delivered orders
-  // NOTE: Search and area filters are now server-side for performance
+  // Apply SKU filter client-side on current page (requires order_items join)
   const deliveredOrders = useMemo(() => {
     if (!orders) return [];
-    
-    let filtered = orders.filter(order => 
-      order.runner_status === 'DELIVERED' && order.status !== 'CANCELLED'
+    if (skuFilter === 'all') return orders;
+    const normalizedFilter = skuFilter.trim().toUpperCase();
+    return orders.filter(order =>
+      order.order_items?.some(item => {
+        const itemCode = (item.product?.sku_code || item.sku_label?.split(/[\/-]/)[0] || '').trim().toUpperCase();
+        return itemCode === normalizedFilter;
+      })
     );
+  }, [orders, skuFilter]);
 
-    // Search and area are now filtered server-side - no need to duplicate here
-
-    // Apply driver filter (still client-side as it's less critical)
-    if (driverFilter !== 'all') {
-      filtered = filtered.filter(order => order.driver_id === driverFilter);
-    }
-
-    // Apply salesperson filter client-side ONLY for runner role
-    // (admin and manager now filter server-side to avoid truncation)
-    if (salespersonFilters.length > 0 && role === 'runner') {
-      filtered = filtered.filter(order => order.salesperson_id && salespersonFilters.includes(order.salesperson_id));
-    }
-
-    // Apply SKU filter (by SKU code, not product ID)
-    // Note: SKU filter is still client-side as it requires order_items join
-    if (skuFilter !== 'all') {
-      const normalizedFilter = skuFilter.trim().toUpperCase();
-      filtered = filtered.filter(order => 
-        order.order_items?.some(item => {
-          // Get SKU code from product or extract from sku_label
-          const itemCode = (item.product?.sku_code || item.sku_label?.split(/[\/-]/)[0] || '').trim().toUpperCase();
-          return itemCode === normalizedFilter;
-        })
-      );
-    }
-
-    // Apply claim status filter
-    if (claimStatusFilter !== 'all') {
-      filtered = filtered.filter(order => matchesClaimStatusFilter(order.reconciliation_status, claimStatusFilter));
-    }
-
-    return filtered;
-  }, [orders, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, role]);
-
-  // Detect if any filters are active (for UI labels)
-  const hasActiveFilters = useMemo(() => {
-    return (
-      searchQuery.trim() !== '' ||
-      areaFilter !== 'all' ||
-      driverFilter !== 'all' ||
-      salespersonFilters.length > 0 ||
-      skuFilter !== 'all' ||
-      claimStatusFilter !== 'all' ||
-      dateRange.from !== null
-    );
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
-
-  // Detect if data might be truncated by the 2000-row query limit
-  const QUERY_LIMIT = 2000;
-  const isDataTruncated = useMemo(() => {
-    if (!orders) return false;
-    return orders.length >= QUERY_LIMIT;
-  }, [orders]);
-
-  // Always use server-side summary for KPIs (accurate, no truncation)
-  const displaySummary = summary;
-  const displaySummaryLoading = summaryLoading;
-
-  // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(deliveredOrders.length / PAGE_SIZE));
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const endIndex = startIndex + PAGE_SIZE;
-  const paginatedOrders = deliveredOrders.slice(startIndex, endIndex);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
-
-  // Clear filters helper
-  const clearAllFilters = useCallback(() => {
-    setSearchQuery('');
-    setAreaFilter('all');
-    setDriverFilter('all');
-    setSalespersonFilters([]);
-    setSkuFilter('all');
-    setClaimStatusFilter('all');
-    setDateRange({ from: null, to: null, label: 'Lifetime' });
-  }, [setDateRange]);
-
-  // Clamp current page if it exceeds total pages
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(1);
-    }
-  }, [currentPage, totalPages]);
+  // Current page orders (already paginated server-side)
+  const paginatedOrders = deliveredOrders;
 
   // Check if an order has a valid approved delivery charge for its area
   const orderHasValidAreaRate = useCallback((order: Order): boolean => {
