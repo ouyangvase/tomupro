@@ -204,7 +204,7 @@ export function useCreateEvent() {
         }));
         const { error: rulesError } = await supabase
           .from('event_audience_rules')
-          .insert(rules);
+          .insert(rules as any);
         if (rulesError) throw rulesError;
       }
 
