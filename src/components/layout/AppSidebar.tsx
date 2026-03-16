@@ -162,6 +162,14 @@ const sections: NavSection[] = [
     ],
   },
   {
+    id: "guide",
+    label: "Help",
+    icon: GraduationCap,
+    items: [
+      { title: "Guide Center", url: "/guide", icon: GraduationCap, roles: ["admin", "manager", "salesperson", "runner", "driver"] },
+    ],
+  },
+  {
     id: "system",
     label: "System",
     icon: Settings,
