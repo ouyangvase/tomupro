@@ -9,13 +9,14 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useOrders } from '@/hooks/useOrders';
+import { usePaginatedOrders, type PaginatedOrderFilters } from '@/hooks/usePaginatedOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
+import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
 import { useDeliveredSummaryFiltered } from '@/hooks/useDeliveredOrders';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -39,7 +40,7 @@ import {
 } from '@/components/ui/pagination';
 
 // Pagination constants
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 50;
 
 // Helper function for page number display
 function getPageNumbers(current: number, total: number): (number | '...')[] {
@@ -81,6 +82,15 @@ import { useDeliveryCharges as useApprovedChargeMap } from '@/hooks/useDeliveryC
 
 // Claim status filter options for the dropdown
 type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
+
+// Map claim status filter to actual reconciliation_status values
+const claimStatusToReconciliation: Record<ClaimStatusFilter, string[] | null> = {
+  all: null,
+  NOT_CLAIMED: ['NOT_CLAIMED'],
+  CLAIM_SUBMITTED: ['ADMIN_ACK_PENDING', 'SP_ACK_PENDING'],
+  APPROVED: ['CLAIMED', 'SETTLED'],
+  REJECTED: ['DISPUTE'],
+};
 
 const claimStatusFilterOptions: { label: string; value: ClaimStatusFilter }[] = [
   { label: 'All', value: 'all' },
@@ -137,86 +147,89 @@ export default function RunnerDeliveredOrders() {
   const [exportSelectedIds, setExportSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
   const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
   const { dateRange, setDateRange } = useDateRangeState();
   
-  // Fetch orders based on role and view mode:
-  // - Runner: fetch their own orders (runner_id = user.id), with optional salesperson filter
-  // - Salesperson: fetch their own orders (salesperson_id = user.id)
-  // - Manager: fetch based on view mode (my data vs team data)
-  // - Admin: fetch all orders, with optional salesperson filter applied SERVER-SIDE
-  // CRITICAL: Admin must filter server-side to avoid 2000 row truncation bug
-  // NOTE: Search and area are now applied server-side to work across all orders, not just first 2000
-  const ordersFilter = useMemo(() => {
-    // Always filter for DELIVERED status at database level for performance
-    const baseFilter: { 
-      runnerStatus: 'DELIVERED'; 
-      searchQuery?: string;
-      areaFilter?: string;
-      deliveredDateFrom?: string;
-      deliveredDateTo?: string;
-    } = { 
-      runnerStatus: 'DELIVERED' as const 
+  // Build server-side paginated filter
+  const paginatedFilters = useMemo((): PaginatedOrderFilters => {
+    const base: PaginatedOrderFilters = {
+      runnerStatus: 'DELIVERED' as any,
+      excludeStatus: 'CANCELLED' as any,
+      sortField: 'delivered_at',
+      sortDirection: 'desc',
     };
-    
-    // Apply search server-side for better filtering on large datasets
-    if (searchQuery.trim()) {
-      baseFilter.searchQuery = searchQuery.trim();
-    }
-    
-    // Apply area filter server-side
-    if (areaFilter !== 'all') {
-      baseFilter.areaFilter = areaFilter;
+
+    // Search
+    if (searchQuery.trim()) base.searchQuery = searchQuery.trim();
+    // Area
+    if (areaFilter !== 'all') base.areaFilter = areaFilter;
+    // Date range
+    if (dateRange.from) base.deliveredDateFrom = dateRange.from.toISOString();
+    if (dateRange.to) base.deliveredDateTo = dateRange.to.toISOString();
+    // Driver
+    if (driverFilter !== 'all') base.driverId = driverFilter;
+    // Claim status mapped to reconciliation statuses
+    const reconStatuses = claimStatusToReconciliation[claimStatusFilter];
+    if (reconStatuses) base.reconciliationStatusIn = reconStatuses as any;
+
+    // Role-based scoping
+    if (role === 'runner') {
+      base.runnerId = user?.id;
+      if (salespersonFilters.length > 0) base.salespersonIds = salespersonFilters;
+    } else if (role === 'salesperson') {
+      base.salespersonId = user?.id;
+    } else if (role === 'manager') {
+      if (salespersonFilters.length > 0) {
+        base.salespersonIds = salespersonFilters;
+      } else if (salespersonIds && salespersonIds.length > 0) {
+        base.salespersonIds = salespersonIds;
+      }
+    } else if (role === 'admin' && salespersonFilters.length > 0) {
+      base.salespersonIds = salespersonFilters;
     }
 
-    // Apply date range filter server-side
-    if (dateRange.from) {
-      baseFilter.deliveredDateFrom = dateRange.from.toISOString();
-    }
-    if (dateRange.to) {
-      baseFilter.deliveredDateTo = dateRange.to.toISOString();
-    }
-    
-    if (role === 'runner') {
-      const runnerFilter = { ...baseFilter, runnerId: user?.id };
-      if (salespersonFilters.length > 0) {
-        return { ...runnerFilter, salespersonIds: salespersonFilters };
-      }
-      return runnerFilter;
-    }
-    if (role === 'salesperson') {
-      return { ...baseFilter, salespersonId: user?.id };
-    }
-    if (role === 'manager') {
-      if (salespersonFilters.length > 0) {
-        return { ...baseFilter, salespersonIds: salespersonFilters };
-      }
-      if (salespersonIds && salespersonIds.length > 0) {
-        return { ...baseFilter, salespersonIds };
-      }
-      return baseFilter;
-    }
-    // Admin: apply salesperson filter SERVER-SIDE to avoid truncation bug
-    if (role === 'admin' && salespersonFilters.length > 0) {
-      return { ...baseFilter, salespersonIds: salespersonFilters };
-    }
-    return baseFilter; // admin no filter - fetch all delivered
-  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, dateRange]);
+    return base;
+  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, dateRange, driverFilter, claimStatusFilter]);
+
+  const {
+    data: paginatedData,
+    isLoading,
+    isFetching,
+    pagination,
+    setPage: setCurrentPage,
+    setPageSize,
+    refetch,
+  } = usePaginatedOrders(paginatedFilters, PAGE_SIZE);
+
+  // Alias for compatibility - orders on current page
+  const orders = paginatedData;
   
-  const { data: orders, isLoading } = useOrders(ordersFilter as any);
+  // Apply SKU filter client-side on current page (requires order_items join)
+  const deliveredOrders = useMemo(() => {
+    if (!orders) return [];
+    if (skuFilter === 'all') return orders;
+    const normalizedFilter = skuFilter.trim().toUpperCase();
+    return orders.filter(order =>
+      order.order_items?.some(item => {
+        const itemCode = (item.product?.sku_code || item.sku_label?.split(/[\/-]/)[0] || '').trim().toUpperCase();
+        return itemCode === normalizedFilter;
+      })
+    );
+  }, [orders, skuFilter]);
+
+  // Current page orders (already paginated server-side)
+  const paginatedOrders = deliveredOrders;
+
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: myDrivers = [] } = useMyDrivers();
   const { data: products = [] } = useProducts();
-  // Only fetch claim batches for runner role (they're the ones who claim)
-  // Fetch claim batches for all roles - batch ref column is visible to everyone
   const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : {});
-  
+
   // Fetch active delivery charges for runner (for export)
   const { data: activeCharges = [] } = useActiveDeliveryCharges(
     role === 'runner' ? user?.id : undefined
   );
-  
+
   // Build delivery charges lookup map: "runnerId:area" -> charge_amount
   const deliveryChargesMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -225,9 +238,8 @@ export default function RunnerDeliveredOrders() {
     }
     return map;
   }, [activeCharges]);
-  
-  // Build server-side summary params that include ALL active filters
-  // This ensures KPIs are always accurate, even beyond the 2000-row table limit
+
+  // Build server-side summary params for KPIs
   const summaryParams = useMemo(() => {
     const params: {
       runnerId?: string;
@@ -240,27 +252,14 @@ export default function RunnerDeliveredOrders() {
       skuCode?: string;
     } = {};
 
-    // Role-based filters
-    if (role === 'runner') {
-      params.runnerId = user?.id;
-    } else if (role === 'salesperson') {
-      params.salespersonId = user?.id;
-    } else if (role === 'manager') {
-      if (salespersonFilters.length > 0) {
-        params.salespersonIds = salespersonFilters;
-      } else if (salespersonIds && salespersonIds.length > 0) {
-        params.salespersonIds = salespersonIds;
-      }
-    } else if (role === 'admin' && salespersonFilters.length > 0) {
-      params.salespersonIds = salespersonFilters;
-    }
+    if (role === 'runner') params.runnerId = user?.id;
+    else if (role === 'salesperson') params.salespersonId = user?.id;
+    else if (role === 'manager') {
+      if (salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
+      else if (salespersonIds && salespersonIds.length > 0) params.salespersonIds = salespersonIds;
+    } else if (role === 'admin' && salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
 
-    // Runner role salesperson filter (applied server-side)
-    if (role === 'runner' && salespersonFilters.length > 0) {
-      params.salespersonIds = salespersonFilters;
-    }
-
-    // All filter params for accurate server-side aggregation
+    if (role === 'runner' && salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
     if (searchQuery.trim()) params.search = searchQuery.trim();
     if (areaFilter !== 'all') params.area = areaFilter;
     if (claimStatusFilter !== 'all') params.claimStatus = claimStatusFilter;
@@ -269,72 +268,18 @@ export default function RunnerDeliveredOrders() {
 
     return params;
   }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, claimStatusFilter, driverFilter, skuFilter]);
-  
-  // Fetch accurate summary stats from server with ALL filters applied
+
   const { data: summary, isLoading: summaryLoading } = useDeliveredSummaryFiltered(summaryParams);
-  
-  // Determine if current user can claim orders (only runners can claim)
+  const displaySummary = summary;
+  const displaySummaryLoading = summaryLoading;
+
   const canClaim = role === 'runner';
-  
-  // Revert delivery state for admin
+
   const [revertDialogOpen, setRevertDialogOpen] = useState(false);
   const [revertOrder, setRevertOrder] = useState<Order | null>(null);
   const revertDelivery = useRevertDelivery();
 
-  // Helper function to check if order matches claim status filter
-  const matchesClaimStatusFilter = (status: ReconciliationStatus, filter: ClaimStatusFilter): boolean => {
-    if (filter === 'all') return true;
-    if (filter === 'NOT_CLAIMED') return status === 'NOT_CLAIMED';
-    if (filter === 'CLAIM_SUBMITTED') return status === 'ADMIN_ACK_PENDING' || status === 'SP_ACK_PENDING';
-    if (filter === 'APPROVED') return status === 'CLAIMED' || status === 'SETTLED';
-    if (filter === 'REJECTED') return status === 'DISPUTE';
-    return true;
-  };
-
-  // Filter to only delivered orders
-  // NOTE: Search and area filters are now server-side for performance
-  const deliveredOrders = useMemo(() => {
-    if (!orders) return [];
-    
-    let filtered = orders.filter(order => 
-      order.runner_status === 'DELIVERED' && order.status !== 'CANCELLED'
-    );
-
-    // Search and area are now filtered server-side - no need to duplicate here
-
-    // Apply driver filter (still client-side as it's less critical)
-    if (driverFilter !== 'all') {
-      filtered = filtered.filter(order => order.driver_id === driverFilter);
-    }
-
-    // Apply salesperson filter client-side ONLY for runner role
-    // (admin and manager now filter server-side to avoid truncation)
-    if (salespersonFilters.length > 0 && role === 'runner') {
-      filtered = filtered.filter(order => order.salesperson_id && salespersonFilters.includes(order.salesperson_id));
-    }
-
-    // Apply SKU filter (by SKU code, not product ID)
-    // Note: SKU filter is still client-side as it requires order_items join
-    if (skuFilter !== 'all') {
-      const normalizedFilter = skuFilter.trim().toUpperCase();
-      filtered = filtered.filter(order => 
-        order.order_items?.some(item => {
-          // Get SKU code from product or extract from sku_label
-          const itemCode = (item.product?.sku_code || item.sku_label?.split(/[\/-]/)[0] || '').trim().toUpperCase();
-          return itemCode === normalizedFilter;
-        })
-      );
-    }
-
-    // Apply claim status filter
-    if (claimStatusFilter !== 'all') {
-      filtered = filtered.filter(order => matchesClaimStatusFilter(order.reconciliation_status, claimStatusFilter));
-    }
-
-    return filtered;
-  }, [orders, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, role]);
-
-  // Detect if any filters are active (for UI labels)
+  // Detect if any filters are active
   const hasActiveFilters = useMemo(() => {
     return (
       searchQuery.trim() !== '' ||
@@ -345,28 +290,6 @@ export default function RunnerDeliveredOrders() {
       claimStatusFilter !== 'all' ||
       dateRange.from !== null
     );
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
-
-  // Detect if data might be truncated by the 2000-row query limit
-  const QUERY_LIMIT = 2000;
-  const isDataTruncated = useMemo(() => {
-    if (!orders) return false;
-    return orders.length >= QUERY_LIMIT;
-  }, [orders]);
-
-  // Always use server-side summary for KPIs (accurate, no truncation)
-  const displaySummary = summary;
-  const displaySummaryLoading = summaryLoading;
-
-  // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(deliveredOrders.length / PAGE_SIZE));
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const endIndex = startIndex + PAGE_SIZE;
-  const paginatedOrders = deliveredOrders.slice(startIndex, endIndex);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
   }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
 
   // Clear filters helper
@@ -380,16 +303,15 @@ export default function RunnerDeliveredOrders() {
     setDateRange({ from: null, to: null, label: 'Lifetime' });
   }, [setDateRange]);
 
-  // Clamp current page if it exceeds total pages
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(1);
-    }
-  }, [currentPage, totalPages]);
+  // Pagination helpers for UI
+  const totalPages = pagination.totalPages;
+  const currentPage = pagination.page;
+  const startIndex = (currentPage - 1) * pagination.pageSize;
+  const endIndex = startIndex + pagination.pageSize;
 
   // Check if an order has a valid approved delivery charge for its area
   const orderHasValidAreaRate = useCallback((order: Order): boolean => {
-    if (!order.area) return true; // No area = no charge needed
+    if (!order.area) return true;
     const area = order.area.toLowerCase();
     return approvedChargeMap[area] !== undefined;
   }, [approvedChargeMap]);
@@ -501,6 +423,7 @@ export default function RunnerDeliveredOrders() {
       toast.success(`Successfully claimed ${selectedClaimableOrders.length} order(s)`);
       setSelectedIds(new Set());
       setBulkClaimOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     } catch (error) {
       console.error('Bulk claim error:', error);
@@ -535,12 +458,11 @@ export default function RunnerDeliveredOrders() {
     );
   };
 
-  // Extract unique areas for filter
+  // Use valid areas from database for filter options
+  const { data: validAreas = [] } = useValidAreas();
   const areaOptions = useMemo(() => {
-    if (!orders) return [];
-    const uniqueAreas = [...new Set(orders.filter(o => o.runner_status === 'DELIVERED').map(o => o.area).filter(Boolean))];
-    return uniqueAreas.sort().map(area => ({ label: area as string, value: area as string }));
-  }, [orders]);
+    return validAreas.sort().map(area => ({ label: area, value: area }));
+  }, [validAreas]);
 
   // Salesperson filter options - scoped based on role
   const salespersonOptions = useMemo(() => {
@@ -747,7 +669,7 @@ export default function RunnerDeliveredOrders() {
         <PageHero
           icon={<CheckCircle className="h-6 w-6 text-[hsl(var(--status-success))]" />}
           title="Delivered Orders"
-          subtitle={`${dateRange.label} • ${deliveredOrders.length} orders in view`}
+          subtitle={`${dateRange.label} • ${pagination.totalCount.toLocaleString()} orders total`}
           image={capybaraRunner}
           imageAlt="Runner capybara"
           actions={
@@ -784,18 +706,6 @@ export default function RunnerDeliveredOrders() {
           <DateRangePresets value={dateRange} onChange={setDateRange} />
         </PageHero>
 
-        {/* Data truncation warning */}
-        {isDataTruncated && (
-          <Card className="border-[hsl(var(--status-warning)/0.5)] bg-[hsl(var(--status-warning)/0.08)]">
-            <CardContent className="p-3 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-[hsl(var(--status-warning))] shrink-0" />
-              <p className="text-sm text-muted-foreground">
-                Table shows up to {QUERY_LIMIT} rows. KPI totals reflect all {summary?.total_delivered ?? '2000+'} delivered orders.
-                Apply filters to narrow results.
-              </p>
-            </CardContent>
-          </Card>
-        )}
 
         {/* KPI Cards — Visual upgrade */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
@@ -1399,13 +1309,13 @@ export default function RunnerDeliveredOrders() {
             <CardContent className="py-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Showing {startIndex + 1}-{Math.min(endIndex, deliveredOrders.length)} of {deliveredOrders.length} orders
+                  Showing {startIndex + 1}–{Math.min(startIndex + deliveredOrders.length, pagination.totalCount)} of {pagination.totalCount.toLocaleString()} orders
                 </p>
                 <Pagination>
                   <PaginationContent>
                     <PaginationItem>
                       <PaginationPrevious
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                         className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                       />
                     </PaginationItem>
@@ -1428,7 +1338,7 @@ export default function RunnerDeliveredOrders() {
                     ))}
                     <PaginationItem>
                       <PaginationNext
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                         className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                       />
                     </PaginationItem>
