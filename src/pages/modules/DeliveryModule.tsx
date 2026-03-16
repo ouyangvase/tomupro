@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
 const DriverInbox = lazy(() => import('@/pages/driver/DriverInbox'));
 const DriverRoutePage = lazy(() => import('@/pages/driver/DriverRoutePage'));
@@ -26,30 +27,25 @@ export default function DeliveryModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'inbox';
 
-  const handleTabChange = (value: string) => {
-    setSearchParams({ tab: value }, { replace: true });
-  };
-
   return (
     <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="w-full justify-start bg-secondary/30 h-11">
-            {tabs.map(tab => (
-              <TabsTrigger key={tab.id} value={tab.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                {tab.label}
-              </TabsTrigger>
+            {tabs.map(t => (
+              <TabsTrigger key={t.id} value={t.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{t.label}</TabsTrigger>
             ))}
           </TabsList>
         </div>
-
-        <Suspense fallback={<Loading />}>
-          <TabsContent value="inbox" className="mt-4"><DriverInbox embedded /></TabsContent>
-          <TabsContent value="route" className="mt-4"><DriverRoutePage embedded /></TabsContent>
-          <TabsContent value="pickups" className="mt-4"><DriverPickupsPage embedded /></TabsContent>
-          <TabsContent value="returns" className="mt-4"><DriverReturnsPage embedded /></TabsContent>
-          <TabsContent value="analytics" className="mt-4"><DriverAnalyticsPage embedded /></TabsContent>
-        </Suspense>
+        <EmbeddedProvider>
+          <Suspense fallback={<Loading />}>
+            <TabsContent value="inbox" className="mt-4"><DriverInbox /></TabsContent>
+            <TabsContent value="route" className="mt-4"><DriverRoutePage /></TabsContent>
+            <TabsContent value="pickups" className="mt-4"><DriverPickupsPage /></TabsContent>
+            <TabsContent value="returns" className="mt-4"><DriverReturnsPage /></TabsContent>
+            <TabsContent value="analytics" className="mt-4"><DriverAnalyticsPage /></TabsContent>
+          </Suspense>
+        </EmbeddedProvider>
       </Tabs>
     </div>
   );

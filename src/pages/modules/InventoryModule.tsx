@@ -2,6 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
 const InventoryBalance = lazy(() => import('@/pages/InventoryBalance'));
 const InboundPending = lazy(() => import('@/pages/inbound/InboundPending'));
@@ -20,11 +21,6 @@ export default function InventoryModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const role = profile?.role;
-  const activeTab = searchParams.get('tab') || 'balance';
-
-  const handleTabChange = (value: string) => {
-    setSearchParams({ tab: value }, { replace: true });
-  };
 
   const allTabs = [
     { id: 'balance', label: 'Stock Balance', roles: ['admin', 'manager', 'salesperson', 'runner'] },
@@ -36,28 +32,28 @@ export default function InventoryModule() {
   ];
 
   const tabs = allTabs.filter(t => role && t.roles.includes(role));
+  const activeTab = searchParams.get('tab') || 'balance';
 
   return (
     <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="w-full justify-start bg-secondary/30 h-11">
-            {tabs.map(tab => (
-              <TabsTrigger key={tab.id} value={tab.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                {tab.label}
-              </TabsTrigger>
+            {tabs.map(t => (
+              <TabsTrigger key={t.id} value={t.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{t.label}</TabsTrigger>
             ))}
           </TabsList>
         </div>
-
-        <Suspense fallback={<Loading />}>
-          <TabsContent value="balance" className="mt-4"><InventoryBalance embedded /></TabsContent>
-          <TabsContent value="inbound" className="mt-4"><InboundPending embedded /></TabsContent>
-          <TabsContent value="inbound-history" className="mt-4"><InboundHistory embedded /></TabsContent>
-          <TabsContent value="adjustments" className="mt-4"><StockAdjustment embedded /></TabsContent>
-          <TabsContent value="warehouses" className="mt-4"><WarehouseManagement embedded /></TabsContent>
-          <TabsContent value="products" className="mt-4"><ProductsPage embedded /></TabsContent>
-        </Suspense>
+        <EmbeddedProvider>
+          <Suspense fallback={<Loading />}>
+            <TabsContent value="balance" className="mt-4"><InventoryBalance /></TabsContent>
+            <TabsContent value="inbound" className="mt-4"><InboundPending /></TabsContent>
+            <TabsContent value="inbound-history" className="mt-4"><InboundHistory /></TabsContent>
+            <TabsContent value="adjustments" className="mt-4"><StockAdjustment /></TabsContent>
+            <TabsContent value="warehouses" className="mt-4"><WarehouseManagement /></TabsContent>
+            <TabsContent value="products" className="mt-4"><ProductsPage /></TabsContent>
+          </Suspense>
+        </EmbeddedProvider>
       </Tabs>
     </div>
   );

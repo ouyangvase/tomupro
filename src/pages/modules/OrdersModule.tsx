@@ -1,10 +1,8 @@
-import { useState } from 'react';
-import { AppLayout } from '@/components/layout/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
-// Lazy-load the actual page content to keep bundle lean
 const BookingSales = lazy(() => import('@/pages/sales/BookingSales'));
 const ReadySales = lazy(() => import('@/pages/sales/ReadySales'));
 const RunnerDeliveredOrders = lazy(() => import('@/pages/runner/RunnerDeliveredOrders'));
@@ -29,32 +27,26 @@ export default function OrdersModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'booking';
 
-  const handleTabChange = (value: string) => {
-    setSearchParams({ tab: value }, { replace: true });
-  };
-
   return (
     <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="w-full justify-start bg-secondary/30 h-11">
-            {tabs.map(tab => (
-              <TabsTrigger key={tab.id} value={tab.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                {tab.label}
-              </TabsTrigger>
+            {tabs.map(t => (
+              <TabsTrigger key={t.id} value={t.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{t.label}</TabsTrigger>
             ))}
           </TabsList>
         </div>
-
-        <Suspense fallback={<Loading />}>
-          <TabsContent value="booking" className="mt-4"><BookingSales embedded /></TabsContent>
-          <TabsContent value="ready" className="mt-4"><ReadySales embedded /></TabsContent>
-          <TabsContent value="delivered" className="mt-4"><RunnerDeliveredOrders embedded /></TabsContent>
-          <TabsContent value="cancelled" className="mt-4"><CancelledSales embedded /></TabsContent>
-          <TabsContent value="action-required" className="mt-4"><SalespersonActionInbox embedded /></TabsContent>
-        </Suspense>
+        <EmbeddedProvider>
+          <Suspense fallback={<Loading />}>
+            <TabsContent value="booking" className="mt-4"><BookingSales /></TabsContent>
+            <TabsContent value="ready" className="mt-4"><ReadySales /></TabsContent>
+            <TabsContent value="delivered" className="mt-4"><RunnerDeliveredOrders /></TabsContent>
+            <TabsContent value="cancelled" className="mt-4"><CancelledSales /></TabsContent>
+            <TabsContent value="action-required" className="mt-4"><SalespersonActionInbox /></TabsContent>
+          </Suspense>
+        </EmbeddedProvider>
       </Tabs>
     </div>
   );
 }
-

@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
 const StockIntegrityAudit = lazy(() => import('@/pages/admin/StockIntegrityAudit'));
 const StockIntegrityScan = lazy(() => import('@/pages/admin/StockIntegrityScan'));
@@ -26,7 +27,7 @@ const tabs = [
   { id: 'bindings', label: 'Bindings' },
   { id: 'invite-codes', label: 'Invite Codes' },
   { id: 'commission', label: 'Commission' },
-  { id: 'leaderboard', label: 'Leaderboard Settings' },
+  { id: 'leaderboard', label: 'Leaderboard' },
   { id: 'data-sharing', label: 'Data Sharing' },
   { id: 'reasons', label: 'Reasons' },
   { id: 'profile', label: 'Profile' },
@@ -36,35 +37,30 @@ export default function SystemModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'stock-audit';
 
-  const handleTabChange = (value: string) => {
-    setSearchParams({ tab: value }, { replace: true });
-  };
-
   return (
     <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="w-full justify-start bg-secondary/30 h-11">
-            {tabs.map(tab => (
-              <TabsTrigger key={tab.id} value={tab.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                {tab.label}
-              </TabsTrigger>
+            {tabs.map(t => (
+              <TabsTrigger key={t.id} value={t.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{t.label}</TabsTrigger>
             ))}
           </TabsList>
         </div>
-
-        <Suspense fallback={<Loading />}>
-          <TabsContent value="stock-audit" className="mt-4"><StockIntegrityAudit embedded /></TabsContent>
-          <TabsContent value="stock-rebuild" className="mt-4"><StockIntegrityScan embedded /></TabsContent>
-          <TabsContent value="events" className="mt-4"><EventsAdmin embedded /></TabsContent>
-          <TabsContent value="bindings" className="mt-4"><BindingsSettings embedded /></TabsContent>
-          <TabsContent value="invite-codes" className="mt-4"><InviteCodesAdmin embedded /></TabsContent>
-          <TabsContent value="commission" className="mt-4"><CommissionSettings embedded /></TabsContent>
-          <TabsContent value="leaderboard" className="mt-4"><LeaderboardSettings embedded /></TabsContent>
-          <TabsContent value="data-sharing" className="mt-4"><DataSharingAdmin embedded /></TabsContent>
-          <TabsContent value="reasons" className="mt-4"><ReasonsSettings embedded /></TabsContent>
-          <TabsContent value="profile" className="mt-4"><ProfilePage embedded /></TabsContent>
-        </Suspense>
+        <EmbeddedProvider>
+          <Suspense fallback={<Loading />}>
+            <TabsContent value="stock-audit" className="mt-4"><StockIntegrityAudit /></TabsContent>
+            <TabsContent value="stock-rebuild" className="mt-4"><StockIntegrityScan /></TabsContent>
+            <TabsContent value="events" className="mt-4"><EventsAdmin /></TabsContent>
+            <TabsContent value="bindings" className="mt-4"><BindingsSettings /></TabsContent>
+            <TabsContent value="invite-codes" className="mt-4"><InviteCodesAdmin /></TabsContent>
+            <TabsContent value="commission" className="mt-4"><CommissionSettings /></TabsContent>
+            <TabsContent value="leaderboard" className="mt-4"><LeaderboardSettings /></TabsContent>
+            <TabsContent value="data-sharing" className="mt-4"><DataSharingAdmin /></TabsContent>
+            <TabsContent value="reasons" className="mt-4"><ReasonsSettings /></TabsContent>
+            <TabsContent value="profile" className="mt-4"><ProfilePage /></TabsContent>
+          </Suspense>
+        </EmbeddedProvider>
       </Tabs>
     </div>
   );
