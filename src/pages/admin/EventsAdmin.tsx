@@ -6,9 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Plus, Calendar, Megaphone, Eye, Users, BarChart3, 
-  CheckCircle, Clock, Archive, MoreVertical, Send
+  CheckCircle, Clock, Archive, MoreVertical, Send, Trash2
 } from 'lucide-react';
-import { useAdminEvents, usePublishEvent, type EventWithDetails } from '@/hooks/useEvents';
+import { useAdminEvents, usePublishEvent, useDeleteEvent, type EventWithDetails } from '@/hooks/useEvents';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -27,6 +27,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
 export default function EventsAdmin() {
   const { data: events = [], isLoading } = useAdminEvents();
   const publishEvent = usePublishEvent();
+  const deleteEvent = useDeleteEvent();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'all' | 'event' | 'announcement'>('all');
 
@@ -182,6 +183,12 @@ export default function EventsAdmin() {
                                   <Send className="h-4 w-4 mr-2" /> Publish Now
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuItem
+                                onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${event.title}"?`)) deleteEvent.mutate(event.id); }}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" /> Delete
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
