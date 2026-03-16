@@ -21,9 +21,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Clock, CheckCircle, XCircle, History } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Plus, Clock, CheckCircle, XCircle, History, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDeliveryCharges, useActiveDeliveryCharges, useCreateDeliveryCharge } from '@/hooks/useDeliveryCharges';
+import { useDeliveryCharges, useActiveDeliveryCharges, useCreateDeliveryCharge, useDeleteDeliveryChargesByArea } from '@/hooks/useDeliveryCharges';
 import { format } from 'date-fns';
 import type { DeliveryChargeStatus } from '@/types/delivery-charges';
 
@@ -39,10 +40,12 @@ export default function RunnerDeliveryCharges() {
   const [historyArea, setHistoryArea] = useState<string | null>(null);
   const [newArea, setNewArea] = useState('');
   const [newAmount, setNewAmount] = useState('');
+  const [deleteArea, setDeleteArea] = useState<string | null>(null);
 
   const { data: allCharges = [], isLoading } = useDeliveryCharges({ runnerId: profile?.id });
   const { data: activeCharges = [] } = useActiveDeliveryCharges(profile?.id);
   const createCharge = useCreateDeliveryCharge();
+  const deleteCharges = useDeleteDeliveryChargesByArea();
 
   // Group charges by area for display
   const chargesByArea = allCharges.reduce((acc, charge) => {
@@ -211,6 +214,14 @@ export default function RunnerDeliveryCharges() {
                               Edit
                             </Button>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteArea(area)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -329,6 +340,32 @@ export default function RunnerDeliveryCharges() {
           </Table>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteArea} onOpenChange={() => setDeleteArea(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete area charge: {deleteArea}</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all delivery charge records (active, pending, and history) for this area. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteArea && profile?.id) {
+                  deleteCharges.mutate({ runnerId: profile.id, area: deleteArea });
+                  setDeleteArea(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }

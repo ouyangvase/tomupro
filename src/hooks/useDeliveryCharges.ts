@@ -243,6 +243,29 @@ export function useRejectDeliveryCharge() {
   });
 }
 
+export function useDeleteDeliveryChargesByArea() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ runnerId, area }: { runnerId: string; area: string }) => {
+      const { error } = await supabase
+        .from('delivery_charges')
+        .delete()
+        .eq('runner_id', runnerId)
+        .eq('area', area);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-charges'] });
+      toast.success('Area charge deleted');
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete: ${error.message}`);
+    },
+  });
+}
+
 // Get delivery charge for an order (for claim calculation)
 export async function getDeliveryChargeForOrder(runnerId: string, area: string | null): Promise<number | null> {
   if (!area) return null;
