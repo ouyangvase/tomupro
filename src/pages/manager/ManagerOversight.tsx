@@ -318,11 +318,6 @@ export default function ManagerOversight() {
                               ) : '-'}
                             </TableCell>
                             <TableCell className="text-center">
-                              {sp.disputes > 0 ? (
-                                <Badge variant="destructive">{sp.disputes}</Badge>
-                              ) : '-'}
-                            </TableCell>
-                            <TableCell className="text-center">
                               {sp.deliveredToday > 0 ? (
                                 <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30">
                                   {sp.deliveredToday}
