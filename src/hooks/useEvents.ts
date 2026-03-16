@@ -178,9 +178,9 @@ export function useCreateEvent() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
-      event: Partial<EventRow>;
-      settings: Partial<EventSettings>;
-      audienceRules: Partial<EventAudienceRule>[];
+      event: Record<string, any>;
+      settings: Record<string, any>;
+      audienceRules: { audience_type: string; audience_value?: string | null; rule_type: string }[];
     }) => {
       // 1. Create event
       const { data: eventData, error: eventError } = await supabase
