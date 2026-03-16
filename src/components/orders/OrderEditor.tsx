@@ -351,6 +351,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const { data: teamMembers = [] } = useTeamMembers();
+  const { data: validAreas = [] } = useValidAreas();
 
   const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
 
