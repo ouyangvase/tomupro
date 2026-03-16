@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 
-const UPDATE_INTERVAL_MS = 10000; // 10 seconds
-const STALE_THRESHOLD_MS = 60000; // 60 seconds without update = stale
+// Battery-friendly: 30-second interval instead of 10s
+const UPDATE_INTERVAL_MS = 30000;
 
 export type LocationPermissionState = "prompt" | "granted" | "denied" | "unsupported";
 export type LocationTrackingState = "idle" | "starting" | "active" | "error" | "stopped";
+export type LocationSharingMode = "off" | "delivery_session" | "live_tracking";
 
 interface LocationState {
   permissionState: LocationPermissionState;
@@ -16,6 +16,7 @@ interface LocationState {
   lastUpdateTime: Date | null;
   error: string | null;
   isSharing: boolean;
+  sharingMode: LocationSharingMode;
 }
 
 export const useLocationPermission = () => {
@@ -29,6 +30,7 @@ export const useLocationPermission = () => {
     lastUpdateTime: null,
     error: null,
     isSharing: false,
+    sharingMode: "off",
   });
 
   const watchIdRef = useRef<number | null>(null);
@@ -58,7 +60,6 @@ export const useLocationPermission = () => {
           }));
         });
       }).catch(() => {
-        // Safari doesn't support permission query for geolocation
         setState(prev => ({ ...prev, permissionState: "prompt" }));
       });
     }
@@ -108,47 +109,32 @@ export const useLocationPermission = () => {
     const latDiff = Math.abs(newLat - lastLat);
     const lngDiff = Math.abs(newLng - lastLng);
     
-    return latDiff > 0.0001 || lngDiff > 0.0001; // ~10m
+    return latDiff > 0.0001 || lngDiff > 0.0001;
   }, []);
 
-  // Start location tracking
-  const startTracking = useCallback(async (): Promise<boolean> => {
+  // Start location tracking with a specific mode
+  const startTracking = useCallback(async (mode: LocationSharingMode = "delivery_session"): Promise<boolean> => {
     if (!isDriver || !("geolocation" in navigator)) {
       return false;
     }
 
-    setState(prev => ({ ...prev, trackingState: "starting", error: null }));
+    setState(prev => ({ ...prev, trackingState: "starting", error: null, sharingMode: mode }));
 
     return new Promise((resolve) => {
-      // First, get initial position to trigger permission prompt
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          // Permission granted, send initial location
           sendLocation(position);
           
-          // Start watching position
-          watchIdRef.current = navigator.geolocation.watchPosition(
-            (pos) => {
-              if (hasSignificantMovement(pos)) {
-                sendLocation(pos);
-              }
-            },
-            (err) => {
-              console.error("Watch position error:", err);
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 15000,
-              maximumAge: 5000,
-            }
-          );
-
-          // Also set up interval for guaranteed updates
+          // Use interval-based updates only (battery friendly, no continuous watch)
           intervalRef.current = setInterval(() => {
             navigator.geolocation.getCurrentPosition(
-              sendLocation,
+              (pos) => {
+                if (hasSignificantMovement(pos)) {
+                  sendLocation(pos);
+                }
+              },
               (err) => console.error("Interval position error:", err),
-              { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+              { enableHighAccuracy: false, timeout: 10000, maximumAge: 15000 }
             );
           }, UPDATE_INTERVAL_MS);
 
@@ -157,6 +143,7 @@ export const useLocationPermission = () => {
             permissionState: "granted",
             trackingState: "active",
             isSharing: true,
+            sharingMode: mode,
             error: null,
           }));
           
@@ -183,12 +170,13 @@ export const useLocationPermission = () => {
             trackingState: "error",
             error: errorMsg,
             isSharing: false,
+            sharingMode: "off",
           }));
           
           resolve(false);
         },
         {
-          enableHighAccuracy: true,
+          enableHighAccuracy: false,
           timeout: 15000,
           maximumAge: 0,
         }
@@ -212,6 +200,7 @@ export const useLocationPermission = () => {
       ...prev,
       trackingState: "stopped",
       isSharing: false,
+      sharingMode: "off",
     }));
   }, []);
 
@@ -227,9 +216,9 @@ export const useLocationPermission = () => {
     };
   }, []);
 
-  // Check if location is required (driver without active sharing)
-  const locationRequired = isDriver && !state.isSharing && state.trackingState !== "active";
-  const canProceed = !isDriver || (state.permissionState === "granted" && state.isSharing);
+  // Location is NEVER required now - it's always optional
+  const locationRequired = false;
+  const canProceed = true;
 
   return {
     ...state,

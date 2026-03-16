@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, ReactNode } from "react";
-import { useLocationPermission, LocationPermissionState, LocationTrackingState } from "@/hooks/useLocationPermission";
+import React, { createContext, useContext, ReactNode } from "react";
+import { useLocationPermission, LocationPermissionState, LocationTrackingState, LocationSharingMode } from "@/hooks/useLocationPermission";
 
 interface LocationContextType {
   permissionState: LocationPermissionState;
@@ -7,7 +7,8 @@ interface LocationContextType {
   lastUpdateTime: Date | null;
   error: string | null;
   isSharing: boolean;
-  startTracking: () => Promise<boolean>;
+  sharingMode: LocationSharingMode;
+  startTracking: (mode?: LocationSharingMode) => Promise<boolean>;
   stopTracking: () => void;
   locationRequired: boolean;
   canProceed: boolean;
@@ -31,16 +32,7 @@ interface LocationProviderProps {
 export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) => {
   const locationState = useLocationPermission();
 
-  // Auto-start tracking for drivers when permission is already granted
-  useEffect(() => {
-    if (
-      locationState.isDriver && 
-      locationState.permissionState === "granted" && 
-      locationState.trackingState === "idle"
-    ) {
-      locationState.startTracking();
-    }
-  }, [locationState.isDriver, locationState.permissionState, locationState.trackingState]);
+  // NO auto-start - location sharing is optional now
 
   return (
     <LocationContext.Provider value={locationState}>
