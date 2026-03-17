@@ -230,6 +230,11 @@ export default function RunnerDeliveredOrders() {
   const { data: products = [] } = useProducts();
   const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : {});
 
+  // Runner earnings dashboard data
+  const { data: runnerEarnings, isLoading: earningsLoading } = useRunnerEarnings(
+    role === 'runner' ? user?.id : undefined
+  );
+
   // Fetch active delivery charges for runner (for export)
   const { data: activeCharges = [] } = useActiveDeliveryCharges(
     role === 'runner' ? user?.id : undefined
