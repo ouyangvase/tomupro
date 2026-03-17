@@ -1067,6 +1067,14 @@ export default function RunnerDeliveredOrders() {
                       { label: 'Imported', value: format(new Date(order.created_at), 'MMM dd, HH:mm') },
                       { label: 'Items', value: displayText },
                       { label: 'Amount', value: formatBND(order.total_amount) },
+                      ...(canClaim ? [{
+                        label: 'Earning',
+                        value: (() => {
+                          const area = order.area?.toLowerCase() || '';
+                          const fee = approvedChargeMap[area];
+                          return fee !== undefined ? formatBND(fee) : '-';
+                        })(),
+                      }] : []),
                       { label: 'Delivered', value: order.delivered_at ? format(new Date(order.delivered_at), 'MMM dd, HH:mm') : '-' },
                     ]}
                     expandedFields={[
