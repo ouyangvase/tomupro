@@ -717,77 +717,104 @@ export default function RunnerDeliveredOrders() {
         </PageHero>
 
 
-        {/* KPI Cards — Visual upgrade */}
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-          <Card className="relative overflow-hidden border-[hsl(var(--status-success)/0.3)] bg-gradient-to-br from-[hsl(var(--status-success)/0.1)] to-transparent">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-[hsl(var(--status-success)/0.08)] rounded-full -translate-y-1/2 translate-x-1/2" />
-            <CardContent className="pt-5 pb-4 relative">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Total Delivered {hasActiveFilters && <span>(filtered)</span>}
-                  </p>
-                  {displaySummaryLoading ? (
-                    <Skeleton className="h-9 w-20 mt-1" />
-                  ) : (
-                    <p className="text-3xl font-extrabold text-[hsl(var(--status-success))] tracking-tight mt-1">
-                      {displaySummary?.total_delivered ?? 0}
-                    </p>
-                  )}
-                </div>
-                <div className="p-2.5 rounded-xl bg-[hsl(var(--status-success)/0.15)]">
-                  <CheckCircle className="h-6 w-6 text-[hsl(var(--status-success))]" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Runner Earnings Dashboard - only for runners */}
+        {role === 'runner' && (
+          <RunnerEarningsDashboard 
+            earnings={runnerEarnings} 
+            isLoading={earningsLoading} 
+          />
+        )}
 
-          <Card className="relative overflow-hidden border-primary/30 bg-gradient-to-br from-primary/10 to-transparent">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-primary/8 rounded-full -translate-y-1/2 translate-x-1/2" />
-            <CardContent className="pt-5 pb-4 relative">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Pending Claim {hasActiveFilters && <span>(filtered)</span>}
-                  </p>
-                  {displaySummaryLoading ? (
-                    <Skeleton className="h-9 w-16 mt-1" />
-                  ) : (
-                    <p className="text-3xl font-extrabold text-primary tracking-tight mt-1">
-                      {displaySummary?.pending_claim ?? 0}
+        {/* Non-runner KPI Cards (Admin/Manager/Salesperson) */}
+        {role !== 'runner' && (
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+            <Card className="relative overflow-hidden border-[hsl(var(--status-success)/0.3)] bg-gradient-to-br from-[hsl(var(--status-success)/0.1)] to-transparent">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-[hsl(var(--status-success)/0.08)] rounded-full -translate-y-1/2 translate-x-1/2" />
+              <CardContent className="pt-5 pb-4 relative">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Total Delivered {hasActiveFilters && <span>(filtered)</span>}
                     </p>
-                  )}
+                    {displaySummaryLoading ? (
+                      <Skeleton className="h-9 w-20 mt-1" />
+                    ) : (
+                      <p className="text-3xl font-extrabold text-[hsl(var(--status-success))] tracking-tight mt-1">
+                        {displaySummary?.total_delivered ?? 0}
+                      </p>
+                    )}
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[hsl(var(--status-success)/0.15)]">
+                    <CheckCircle className="h-6 w-6 text-[hsl(var(--status-success))]" />
+                  </div>
                 </div>
-                <div className="p-2.5 rounded-xl bg-primary/15">
-                  <FileCheck className="h-6 w-6 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card className="relative overflow-hidden border-border/50 hover:border-primary/30 transition-colors">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-secondary/50 rounded-full -translate-y-1/2 translate-x-1/2" />
-            <CardContent className="pt-5 pb-4 relative">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Total Value {hasActiveFilters && <span>(filtered)</span>}
-                  </p>
-                  {displaySummaryLoading ? (
-                    <Skeleton className="h-9 w-28 mt-1" />
-                  ) : (
-                    <p className="text-3xl font-extrabold tracking-tight mt-1">
-                      {formatBND(displaySummary?.total_amount ?? 0)}
+            <Card className="relative overflow-hidden border-primary/30 bg-gradient-to-br from-primary/10 to-transparent">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-primary/8 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <CardContent className="pt-5 pb-4 relative">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Pending Claim {hasActiveFilters && <span>(filtered)</span>}
                     </p>
-                  )}
+                    {displaySummaryLoading ? (
+                      <Skeleton className="h-9 w-16 mt-1" />
+                    ) : (
+                      <p className="text-3xl font-extrabold text-primary tracking-tight mt-1">
+                        {displaySummary?.pending_claim ?? 0}
+                      </p>
+                    )}
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-primary/15">
+                    <FileCheck className="h-6 w-6 text-primary" />
+                  </div>
                 </div>
-                <div className="p-2.5 rounded-xl bg-secondary/50">
-                  <DollarSign className="h-6 w-6 text-muted-foreground" />
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden border-border/50 hover:border-primary/30 transition-colors">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-secondary/50 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <CardContent className="pt-5 pb-4 relative">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Total Value {hasActiveFilters && <span>(filtered)</span>}
+                    </p>
+                    {displaySummaryLoading ? (
+                      <Skeleton className="h-9 w-28 mt-1" />
+                    ) : (
+                      <p className="text-3xl font-extrabold tracking-tight mt-1">
+                        {formatBND(displaySummary?.total_amount ?? 0)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-secondary/50">
+                    <DollarSign className="h-6 w-6 text-muted-foreground" />
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Auto Claim Suggestion - only for runners */}
+        {canClaim && claimableOrders.length > 0 && (
+          <AutoClaimSuggestion
+            claimableOrders={claimableOrders}
+            invalidAreaOrders={invalidAreaOrders}
+            onClaimAll={() => {
+              setSelectedIds(new Set(claimableOrders.map(o => o.id)));
+              setBulkClaimOpen(true);
+            }}
+          />
+        )}
+
+        {/* Earnings Chart - only for runners */}
+        {role === 'runner' && (
+          <EarningsChart runnerId={user?.id} />
+        )}
 
         {/* Filters */}
         <Card>
