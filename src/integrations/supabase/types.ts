@@ -4475,6 +4475,18 @@ export type Database = {
           show_as_popup: boolean
         }[]
       }
+      get_runner_daily_earnings: {
+        Args: { p_days?: number; p_runner_id: string }
+        Returns: {
+          day: string
+          earnings: number
+          order_count: number
+        }[]
+      }
+      get_runner_earnings_summary: {
+        Args: { p_runner_id: string }
+        Returns: Json
+      }
       get_share_scopes: {
         Args: { p_subject_id: string; p_viewer_id: string }
         Returns: {
