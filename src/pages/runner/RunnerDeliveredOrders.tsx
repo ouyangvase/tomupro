@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2, AlertTriangle, Shield, DollarSign, FileCheck } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2, AlertTriangle, Shield, DollarSign, FileCheck, Banknote } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DateRangePresets, useDateRangeState, type DateRange } from '@/components/filters/DateRangePresets';
 import { PageHero } from '@/components/dashboard/PageHero';
@@ -79,6 +79,11 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { useNavigate } from 'react-router-dom';
 import { useDeliveryCharges as useApprovedChargeMap } from '@/hooks/useDeliveryChargePreview';
+import { RunnerEarningsDashboard } from '@/components/runner/RunnerEarningsDashboard';
+import { AutoClaimSuggestion } from '@/components/runner/AutoClaimSuggestion';
+import { EarningsChart } from '@/components/runner/EarningsChart';
+import { ClaimBatchTimeline } from '@/components/runner/ClaimBatchTimeline';
+import { useRunnerEarnings } from '@/hooks/useRunnerEarnings';
 
 // Claim status filter options for the dropdown
 type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
