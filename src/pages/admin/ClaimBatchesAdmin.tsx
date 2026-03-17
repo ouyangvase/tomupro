@@ -1,42 +1,32 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
 import { useClaimBatches, useApproveClaimBatch, useRejectClaimBatch } from '@/hooks/useClaimBatches';
 import { format } from 'date-fns';
-import { CheckCircle, Receipt, Loader2, XCircle, TrendingDown } from 'lucide-react';
+import { CheckCircle, Receipt, Loader2, XCircle, TrendingDown, Clock, DollarSign, Users } from 'lucide-react';
 import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
 import { Separator } from '@/components/ui/separator';
+import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
+import { ClaimBatchTimeline } from '@/components/runner/ClaimBatchTimeline';
+import { PageHero } from '@/components/dashboard/PageHero';
 import type { ClaimBatch } from '@/types/database';
+import { cn } from '@/lib/utils';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
 
 export default function ClaimBatchesAdmin() {
   const { data: batches = [], isLoading } = useClaimBatches({ status: 'ADMIN_ACK_PENDING' });
@@ -46,6 +36,15 @@ export default function ClaimBatchesAdmin() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [bulkApproving, setBulkApproving] = useState(false);
+
+  const stats = useMemo(() => ({
+    totalPending: batches.length,
+    totalOrders: batches.reduce((sum, b) => sum + (b.items?.length || 0), 0),
+    totalAmount: batches.reduce((sum, b) => sum + Number(b.net_bnd || b.total_amount || 0), 0),
+    uniqueRunners: new Set(batches.map(b => b.runner_id)).size,
+  }), [batches]);
 
   const handleViewDetails = (batch: ClaimBatch) => {
     setSelectedBatch(batch);
@@ -56,6 +55,24 @@ export default function ClaimBatchesAdmin() {
     await approveClaimBatch.mutateAsync(batch.id);
     setDetailsOpen(false);
     setSelectedBatch(null);
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedRows.length === 0) return;
+    setBulkApproving(true);
+    let success = 0;
+    let failed = 0;
+    for (const batchId of selectedRows) {
+      try {
+        await approveClaimBatch.mutateAsync(batchId);
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    setBulkApproving(false);
+    setSelectedRows([]);
+    toast.success(`Approved ${success} batch(es)${failed > 0 ? `, ${failed} failed` : ''}`);
   };
 
   const handleRejectClick = (batch: ClaimBatch) => {
@@ -77,79 +94,82 @@ export default function ClaimBatchesAdmin() {
 
   const columns: Column<ClaimBatch>[] = [
     {
-      key: 'submitted_at',
-      header: 'Submitted',
-      sortable: true,
-      render: (batch) => format(new Date(batch.submitted_at), 'MMM dd, yyyy HH:mm'),
-    },
-    {
-      key: 'runner',
-      header: 'Runner',
-      render: (batch) => batch.runner?.display_name || '-',
-    },
-    {
-      key: 'items',
-      header: 'Orders',
-      render: (batch) => batch.items?.length || 0,
-    },
-    {
-      key: 'gross_bnd',
-      header: 'Gross (BND)',
-      sortable: true,
-      render: (batch) => formatBND(batch.gross_bnd || batch.total_bnd || batch.total_amount),
-    },
-    {
-      key: 'delivery_charges_bnd',
-      header: 'Charges',
+      key: 'batch_code', header: 'Batch #', sortable: true,
       render: (batch) => (
-        <span className="text-destructive">
-          -{formatBND(batch.delivery_charges_bnd || 0)}
+        <span className="font-mono font-semibold text-primary">
+          {(batch as any).batch_code || '-'}
         </span>
       ),
     },
     {
-      key: 'net_bnd',
-      header: 'Net (BND)',
-      sortable: true,
+      key: 'submitted_at', header: 'Submitted', sortable: true,
       render: (batch) => (
-        <span className="font-bold">
+        <span className="text-sm">{format(new Date(batch.submitted_at), 'MMM dd, yyyy HH:mm')}</span>
+      ),
+    },
+    {
+      key: 'runner', header: 'Runner',
+      render: (batch) => (
+        <span className="font-medium">{batch.runner?.display_name || '-'}</span>
+      ),
+    },
+    {
+      key: 'items', header: 'Orders',
+      render: (batch) => <span className="font-semibold">{batch.items?.length || 0}</span>,
+    },
+    {
+      key: 'gross_bnd', header: 'Gross (BND)', sortable: true,
+      render: (batch) => formatBND(batch.gross_bnd || batch.total_bnd || batch.total_amount),
+    },
+    {
+      key: 'delivery_charges_bnd', header: 'Charges',
+      render: (batch) => (
+        <span className="text-destructive">-{formatBND(batch.delivery_charges_bnd || 0)}</span>
+      ),
+    },
+    {
+      key: 'net_bnd', header: 'Net (BND)', sortable: true,
+      render: (batch) => (
+        <span className="font-bold text-primary">
           {formatBND(batch.net_bnd || batch.total_bnd || batch.total_amount)}
         </span>
       ),
     },
     {
-      key: 'net_rm',
-      header: 'Net (RM)',
-      sortable: true,
+      key: 'net_rm', header: 'Net (RM)', sortable: true,
       render: (batch) => (
-        <span className="font-bold text-primary">
+        <span className="font-semibold">
           {batch.net_rm ? formatRM(batch.net_rm) : batch.total_rm ? formatRM(batch.total_rm) : '-'}
         </span>
       ),
     },
     {
-      key: 'note',
-      header: 'Note',
-      render: (batch) => batch.note || '-',
+      key: 'timeline', header: 'Status',
+      render: (batch) => (
+        <ClaimBatchTimeline
+          status={batch.status}
+          submittedAt={batch.submitted_at}
+          acknowledgedAt={batch.admin_ack_at}
+        />
+      ),
     },
     {
-      key: 'actions',
-      header: 'Actions',
+      key: 'actions', header: 'Actions',
       render: (batch) => (
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => handleViewDetails(batch)}>
+        <div className="flex gap-1.5">
+          <Button size="sm" variant="outline" onClick={() => handleViewDetails(batch)} className="text-xs">
             View
           </Button>
           <Button 
             size="sm" 
             onClick={() => handleApprove(batch)}
             disabled={approveClaimBatch.isPending}
-            className="bg-green-600 hover:bg-green-700"
+            className="bg-[hsl(var(--status-success))] hover:bg-[hsl(var(--status-success)/0.9)] text-white"
           >
             {approveClaimBatch.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <CheckCircle className="h-4 w-4" />
+              <CheckCircle className="h-3.5 w-3.5" />
             )}
           </Button>
           <Button 
@@ -159,9 +179,9 @@ export default function ClaimBatchesAdmin() {
             disabled={rejectClaimBatch.isPending}
           >
             {rejectClaimBatch.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <XCircle className="h-4 w-4" />
+              <XCircle className="h-3.5 w-3.5" />
             )}
           </Button>
         </div>
@@ -171,13 +191,71 @@ export default function ClaimBatchesAdmin() {
 
   return (
     <AppLayout>
-      <div className="p-6 space-y-6">
-        <div className="flex items-center gap-3">
-          <Receipt className="h-8 w-8 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Claim Batches</h1>
-            <p className="text-muted-foreground">Review and approve/reject runner claim batches</p>
-          </div>
+      <div className="space-y-6">
+        <PageHero
+          icon={<Receipt className="h-6 w-6 text-primary" />}
+          title="Claim Batches"
+          subtitle="Review and approve/reject runner claim batches"
+          actions={
+            selectedRows.length > 0 ? (
+              <Button
+                onClick={handleBulkApprove}
+                disabled={bulkApproving}
+                className="bg-[hsl(var(--status-success))] hover:bg-[hsl(var(--status-success)/0.9)] text-white"
+              >
+                {bulkApproving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                )}
+                Bulk Approve ({selectedRows.length})
+              </Button>
+            ) : undefined
+          }
+        />
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.03)]">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="h-4 w-4 text-[hsl(var(--status-warning))]" />
+                <span className="text-[11px] font-medium text-muted-foreground uppercase">Pending Batches</span>
+              </div>
+              <p className="text-3xl font-extrabold text-[hsl(var(--status-warning))]">
+                <AnimatedCounter value={stats.totalPending} />
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-border/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Receipt className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[11px] font-medium text-muted-foreground uppercase">Total Orders</span>
+              </div>
+              <p className="text-3xl font-extrabold"><AnimatedCounter value={stats.totalOrders} /></p>
+            </CardContent>
+          </Card>
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <DollarSign className="h-4 w-4 text-primary" />
+                <span className="text-[11px] font-medium text-muted-foreground uppercase">Total Amount</span>
+              </div>
+              <p className="text-2xl font-extrabold text-primary">
+                <AnimatedCounter value={stats.totalAmount} formatter={(v) => formatBND(v)} />
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-border/50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[11px] font-medium text-muted-foreground uppercase">Runners</span>
+              </div>
+              <p className="text-3xl font-extrabold"><AnimatedCounter value={stats.uniqueRunners} /></p>
+            </CardContent>
+          </Card>
         </div>
 
         <DataGrid
@@ -185,7 +263,10 @@ export default function ClaimBatchesAdmin() {
           columns={columns}
           loading={isLoading}
           keyField="id"
-          emptyMessage="No pending claim batches"
+          selectable
+          selectedRows={selectedRows}
+          onSelectionChange={setSelectedRows}
+          emptyMessage="No pending claim batches 🎉"
           onExport={() => {}}
         />
       </div>
@@ -194,7 +275,9 @@ export default function ClaimBatchesAdmin() {
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Claim Batch Details</DialogTitle>
+            <DialogTitle>
+              Claim Batch {(selectedBatch as any)?.batch_code || ''} Details
+            </DialogTitle>
             <DialogDescription>
               Submitted by {selectedBatch?.runner?.display_name} on{' '}
               {selectedBatch && format(new Date(selectedBatch.submitted_at), 'MMM dd, yyyy HH:mm')}
@@ -202,6 +285,17 @@ export default function ClaimBatchesAdmin() {
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Timeline */}
+            {selectedBatch && (
+              <div className="flex justify-center py-2">
+                <ClaimBatchTimeline
+                  status={selectedBatch.status}
+                  submittedAt={selectedBatch.submitted_at}
+                  acknowledgedAt={selectedBatch.admin_ack_at}
+                />
+              </div>
+            )}
+
             {/* Summary Cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="p-4 bg-muted rounded-lg">
@@ -216,7 +310,9 @@ export default function ClaimBatchesAdmin() {
               </div>
               <div className="p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">Status</p>
-                <Badge className="mt-1 bg-yellow-100 text-yellow-800">Pending Approval</Badge>
+                <Badge className="mt-1 bg-[hsl(var(--status-warning)/0.15)] text-[hsl(var(--status-warning))]">
+                  Pending Approval
+                </Badge>
               </div>
             </div>
 
@@ -325,7 +421,7 @@ export default function ClaimBatchesAdmin() {
             <Button
               onClick={() => selectedBatch && handleApprove(selectedBatch)}
               disabled={approveClaimBatch.isPending}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-[hsl(var(--status-success))] hover:bg-[hsl(var(--status-success)/0.9)] text-white"
             >
               {approveClaimBatch.isPending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
