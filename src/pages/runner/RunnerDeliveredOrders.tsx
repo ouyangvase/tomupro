@@ -1149,6 +1149,7 @@ export default function RunnerDeliveredOrders() {
                       <TableHead>Address</TableHead>
                       <TableHead>Items</TableHead>
                       <TableHead>Amount (BND)</TableHead>
+                      {canClaim && <TableHead>Earning</TableHead>}
                       <TableHead>Payment</TableHead>
                       <TableHead>Runner</TableHead>
                       <TableHead>Driver</TableHead>
