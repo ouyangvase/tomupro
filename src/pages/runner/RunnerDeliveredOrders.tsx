@@ -1265,6 +1265,22 @@ export default function RunnerDeliveredOrders() {
                               </TooltipProvider>
                             </TableCell>
                             <TableCell><span className="font-medium">{formatBND(order.total_amount)}</span></TableCell>
+                            {canClaim && (
+                              <TableCell>
+                                {(() => {
+                                  const area = order.area?.toLowerCase() || '';
+                                  const fee = approvedChargeMap[area];
+                                  return fee !== undefined ? (
+                                    <Badge className="bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))] border border-[hsl(var(--status-success)/0.3)] font-semibold">
+                                      <Banknote className="h-3 w-3 mr-1" />
+                                      {formatBND(fee, false)}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">-</span>
+                                  );
+                                })()}
+                              </TableCell>
+                            )}
                             <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>
                             <TableCell>{order.runner?.display_name || '-'}</TableCell>
                             <TableCell>{order.driver?.display_name || '-'}</TableCell>
