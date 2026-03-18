@@ -10,7 +10,6 @@ import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useUpdatePickupStatus, type PickupOperationalStatus } from '@/hooks/usePickupOrders';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import { useAuth } from '@/contexts/AuthContext';
-import { useValidAreas } from '@/hooks/useValidAreas';
 import { CreatePickupOrderDialog } from '@/components/runner/CreatePickupOrderDialog';
 import { formatBND } from '@/lib/currency';
 import { format } from 'date-fns';

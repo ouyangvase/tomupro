@@ -14,7 +14,7 @@ interface CreatePickupOrderParams {
   customer_name: string;
   phone: string;
   address: string;
-  area: string;
+  order_owner_id: string;
   payment_method: 'COD' | 'TRANSFER';
   pickup_fee: number;
   notes?: string;
@@ -47,12 +47,13 @@ export function useCreatePickupOrder() {
           customer_name: toUpperLatin(params.customer_name),
           phone: params.phone,
           address: toUpperLatin(params.address),
-          area: toUpperLatin(params.area),
+          area: '',
           payment_method: params.payment_method,
           total_amount: params.total_amount || 0,
           total_qty: 0,
           notes: params.notes || null,
-          salesperson_id: user.id,
+          salesperson_id: params.order_owner_id,
+          order_owner_id: params.order_owner_id,
           runner_id: user.id,
           status: 'READY',
           runner_status: 'ASSIGNED',
