@@ -61,7 +61,6 @@ function PickupTimeline({ currentStatus }: { currentStatus: string }) {
 export default function RunnerPickupOrders() {
   const { user } = useAuth();
   const { data: myDrivers = [] } = useMyDrivers();
-  const { data: validAreas = [] } = useValidAreas();
   const updateStatus = useUpdatePickupStatus();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
