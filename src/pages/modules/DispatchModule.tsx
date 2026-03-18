@@ -60,6 +60,7 @@ export default function DispatchModule() {
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
             {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : <RunnerInbox />)}
+            {activeTab === 'pickup-orders' && role === 'runner' && <RunnerPickupOrders />}
             {activeTab === 'inbound' && <RunnerInbound />}
             {activeTab === 'driver-inbox' && role === 'runner' && <RunnerDriverInbox />}
             {activeTab === 'drivers' && role === 'runner' && <DriverManagement />}
