@@ -10,14 +10,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCreatePickupOrder } from '@/hooks/usePickupOrders';
-import { useValidAreas } from '@/hooks/useValidAreas';
+import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { Plus, Loader2, Zap } from 'lucide-react';
+import { useMemo } from 'react';
 
 const pickupSchema = z.object({
   customer_name: z.string().min(1, 'Customer name is required'),
   phone: z.string().min(1, 'Phone is required'),
   address: z.string().min(1, 'Address is required'),
-  area: z.string().min(1, 'Area is required'),
+  order_owner_id: z.string().min(1, 'Order owner is required'),
   payment_method: z.enum(['COD', 'TRANSFER']),
   pickup_fee: z.coerce.number().min(0, 'Must be 0 or more'),
   total_amount: z.coerce.number().min(0).optional(),
@@ -29,9 +30,14 @@ type PickupFormValues = z.infer<typeof pickupSchema>;
 export function CreatePickupOrderDialog() {
   const [open, setOpen] = useState(false);
   const createPickup = useCreatePickupOrder();
-  const { data: validAreas = [] } = useValidAreas();
+  const { data: users = [] } = useUserDirectory();
 
-  const areaOptions = validAreas.map(a => ({ label: a, value: a }));
+  const userOptions = useMemo(() =>
+    users
+      .filter(u => ['salesperson', 'manager', 'admin'].includes(u.role))
+      .map(u => ({ label: `${u.display_name} (${u.role})`, value: u.id })),
+    [users]
+  );
 
   const form = useForm<PickupFormValues>({
     resolver: zodResolver(pickupSchema),
@@ -39,7 +45,7 @@ export function CreatePickupOrderDialog() {
       customer_name: '',
       phone: '',
       address: '',
-      area: '',
+      order_owner_id: '',
       payment_method: 'COD',
       pickup_fee: 0,
       total_amount: 0,
@@ -52,7 +58,7 @@ export function CreatePickupOrderDialog() {
       customer_name: values.customer_name,
       phone: values.phone,
       address: values.address,
-      area: values.area,
+      order_owner_id: values.order_owner_id,
       payment_method: values.payment_method,
       pickup_fee: values.pickup_fee,
       total_amount: values.total_amount,
@@ -103,15 +109,15 @@ export function CreatePickupOrderDialog() {
               </FormItem>
             )} />
 
-            <FormField control={form.control} name="area" render={({ field }) => (
+            <FormField control={form.control} name="order_owner_id" render={({ field }) => (
               <FormItem>
-                <FormLabel>Area</FormLabel>
+                <FormLabel>Order Owner</FormLabel>
                 <FormControl>
                   <SearchableSelect
-                    options={areaOptions}
+                    options={userOptions}
                     value={field.value}
                     onValueChange={field.onChange}
-                    placeholder="Select area"
+                    placeholder="Select owner (salesperson/manager/admin)"
                   />
                 </FormControl>
                 <FormMessage />
@@ -135,7 +141,7 @@ export function CreatePickupOrderDialog() {
 
               <FormField control={form.control} name="pickup_fee" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Pickup Fee (BND)</FormLabel>
+                  <FormLabel>Charges (BND)</FormLabel>
                   <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
