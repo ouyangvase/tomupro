@@ -28,6 +28,7 @@ export default function DispatchModule() {
 
   const runnerTabs = [
     { id: 'inbox', label: 'Runner Inbox' },
+    { id: 'pickup-orders', label: 'Pickup Orders' },
     { id: 'inbound', label: 'Inbound' },
     { id: 'driver-inbox', label: 'Driver Inbox' },
     { id: 'drivers', label: 'Drivers' },
