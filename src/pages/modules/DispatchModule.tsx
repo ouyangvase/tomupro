@@ -12,6 +12,7 @@ const RunnerDriverInbox = lazy(() => import('@/pages/runner/RunnerDriverInbox'))
 const DriverManagement = lazy(() => import('@/pages/runner/DriverManagement'));
 const RunnerFailedOrders = lazy(() => import('@/pages/runner/RunnerFailedOrders'));
 const RunnerDeliveredOrders = lazy(() => import('@/pages/runner/RunnerDeliveredOrders'));
+const RunnerPickupOrders = lazy(() => import('@/pages/runner/RunnerPickupOrders'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -27,6 +28,7 @@ export default function DispatchModule() {
 
   const runnerTabs = [
     { id: 'inbox', label: 'Runner Inbox' },
+    { id: 'pickup-orders', label: 'Pickup Orders' },
     { id: 'inbound', label: 'Inbound' },
     { id: 'driver-inbox', label: 'Driver Inbox' },
     { id: 'drivers', label: 'Drivers' },
@@ -58,6 +60,7 @@ export default function DispatchModule() {
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
             {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : <RunnerInbox />)}
+            {activeTab === 'pickup-orders' && role === 'runner' && <RunnerPickupOrders />}
             {activeTab === 'inbound' && <RunnerInbound />}
             {activeTab === 'driver-inbox' && role === 'runner' && <RunnerDriverInbox />}
             {activeTab === 'drivers' && role === 'runner' && <DriverManagement />}

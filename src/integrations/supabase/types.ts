@@ -2642,12 +2642,14 @@ export type Database = {
           order_code: string
           order_date: string
           order_owner_id: string
+          order_source: string
           owner_manager_display_name_snapshot: string | null
           owner_manager_id_snapshot: string | null
           owner_salesperson_display_name_snapshot: string | null
           owner_salesperson_id_snapshot: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
           phone: string
+          pickup_fee: number | null
           reconciliation_status: Database["public"]["Enums"]["reconciliation_status"]
           reopened_at: string | null
           reschedule_cycle_no: number
@@ -2712,12 +2714,14 @@ export type Database = {
           order_code: string
           order_date?: string
           order_owner_id: string
+          order_source?: string
           owner_manager_display_name_snapshot?: string | null
           owner_manager_id_snapshot?: string | null
           owner_salesperson_display_name_snapshot?: string | null
           owner_salesperson_id_snapshot?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone: string
+          pickup_fee?: number | null
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
           reopened_at?: string | null
           reschedule_cycle_no?: number
@@ -2782,12 +2786,14 @@ export type Database = {
           order_code?: string
           order_date?: string
           order_owner_id?: string
+          order_source?: string
           owner_manager_display_name_snapshot?: string | null
           owner_manager_id_snapshot?: string | null
           owner_salesperson_display_name_snapshot?: string | null
           owner_salesperson_id_snapshot?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
           phone?: string
+          pickup_fee?: number | null
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
           reopened_at?: string | null
           reschedule_cycle_no?: number

@@ -257,6 +257,11 @@ export default function DriverInbox() {
                 <Badge variant="secondary" className="text-[10px] font-medium px-2 py-0 h-5 rounded-full flex-shrink-0">
                   {getDateLabel(order)}
                 </Badge>
+                {(order as any).order_source === 'RUNNER_PICKUP' && (
+                  <Badge variant="outline" className="text-[10px] font-medium px-2 py-0 h-5 rounded-full bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30 flex-shrink-0">
+                    Pickup
+                  </Badge>
+                )}
               </div>
 
               {/* Route badge + Status */}
