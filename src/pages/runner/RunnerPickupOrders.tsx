@@ -241,7 +241,9 @@ export default function RunnerPickupOrders() {
                       </div>
                       <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1"><User className="h-3.5 w-3.5" />{order.customer_name}</span>
-                        <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{order.area || 'N/A'}</span>
+                        {order.salesperson?.display_name && (
+                          <span className="flex items-center gap-1 text-xs"><User className="h-3 w-3" />{order.salesperson.display_name}</span>
+                        )}
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="shrink-0" onClick={() => toggleCard(order.id)}>
