@@ -271,7 +271,7 @@ export default function RunnerPickupOrders() {
                           <span className="text-muted-foreground text-xs">Phone</span>
                           <div className="flex items-center gap-1.5">
                             <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                            <WhatsAppPhoneLink phone={order.phone} />
+                            <WhatsAppPhoneLink order={order} />
                           </div>
                         </div>
                         <div>

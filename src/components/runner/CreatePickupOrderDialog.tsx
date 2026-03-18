@@ -48,7 +48,16 @@ export function CreatePickupOrderDialog() {
   });
 
   const onSubmit = async (values: PickupFormValues) => {
-    await createPickup.mutateAsync(values);
+    await createPickup.mutateAsync({
+      customer_name: values.customer_name,
+      phone: values.phone,
+      address: values.address,
+      area: values.area,
+      payment_method: values.payment_method,
+      pickup_fee: values.pickup_fee,
+      total_amount: values.total_amount,
+      notes: values.notes,
+    });
     form.reset();
     setOpen(false);
   };
