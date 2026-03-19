@@ -139,15 +139,16 @@ Deno.serve(async (req) => {
   const webhookPayload: WebhookPayload = {
     event_type: eventType,
     occurred_at: order.delivered_at || new Date().toISOString(),
-    order_ref: order.order_code,
-    order_id: order.id,
-    customer_name: order.customer_name,
-    customer_phone: order.phone,
-    full_address: order.address,
-    area: order.area,
-    payment_type: order.payment_method,
-    order_total: order.total_amount,
-    items,
+    data: {
+      order_ref: order.order_code,
+      customer_name: order.customer_name,
+      customer_phone: order.phone,
+      full_address: order.address,
+      area: order.area,
+      payment_type: order.payment_method,
+      order_total: order.total_amount,
+      items,
+    },
   };
 
   const payloadString = JSON.stringify(webhookPayload);
