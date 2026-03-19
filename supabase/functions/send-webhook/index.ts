@@ -31,21 +31,22 @@ async function hmacSign(secret: string, body: string): Promise<string> {
 interface WebhookPayload {
   event_type: string;
   occurred_at: string;
-  order_ref: string;
-  order_id: string;
-  customer_name: string;
-  customer_phone: string;
-  full_address: string;
-  area: string | null;
-  payment_type: string;
-  order_total: number;
-  items: Array<{
-    sku: string | null;
-    product_name: string;
-    qty: number;
-    unit_price: number;
-    line_total: number;
-  }>;
+  data: {
+    order_ref: string;
+    customer_name: string;
+    customer_phone: string;
+    full_address: string;
+    area: string | null;
+    payment_type: string;
+    order_total: number;
+    items: Array<{
+      sku: string | null;
+      product_name: string;
+      qty: number;
+      unit_price: number;
+      line_total: number;
+    }>;
+  };
 }
 
 Deno.serve(async (req) => {
@@ -138,15 +139,16 @@ Deno.serve(async (req) => {
   const webhookPayload: WebhookPayload = {
     event_type: eventType,
     occurred_at: order.delivered_at || new Date().toISOString(),
-    order_ref: order.order_code,
-    order_id: order.id,
-    customer_name: order.customer_name,
-    customer_phone: order.phone,
-    full_address: order.address,
-    area: order.area,
-    payment_type: order.payment_method,
-    order_total: order.total_amount,
-    items,
+    data: {
+      order_ref: order.order_code,
+      customer_name: order.customer_name,
+      customer_phone: order.phone,
+      full_address: order.address,
+      area: order.area,
+      payment_type: order.payment_method,
+      order_total: order.total_amount,
+      items,
+    },
   };
 
   const payloadString = JSON.stringify(webhookPayload);
