@@ -108,50 +108,16 @@ export default function IntegrationSettings() {
     }
     setTesting(true);
     try {
-      const testPayload = {
-        event_type: 'test.ping',
-        occurred_at: new Date().toISOString(),
-        order_ref: 'TEST-PING',
-        order_id: '00000000-0000-0000-0000-000000000000',
-        customer_name: 'Test Customer',
-        customer_phone: '+60000000000',
-        full_address: 'Test Address',
-        area: 'Test Area',
-        payment_type: 'COD',
-        order_total: 0,
-        items: [],
-      };
-
-      const payloadStr = JSON.stringify(testPayload);
-
-      // Sign with shared secret
-      const enc = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        'raw', enc.encode(sharedSecret),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false, ['sign']
-      );
-      const sig = await crypto.subtle.sign('HMAC', key, enc.encode(payloadStr));
-      const signature = Array.from(new Uint8Array(sig))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-
-      const resp = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Webhook-Event': 'test.ping',
-          'X-Webhook-Signature': signature,
-          'Idempotency-Key': `test-ping-${Date.now()}`,
-          'X-Source-System': 'TOMUPRO',
-        },
-        body: payloadStr,
+      const { data, error } = await supabase.functions.invoke('test-webhook-proxy', {
+        body: {},
       });
 
-      const text = await resp.text();
-      if (resp.ok) {
-        toast.success(`Webhook test passed! Status: ${resp.status}`);
+      if (error) {
+        toast.error(`Webhook test error: ${error.message}`);
+      } else if (data?.success) {
+        toast.success(`Webhook test passed! Status: ${data.status}`);
       } else {
-        toast.error(`Webhook test failed: ${resp.status} — ${text.substring(0, 200)}`);
+        toast.error(`Webhook test failed: ${data?.status || 'unknown'} — ${(data?.response || data?.error || '').substring(0, 200)}`);
       }
     } catch (err) {
       toast.error(`Webhook test error: ${err instanceof Error ? err.message : String(err)}`);
