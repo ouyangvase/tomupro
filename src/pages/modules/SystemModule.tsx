@@ -62,6 +62,7 @@ export default function SystemModule() {
             {activeTab === 'leaderboard' && <LeaderboardSettings />}
             {activeTab === 'data-sharing' && <DataSharingAdmin />}
             {activeTab === 'reasons' && <ReasonsSettings />}
+            {activeTab === 'integrations' && <IntegrationSettings />}
             {activeTab === 'profile' && <ProfilePage />}
           </div>
         </Suspense>
