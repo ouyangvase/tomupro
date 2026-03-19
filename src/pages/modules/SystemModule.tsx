@@ -13,6 +13,7 @@ const CommissionSettings = lazy(() => import('@/pages/admin/CommissionSettings')
 const LeaderboardSettings = lazy(() => import('@/pages/admin/LeaderboardSettings'));
 const DataSharingAdmin = lazy(() => import('@/pages/admin/DataSharingAdmin'));
 const ReasonsSettings = lazy(() => import('@/pages/settings/ReasonsSettings'));
+const IntegrationSettings = lazy(() => import('@/pages/admin/IntegrationSettings'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">

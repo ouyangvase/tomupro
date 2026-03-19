@@ -307,6 +307,22 @@ Deno.serve(async (req) => {
       priority: 'MEDIUM',
     });
 
+    // Fire webhook to PulseOne (non-blocking)
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      fetch(`${supabaseUrl}/functions/v1/send-webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ orderId, eventType: 'order.delivered' }),
+      }).catch((err) => console.error('Webhook fire-and-forget error:', err));
+    } catch (webhookErr) {
+      console.error('Webhook trigger error (non-blocking):', webhookErr);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
