@@ -1907,6 +1907,39 @@ export type Database = {
           },
         ]
       }
+      integration_settings: {
+        Row: {
+          created_at: string
+          id: string
+          integration_name: string
+          metadata: Json | null
+          shared_secret: string | null
+          updated_at: string
+          webhook_enabled: boolean
+          webhook_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          integration_name: string
+          metadata?: Json | null
+          shared_secret?: string | null
+          updated_at?: string
+          webhook_enabled?: boolean
+          webhook_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          integration_name?: string
+          metadata?: Json | null
+          shared_secret?: string | null
+          updated_at?: string
+          webhook_enabled?: boolean
+          webhook_url?: string | null
+        }
+        Relationships: []
+      }
       integration_webhook_logs: {
         Row: {
           created_at: string
@@ -4083,6 +4116,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      webhook_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          event_type: string
+          id: string
+          idempotency_key: string
+          max_retries: number
+          order_id: string | null
+          order_ref: string | null
+          payload: Json
+          response_body: string | null
+          response_status: number | null
+          retry_count: number
+          sent_at: string | null
+          sync_status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          idempotency_key: string
+          max_retries?: number
+          order_id?: string | null
+          order_ref?: string | null
+          payload?: Json
+          response_body?: string | null
+          response_status?: number | null
+          retry_count?: number
+          sent_at?: string | null
+          sync_status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          idempotency_key?: string
+          max_retries?: number
+          order_id?: string | null
+          order_ref?: string | null
+          payload?: Json
+          response_body?: string | null
+          response_status?: number | null
+          retry_count?: number
+          sent_at?: string | null
+          sync_status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {
