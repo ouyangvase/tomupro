@@ -1907,6 +1907,45 @@ export type Database = {
           },
         ]
       }
+      integration_webhook_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          event_type: string
+          id: string
+          idempotency_key: string
+          order_ref: string | null
+          payload: Json
+          processed_at: string | null
+          source_system: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          idempotency_key: string
+          order_ref?: string | null
+          payload?: Json
+          processed_at?: string | null
+          source_system?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          idempotency_key?: string
+          order_ref?: string | null
+          payload?: Json
+          processed_at?: string | null
+          source_system?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       inventory_data_issues: {
         Row: {
           balance_qty: number
@@ -3226,6 +3265,62 @@ export type Database = {
           },
         ]
       }
+      profit_orders: {
+        Row: {
+          cogs: number
+          created_at: string
+          id: string
+          items: Json
+          missing_skus: Json | null
+          net_profit: number
+          order_ref: string
+          payment_type: string | null
+          profit_status: string
+          revenue: number
+          source: string
+          updated_at: string
+          webhook_log_id: string | null
+        }
+        Insert: {
+          cogs?: number
+          created_at?: string
+          id?: string
+          items?: Json
+          missing_skus?: Json | null
+          net_profit?: number
+          order_ref: string
+          payment_type?: string | null
+          profit_status?: string
+          revenue?: number
+          source?: string
+          updated_at?: string
+          webhook_log_id?: string | null
+        }
+        Update: {
+          cogs?: number
+          created_at?: string
+          id?: string
+          items?: Json
+          missing_skus?: Json | null
+          net_profit?: number
+          order_ref?: string
+          payment_type?: string | null
+          profit_status?: string
+          revenue?: number
+          source?: string
+          updated_at?: string
+          webhook_log_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_orders_webhook_log_id_fkey"
+            columns: ["webhook_log_id"]
+            isOneToOne: false
+            referencedRelation: "integration_webhook_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reasons: {
         Row: {
           created_at: string
@@ -3421,6 +3516,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sku_cost: {
+        Row: {
+          created_at: string
+          currency: string
+          id: string
+          sku_code: string
+          sku_name: string | null
+          unit_cost: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          id?: string
+          sku_code: string
+          sku_name?: string | null
+          unit_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          id?: string
+          sku_code?: string
+          sku_name?: string | null
+          unit_cost?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       stock_movements: {
         Row: {
