@@ -31,6 +31,7 @@ const tabs = [
   { id: 'leaderboard', label: 'Leaderboard' },
   { id: 'data-sharing', label: 'Data Sharing' },
   { id: 'reasons', label: 'Reasons' },
+  { id: 'integrations', label: 'Integrations' },
   { id: 'profile', label: 'Profile' },
 ];
 
