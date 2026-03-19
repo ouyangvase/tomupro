@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.tomupro-webhook]
 verify_jwt = false
+
+[functions.send-webhook]
+verify_jwt = false

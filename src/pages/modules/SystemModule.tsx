@@ -13,6 +13,7 @@ const CommissionSettings = lazy(() => import('@/pages/admin/CommissionSettings')
 const LeaderboardSettings = lazy(() => import('@/pages/admin/LeaderboardSettings'));
 const DataSharingAdmin = lazy(() => import('@/pages/admin/DataSharingAdmin'));
 const ReasonsSettings = lazy(() => import('@/pages/settings/ReasonsSettings'));
+const IntegrationSettings = lazy(() => import('@/pages/admin/IntegrationSettings'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -30,6 +31,7 @@ const tabs = [
   { id: 'leaderboard', label: 'Leaderboard' },
   { id: 'data-sharing', label: 'Data Sharing' },
   { id: 'reasons', label: 'Reasons' },
+  { id: 'integrations', label: 'Integrations' },
   { id: 'profile', label: 'Profile' },
 ];
 
@@ -60,6 +62,7 @@ export default function SystemModule() {
             {activeTab === 'leaderboard' && <LeaderboardSettings />}
             {activeTab === 'data-sharing' && <DataSharingAdmin />}
             {activeTab === 'reasons' && <ReasonsSettings />}
+            {activeTab === 'integrations' && <IntegrationSettings />}
             {activeTab === 'profile' && <ProfilePage />}
           </div>
         </Suspense>
