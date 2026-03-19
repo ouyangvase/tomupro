@@ -1,28 +1,79 @@
-import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOnboardingSession, useCreateOnboardingSession } from '@/hooks/useGuideCenter';
-import { onboardingFlows, roleImages, type GuideRole } from '@/data/guideContent';
-import { ChevronRight, ChevronLeft, Sparkles, CheckCircle, X } from 'lucide-react';
+import { onboardingFlows, type GuideRole } from '@/data/guideContent';
+import { ChevronRight, ChevronLeft, Sparkles, CheckCircle } from 'lucide-react';
+
+// Public routes where onboarding must never appear
+const PUBLIC_ROUTES = ['/auth', '/reset-password', '/force-password-change'];
+
+// Only auto-show for accounts created within the last 7 days
+const NEW_USER_THRESHOLD_DAYS = 7;
 
 export function OnboardingFlow() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
+  const location = useLocation();
   const { data: session, isLoading } = useOnboardingSession();
   const createSession = useCreateOnboardingSession();
   const [step, setStep] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+  const [delayPassed, setDelayPassed] = useState(false);
 
   const role = (profile?.role as GuideRole) || 'salesperson';
   const onboarding = onboardingFlows.find(o => o.role === role);
 
-  // Don't show if: loading, already completed/skipped, or dismissed this session
-  const shouldShow = !isLoading && !session && !dismissed && !!onboarding;
+  // Add a short delay after login before showing onboarding
+  useEffect(() => {
+    if (!user || !profile) {
+      setDelayPassed(false);
+      return;
+    }
+    const timer = setTimeout(() => setDelayPassed(true), 1500);
+    return () => clearTimeout(timer);
+  }, [user, profile]);
 
-  const totalSteps = onboarding ? onboarding.steps.length + 2 : 0; // welcome + whatYouDo + steps
+  // Check if user is on a public route
+  const isPublicRoute = PUBLIC_ROUTES.some(r => location.pathname.startsWith(r));
+
+  // Check if user is "new" enough for auto-onboarding
+  const isNewUser = (() => {
+    if (!profile?.created_at) return false;
+    const created = new Date(profile.created_at);
+    const now = new Date();
+    const diffDays = (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays <= NEW_USER_THRESHOLD_DAYS;
+  })();
+
+  // Determine if onboarding was already completed or skipped
+  const isCompletedOrSkipped = session && (
+    session.status === 'completed' || session.status === 'skipped'
+  );
+
+  // Show onboarding only when ALL conditions are met:
+  // 1. User is authenticated with a profile
+  // 2. Not on a public route
+  // 3. Delay has passed (post-login feel)
+  // 4. Not loading session data
+  // 5. No completed/skipped session exists
+  // 6. User is new (created recently) — old users won't get auto-popup
+  // 7. Not dismissed this browser session
+  // 8. Onboarding content exists for this role
+  const shouldShow =
+    !!user &&
+    !!profile &&
+    !isPublicRoute &&
+    delayPassed &&
+    !isLoading &&
+    !isCompletedOrSkipped &&
+    isNewUser &&
+    !dismissed &&
+    !!onboarding;
+
+  const totalSteps = onboarding ? onboarding.steps.length + 2 : 0;
 
   const handleStart = useCallback(() => {
     createSession.mutate('start');
