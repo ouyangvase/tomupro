@@ -202,7 +202,7 @@ export default function IntegrationSettings() {
             <Input
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://your-project.supabase.co/functions/v1/tomupro-webhook"
+              placeholder="https://vegwxtqfrltghvtgocqd.supabase.co/functions/v1/webhook"
               type="url"
             />
           </div>
