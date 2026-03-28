@@ -14,14 +14,17 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { useInboundShipments, useUpdateInboundShipment } from '@/hooks/useInboundShipments';
+import { useInboundShipments, useUpdateInboundShipment, useWarehouseForUser } from '@/hooks/useInboundShipments';
 import { supabase } from '@/integrations/supabase/client';
 import { useProducts } from '@/hooks/useProducts';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAccessibleOwnerIds, useCanOperateOnSharedData } from '@/hooks/useDataSharing';
+import { DataScopeSelector, OwnerBadge } from '@/components/data-sharing/DataScopeSelector';
+import type { DataViewMode } from '@/types/data-sharing';
 import type { InboundShipment, InboundItem, InboundStatus } from '@/types/database';
-import { Package, CheckCircle, AlertTriangle, ZoomIn, X, Calendar, Image as ImageIcon } from 'lucide-react';
+import { Package, CheckCircle, AlertTriangle, ZoomIn, X, Calendar, Image as ImageIcon, Warehouse } from 'lucide-react';
 import { format } from 'date-fns';
 
 const statusColors: Record<InboundStatus, string> = {
@@ -82,14 +85,38 @@ function ImageLightbox({ imageUrl, alt, uploadDate, onClose }: LightboxProps) {
 export default function InboundPending() {
   const { user, role } = useAuth();
   const { toast } = useToast();
-  
-  // For manager, we don't pass salespersonId filter to let RLS handle team visibility
-  // For salesperson, filter to their own shipments
-  const shipmentFilters = role === 'salesperson' 
-    ? { salespersonId: user?.id, status: 'PENDING_SP_ACK' as const }
-    : { status: 'PENDING_SP_ACK' as const }; // Admin/Manager see all their visible shipments via RLS
-  
-  const { data: shipments, isLoading } = useInboundShipments(shipmentFilters);
+  const [viewMode, setViewMode] = useState<DataViewMode>('my_data');
+
+  // For "my_data" mode, ALL roles filter to own shipments
+  // For "shared"/"all_accessible", we use accessible owner IDs from data sharing
+  const { data: accessibleIds } = useAccessibleOwnerIds('inbound');
+
+  const shipmentFilters = (() => {
+    const base: { salespersonId?: string; status: 'PENDING_SP_ACK' } = { status: 'PENDING_SP_ACK' };
+    if (viewMode === 'my_data') {
+      // Everyone sees only their own inbound by default
+      base.salespersonId = user?.id;
+    }
+    // For shared/all_accessible, don't pass salespersonId — filter after fetch with accessibleIds
+    return base;
+  })();
+
+  const { data: rawShipments, isLoading } = useInboundShipments(shipmentFilters);
+
+  // Apply accessible owner IDs filtering for shared/all modes
+  const shipments = (() => {
+    if (!rawShipments) return [];
+    if (viewMode === 'my_data') return rawShipments;
+    if (role === 'admin') return rawShipments; // admin sees all
+    if (!accessibleIds) return rawShipments;
+    if (viewMode === 'shared') {
+      // Only show others' data (exclude own)
+      return rawShipments.filter(s => s.salesperson_id !== user?.id && accessibleIds.includes(s.salesperson_id));
+    }
+    // all_accessible
+    return rawShipments.filter(s => accessibleIds.includes(s.salesperson_id));
+  })();
+
   const { data: products } = useProducts();
   const updateShipment = useUpdateInboundShipment();
   const queryClient = useQueryClient();
@@ -100,6 +127,18 @@ export default function InboundPending() {
   const [disputeNotes, setDisputeNotes] = useState('');
   const [lightboxImage, setLightboxImage] = useState<{ url: string; alt: string; date?: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Warehouse destination for selected shipment's target user
+  const { data: targetWarehouse } = useWarehouseForUser(selectedShipment?.salesperson_id);
+
+  // Check operate permission for shared records
+  const isOwnShipment = selectedShipment?.salesperson_id === user?.id;
+  const { data: canOperate = true } = useCanOperateOnSharedData(
+    selectedShipment?.salesperson_id || null,
+    'inbound'
+  );
+  const canAct = isOwnShipment || role === 'admin' || canOperate;
+
   const handleOpenDetail = (shipment: InboundShipment) => {
     setSelectedShipment(shipment);
     setDetailDialogOpen(true);
@@ -231,7 +270,12 @@ export default function InboundPending() {
     {
       key: 'target_user',
       header: 'Target User',
-      render: (s) => s.salesperson?.display_name || s.salesperson?.email || '-',
+      render: (s) => (
+        <span className="flex items-center">
+          {s.salesperson?.display_name || s.salesperson?.email || '-'}
+          <OwnerBadge ownerName={s.salesperson?.display_name || ''} isOwnData={s.salesperson_id === user?.id} />
+        </span>
+      ),
     },
     {
       key: 'runner',
@@ -280,12 +324,15 @@ export default function InboundPending() {
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
-        <div className="flex items-center gap-3">
-          <Package className="h-8 w-8 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Inbound Pending</h1>
-            <p className="text-muted-foreground">Review and acknowledge runner inbound shipments</p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Package className="h-8 w-8 text-primary" />
+            <div>
+              <h1 className="text-2xl font-bold">Inbound Pending</h1>
+              <p className="text-muted-foreground">Review and acknowledge runner inbound shipments</p>
+            </div>
           </div>
+          <DataScopeSelector value={viewMode} onChange={setViewMode} scope="inbound" />
         </div>
 
         <DataGrid
@@ -323,6 +370,19 @@ export default function InboundPending() {
               <div>
                 <span className="text-muted-foreground">Notes:</span>
                 <p className="font-medium">{selectedShipment?.notes || '-'}</p>
+              </div>
+            </div>
+
+            {/* Warehouse destination info */}
+            <div className="flex items-center gap-2 rounded-lg border p-3 bg-muted/30">
+              <Warehouse className="h-5 w-5 text-muted-foreground" />
+              <div className="text-sm">
+                <span className="text-muted-foreground">Stock destination: </span>
+                {targetWarehouse ? (
+                  <span className="font-medium">{targetWarehouse.name} ({targetWarehouse.warehouse_type})</span>
+                ) : (
+                  <span className="font-medium text-amber-600">Warehouse will be auto-created on acknowledge</span>
+                )}
               </div>
             </div>
 
@@ -410,15 +470,18 @@ export default function InboundPending() {
           </div>
 
           <DialogFooter className="flex gap-2">
+            {!canAct && (
+              <Badge variant="outline" className="mr-auto text-muted-foreground">View only</Badge>
+            )}
             <Button
               variant="destructive"
               onClick={() => setDisputeDialogOpen(true)}
-              disabled={isProcessing}
+              disabled={isProcessing || !canAct}
             >
               <AlertTriangle className="h-4 w-4 mr-1" />
               Reject / Dispute
             </Button>
-            <Button onClick={handleAcknowledge} disabled={isProcessing}>
+            <Button onClick={handleAcknowledge} disabled={isProcessing || !canAct}>
               <CheckCircle className="h-4 w-4 mr-1" />
               {isProcessing ? 'Processing...' : 'Acknowledge & Add Stock'}
             </Button>

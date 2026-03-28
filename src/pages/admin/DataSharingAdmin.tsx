@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Edit2, Trash2, Eye, EyeOff, Package, ShoppingCart, Warehouse, ArrowDownToLine, Shield, History, Users } from 'lucide-react';
+import { Plus, Edit2, Trash2, Eye, EyeOff, Package, ShoppingCart, Warehouse, ArrowDownToLine, Shield, History, Users, Truck, Receipt } from 'lucide-react';
 import { useDataShares, useCreateDataShare, useUpdateDataShare, useDeleteDataShare, useAccessAuditLogs } from '@/hooks/useDataSharing';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import type { UserDataShare } from '@/types/data-sharing';
@@ -229,6 +229,18 @@ function SharesTable({
                       Inbound
                     </Badge>
                   )}
+                  {share.scope_delivered_orders && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Truck className="h-3 w-3 mr-1" />
+                      Delivered
+                    </Badge>
+                  )}
+                  {share.scope_claims && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Receipt className="h-3 w-3 mr-1" />
+                      Claims
+                    </Badge>
+                  )}
                 </div>
               </TableCell>
               <TableCell>
@@ -306,6 +318,8 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [scopeProducts, setScopeProducts] = useState(true);
   const [scopeStock, setScopeStock] = useState(true);
   const [scopeInbound, setScopeInbound] = useState(false);
+  const [scopeDeliveredOrders, setScopeDeliveredOrders] = useState(false);
+  const [scopeClaims, setScopeClaims] = useState(false);
   const [canOperate, setCanOperate] = useState(false);
 
   const resetForm = () => {
@@ -315,6 +329,8 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     setScopeProducts(true);
     setScopeStock(true);
     setScopeInbound(false);
+    setScopeDeliveredOrders(false);
+    setScopeClaims(false);
     setCanOperate(false);
   };
 
@@ -326,6 +342,8 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       scope_products: scopeProducts,
       scope_stock_balance: scopeStock,
       scope_inbound: scopeInbound,
+      scope_delivered_orders: scopeDeliveredOrders,
+      scope_claims: scopeClaims,
       can_operate: canOperate,
       active: true,
     });
@@ -402,6 +420,20 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                 </div>
                 <Switch checked={scopeInbound} onCheckedChange={setScopeInbound} />
               </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <Truck className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Delivered</span>
+                </div>
+                <Switch checked={scopeDeliveredOrders} onCheckedChange={setScopeDeliveredOrders} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <Receipt className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Claims</span>
+                </div>
+                <Switch checked={scopeClaims} onCheckedChange={setScopeClaims} />
+              </div>
             </div>
           </div>
 
@@ -423,7 +455,7 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleCreate}
             disabled={!viewerId || !subjectId || createShare.isPending}
           >
@@ -450,6 +482,8 @@ function EditShareDialog({
   const [scopeProducts, setScopeProducts] = useState(share.scope_products);
   const [scopeStock, setScopeStock] = useState(share.scope_stock_balance);
   const [scopeInbound, setScopeInbound] = useState(share.scope_inbound);
+  const [scopeDeliveredOrders, setScopeDeliveredOrders] = useState(share.scope_delivered_orders ?? false);
+  const [scopeClaims, setScopeClaims] = useState(share.scope_claims ?? false);
   const [canOperate, setCanOperate] = useState(share.can_operate);
   const [active, setActive] = useState(share.active);
 
@@ -460,6 +494,8 @@ function EditShareDialog({
       scope_products: scopeProducts,
       scope_stock_balance: scopeStock,
       scope_inbound: scopeInbound,
+      scope_delivered_orders: scopeDeliveredOrders,
+      scope_claims: scopeClaims,
       can_operate: canOperate,
       active,
     });
@@ -507,6 +543,20 @@ function EditShareDialog({
                   <span className="text-sm">Inbound</span>
                 </div>
                 <Switch checked={scopeInbound} onCheckedChange={setScopeInbound} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <Truck className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Delivered</span>
+                </div>
+                <Switch checked={scopeDeliveredOrders} onCheckedChange={setScopeDeliveredOrders} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <Receipt className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Claims</span>
+                </div>
+                <Switch checked={scopeClaims} onCheckedChange={setScopeClaims} />
               </div>
             </div>
           </div>

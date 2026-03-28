@@ -7,13 +7,13 @@ import type { DataViewMode } from '@/types/data-sharing';
 interface DataScopeSelectorProps {
   value: DataViewMode;
   onChange: (mode: DataViewMode) => void;
-  scope?: 'orders' | 'products' | 'stock' | 'inbound';
+  scope?: 'orders' | 'products' | 'stock' | 'inbound' | 'delivered_orders' | 'claims';
   className?: string;
 }
 
 export function DataScopeSelector({ value, onChange, scope = 'orders', className }: DataScopeSelectorProps) {
   const { data: sharedAccess = [] } = useMySharedAccess();
-  
+
   // Filter shared access by scope
   const relevantShares = sharedAccess.filter(share => {
     switch (scope) {
@@ -21,6 +21,8 @@ export function DataScopeSelector({ value, onChange, scope = 'orders', className
       case 'products': return share.scopes.products;
       case 'stock': return share.scopes.stock;
       case 'inbound': return share.scopes.inbound;
+      case 'delivered_orders': return share.scopes.delivered_orders;
+      case 'claims': return share.scopes.claims;
       default: return share.scopes.orders;
     }
   });

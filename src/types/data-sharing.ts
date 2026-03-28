@@ -6,6 +6,8 @@ export interface UserDataShare {
   scope_products: boolean;
   scope_stock_balance: boolean;
   scope_inbound: boolean;
+  scope_delivered_orders: boolean;
+  scope_claims: boolean;
   can_operate: boolean;
   active: boolean;
   created_by_admin_id: string;
@@ -30,7 +32,7 @@ export interface AccessAuditLog {
   subject?: { id: string; display_name: string };
 }
 
-export type DataScope = 'orders' | 'products' | 'stock' | 'inbound';
+export type DataScope = 'orders' | 'products' | 'stock' | 'inbound' | 'delivered_orders' | 'claims';
 export type DataViewMode = 'my_data' | 'shared' | 'all_accessible';
 
 export interface SharedAccessInfo {
@@ -42,5 +44,7 @@ export interface SharedAccessInfo {
     products: boolean;
     stock: boolean;
     inbound: boolean;
+    delivered_orders: boolean;
+    claims: boolean;
   };
 }

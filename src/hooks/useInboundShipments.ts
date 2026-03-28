@@ -194,6 +194,30 @@ export function useUpdateInboundItem() {
   });
 }
 
+/**
+ * Fetch the active warehouse for a given user (used to show destination in inbound review)
+ */
+export function useWarehouseForUser(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['warehouse-for-user', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data, error } = await supabase
+        .from('warehouses')
+        .select('id, name, warehouse_type')
+        .eq('owner_user_id', userId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!userId,
+    staleTime: 60000,
+  });
+}
+
 export async function uploadInboundPhoto(file: File, userId: string): Promise<string> {
   const fileExt = file.name.split('.').pop();
   const fileName = `${userId}/${Date.now()}.${fileExt}`;

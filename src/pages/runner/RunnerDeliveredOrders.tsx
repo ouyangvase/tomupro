@@ -9,7 +9,6 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { usePaginatedOrders, type PaginatedOrderFilters } from '@/hooks/usePaginatedOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useMyDrivers } from '@/hooks/useDrivers';
@@ -18,7 +17,7 @@ import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
-import { useDeliveredSummaryFiltered } from '@/hooks/useDeliveredOrders';
+import { useDeliveredOrdersFastAll, useVisibleOwnerIds, type DeliveredOrder } from '@/hooks/useDeliveredOrders';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
@@ -27,6 +26,8 @@ import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Us
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DateRangePresets, useDateRangeState, type DateRange } from '@/components/filters/DateRangePresets';
 import { PageHero } from '@/components/dashboard/PageHero';
+import { DataScopeSelector } from '@/components/data-sharing/DataScopeSelector';
+import type { DataViewMode } from '@/types/data-sharing';
 import capybaraRunner from '@/assets/capybara-runner.png';
 import { CapybaraState } from '@/components/dashboard/CapybaraState';
 import {
@@ -69,6 +70,7 @@ import {
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
+import { UserGroupedBulkClaimDialog, type ClaimGroupSubmission } from '@/components/runner/UserGroupedBulkClaimDialog';
 import { RevertDeliveryDialog } from '@/components/admin/RevertDeliveryDialog';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { supabase } from '@/integrations/supabase/client';
@@ -133,8 +135,11 @@ export default function RunnerDeliveredOrders() {
   const { data: approvedChargeMap = {} } = useApprovedChargeMap();
   
   // Team view state for managers
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager: isManagerRole, teamMembers } = useTeamViewState('my');
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager: isManagerRole, teamMembers } = useTeamViewState('team');
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
+
+  // Data sharing view mode (for DataScopeSelector)
+  const [dataSharingView, setDataSharingView] = useState<DataViewMode>('my_data');
   
   // Check if user is admin, manager, or salesperson
   const isAdmin = role === 'admin';
@@ -155,72 +160,169 @@ export default function RunnerDeliveredOrders() {
   const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
   const { dateRange, setDateRange } = useDateRangeState();
   
-  // Build server-side paginated filter
-  const paginatedFilters = useMemo((): PaginatedOrderFilters => {
-    const base: PaginatedOrderFilters = {
-      runnerStatus: 'DELIVERED' as any,
-      excludeStatus: 'CANCELLED' as any,
-      sortField: 'delivered_at',
-      sortDirection: 'desc',
-    };
+  // ---------- Unified RPC path for ALL roles (bypasses RLS via SECURITY DEFINER) ----------
+  const isRunnerRole = role === 'runner';
 
-    // Search
-    if (searchQuery.trim()) base.searchQuery = searchQuery.trim();
-    // Area
-    if (areaFilter !== 'all') base.areaFilter = areaFilter;
-    // Date range
-    if (dateRange.from) base.deliveredDateFrom = dateRange.from.toISOString();
-    if (dateRange.to) base.deliveredDateTo = dateRange.to.toISOString();
-    // Driver
-    if (driverFilter !== 'all') base.driverId = driverFilter;
-    // Claim status mapped to reconciliation statuses
-    const reconStatuses = claimStatusToReconciliation[claimStatusFilter];
-    if (reconStatuses) base.reconciliationStatusIn = reconStatuses as any;
+  // Get visible owner IDs for role-scoping (admin=null=all, manager/salesperson=team IDs)
+  const { data: visibleOwnerIds } = useVisibleOwnerIds();
 
-    // Role-based scoping
-    if (role === 'runner') {
-      base.runnerId = user?.id;
-      if (salespersonFilters.length > 0) base.salespersonIds = salespersonFilters;
-    } else if (role === 'salesperson') {
-      base.salespersonId = user?.id;
-    } else if (role === 'manager') {
-      if (salespersonFilters.length > 0) {
-        base.salespersonIds = salespersonFilters;
-      } else if (salespersonIds && salespersonIds.length > 0) {
-        base.salespersonIds = salespersonIds;
+  // Compute the effective salesperson scope for the RPC based on role + filters
+  const rpcSalespersonIds = useMemo((): string[] | undefined => {
+    // User explicitly selected salesperson filters — use those
+    if (salespersonFilters.length > 0) return salespersonFilters;
+
+    // Role-based defaults
+    if (role === 'admin') return undefined; // admin sees all
+    if (role === 'runner') return undefined; // runner uses runner_id filter, not salesperson
+    if (role === 'salesperson') return user?.id ? [user.id] : undefined;
+
+    // Manager: use team view state
+    if (role === 'manager') {
+      if (salespersonIds && salespersonIds.length > 0) {
+        return salespersonIds; // specific member selected
       }
-    } else if (role === 'admin' && salespersonFilters.length > 0) {
-      base.salespersonIds = salespersonFilters;
+      // "All Team" mode — use the visible owner IDs from the DB RPC
+      if (visibleOwnerIds && Array.isArray(visibleOwnerIds) && visibleOwnerIds.length > 0) {
+        return visibleOwnerIds;
+      }
+      // Still loading visible IDs — return undefined to prevent showing global data
+      // The query will be disabled until we have the IDs
+      return undefined;
     }
 
-    return base;
-  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, dateRange, driverFilter, claimStatusFilter]);
+    return undefined;
+  }, [role, user?.id, salespersonFilters, salespersonIds, visibleOwnerIds]);
 
-  const {
-    data: paginatedData,
-    isLoading,
-    isFetching,
-    pagination,
-    setPage: setCurrentPage,
-    setPageSize,
-    refetch,
-  } = usePaginatedOrders(paginatedFilters, PAGE_SIZE);
+  // For non-admin/non-runner roles, wait for visible owner IDs before fetching
+  const rpcEnabled = useMemo(() => {
+    if (!user?.id) return false;
+    if (role === 'admin' || role === 'runner') return true;
+    // Manager/salesperson: must have scoped IDs
+    return rpcSalespersonIds !== undefined && rpcSalespersonIds.length > 0;
+  }, [user?.id, role, rpcSalespersonIds]);
+
+  // Use the batch-loading RPC for ALL roles
+  const { data: rpcOrders = [], isLoading: rpcLoading } = useDeliveredOrdersFastAll({
+    runnerId: isRunnerRole ? user?.id : undefined,
+    salespersonIds: rpcSalespersonIds,
+    enabled: rpcEnabled,
+  });
+
+  // Map DeliveredOrder → Order-compatible shape for ALL roles
+  const rpcOrdersMapped = useMemo(() => {
+    return rpcOrders.map((d: DeliveredOrder) => ({
+      id: d.id,
+      order_code: d.order_code,
+      created_at: d.order_date,
+      customer_name: d.customer_name,
+      phone: d.phone,
+      area: d.area,
+      address: d.address,
+      total_amount: d.total_amount,
+      total_qty: d.total_qty,
+      payment_method: d.payment_method,
+      runner_status: d.runner_status,
+      reconciliation_status: d.reconciliation_status,
+      delivered_at: d.delivered_at,
+      salesperson_id: d.salesperson_id,
+      runner_id: d.runner_id,
+      driver_id: d.driver_id,
+      status: 'READY',
+      salesperson: d.salesperson_name ? { id: d.salesperson_id, display_name: d.salesperson_name, email: null } : null,
+      runner: d.runner_name ? { id: d.runner_id || '', display_name: d.runner_name, email: null } : null,
+      driver: d.driver_name ? { id: d.driver_id || '', display_name: d.driver_name, email: null } : null,
+      order_items: d.items_json?.map(item => ({
+        id: item.id,
+        product_id: item.product_id,
+        sku_label: item.sku_label || (item.sku_code ? `${item.sku_code}/${item.sku_name || ''}` : null),
+        qty: item.qty,
+        price: item.price,
+        line_total: item.line_total,
+        product: item.product_id ? { id: item.product_id, sku_code: item.sku_code, sku_name: item.sku_name } : null,
+      })) || [],
+    })) as any[];
+  }, [rpcOrders]);
+
+  // Apply client-side filters for ALL roles (unified RPC data path)
+  const filteredOrders = useMemo(() => {
+    let filtered = rpcOrdersMapped;
+
+    // Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(o =>
+        (o.order_code || '').toLowerCase().includes(q) ||
+        (o.customer_name || '').toLowerCase().includes(q) ||
+        (o.area || '').toLowerCase().includes(q) ||
+        (o.phone || '').toLowerCase().includes(q) ||
+        (o.address || '').toLowerCase().includes(q)
+      );
+    }
+    // Area
+    if (areaFilter !== 'all') {
+      filtered = filtered.filter(o => o.area === areaFilter);
+    }
+    // Date range
+    if (dateRange.from) {
+      const from = dateRange.from.getTime();
+      filtered = filtered.filter(o => o.delivered_at && new Date(o.delivered_at).getTime() >= from);
+    }
+    if (dateRange.to) {
+      const to = dateRange.to.getTime();
+      filtered = filtered.filter(o => o.delivered_at && new Date(o.delivered_at).getTime() <= to);
+    }
+    // Driver
+    if (driverFilter !== 'all') {
+      filtered = filtered.filter(o => o.driver_id === driverFilter);
+    }
+    // Salesperson (explicit user filter dropdown — applies on top of role-scoping)
+    if (salespersonFilters.length > 0) {
+      filtered = filtered.filter(o => salespersonFilters.includes(o.salesperson_id));
+    }
+    // Claim status
+    const reconStatuses = claimStatusToReconciliation[claimStatusFilter];
+    if (reconStatuses) {
+      filtered = filtered.filter(o => reconStatuses.includes(o.reconciliation_status));
+    }
+    // SKU filter (moved here so pagination count matches visible rows)
+    if (skuFilter !== 'all') {
+      const normalizedSku = skuFilter.trim().toUpperCase();
+      filtered = filtered.filter(order =>
+        order.order_items?.some((item: any) => {
+          const itemCode = (item.product?.sku_code || item.sku_label?.split(/[\/-]/)[0] || '').trim().toUpperCase();
+          return itemCode === normalizedSku;
+        })
+      );
+    }
+
+    return filtered;
+  }, [rpcOrdersMapped, searchQuery, areaFilter, dateRange, driverFilter, salespersonFilters, claimStatusFilter, skuFilter]);
+
+  // Client-side pagination for ALL roles (unified RPC data)
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalFilteredCount = filteredOrders.length;
+  const totalPages = Math.ceil(totalFilteredCount / PAGE_SIZE) || 1;
+  const pageData = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredOrders.slice(start, start + PAGE_SIZE);
+  }, [filteredOrders, currentPage]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, areaFilter, dateRange, driverFilter, salespersonFilters, claimStatusFilter, skuFilter]);
+
+  // ---------- Unified interface ----------
+  const isLoading = rpcLoading;
+  const isFetching = rpcLoading;
+  const pagination = { page: currentPage, pageSize: PAGE_SIZE, totalCount: totalFilteredCount, totalPages };
+  const rawOrders = pageData;
 
   // Alias for compatibility - orders on current page
-  const orders = paginatedData;
+  const orders = rawOrders;
   
-  // Apply SKU filter client-side on current page (requires order_items join)
-  const deliveredOrders = useMemo(() => {
-    if (!orders) return [];
-    if (skuFilter === 'all') return orders;
-    const normalizedFilter = skuFilter.trim().toUpperCase();
-    return orders.filter(order =>
-      order.order_items?.some(item => {
-        const itemCode = (item.product?.sku_code || item.sku_label?.split(/[\/-]/)[0] || '').trim().toUpperCase();
-        return itemCode === normalizedFilter;
-      })
-    );
-  }, [orders, skuFilter]);
+  // Apply SKU filter client-side on current page (already applied in filteredOrders above)
+  const deliveredOrders = orders;
 
   // Current page orders (already paginated server-side)
   const paginatedOrders = deliveredOrders;
@@ -249,39 +351,8 @@ export default function RunnerDeliveredOrders() {
     return map;
   }, [activeCharges]);
 
-  // Build server-side summary params for KPIs
-  const summaryParams = useMemo(() => {
-    const params: {
-      runnerId?: string;
-      salespersonId?: string;
-      salespersonIds?: string[];
-      search?: string;
-      area?: string;
-      claimStatus?: string;
-      driverId?: string;
-      skuCode?: string;
-    } = {};
-
-    if (role === 'runner') params.runnerId = user?.id;
-    else if (role === 'salesperson') params.salespersonId = user?.id;
-    else if (role === 'manager') {
-      if (salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
-      else if (salespersonIds && salespersonIds.length > 0) params.salespersonIds = salespersonIds;
-    } else if (role === 'admin' && salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
-
-    if (role === 'runner' && salespersonFilters.length > 0) params.salespersonIds = salespersonFilters;
-    if (searchQuery.trim()) params.search = searchQuery.trim();
-    if (areaFilter !== 'all') params.area = areaFilter;
-    if (claimStatusFilter !== 'all') params.claimStatus = claimStatusFilter;
-    if (driverFilter !== 'all') params.driverId = driverFilter;
-    if (skuFilter !== 'all') params.skuCode = skuFilter;
-
-    return params;
-  }, [role, user?.id, salespersonIds, salespersonFilters, searchQuery, areaFilter, claimStatusFilter, driverFilter, skuFilter]);
-
-  const { data: summary, isLoading: summaryLoading } = useDeliveredSummaryFiltered(summaryParams);
-  const displaySummary = summary;
-  const displaySummaryLoading = summaryLoading;
+  // Compute summary from client-side filtered data — placed after allFilteredOrders definition below.
+  // (clientSummary and displaySummary are declared further down)
 
   const canClaim = role === 'runner';
 
@@ -314,10 +385,7 @@ export default function RunnerDeliveredOrders() {
   }, [setDateRange]);
 
   // Pagination helpers for UI
-  const totalPages = pagination.totalPages;
-  const currentPage = pagination.page;
-  const startIndex = (currentPage - 1) * pagination.pageSize;
-  const endIndex = startIndex + pagination.pageSize;
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
 
   // Check if an order has a valid approved delivery charge for its area
   const orderHasValidAreaRate = useCallback((order: Order): boolean => {
@@ -326,21 +394,37 @@ export default function RunnerDeliveredOrders() {
     return approvedChargeMap[area] !== undefined;
   }, [approvedChargeMap]);
 
-  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED + valid area rate) - only relevant for runners
+  // Full filtered dataset (all pages) — SKU filter already applied in filteredOrders
+  const allFilteredOrders = filteredOrders;
+
+  // Compute summary from client-side filtered data to guarantee consistency with list count.
+  // Server-side RPC lacks date range filtering, which causes card vs list mismatch.
+  const clientSummary = useMemo(() => {
+    return {
+      total_delivered: allFilteredOrders.length,
+      pending_claim: allFilteredOrders.filter(o => o.reconciliation_status === 'NOT_CLAIMED').length,
+      total_amount: allFilteredOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0),
+    };
+  }, [allFilteredOrders]);
+
+  const displaySummary = clientSummary;
+  const displaySummaryLoading = rpcLoading;
+
+  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED + valid area rate) - uses FULL dataset for runners
   const claimableOrders = useMemo(() => {
     if (!canClaim) return [];
-    return deliveredOrders.filter(o => 
+    return allFilteredOrders.filter(o =>
       o.reconciliation_status === 'NOT_CLAIMED' && orderHasValidAreaRate(o)
     );
-  }, [deliveredOrders, canClaim, orderHasValidAreaRate]);
+  }, [allFilteredOrders, canClaim, orderHasValidAreaRate]);
 
   // Orders that are NOT_CLAIMED but have invalid area (for display purposes)
   const invalidAreaOrders = useMemo(() => {
     if (!canClaim) return [];
-    return deliveredOrders.filter(o => 
+    return allFilteredOrders.filter(o =>
       o.reconciliation_status === 'NOT_CLAIMED' && !orderHasValidAreaRate(o)
     );
-  }, [deliveredOrders, canClaim, orderHasValidAreaRate]);
+  }, [allFilteredOrders, canClaim, orderHasValidAreaRate]);
 
   // Selected orders that are claimable
   const selectedClaimableOrders = useMemo(() => {
@@ -383,12 +467,12 @@ export default function RunnerDeliveredOrders() {
   }, []);
 
   const toggleExportSelectAll = useCallback(() => {
-    if (exportSelectedIds.size === deliveredOrders.length) {
+    if (exportSelectedIds.size === allFilteredOrders.length) {
       setExportSelectedIds(new Set());
     } else {
-      setExportSelectedIds(new Set(deliveredOrders.map(o => o.id)));
+      setExportSelectedIds(new Set(allFilteredOrders.map(o => o.id)));
     }
-  }, [deliveredOrders, exportSelectedIds.size]);
+  }, [allFilteredOrders, exportSelectedIds.size]);
 
   // Export handlers
   const handleExportSelected = useCallback(() => {
@@ -396,47 +480,75 @@ export default function RunnerDeliveredOrders() {
       toast.error('No orders selected for export');
       return;
     }
-    const selectedOrders = deliveredOrders.filter(o => exportSelectedIds.has(o.id));
+    const selectedOrders = allFilteredOrders.filter(o => exportSelectedIds.has(o.id));
     exportDeliveredOrderLines(selectedOrders, deliveryChargesMap, 'delivered_orders_selected');
-    toast.success(`Exported ${exportSelectedIds.size} order(s)`);
-  }, [deliveredOrders, exportSelectedIds, deliveryChargesMap]);
+    toast.success(`Exported ${selectedOrders.length} order(s)`);
+  }, [allFilteredOrders, exportSelectedIds, deliveryChargesMap]);
 
   const handleExportAll = useCallback(() => {
-    if (deliveredOrders.length === 0) {
+    if (allFilteredOrders.length === 0) {
       toast.error('No orders to export');
       return;
     }
-    exportDeliveredOrderLines(deliveredOrders, deliveryChargesMap, 'delivered_orders_all');
-    toast.success(`Exported ${deliveredOrders.length} order(s)`);
-  }, [deliveredOrders, deliveryChargesMap]);
+    exportDeliveredOrderLines(allFilteredOrders, deliveryChargesMap, 'delivered_orders_all');
+    toast.success(`Exported ${allFilteredOrders.length} order(s)`);
+  }, [allFilteredOrders, deliveryChargesMap]);
 
-  // Handle bulk claim submission
-  const handleBulkClaimSubmit = async (exchangeRate: number, note?: string) => {
-    if (selectedClaimableOrders.length === 0) return;
-    
+  // Handle bulk claim submission (grouped — supports multiple batches)
+  const handleGroupedClaimSubmit = async (groups: ClaimGroupSubmission[]) => {
+    if (groups.length === 0) return;
+
     setIsSubmitting(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
-      const response = await supabase.functions.invoke('submit-bulk-claim', {
-        body: {
-          orderIds: selectedClaimableOrders.map(o => o.id),
-          exchangeRate,
-          note,
-        },
-      });
+      let totalClaimed = 0;
+      const errors: string[] = [];
 
-      if (response.error) throw response.error;
-      if (!response.data?.success) throw new Error(response.data?.error || 'Failed to submit claim');
+      for (const group of groups) {
+        const response = await supabase.functions.invoke('submit-bulk-claim', {
+          body: {
+            orderIds: group.orderIds,
+            exchangeRate: group.exchangeRate,
+            note: group.note,
+          },
+        });
 
-      toast.success(`Successfully claimed ${selectedClaimableOrders.length} order(s)`);
+        if (response.error) {
+          errors.push(response.error.message || 'Failed to submit batch');
+        } else if (!response.data?.success) {
+          errors.push(response.data?.error || 'Failed to submit batch');
+        } else {
+          totalClaimed += group.orderIds.length;
+        }
+      }
+
+      if (errors.length > 0 && totalClaimed === 0) {
+        throw new Error(errors[0]);
+      }
+
+      if (totalClaimed > 0) {
+        toast.success(
+          groups.length === 1
+            ? `Successfully claimed ${totalClaimed} order(s)`
+            : `Successfully claimed ${totalClaimed} order(s) in ${groups.length} batches`
+        );
+      }
+      if (errors.length > 0) {
+        toast.error(`${errors.length} batch(es) failed: ${errors[0]}`);
+      }
+
       setSelectedIds(new Set());
       setBulkClaimOpen(false);
       queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast-all'] });
+      queryClient.invalidateQueries({ queryKey: ['delivered-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['delivered-summary-filtered'] });
+      queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
     } catch (error) {
-      console.error('Bulk claim error:', error);
+      console.error('Grouped bulk claim error:', error);
       throw error;
     } finally {
       setIsSubmitting(false);
@@ -539,7 +651,7 @@ export default function RunnerDeliveredOrders() {
     });
 
     // Also extract from delivered order items (in case product not in catalog)
-    orders?.filter(o => o.runner_status === 'DELIVERED').forEach(order => {
+    rpcOrdersMapped?.filter(o => o.runner_status === 'DELIVERED').forEach(order => {
       order.order_items?.forEach(item => {
         const code = getItemSkuCode(item);
         if (code && !map.has(code)) {
@@ -550,7 +662,7 @@ export default function RunnerDeliveredOrders() {
     });
 
     return map;
-  }, [products, orders, normalizeSku, getItemSkuCode]);
+  }, [products, rpcOrdersMapped, normalizeSku, getItemSkuCode]);
 
   // SKU filter options - deduped by SKU code (not product ID)
   const skuOptions = useMemo(() => {
@@ -585,14 +697,14 @@ export default function RunnerDeliveredOrders() {
   // SKU Summary - calculate total delivered qty for selected SKU (by SKU code)
   const skuSummary = useMemo(() => {
     if (skuFilter === 'all') return null;
-    
+
     const normalizedFilter = normalizeSku(skuFilter);
     let totalQty = 0;
     let totalOrders = 0;
     let totalAmount = 0;
-    
-    deliveredOrders.forEach(order => {
-      const matchingItems = order.order_items?.filter(item => 
+
+    allFilteredOrders.forEach(order => {
+      const matchingItems = order.order_items?.filter(item =>
         getItemSkuCode(item) === normalizedFilter
       ) || [];
       if (matchingItems.length > 0) {
@@ -603,16 +715,16 @@ export default function RunnerDeliveredOrders() {
         });
       }
     });
-    
+
     const displayName = skuCodeMap.get(normalizedFilter);
-    
+
     return {
       skuName: displayName ? `${normalizedFilter} / ${displayName}` : normalizedFilter,
       totalQty,
       totalOrders,
       totalAmount,
     };
-  }, [skuFilter, deliveredOrders, skuCodeMap, normalizeSku, getItemSkuCode]);
+  }, [skuFilter, allFilteredOrders, skuCodeMap, normalizeSku, getItemSkuCode]);
 
   const allClaimableSelected = claimableOrders.length > 0 && selectedIds.size === claimableOrders.length;
 
@@ -698,7 +810,7 @@ export default function RunnerDeliveredOrders() {
                       Export Selected ({exportSelectedIds.size})
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleExportAll}>
-                      Export All ({deliveredOrders.length})
+                      Export All ({allFilteredOrders.length})
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -709,6 +821,7 @@ export default function RunnerDeliveredOrders() {
                 selectedMember={selectedMember}
                 onMemberChange={setSelectedMember}
               />
+              <DataScopeSelector value={dataSharingView} onChange={setDataSharingView} scope="delivered_orders" />
             </div>
           }
         >
@@ -719,9 +832,9 @@ export default function RunnerDeliveredOrders() {
 
         {/* Runner Earnings Dashboard - only for runners */}
         {role === 'runner' && (
-          <RunnerEarningsDashboard 
-            earnings={runnerEarnings} 
-            isLoading={earningsLoading} 
+          <RunnerEarningsDashboard
+            earnings={runnerEarnings}
+            isLoading={earningsLoading}
           />
         )}
 
@@ -811,9 +924,24 @@ export default function RunnerDeliveredOrders() {
           />
         )}
 
-        {/* Earnings Chart - only for runners */}
+        {/* Earnings Chart - only for runners, collapsible */}
         {role === 'runner' && (
-          <EarningsChart runnerId={user?.id} />
+          <Collapsible defaultOpen={false}>
+            <CollapsibleTrigger asChild>
+              <Card className="cursor-pointer hover:bg-muted/30 transition-colors">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold">Earnings Overview Chart</span>
+                  </div>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </CardContent>
+              </Card>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <EarningsChart runnerId={user?.id} />
+            </CollapsibleContent>
+          </Collapsible>
         )}
 
         {/* Filters */}
@@ -1411,12 +1539,12 @@ export default function RunnerDeliveredOrders() {
           </Card>
         )}
 
-        {/* Bulk Claim Dialog */}
-        <BulkClaimDialog
+        {/* Bulk Claim Dialog — User-Grouped */}
+        <UserGroupedBulkClaimDialog
           open={bulkClaimOpen}
           onOpenChange={setBulkClaimOpen}
           orders={selectedClaimableOrders}
-          onSubmit={handleBulkClaimSubmit}
+          onSubmitBatches={handleGroupedClaimSubmit}
           isSubmitting={isSubmitting}
           onRemoveInvalidOrders={(invalidIds) => {
             setSelectedIds(prev => {

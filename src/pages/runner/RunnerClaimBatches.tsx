@@ -10,8 +10,10 @@ import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { ClaimBatchTimeline } from '@/components/runner/ClaimBatchTimeline';
 import { PageHero } from '@/components/dashboard/PageHero';
+import { DataScopeSelector } from '@/components/data-sharing/DataScopeSelector';
+import type { DataViewMode } from '@/types/data-sharing';
 import type { ClaimBatch, ClaimBatchStatus } from '@/types/database';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 const statusColors: Record<ClaimBatchStatus, string> = {
@@ -21,6 +23,7 @@ const statusColors: Record<ClaimBatchStatus, string> = {
 
 export default function RunnerClaimBatches() {
   const { user } = useAuth();
+  const [claimsViewMode, setClaimsViewMode] = useState<DataViewMode>('my_data');
   const { data: batches = [], isLoading } = useClaimBatches({ runnerId: user?.id });
 
   const stats = useMemo(() => {
@@ -111,6 +114,7 @@ export default function RunnerClaimBatches() {
           icon={<Receipt className="h-6 w-6 text-primary" />}
           title="My Claim Batches"
           subtitle="Track your claim submissions and payout status"
+          actions={<DataScopeSelector value={claimsViewMode} onChange={setClaimsViewMode} scope="claims" />}
         />
 
         {/* Summary Cards */}
