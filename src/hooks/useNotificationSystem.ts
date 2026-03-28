@@ -39,7 +39,7 @@ export function useNotifications() {
       return data as Notification[];
     },
     enabled: !!user,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // 60s safety net (realtime handles instant updates)
   });
 }
 
@@ -60,7 +60,7 @@ export function useUnreadCount() {
       return count || 0;
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 }
 
@@ -253,21 +253,8 @@ export function usePushNotifications() {
 
 // Legacy polling hook - kept for backward compatibility
 export function useNotificationPoller() {
-  // This is now replaced by useRealtimeNotifications
-  // Keeping for backward compatibility
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-
-  useEffect(() => {
-    if (!user) return;
-
-    // Just invalidate queries periodically as fallback
-    const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-    }, 60000); // Check every minute as fallback
-
-    return () => clearInterval(interval);
-  }, [user, queryClient]);
+  // Legacy fallback removed — useRealtimeNotifications handles realtime updates.
+  // React Query's refetchInterval on the notification hooks handles periodic refresh.
 }
 
 // Hook for daily task snapshots (manager/admin)

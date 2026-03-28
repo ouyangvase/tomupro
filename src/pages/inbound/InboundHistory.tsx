@@ -26,7 +26,7 @@ import { useSalespersons } from '@/hooks/useUserDirectory';
 import { useProducts } from '@/hooks/useProducts';
 import type { InboundShipment, InboundItem, InboundStatus } from '@/types/database';
 import { History, Calendar, ZoomIn, X, Image as ImageIcon } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
+import { format, parseISO, isWithinInterval } from 'date-fns';
 
 const statusColors: Record<InboundStatus, string> = {
   PENDING_SP_ACK: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
@@ -87,13 +87,13 @@ export default function InboundHistory() {
   const { user, profile } = useAuth();
   const role = profile?.role;
   
-  // Admin-only access
-  if (role !== 'admin') {
+  // Admin and Runner access only
+  if (role !== 'admin' && role !== 'runner') {
     return (
       <AppLayout>
         <div className="p-6">
           <h1 className="text-2xl font-bold text-destructive">Access Denied</h1>
-          <p className="text-muted-foreground mt-2">This page is only accessible to administrators.</p>
+          <p className="text-muted-foreground mt-2">This page is only accessible to administrators and runners.</p>
         </div>
       </AppLayout>
     );
@@ -107,9 +107,10 @@ export default function InboundHistory() {
 
   // Filters
   const [targetUserFilter, setTargetUserFilter] = useState<string>('all');
-  const [dateFrom, setDateFrom] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [dateTo, setDateTo] = useState(() => format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [statusFilter, setStatusFilter] = useState<string>('ACKNOWLEDGED');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Detail dialog state
   const [selectedShipment, setSelectedShipment] = useState<InboundShipment | null>(null);
@@ -118,7 +119,7 @@ export default function InboundHistory() {
 
   // Get available target users for filter dropdown
   const targetUserOptions = useMemo(() => {
-    if (role === 'admin') {
+    if (role === 'admin' || role === 'runner') {
       return allSalespersons;
     } else if (role === 'manager') {
       // Include self and team members
@@ -151,15 +152,49 @@ export default function InboundHistory() {
         const fromDate = parseISO(dateFrom);
         const toDate = parseISO(dateTo);
         toDate.setHours(23, 59, 59, 999);
-        
+
         if (!isWithinInterval(arrivalDate, { start: fromDate, end: toDate })) {
           return false;
         }
+      } else if (dateFrom) {
+        const arrivalDate = parseISO(shipment.arrival_date);
+        const fromDate = parseISO(dateFrom);
+        if (arrivalDate < fromDate) return false;
+      } else if (dateTo) {
+        const arrivalDate = parseISO(shipment.arrival_date);
+        const toDate = parseISO(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        if (arrivalDate > toDate) return false;
+      }
+
+      // SKU / search query filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const items = shipment.inbound_items || [];
+        const trackingMatch = shipment.tracking_no?.toLowerCase().includes(q);
+        const skuMatch = items.some(item => {
+          const product = products?.find(p => p.id === item.product_id);
+          const skuCode = product?.sku_code?.toLowerCase() || '';
+          const skuName = product?.sku_name?.toLowerCase() || '';
+          const tempLabel = item.temp_sku_label?.toLowerCase() || '';
+          return skuCode.includes(q) || skuName.includes(q) || tempLabel.includes(q);
+        });
+        if (!trackingMatch && !skuMatch) return false;
       }
 
       return true;
+    })
+    // Default sort: acknowledged first (latest DESC), then non-acknowledged at bottom
+    .sort((a, b) => {
+      const aAck = a.acknowledged_at;
+      const bAck = b.acknowledged_at;
+      if (aAck && !bAck) return -1;
+      if (!aAck && bAck) return 1;
+      if (aAck && bAck) return new Date(bAck).getTime() - new Date(aAck).getTime();
+      // Both null — sort by created_at DESC
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [allShipments, statusFilter, targetUserFilter, dateFrom, dateTo]);
+  }, [allShipments, statusFilter, targetUserFilter, dateFrom, dateTo, searchQuery, products]);
 
   // Helper to get product info from product_id
   const getProductDisplay = (item: InboundItem) => {
@@ -199,6 +234,14 @@ export default function InboundHistory() {
       header: 'Arrival Date',
       sortable: true,
       render: (s) => new Date(s.arrival_date).toLocaleDateString(),
+    },
+    {
+      key: 'acknowledged_at',
+      header: 'Acknowledge Date',
+      sortable: true,
+      render: (s) => s.acknowledged_at
+        ? format(new Date(s.acknowledged_at), 'MMM dd, yyyy HH:mm')
+        : '-',
     },
     {
       key: 'tracking_no',
@@ -274,7 +317,17 @@ export default function InboundHistory() {
             <CardTitle className="text-base">Filters</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Search by SKU / Tracking */}
+              <div className="space-y-2">
+                <Label>Search</Label>
+                <Input
+                  placeholder="SKU code, name, tracking..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
               {/* Status Filter */}
               <div className="space-y-2">
                 <Label>Status</Label>
@@ -396,6 +449,21 @@ export default function InboundHistory() {
                 </Badge>
               </div>
             </div>
+
+            {selectedShipment?.acknowledged_at && (
+              <div className="text-sm flex items-center gap-4">
+                <div>
+                  <span className="text-muted-foreground">Acknowledged:</span>{' '}
+                  <span className="font-medium">{format(new Date(selectedShipment.acknowledged_at), 'MMM dd, yyyy HH:mm')}</span>
+                </div>
+                {selectedShipment.acknowledged_by_profile && (
+                  <div>
+                    <span className="text-muted-foreground">By:</span>{' '}
+                    <span className="font-medium">{selectedShipment.acknowledged_by_profile.display_name || selectedShipment.acknowledged_by_profile.email}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {selectedShipment?.notes && (
               <div className="text-sm">

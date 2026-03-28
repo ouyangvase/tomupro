@@ -1,36 +1,27 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 
 /**
  * Hook to get visible owner IDs based on the current user's role and relationships.
- * This is the client-side equivalent of get_visible_owner_ids RPC.
- * 
+ * Uses the shared cache to avoid redundant RPC calls across hooks.
+ *
  * Returns:
  * - null: Admin sees all (no filter needed)
  * - string[]: List of user IDs the current user can see
- * 
+ *
  * ALWAYS use this for filtering data queries to ensure consistent access control.
  */
 export function useVisibleOwnerIds() {
   const { user, role } = useAuth();
-  
+
   return useQuery({
     queryKey: ['visible-owner-ids', user?.id, role],
     queryFn: async () => {
-      // Call the server-side RPC which enforces role-based visibility
-      const { data, error } = await supabase.rpc('get_visible_owner_ids');
-      
-      if (error) {
-        console.error('Failed to fetch visible owner IDs:', error);
-        throw error;
-      }
-      
-      // Returns null for admin (no filter), or array of IDs for other roles
-      return data as string[] | null;
+      return getVisibleOwnerIdsCached();
     },
     enabled: !!user?.id,
-    staleTime: 30000, // Cache for 30 seconds
+    staleTime: 30000,
     refetchOnWindowFocus: false,
   });
 }

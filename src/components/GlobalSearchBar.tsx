@@ -88,20 +88,19 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
     setShowDropdown(false);
     setIsOpen(false);
     // Navigate to the appropriate page based on status and runner_status
-    if (order.status === 'BOOKING') {
-      navigate(`/sales/booking?highlight=${order.id}`);
+    const displayStatus = getDisplayStatus(order);
+    if (displayStatus === 'DELIVERED') {
+      navigate(`/orders?tab=delivered&highlight=${order.id}`);
+    } else if (displayStatus === 'FAILED') {
+      navigate(`/orders?tab=action-required&highlight=${order.id}`);
+    } else if (order.status === 'BOOKING') {
+      navigate(`/orders?tab=booking&highlight=${order.id}`);
     } else if (order.status === 'CANCELLED') {
-      navigate(`/sales/cancelled?highlight=${order.id}`);
+      navigate(`/orders?tab=cancelled&highlight=${order.id}`);
     } else if (order.status === 'READY') {
-      if (order.runner_status === 'DELIVERED') {
-        navigate(`/runner/delivered-orders?highlight=${order.id}`);
-      } else if (order.runner_status === 'FAILED_DELIVERY') {
-        navigate(`/sales/action-inbox?highlight=${order.id}`);
-      } else {
-        navigate(`/sales/ready?highlight=${order.id}`);
-      }
+      navigate(`/orders?tab=ready&highlight=${order.id}`);
     } else {
-      navigate(`/sales/booking?highlight=${order.id}`);
+      navigate(`/orders?tab=booking&highlight=${order.id}`);
     }
   };
 
@@ -117,7 +116,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
       <div ref={containerRef} className={cn("relative", className)}>
         <div className={cn(
           "flex items-center transition-all duration-300",
-          isOpen ? "w-64" : "w-10"
+          isOpen ? "w-72" : "w-10"
         )}>
           {isOpen ? (
             <div className="relative w-full">
@@ -125,7 +124,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
               <Input
                 ref={inputRef}
                 type="text"
-                placeholder="Search order ID..."
+                placeholder="Search order, name, phone..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="pl-9 pr-8 h-9 bg-secondary/50 border-border/50"
@@ -214,7 +213,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         <Input
           type="text"
-          placeholder="Search order by ID..."
+          placeholder="Search order, name, phone..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="pl-10 pr-10 h-12 bg-card border-border/50 rounded-xl"

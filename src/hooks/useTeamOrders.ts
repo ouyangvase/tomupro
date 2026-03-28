@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/types/database';
 
 interface TeamOrderFilters {
@@ -32,12 +33,7 @@ export function useTeamOrders(filters?: TeamOrderFilters) {
     retryDelay: 1000,
     queryFn: async () => {
       // First, fetch visible owner IDs from server (source of truth)
-      const { data: visibleUserIds, error: visError } = await supabase.rpc('get_visible_owner_ids');
-      
-      if (visError) {
-        console.error('Failed to fetch visible owner IDs:', visError);
-        // Fallback to own ID only on error
-      }
+      const visibleUserIds = await getVisibleOwnerIdsCached();
       
       // Reduced limit for better performance
       const queryLimit = 2000;

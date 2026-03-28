@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { RunnerDriver, Profile } from '@/types/database';
 import { createDriverCashLiability } from '@/hooks/useCashLiabilities';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 
 // Get drivers for a runner (with driver_code)
 export function useRunnerDrivers(runnerId?: string) {
@@ -246,7 +247,7 @@ export function useAssignOrderToDriver() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast.success('Order assigned to driver');
     },
     onError: (error: Error) => {
@@ -272,7 +273,7 @@ export function useBulkAssignOrdersToDriver() {
       if (error) throw error;
     },
     onSuccess: (_, { orderIds }) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast.success(`${orderIds.length} orders assigned to driver`);
     },
     onError: (error: Error) => {
@@ -341,7 +342,7 @@ export function useDriverMarkDelivered() {
       return data;
     },
     onSuccess: (_, { paymentMethod }) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       const msg = paymentMethod === 'CASH' 
         ? 'Delivered (Cash recorded), awaiting runner acceptance'
@@ -386,7 +387,7 @@ export function useDriverMarkFailed() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast.success('Marked as failed');
     },
     onError: (error: Error) => {
@@ -419,7 +420,7 @@ export function useRunnerAcceptDelivery() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       toast.success('Delivery accepted');
     },
@@ -451,8 +452,7 @@ export function useBulkRunnerAcceptDelivery() {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       toast.success(`${data.length} deliveries accepted`);
     },
@@ -483,7 +483,7 @@ export function useRunnerRejectDelivery() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast.success('Delivery rejected, order returned to driver');
     },
     onError: (error: Error) => {
@@ -557,8 +557,7 @@ export function useUnassignDriverFromOrder() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
+      invalidateOrderQueries(queryClient);
       toast.success('Driver unassigned from order');
     },
     onError: (error: Error) => {

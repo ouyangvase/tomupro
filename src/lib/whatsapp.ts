@@ -1,4 +1,5 @@
 import type { Order, OrderItem } from '@/types/database';
+import { sanitizePhoneForWhatsApp, isScientificNotation } from '@/lib/phone';
 
 const BRUNEI_COUNTRY_CODE = '673';
 
@@ -7,17 +8,10 @@ const BRUNEI_COUNTRY_CODE = '673';
  * - Remove all non-digits
  * - If starts with "673", strip first 3 digits
  * - Return local number
+ * - If scientific notation detected, return empty (corrupted value)
  */
 export function sanitizePhoneNumber(phone: string): string {
-  // Remove all non-digits
-  let digits = (phone || '').replace(/\D/g, '');
-  
-  // If starts with "673", strip the first 3 digits
-  if (digits.startsWith('673')) {
-    digits = digits.slice(3);
-  }
-  
-  return digits;
+  return sanitizePhoneForWhatsApp(phone);
 }
 
 /**

@@ -81,6 +81,8 @@ interface DataGridProps<T extends object> {
   // Server-side sort callback
   onSortChange?: (field: string | null, direction: 'asc' | 'desc' | null) => void;
   searchDebounceMs?: number;
+  // Cross-page selection: ALL matching IDs from the full filtered dataset (not just current page)
+  allSelectableIds?: string[];
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -163,6 +165,7 @@ export function DataGrid<T extends object>({
   onSearchChange,
   onSortChange,
   searchDebounceMs = 400,
+  allSelectableIds,
 }: DataGridProps<T>) {
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState('');
@@ -267,7 +270,12 @@ export function DataGrid<T extends object>({
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      onSelectionChange?.(displayData.map((item) => String(item[keyField])));
+      // Use allSelectableIds for cross-page selection when available
+      if (allSelectableIds && allSelectableIds.length > 0) {
+        onSelectionChange?.(allSelectableIds);
+      } else {
+        onSelectionChange?.(displayData.map((item) => String(item[keyField])));
+      }
     } else {
       onSelectionChange?.([]);
     }
@@ -302,8 +310,12 @@ export function DataGrid<T extends object>({
     else if (e.key === 'Escape') { setEditingCell(null); setEditValue(''); }
   };
 
-  const isAllSelected = displayData.length > 0 &&
-    displayData.every((item) => selectedRows.includes(String(item[keyField])));
+  // When allSelectableIds is provided, "all selected" means all IDs across all pages are selected
+  const allIdsCount = allSelectableIds ? allSelectableIds.length : displayData.length;
+  const isAllSelected = allIdsCount > 0 &&
+    (allSelectableIds
+      ? allSelectableIds.every((id) => selectedRows.includes(id))
+      : displayData.every((item) => selectedRows.includes(String(item[keyField]))));
 
   const getSortIcon = (field: string) => {
     if (sortField !== field) return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
@@ -470,14 +482,20 @@ export function DataGrid<T extends object>({
             <span className="text-sm font-medium text-primary">
               {selectedRows.length > 0 ? `${selectedRows.length} selected` : 'No selection'}
             </span>
-            {selectedRows.length < (isServerMode ? displayData.length : filteredData.length) && (
+            {selectedRows.length < allIdsCount && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onSelectionChange?.((isServerMode ? displayData : filteredData).map((item) => String(item[keyField])))}
+                onClick={() => {
+                  if (allSelectableIds && allSelectableIds.length > 0) {
+                    onSelectionChange?.(allSelectableIds);
+                  } else {
+                    onSelectionChange?.((isServerMode ? displayData : filteredData).map((item) => String(item[keyField])));
+                  }
+                }}
                 className="text-primary border-primary/30 hover:bg-primary/10"
               >
-                Select All ({isServerMode ? displayData.length : filteredData.length})
+                Select All ({allSelectableIds ? allSelectableIds.length : (isServerMode ? totalCount : filteredData.length)})
               </Button>
             )}
             {selectedRows.length > 0 && (
@@ -499,7 +517,7 @@ export function DataGrid<T extends object>({
           {selectable && displayData.length > 0 && (
             <div className="flex items-center gap-3 px-3 py-2.5 bg-secondary/30 rounded-lg border border-border/50">
               <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} className="h-5 w-5" />
-              <span className="text-sm font-medium">Select all ({displayData.length})</span>
+              <span className="text-sm font-medium">Select all ({allSelectableIds ? allSelectableIds.length : displayData.length})</span>
             </div>
           )}
 

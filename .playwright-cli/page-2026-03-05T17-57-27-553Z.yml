@@ -1,0 +1,32 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list [ref=e37]:
+      - status [ref=e38]:
+        - generic [ref=e39]:
+          - generic [ref=e40]: Login Failed
+          - generic [ref=e41]: Invalid email or password. Please try again.
+        - button [ref=e42] [cursor=pointer]:
+          - img [ref=e43]
+  - region "Notifications alt+T"
+  - generic [ref=e13]:
+    - generic [ref=e15]:
+      - img "TOMU PRO Logo" [ref=e17]
+      - heading "TOMU PRO" [level=3] [ref=e18]
+      - paragraph [ref=e21]: Orders • Runner • Reconciliation • Inventory
+    - generic [ref=e24]:
+      - tablist [ref=e25]:
+        - tab "Login" [selected] [ref=e26] [cursor=pointer]
+        - tab "Sign Up" [ref=e27] [cursor=pointer]
+      - tabpanel "Login" [ref=e28]:
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - text: Email
+            - textbox "Email" [ref=e31]:
+              - /placeholder: you@example.com
+              - text: sarah@gmail.com
+          - generic [ref=e32]:
+            - text: Password
+            - textbox "Password" [ref=e33]:
+              - /placeholder: ••••••••
+              - text: password123
+          - button "Sign In" [ref=e34] [cursor=pointer]

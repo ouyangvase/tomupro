@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 
 export interface TeamOrder {
   id: string;
@@ -121,7 +122,7 @@ export function useActionRequiredOrdersServer(params: UseTeamOrdersServerParams 
     queryKey: ['action-required-orders-server', user?.id, limit, offset],
     queryFn: async () => {
       // First get visible IDs
-      const { data: visibleIds } = await supabase.rpc('get_visible_owner_ids');
+      const visibleIds = await getVisibleOwnerIdsCached();
       
       // Build query
       let query = supabase

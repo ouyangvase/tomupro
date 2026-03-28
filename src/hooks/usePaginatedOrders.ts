@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/types/database';
 
 export interface PaginatedOrderFilters {
@@ -21,6 +22,8 @@ export interface PaginatedOrderFilters {
   areaFilter?: string;
   deliveredDateFrom?: string;
   deliveredDateTo?: string;
+  assignedDateFrom?: string;
+  assignedDateTo?: string;
   sortField?: string;
   sortDirection?: 'asc' | 'desc';
   // Exclude delivered and failed orders (for runner inbox active view)
@@ -78,15 +81,12 @@ export function usePaginatedOrders(
     retry: 2,
     retryDelay: 1000,
     queryFn: async () => {
-      // Get visible owner IDs for team visibility (skip for admin)
+      // Get visible owner IDs for team visibility
+      // Skip for admin (sees everything) and when runnerId is set (runner views own assigned orders)
       let visibleUserIds: string[] | null = null;
-      if (role !== 'admin') {
-        const { data, error: visError } = await supabase.rpc('get_visible_owner_ids');
-        if (visError) {
-          console.warn('Failed to fetch visible owner IDs:', visError);
-        } else {
-          visibleUserIds = data;
-        }
+      const skipVisibilityRpc = role === 'admin' || !!filters.runnerId;
+      if (!skipVisibilityRpc) {
+        visibleUserIds = await getVisibleOwnerIdsCached();
       }
 
       // Build the query with count
@@ -135,8 +135,10 @@ export function usePaginatedOrders(
 
       // Exclude delivered and failed (shorthand for runner inbox)
       if (filters.excludeDeliveredAndFailed) {
+        query = query.eq('status', 'READY');
         query = query.neq('runner_status', 'DELIVERED');
         query = query.neq('runner_status', 'FAILED_DELIVERY');
+        query = query.neq('runner_status', 'UNASSIGNED');
         query = query.neq('status', 'CANCELLED');
       }
 
@@ -193,9 +195,13 @@ export function usePaginatedOrders(
         query = query.eq('area', filters.areaFilter);
       }
 
-      // Date range
+      // Date range - delivered_at
       if (filters.deliveredDateFrom) query = query.gte('delivered_at', filters.deliveredDateFrom);
       if (filters.deliveredDateTo) query = query.lte('delivered_at', filters.deliveredDateTo);
+
+      // Date range - runner_assigned_at
+      if (filters.assignedDateFrom) query = query.gte('runner_assigned_at', filters.assignedDateFrom);
+      if (filters.assignedDateTo) query = query.lte('runner_assigned_at', filters.assignedDateTo);
 
       const { data: ordersData, error: ordersError, count } = await query;
       if (ordersError) throw ordersError;
@@ -260,4 +266,133 @@ export function usePaginatedOrders(
     setPageSize,
     refetch,
   };
+}
+
+/**
+ * Lightweight hook that fetches ALL matching order IDs (no pagination limit).
+ * Used for cross-page "Select All" — only fetches IDs, not full order data.
+ */
+export function useAllOrderIds(
+  filters: PaginatedOrderFilters = {},
+  enabled = true
+) {
+  const { user, role } = useAuth();
+
+  return useQuery({
+    queryKey: ['orders-all-ids', filters, role, user?.id],
+    staleTime: 30000,
+    retry: 1,
+    queryFn: async () => {
+      // Get visible owner IDs for team visibility
+      let visibleUserIds: string[] | null = null;
+      const skipVisibilityRpc = role === 'admin' || !!filters.runnerId;
+      if (!skipVisibilityRpc) {
+        visibleUserIds = await getVisibleOwnerIdsCached();
+      }
+
+      // Only select IDs — lightweight query, no joins
+      // Use batch fetching to work around Supabase PostgREST max_rows=1000 cap
+      const BATCH = 1000;
+      let allIds: string[] = [];
+      let batchOffset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from('orders')
+          .select('id')
+          .range(batchOffset, batchOffset + BATCH - 1);
+
+        // Apply same filters as usePaginatedOrders
+        if (filters.status) {
+          query = query.eq('status', filters.status);
+          if (filters.status === 'READY' || filters.status === 'BOOKING') {
+            query = query.neq('runner_status', 'DELIVERED');
+            query = query.neq('runner_status', 'FAILED_DELIVERY');
+          }
+        }
+        if (filters.statusIn && filters.statusIn.length > 0) {
+          query = query.in('status', filters.statusIn);
+        }
+        if (filters.runnerStatus) {
+          query = query.eq('runner_status', filters.runnerStatus);
+        }
+        if (filters.runnerStatusIn && filters.runnerStatusIn.length > 0) {
+          query = query.in('runner_status', filters.runnerStatusIn);
+        }
+        if (filters.excludeRunnerStatuses && filters.excludeRunnerStatuses.length > 0) {
+          for (const rs of filters.excludeRunnerStatuses) {
+            query = query.neq('runner_status', rs);
+          }
+        }
+        if (filters.excludeDeliveredAndFailed) {
+          query = query.eq('status', 'READY');
+          query = query.neq('runner_status', 'DELIVERED');
+          query = query.neq('runner_status', 'FAILED_DELIVERY');
+          query = query.neq('runner_status', 'UNASSIGNED');
+          query = query.neq('status', 'CANCELLED');
+        }
+        if (filters.salespersonActionRequired) {
+          query = query.eq('salesperson_action_required', true);
+        }
+
+        // Visibility: team filtering
+        const skipVisibilityFilter = !!filters.runnerId;
+        if (!skipVisibilityFilter) {
+          if (filters.salespersonIds && filters.salespersonIds.length > 0) {
+            if (visibleUserIds !== null && Array.isArray(visibleUserIds)) {
+              const allowedIds = filters.salespersonIds.filter(id => visibleUserIds!.includes(id));
+              if (allowedIds.length > 0) {
+                query = query.in('salesperson_id', allowedIds);
+              } else {
+                return [];
+              }
+            } else {
+              query = query.in('salesperson_id', filters.salespersonIds);
+            }
+          } else if (filters.salespersonId) {
+            if (visibleUserIds !== null && Array.isArray(visibleUserIds)) {
+              if (!visibleUserIds.includes(filters.salespersonId)) {
+                return [];
+              }
+            }
+            query = query.eq('salesperson_id', filters.salespersonId);
+          } else if (visibleUserIds !== null && Array.isArray(visibleUserIds) && visibleUserIds.length > 0) {
+            query = query.in('salesperson_id', visibleUserIds);
+          }
+        }
+
+        if (filters.runnerId) query = query.eq('runner_id', filters.runnerId);
+        if (filters.driverId) query = query.eq('driver_id', filters.driverId);
+        if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
+        if (filters.reconciliationStatusIn && filters.reconciliationStatusIn.length > 0) {
+          query = query.in('reconciliation_status', filters.reconciliationStatusIn);
+        }
+        if (filters.excludeStatus) query = query.neq('status', filters.excludeStatus);
+
+        if (filters.searchQuery?.trim()) {
+          const searchTerm = `%${filters.searchQuery.trim()}%`;
+          query = query.or(`order_code.ilike.${searchTerm},customer_name.ilike.${searchTerm},area.ilike.${searchTerm},phone.ilike.${searchTerm},address.ilike.${searchTerm}`);
+        }
+        if (filters.areaFilter && filters.areaFilter !== 'all') {
+          query = query.eq('area', filters.areaFilter);
+        }
+        if (filters.deliveredDateFrom) query = query.gte('delivered_at', filters.deliveredDateFrom);
+        if (filters.deliveredDateTo) query = query.lte('delivered_at', filters.deliveredDateTo);
+        if (filters.assignedDateFrom) query = query.gte('runner_assigned_at', filters.assignedDateFrom);
+        if (filters.assignedDateTo) query = query.lte('runner_assigned_at', filters.assignedDateTo);
+
+        const { data, error: queryError } = await query;
+        if (queryError) throw queryError;
+
+        const batch = (data || []).map(row => row.id as string);
+        allIds = allIds.concat(batch);
+        batchOffset += batch.length;
+        hasMore = batch.length >= BATCH;
+      }
+
+      return allIds;
+    },
+    enabled: enabled && !!user?.id,
+  });
 }

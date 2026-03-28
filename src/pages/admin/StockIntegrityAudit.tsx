@@ -56,15 +56,15 @@ export default function StockIntegrityAudit() {
   
   const localSummary = computeIntegritySummary(filteredData);
   
-  // Restrict to admin only
-  if (profile?.role !== 'admin') {
+  // Restrict to admin and runner only
+  if (profile?.role !== 'admin' && profile?.role !== 'runner') {
     return (
       <AppLayout>
         <div className="p-6">
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Access Denied</AlertTitle>
-            <AlertDescription>Only administrators can access the Stock Integrity Audit.</AlertDescription>
+            <AlertDescription>Only administrators and runners can access the Stock Integrity Audit.</AlertDescription>
           </Alert>
         </div>
       </AppLayout>

@@ -41,7 +41,7 @@ export default function ProductsPage() {
   const bulkUpdateProducts = useBulkUpdateProducts();
   
   // Team view state for managers
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState('my');
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState('team');
   const { visibleUserIds } = useVisibleUserIds();
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);

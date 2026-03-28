@@ -252,8 +252,8 @@ serve(async (req) => {
       action: 'BULK_CLAIM_SUBMITTED',
       entity_type: 'claim_batch',
       entity_id: batch.id,
-      after_json: { 
-        order_count: orderIds.length, 
+      after_json: {
+        order_count: orderIds.length,
         gross_amount: totalGrossAmount,
         delivery_fees: totalDeliveryFees,
         net_amount_bnd: totalNetBND,
@@ -261,6 +261,28 @@ serve(async (req) => {
         net_amount_rm: totalNetRM,
       },
     });
+
+    // Sync activity to Firebase (non-blocking)
+    try {
+      fetch(`${supabaseUrl}/functions/v1/sync-to-firebase`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          type: 'activity',
+          actorName: runnerProfile?.display_name || user.email || 'Runner',
+          actorId: user.id,
+          action: 'submitted_claim',
+          entityType: 'claim_batch',
+          entityId: batch.id,
+          description: `Submitted claim batch: ${orderIds.length} orders, BND ${totalNetBND.toFixed(2)} net`,
+        }),
+      }).catch((err) => console.error('[sync-to-firebase] error:', err));
+    } catch (_syncErr) {
+      // non-blocking
+    }
 
     return new Response(
       JSON.stringify({ 

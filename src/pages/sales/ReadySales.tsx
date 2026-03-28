@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
-import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
+import { usePaginatedOrders, useAllOrderIds } from '@/hooks/usePaginatedOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useBindings } from '@/hooks/useBindings';
 import { useManagerRunnerBindings } from '@/hooks/useManagerRunnerBindings';
@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Plus, UserCheck, Search, X, Upload, Download, ShoppingCart, Zap } from 'lucide-react';
+import { Plus, UserCheck, Search, X, Upload, Download, ShoppingCart, Zap, Loader2 } from 'lucide-react';
 import { PageHero } from '@/components/dashboard/PageHero';
 import { DispatchStatusCards } from '@/components/orders/DispatchStatusCards';
 import { DispatchBoard } from '@/components/orders/DispatchBoard';
@@ -44,7 +44,9 @@ import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
-import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
+import { exportOrderLines } from '@/lib/csv';
+import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
+import { useReadyOrderStats } from '@/hooks/useReadyOrderStats';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useToast } from '@/hooks/use-toast';
@@ -70,14 +72,25 @@ export default function ReadySales() {
   
   const [managerSelectedSalesperson, setManagerSelectedSalesperson] = useState<string>('');
   
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('team');
 
-  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
-    status: 'READY',
+  const orderFilters = useMemo(() => ({
+    status: 'READY' as const,
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
     searchQuery: serverSearch || undefined,
-  }, 50);
+  }), [isManager, salespersonIds, role, profile?.id, serverSearch]);
+
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders(orderFilters, 50);
+
+  // Fetch ALL matching IDs for cross-page "Select All"
+  const { data: allOrderIds = [] } = useAllOrderIds(orderFilters);
+
+  // Server-side stats for summary cards (avoids per-page count bug)
+  const { data: readyStats } = useReadyOrderStats(
+    isManager ? salespersonIds : undefined,
+    role === 'salesperson' ? profile?.id : undefined
+  );
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 
@@ -207,14 +220,51 @@ export default function ReadySales() {
     setSelectedRows([]);
   };
 
-  const handleExport = () => exportOrderLines(orders, 'ready_orders');
+  const [exporting, setExporting] = useState(false);
+  const [exportingMsg, setExportingMsg] = useState('');
 
-  const handleExportSelected = () => {
+  const handleExport = async () => {
+    setExporting(true);
+    setExportingMsg('Fetching all orders...');
+    try {
+      const allOrders = await fetchOrdersForExport(orderFilters, undefined, role, (phase, fetched, total) => {
+        if (phase === 'data') setExportingMsg(`Fetching orders... ${fetched}/${total}`);
+      });
+      setExportingMsg('Generating CSV...');
+      exportOrderLines(allOrders, 'ready_orders');
+      toast({ title: `Exported ${allOrders.length} order(s)` });
+    } catch (err) {
+      const detail = err instanceof ExportError ? err.detail : (err instanceof Error ? err.message : 'Unknown error');
+      toast({ title: 'Export failed', description: detail, variant: 'destructive' });
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
+      setExportingMsg('');
+    }
+  };
+
+  const handleExportSelected = async () => {
     if (selectedRows.length === 0) {
       toast({ title: 'Please select at least 1 order to export', variant: 'destructive' });
       return;
     }
-    exportSelectedOrderLines(orders, selectedRows, 'ready_orders_selected');
+    setExporting(true);
+    setExportingMsg(`Exporting ${selectedRows.length} orders...`);
+    try {
+      const allOrders = await fetchOrdersForExport(orderFilters, selectedRows, role, (phase, fetched, total) => {
+        if (phase === 'data') setExportingMsg(`Fetching orders... ${fetched}/${total}`);
+      });
+      setExportingMsg('Generating CSV...');
+      exportOrderLines(allOrders, 'ready_orders_selected');
+      toast({ title: `Exported ${allOrders.length} order(s)` });
+    } catch (err) {
+      const detail = err instanceof ExportError ? err.detail : (err instanceof Error ? err.message : 'Unknown error');
+      toast({ title: 'Export failed', description: detail, variant: 'destructive' });
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
+      setExportingMsg('');
+    }
   };
 
   const handleCreateNew = () => {
@@ -222,10 +272,10 @@ export default function ReadySales() {
     setEditorOpen(true);
   };
 
-  // Stats
-  const unassignedCount = orders.filter(o => o.runner_status === 'UNASSIGNED').length;
-  const assignedCount = orders.filter(o => o.runner_status !== 'UNASSIGNED').length;
-  const codCount = orders.filter(o => o.payment_method === 'COD').length;
+  // Stats — use server-side counts, fall back to per-page counts
+  const unassignedCount = readyStats?.unassignedCount ?? orders.filter(o => o.runner_status === 'UNASSIGNED').length;
+  const assignedCount = readyStats?.assignedCount ?? orders.filter(o => o.runner_status !== 'UNASSIGNED').length;
+  const codCount = readyStats?.codCount ?? orders.filter(o => o.payment_method === 'COD').length;
 
   const isMobile = useIsMobile();
 
@@ -237,11 +287,11 @@ export default function ReadySales() {
     }
   };
 
-  const isAllSelected = filteredOrders.length > 0 && selectedRows.length === filteredOrders.length;
+  const isAllSelected = allOrderIds.length > 0 && selectedRows.length === allOrderIds.length;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedRows(filteredOrders.map(o => o.id));
+      setSelectedRows(allOrderIds);
     } else {
       setSelectedRows([]);
     }
@@ -271,8 +321,8 @@ export default function ReadySales() {
                     <Plus className="h-4 w-4 mr-2" />
                     {isMobile ? 'New' : 'New Order'}
                   </Button>
-                  <Button onClick={handleExport} variant="outline" size={isMobile ? "sm" : "default"}>
-                    <Download className="h-4 w-4 mr-2" />
+                  <Button onClick={handleExport} variant="outline" size={isMobile ? "sm" : "default"} disabled={exporting}>
+                    {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     {isMobile ? '' : 'Export'}
                   </Button>
                 </div>
@@ -283,7 +333,7 @@ export default function ReadySales() {
 
         {/* Status Summary Cards */}
         <DispatchStatusCards
-          totalReady={pagination.totalCount || orders.length}
+          totalReady={readyStats?.totalReady ?? pagination.totalCount ?? orders.length}
           unassigned={unassignedCount}
           assigned={assignedCount}
           codOrders={codCount}
@@ -333,7 +383,8 @@ export default function ReadySales() {
                   <UserCheck className="h-4 w-4 mr-1" />
                   Assign Runner
                 </Button>
-                <Button size="sm" variant="outline" onClick={handleExportSelected} className="rounded-full">
+                <Button size="sm" variant="outline" onClick={handleExportSelected} className="rounded-full" disabled={exporting}>
+                  {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
                   Export
                 </Button>
                 {role !== 'manager' && role !== 'salesperson' && (
@@ -383,7 +434,7 @@ export default function ReadySales() {
                 isAllSelected={isAllSelected}
                 onSelectAll={handleSelectAll}
                 selectedCount={selectedRows.length}
-                totalCount={filteredOrders.length}
+                totalCount={allOrderIds.length || pagination.totalCount}
               />
             )}
 
@@ -439,6 +490,7 @@ export default function ReadySales() {
             totalPages={pagination.totalPages}
             onPageChange={setPage}
             isFetching={isFetching}
+            allSelectableIds={allOrderIds}
           />
         )}
       </div>

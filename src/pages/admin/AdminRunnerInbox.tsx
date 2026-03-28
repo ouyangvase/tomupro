@@ -4,14 +4,15 @@ import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useBulkUpdateOrders } from '@/hooks/useOrders';
-import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
+import { usePaginatedOrders, useAllOrderIds } from '@/hooks/usePaginatedOrders';
 import { useUserDirectory, useRunners } from '@/hooks/useUserDirectory';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
-import { exportSelectedOrderLines } from '@/lib/csv';
+import { exportOrderLines } from '@/lib/csv';
+import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useToast } from '@/hooks/use-toast';
 import type { Order, RunnerStatus, ReconciliationStatus } from '@/types/database';
-import { Inbox, UserPlus } from 'lucide-react';
+import { Inbox, UserPlus, Loader2 } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -68,11 +69,16 @@ export default function AdminRunnerInbox() {
   const [serverSearch, setServerSearch] = useState('');
 
   // Server-side paginated query - READY orders for admin
-  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
-    status: 'READY' as any,
+  const orderFilters = useMemo(() => ({
+    status: 'READY' as const,
     runnerId: selectedRunnerId === '__all__' ? undefined : selectedRunnerId === '__unassigned__' ? undefined : selectedRunnerId,
     searchQuery: serverSearch || undefined,
-  }, 50);
+  }), [selectedRunnerId, serverSearch]);
+
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders(orderFilters, 50);
+
+  // Fetch ALL matching IDs for cross-page "Select All"
+  const { data: allOrderIds = [] } = useAllOrderIds(orderFilters);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 
@@ -85,18 +91,28 @@ export default function AdminRunnerInbox() {
     }));
   }, [userDirectory]);
 
-  const handleExport = () => {
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
     if (selectedRows.length === 0) {
-      toast({ 
-        variant: 'destructive', 
-        title: 'No orders selected', 
-        description: 'Please select at least 1 order to export.' 
+      toast({
+        variant: 'destructive',
+        title: 'No orders selected',
+        description: 'Please select at least 1 order to export.'
       });
       return;
     }
-    const success = exportSelectedOrderLines(orders || [], selectedRows, 'admin_runner_inbox_export');
-    if (success) {
-      toast({ title: 'Export complete', description: `Exported ${selectedRows.length} order(s)` });
+    setExporting(true);
+    try {
+      const allOrders = await fetchOrdersForExport(orderFilters, selectedRows, 'admin');
+      exportOrderLines(allOrders, 'admin_runner_inbox_export');
+      toast({ title: 'Export complete', description: `Exported ${allOrders.length} order(s)` });
+    } catch (err) {
+      const detail = err instanceof ExportError ? err.detail : (err instanceof Error ? err.message : 'Unknown error');
+      toast({ variant: 'destructive', title: 'Export failed', description: detail });
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -342,6 +358,7 @@ export default function AdminRunnerInbox() {
           onExport={handleExport}
           onSearchChange={handleSearchChange}
           emptyMessage="No orders found"
+          allSelectableIds={allOrderIds}
           serverPagination={{
             enabled: true,
             page: pagination.page,

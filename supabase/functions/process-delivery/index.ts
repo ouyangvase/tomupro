@@ -307,10 +307,43 @@ Deno.serve(async (req) => {
       priority: 'MEDIUM',
     });
 
+    // Sync notification + activity to Firebase (non-blocking)
+    try {
+      fetch(`${supabaseUrl}/functions/v1/sync-to-firebase`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          type: 'batch',
+          items: [
+            {
+              type: 'notification',
+              userId: order.salesperson_id,
+              title: 'Order Delivered',
+              body: 'Order delivered and stock deducted from warehouse.',
+              notificationType: 'DELIVERED',
+              data: { orderId, warehouseId },
+            },
+            {
+              type: 'activity',
+              actorName: user.email || 'Runner',
+              actorId: authenticatedUserId,
+              action: 'delivered_order',
+              entityType: 'order',
+              entityId: orderId,
+              description: `Delivered order and deducted stock (${deductionsCreated} items)`,
+            },
+          ],
+        }),
+      }).catch((err) => console.error('[sync-to-firebase] fire-and-forget error:', err));
+    } catch (syncErr) {
+      console.error('[sync-to-firebase] trigger error (non-blocking):', syncErr);
+    }
+
     // Fire webhook to PulseOne (non-blocking)
     try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
       fetch(`${supabaseUrl}/functions/v1/send-webhook`, {
         method: 'POST',
         headers: {

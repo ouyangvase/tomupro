@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -36,7 +38,7 @@ import { cn } from '@/lib/utils';
 import { 
   Package, Plus, Trash2, Upload, Check, ChevronsUpDown, 
   ArrowRight, User, Hash, CalendarDays, FileText, 
-  PackageOpen, Clock, AlertCircle, ScanBarcode
+  PackageOpen, Clock, AlertCircle, ScanBarcode, AlertTriangle
 } from 'lucide-react';
 import capybaraImport from '@/assets/capybara-import.png';
 import { PageHero } from '@/components/dashboard/PageHero';
@@ -65,6 +67,8 @@ export default function RunnerInbound() {
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<InboundItemDraft[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const submitGuardRef = useRef(false);
 
   const { data: products = [], isLoading: productsLoading } = useProductsByOwner(targetUserId || null);
 
@@ -73,6 +77,12 @@ export default function RunnerInbound() {
   const totalItemsWaiting = allShipments
     .filter(s => s.status === 'PENDING_SP_ACK')
     .reduce((acc, s) => acc + ((s as any).inbound_items?.length || 0), 0);
+
+  // Duplicate detection: check if there's already a pending shipment for the same target user
+  const existingPendingForUser = useMemo(() => {
+    if (!targetUserId) return [];
+    return pendingShipments.filter(s => s.salesperson_id === targetUserId);
+  }, [targetUserId, pendingShipments]);
 
   const handleTargetUserChange = (newTargetUserId: string) => {
     if (newTargetUserId !== targetUserId) setItems([]);
@@ -118,10 +128,19 @@ export default function RunnerInbound() {
         return;
       }
     }
+    // Show confirmation dialog instead of submitting directly
+    setShowConfirm(true);
+  };
+
+  const handleConfirmedSubmit = async () => {
+    // Guard against double submission
+    if (submitGuardRef.current) return;
+    submitGuardRef.current = true;
+    setShowConfirm(false);
     setIsSubmitting(true);
     try {
       const shipment = await createShipment.mutateAsync({
-        runner_id: user.id,
+        runner_id: user!.id,
         salesperson_id: targetUserId,
         tracking_no: trackingNo,
         arrival_date: arrivalDate,
@@ -129,7 +148,7 @@ export default function RunnerInbound() {
       });
       for (const item of items) {
         let photoUrl = '';
-        if (item.photo_file) photoUrl = await uploadInboundPhoto(item.photo_file, user.id);
+        if (item.photo_file) photoUrl = await uploadInboundPhoto(item.photo_file, user!.id);
         const product = products.find(p => p.id === item.product_id);
         const tempSkuLabel = product ? `${product.sku_code || ''} ${product.sku_name}`.trim() : '';
         await createItem.mutateAsync({
@@ -156,6 +175,7 @@ export default function RunnerInbound() {
       toast({ variant: 'destructive', title: 'Error', description: (error as Error).message });
     } finally {
       setIsSubmitting(false);
+      submitGuardRef.current = false;
     }
   };
 
@@ -450,6 +470,87 @@ export default function RunnerInbound() {
             {isSubmitting ? 'Submitting...' : 'Receive Shipment'}
           </Button>
         </div>
+
+        {/* Confirmation Dialog */}
+        <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <PackageOpen className="h-5 w-5 text-primary" />
+                Confirm Submission
+              </DialogTitle>
+              <DialogDescription>
+                Review the shipment details before submitting.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2">
+              {existingPendingForUser.length > 0 && (
+                <Alert variant="destructive" className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 !text-amber-600" />
+                  <AlertDescription className="text-sm">
+                    <strong>Warning:</strong> This user already has {existingPendingForUser.length} pending shipment{existingPendingForUser.length > 1 ? 's' : ''} awaiting acknowledgment.
+                    {existingPendingForUser.length <= 3 && (
+                      <span className="block mt-1 text-xs text-muted-foreground">
+                        Tracking: {existingPendingForUser.map(s => s.tracking_no).join(', ')}
+                      </span>
+                    )}
+                    Are you sure this is not a duplicate?
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="rounded-lg border p-3 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Owner</span>
+                  <span className="font-medium">{selectedUser?.display_name || '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tracking</span>
+                  <span className="font-mono font-medium">{trackingNo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Arrival Date</span>
+                  <span>{arrivalDate}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Items</span>
+                  <span className="font-medium">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Qty</span>
+                  <Badge variant="default">{items.reduce((sum, i) => sum + i.qty_reported, 0)}</Badge>
+                </div>
+              </div>
+
+              {items.length > 0 && (
+                <div className="rounded-lg border divide-y max-h-[200px] overflow-y-auto">
+                  {items.map((item, idx) => {
+                    const product = products.find(p => p.id === item.product_id);
+                    return (
+                      <div key={item.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs text-muted-foreground w-5">{idx + 1}.</span>
+                          <span className="truncate">{product?.sku_code || product?.sku_name || 'Unknown'}</span>
+                        </div>
+                        <Badge variant="outline" className="ml-2 shrink-0">x{item.qty_reported}</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setShowConfirm(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleConfirmedSubmit} disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Confirm & Submit'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );

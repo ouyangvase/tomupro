@@ -40,6 +40,7 @@ export default function FinanceModule() {
 
   const runnerTabs = [
     { id: 'my-claims', label: 'My Claims' },
+    { id: 'claims-history', label: 'Claim History' },
     { id: 'cash-settlement', label: 'Cash Settlement' },
     { id: 'cash-driver', label: 'Cash Driver' },
     { id: 'delivery-charges', label: 'Delivery Charges' },

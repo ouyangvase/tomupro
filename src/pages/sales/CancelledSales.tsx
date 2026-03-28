@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useBulkUpdateOrders } from '@/hooks/useOrders';
-import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
+import { usePaginatedOrders, useAllOrderIds } from '@/hooks/usePaginatedOrders';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useReasons } from '@/hooks/useReasons';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
@@ -27,9 +27,11 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear } from 'date-fns';
-import { RotateCcw, Calendar, Filter } from 'lucide-react';
+import { RotateCcw, Calendar, Filter, Loader2 } from 'lucide-react';
 import { exportToCSV } from '@/lib/csv';
+import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { formatBND } from '@/lib/currency';
+import { useToast } from '@/hooks/use-toast';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import type { Order, OrderStatus } from '@/types/database';
@@ -41,6 +43,7 @@ import {
 
 export default function CancelledSales() {
   const { profile, role } = useAuth();
+  const { toast } = useToast();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<OrderStatus>('BOOKING');
@@ -52,18 +55,23 @@ export default function CancelledSales() {
   const [filterArea, setFilterArea] = useState<string>('all');
   
   // Team view state for managers
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('my');
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('team');
 
   const [serverSearch, setServerSearch] = useState('');
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 
-  // Use paginated orders hook
-  const { data: allOrders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
-    status: 'CANCELLED',
+  const orderFilters = useMemo(() => ({
+    status: 'CANCELLED' as const,
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
     searchQuery: serverSearch || undefined,
-  }, 50);
+  }), [isManager, salespersonIds, role, profile?.id, serverSearch]);
+
+  // Use paginated orders hook
+  const { data: allOrders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders(orderFilters, 50);
+
+  // Fetch ALL matching IDs for cross-page "Select All"
+  const { data: allOrderIds = [] } = useAllOrderIds(orderFilters);
   
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: cancelReasons = [] } = useReasons('CANCEL', false);
@@ -300,42 +308,63 @@ export default function CancelledSales() {
     setSelectedRows([]);
   };
 
-  const handleExport = () => {
-    const exportData = filteredOrders.map(order => ({
-      order_ref: order.order_code,
-      order_date: order.order_date,
-      customer_name: order.customer_name,
-      phone: order.phone,
-      address: order.address,
-      area: order.area || '',
-      total_amount: order.total_amount,
-      payment_method: order.payment_method,
-      salesperson: order.salesperson?.display_name || '',
-      runner: order.runner?.display_name || '',
-      cancel_reason: order.cancel_reason || '',
-      cancel_comment: order.cancel_notes || '',
-      cancelled_by: order.cancelled_by ? usersMap[order.cancelled_by] || '' : '',
-      cancelled_at: order.cancelled_at ? format(new Date(order.cancelled_at), 'yyyy-MM-dd HH:mm:ss') : '',
-    }));
+  const [exporting, setExporting] = useState(false);
 
-    const columns = [
-      { key: 'order_ref', header: 'Order Ref' },
-      { key: 'order_date', header: 'Order Date' },
-      { key: 'customer_name', header: 'Customer' },
-      { key: 'phone', header: 'Phone' },
-      { key: 'address', header: 'Address' },
-      { key: 'area', header: 'Area' },
-      { key: 'total_amount', header: 'Amount (BND)' },
-      { key: 'payment_method', header: 'Payment' },
-      { key: 'salesperson', header: 'Salesperson' },
-      { key: 'runner', header: 'Runner' },
-      { key: 'cancel_reason', header: 'Cancel Reason' },
-      { key: 'cancel_comment', header: 'Cancel Comment' },
-      { key: 'cancelled_by', header: 'Cancelled By' },
-      { key: 'cancelled_at', header: 'Cancelled At' },
-    ];
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const allExportOrders = await fetchOrdersForExport(orderFilters, undefined, role);
 
-    exportToCSV(exportData as any, columns, 'cancelled_orders');
+      // Enrich with user display names for cancelled_by
+      const enrichedUsersMap: Record<string, string> = { ...usersMap };
+      allExportOrders.forEach(o => {
+        if (o.salesperson?.display_name) enrichedUsersMap[o.salesperson.id] = o.salesperson.display_name;
+        if (o.runner?.display_name) enrichedUsersMap[o.runner.id] = o.runner.display_name;
+      });
+
+      const exportData = allExportOrders.map(order => ({
+        order_ref: order.order_code,
+        order_date: order.order_date,
+        customer_name: order.customer_name,
+        phone: order.phone,
+        address: order.address,
+        area: order.area || '',
+        total_amount: order.total_amount,
+        payment_method: order.payment_method,
+        salesperson: order.salesperson?.display_name || '',
+        runner: order.runner?.display_name || '',
+        cancel_reason: order.cancel_reason || '',
+        cancel_comment: order.cancel_notes || '',
+        cancelled_by: order.cancelled_by ? enrichedUsersMap[order.cancelled_by] || '' : '',
+        cancelled_at: order.cancelled_at ? format(new Date(order.cancelled_at), 'yyyy-MM-dd HH:mm:ss') : '',
+      }));
+
+      const columns = [
+        { key: 'order_ref', header: 'Order Ref' },
+        { key: 'order_date', header: 'Order Date' },
+        { key: 'customer_name', header: 'Customer' },
+        { key: 'phone', header: 'Phone', forceText: true },
+        { key: 'address', header: 'Address' },
+        { key: 'area', header: 'Area' },
+        { key: 'total_amount', header: 'Amount (BND)' },
+        { key: 'payment_method', header: 'Payment' },
+        { key: 'salesperson', header: 'Salesperson' },
+        { key: 'runner', header: 'Runner' },
+        { key: 'cancel_reason', header: 'Cancel Reason' },
+        { key: 'cancel_comment', header: 'Cancel Comment' },
+        { key: 'cancelled_by', header: 'Cancelled By' },
+        { key: 'cancelled_at', header: 'Cancelled At' },
+      ];
+
+      exportToCSV(exportData as any, columns, 'cancelled_orders');
+      toast({ title: `Exported ${exportData.length} order(s)` });
+    } catch (err) {
+      const detail = err instanceof ExportError ? err.detail : (err instanceof Error ? err.message : 'Unknown error');
+      toast({ title: 'Export failed', description: detail, variant: 'destructive' });
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const clearFilters = () => {
@@ -455,6 +484,7 @@ export default function CancelledSales() {
           emptyMessage="No cancelled orders"
           onExport={handleExport}
           onSearchChange={handleSearchChange}
+          allSelectableIds={allOrderIds}
           serverPagination={{
             enabled: true,
             page: pagination.page,

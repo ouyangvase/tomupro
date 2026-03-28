@@ -20,6 +20,8 @@ interface DispatchBoardProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   isFetching?: boolean;
+  // Cross-page selection: ALL matching IDs from the full filtered dataset
+  allSelectableIds?: string[];
 }
 
 export function DispatchBoard({
@@ -35,16 +37,24 @@ export function DispatchBoard({
   totalPages,
   onPageChange,
   isFetching,
+  allSelectableIds,
 }: DispatchBoardProps) {
-  const isAllSelected = orders.length > 0 && orders.every(o => selectedRows.includes(o.id));
+  const allIdsCount = allSelectableIds ? allSelectableIds.length : orders.length;
+  const isAllSelected = allIdsCount > 0 &&
+    (allSelectableIds
+      ? allSelectableIds.every(id => selectedRows.includes(id))
+      : orders.every(o => selectedRows.includes(o.id)));
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const newIds = [...new Set([...selectedRows, ...orders.map(o => o.id)])];
-      onSelectionChange(newIds);
+      if (allSelectableIds && allSelectableIds.length > 0) {
+        onSelectionChange(allSelectableIds);
+      } else {
+        const newIds = [...new Set([...selectedRows, ...orders.map(o => o.id)])];
+        onSelectionChange(newIds);
+      }
     } else {
-      const pageIds = new Set(orders.map(o => o.id));
-      onSelectionChange(selectedRows.filter(id => !pageIds.has(id)));
+      onSelectionChange([]);
     }
   };
 

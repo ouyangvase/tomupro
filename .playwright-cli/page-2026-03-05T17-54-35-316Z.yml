@@ -1,0 +1,24 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e13]:
+    - generic [ref=e15]:
+      - img "TOMU PRO Logo" [ref=e17]
+      - heading "TOMU PRO" [level=3] [ref=e18]
+      - paragraph [ref=e21]: Orders • Runner • Reconciliation • Inventory
+    - generic [ref=e24]:
+      - tablist [ref=e25]:
+        - tab "Login" [selected] [ref=e26] [cursor=pointer]
+        - tab "Sign Up" [ref=e27] [cursor=pointer]
+      - tabpanel "Login" [ref=e28]:
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - text: Email
+            - textbox "Email" [ref=e31]:
+              - /placeholder: you@example.com
+          - generic [ref=e32]:
+            - text: Password
+            - textbox "Password" [ref=e33]:
+              - /placeholder: ••••••••
+          - button "Sign In" [ref=e34] [cursor=pointer]

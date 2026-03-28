@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import type { ClaimBatch, ClaimBatchStatus, Profile } from '@/types/database';
 
 interface ClaimBatchFilters {
@@ -12,17 +13,13 @@ export function useClaimBatches(filters?: ClaimBatchFilters) {
   return useQuery({
     queryKey: ['claim-batches', filters],
     queryFn: async () => {
+      // Lightweight query: fetch batches + item IDs only (NO orders join)
+      // The deep nested join (orders → order_items → products) causes RLS-induced timeouts
       let query = supabase
         .from('claim_batches')
         .select(`
           *,
-          items:claim_batch_items(
-            *,
-            order:orders(
-              *,
-              order_items(*, product:products(sku_code, sku_name))
-            )
-          )
+          items:claim_batch_items(id, order_id)
         `)
         .order('submitted_at', { ascending: false });
 
@@ -35,27 +32,77 @@ export function useClaimBatches(filters?: ClaimBatchFilters) {
 
       const { data, error } = await query;
       if (error) throw error;
-      
+
       // Fetch runner profiles separately
       const runnerIds = [...new Set(data?.map(b => b.runner_id) || [])];
       let runnerMap: Record<string, Profile> = {};
-      
+
       if (runnerIds.length > 0) {
         const { data: profiles } = await supabase
           .from('user_directory')
           .select('*')
           .in('id', runnerIds);
-        
+
         profiles?.forEach(p => {
           runnerMap[p.id] = p as unknown as Profile;
         });
       }
-      
+
       return (data || []).map(batch => ({
         ...batch,
         runner: runnerMap[batch.runner_id],
       })) as unknown as ClaimBatch[];
     },
+  });
+}
+
+/**
+ * Fetch full order details for a specific claim batch (on demand, for details dialog/export)
+ * Separated from the list query to avoid RLS-induced timeouts on the orders table
+ */
+export function useClaimBatchDetails(batchId: string | undefined) {
+  return useQuery({
+    queryKey: ['claim-batch-details', batchId],
+    queryFn: async () => {
+      if (!batchId) return null;
+
+      // Fetch the batch items with order IDs
+      const { data: items, error: itemsError } = await supabase
+        .from('claim_batch_items')
+        .select('id, order_id')
+        .eq('batch_id', batchId);
+
+      if (itemsError) throw itemsError;
+      if (!items || items.length === 0) return [];
+
+      const orderIds = items.map(i => i.order_id);
+
+      // Fetch orders via RPC to bypass RLS timeout
+      // Use get_delivered_orders_fast if available, else direct query with limited fields
+      const { data: orders, error: ordersError } = await supabase
+        .from('orders')
+        .select('id, order_code, order_date, customer_name, area, total_amount, payment_method, reconciliation_status, delivered_at, salesperson_id')
+        .in('id', orderIds);
+
+      if (ordersError) {
+        console.warn('Failed to fetch orders for batch details:', ordersError);
+        // Return items with minimal data on error
+        return items.map(item => ({
+          id: item.id,
+          order_id: item.order_id,
+          order: null,
+        }));
+      }
+
+      const orderMap = new Map(orders?.map(o => [o.id, o]) || []);
+      return items.map(item => ({
+        id: item.id,
+        order_id: item.order_id,
+        order: orderMap.get(item.order_id) || null,
+      }));
+    },
+    enabled: !!batchId,
+    staleTime: 30000,
   });
 }
 
@@ -74,11 +121,11 @@ export function useSubmitBulkClaim() {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
-      toast({ 
-        title: 'Claim Submitted', 
-        description: `Claim batch submitted for ${data.orderCount} orders (BND ${data.netAmountBND?.toFixed(2)} → RM ${data.netAmountRM?.toFixed(2)})` 
+      toast({
+        title: 'Claim Submitted',
+        description: `Claim batch submitted for ${data.orderCount} orders (BND ${data.netAmountBND?.toFixed(2)} → RM ${data.netAmountRM?.toFixed(2)})`
       });
     },
     onError: (error: Error) => {
@@ -154,11 +201,11 @@ export function useApproveClaimBatch() {
       return { batchId, orderCount: orderIds.length };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
-      toast({ 
-        title: 'Batch Approved', 
-        description: `Claim batch with ${data.orderCount} orders has been approved.` 
+      toast({
+        title: 'Batch Approved',
+        description: `Claim batch with ${data.orderCount} orders has been approved.`
       });
     },
     onError: (error: Error) => {
@@ -236,11 +283,11 @@ export function useRejectClaimBatch() {
       return { batchId, orderCount: orderIds.length };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
-      toast({ 
-        title: 'Batch Rejected', 
-        description: `Claim batch with ${data.orderCount} orders has been rejected. Orders reverted to NOT CLAIMED.` 
+      toast({
+        title: 'Batch Rejected',
+        description: `Claim batch with ${data.orderCount} orders has been rejected. Orders reverted to NOT CLAIMED.`
       });
     },
     onError: (error: Error) => {

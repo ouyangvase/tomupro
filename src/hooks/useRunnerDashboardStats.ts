@@ -185,7 +185,7 @@ export function useRunnerDashboardStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 10000, // Refresh every 10 seconds for real-time feel
-    staleTime: 5000, // Consider data stale after 5 seconds
+    refetchInterval: 30000, // 30 seconds (realtime handles urgent updates)
+    staleTime: 15000,
   });
 }

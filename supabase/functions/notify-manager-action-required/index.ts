@@ -113,6 +113,26 @@ Deno.serve(async (req) => {
         priority: 'HIGH',
         is_read: false,
       });
+
+      // Sync to Firebase (non-blocking)
+      try {
+        fetch(`${supabaseUrl}/functions/v1/sync-to-firebase`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            type: 'notification',
+            userId: alert.managerId,
+            title: 'High Action Required Alert',
+            body: `${alert.highPriorityAgents.length} agent(s) have ${HIGH_PRIORITY_THRESHOLD}+ pending actions`,
+            notificationType: 'DAILY_DIGEST',
+          }),
+        }).catch(() => {});
+      } catch (_) {
+        // non-blocking
+      }
     }
 
     return new Response(

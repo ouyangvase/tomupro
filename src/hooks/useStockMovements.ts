@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import type { MovementType, ReferenceType } from '@/types/database';
 
 interface CreateMovementParams {
@@ -112,8 +113,7 @@ export function useProcessStockDeductions() {
       return results;
     },
     onSuccess: (results) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+      invalidateOrderQueries(queryClient);
       
       const successful = results.filter(r => r.success).length;
       const failed = results.length - successful;

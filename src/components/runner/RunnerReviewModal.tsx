@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { CalendarIcon, ExternalLink, MapPin, Package, CreditCard } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
+import { buildWhatsAppUrl } from '@/lib/phone';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useReasons } from '@/hooks/useReasons';
@@ -50,8 +51,9 @@ type ActionType = 'FOLLOWUP_CUSTOMER' | 'RESCHEDULE_DELIVERY' | 'UPDATE_ADDRESS'
 
 // WhatsApp URL generator for the modal
 const generateWhatsAppUrlSimple = (phone: string, message: string) => {
-  const cleanPhone = phone?.replace(/\D/g, '');
-  return `https://wa.me/673${cleanPhone}?text=${encodeURIComponent(message)}`;
+  const baseUrl = buildWhatsAppUrl(phone);
+  if (!baseUrl) return '';
+  return `${baseUrl}?text=${encodeURIComponent(message)}`;
 };
 
 export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewModalProps) {

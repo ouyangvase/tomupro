@@ -3,13 +3,16 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle, Users, Package, User, MapPin, CreditCard, Minus, ShoppingCart, FileText, Phone, MessageSquare, Hash, Search } from 'lucide-react';
+import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle, Users, Package, User, MapPin, CreditCard, Minus, ShoppingCart, FileText, Phone, MessageSquare, Hash, Search, ClipboardPaste } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { RunnerReviewInfo } from '@/components/orders/RunnerReviewInfo';
 import { RescheduleHistorySection } from '@/components/orders/RescheduleHistorySection';
 import { useValidAreas, isValidArea } from '@/hooks/useValidAreas';
 import { toUpperLatin } from '@/lib/uppercase';
+import { parseOrderTemplate, type ParsedOrder } from '@/lib/orderTemplateParser';
+import { isScientificNotation } from '@/lib/phone';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Sheet,
   SheetContent,
@@ -72,7 +75,10 @@ import capybaraEmptyCart from '@/assets/capybara-empty-cart.png';
 const orderSchema = z.object({
   order_code: z.string().min(1, 'Order Reference is required'),
   customer_name: z.string().min(1, 'Customer name is required'),
-  phone: z.string().min(1, 'Phone is required'),
+  phone: z.string().min(1, 'Phone is required').refine(
+    (val) => !isScientificNotation(val),
+    'Phone number appears corrupted (scientific notation like 6.28E+12 detected). Please enter the actual phone number as text.'
+  ),
   address: z.string().min(1, 'Address is required'),
   area: z.string().optional(),
   channel: z.string().optional(),
@@ -346,6 +352,111 @@ function OrderItemCard({
   );
 }
 
+/* ─── Paste Template View ─── */
+function PasteTemplateView({
+  templateText,
+  setTemplateText,
+  products,
+  form,
+  setItems,
+  setInputMode,
+  onOpenChange,
+}: {
+  templateText: string;
+  setTemplateText: (v: string) => void;
+  products: { id: string; sku_code: string | null; sku_name: string }[];
+  form: any;
+  setItems: (items: LocalOrderItem[]) => void;
+  setInputMode: (v: 'manual' | 'paste') => void;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [parseResult, setParseResult] = useState<ParsedOrder | null>(null);
+  const { toast } = useToast();
+
+  const handleParse = () => {
+    if (!templateText.trim()) return;
+    const result = parseOrderTemplate(templateText, products);
+    setParseResult(result);
+
+    // Populate form fields
+    if (result.customerName) form.setValue('customer_name', result.customerName);
+    if (result.phone) form.setValue('phone', result.phone);
+    if (result.address) form.setValue('address', result.address);
+    if (result.remark) form.setValue('notes', result.remark);
+    form.setValue('payment_method', 'COD');
+
+    // Populate items
+    if (result.items.length > 0) {
+      setItems(result.items.map(item => ({
+        product_id: item.matchedProductId,
+        sku_label: item.matchedProductName || item.skuNameRaw,
+        qty: item.qty,
+        price: item.price,
+        line_total: item.qty * item.price,
+        notes: item.lineNotes,
+        isNew: true,
+      })));
+    }
+
+    // Show summary toast (include warnings for corrupted phone, etc.)
+    const matched = result.items.filter(i => i.confidence !== 'unmatched').length;
+    const total = result.items.length;
+    if (result.parseWarnings.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Template parsed with warnings',
+        description: result.parseWarnings.join('; '),
+      });
+    } else {
+      toast({
+        title: 'Template parsed',
+        description: `${total} item(s) found, ${matched} matched to products. Review the form and submit.`,
+      });
+    }
+
+    // Switch to manual mode to show filled form
+    setInputMode('manual');
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <SectionCard icon={ClipboardPaste} title="Paste Order Template" subtitle="Paste your order text and auto-fill the form">
+        <Textarea
+          value={templateText}
+          onChange={(e) => { setTemplateText(e.target.value); setParseResult(null); }}
+          placeholder={`JILL OTHMAN\n8605588\nNO 7 SPG 28-16 JLN PERPINDAHAN LAMBAK KANAN\n\n1 X SAHIYYA PLUS $69\n2366/YC`}
+          rows={12}
+          className="font-mono text-sm bg-secondary/30 border-border/50 rounded-xl"
+        />
+        <div className="text-[11px] text-muted-foreground/70 mt-2 space-y-0.5">
+          <p>Format: Name, Phone, Address (separated by blank line from items)</p>
+          <p>Items: QTY X PRODUCT $PRICE</p>
+          <p>Last line: REMARK/RUNNER</p>
+        </div>
+      </SectionCard>
+
+      <Button
+        type="button"
+        className="w-full h-11 rounded-xl font-semibold"
+        onClick={handleParse}
+        disabled={!templateText.trim()}
+      >
+        <ClipboardPaste className="h-4 w-4 mr-2" />
+        Parse & Fill Form
+      </Button>
+
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full h-11 rounded-xl"
+        onClick={() => onOpenChange(false)}
+      >
+        Cancel
+      </Button>
+    </div>
+  );
+}
+
 /* ─── Main Component ─── */
 export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = 'BOOKING' }: OrderEditorProps) {
   const { profile, role } = useAuth();
@@ -396,6 +507,9 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const [showDeliveredWarning, setShowDeliveredWarning] = useState(false);
   const [areaSearchOpen, setAreaSearchOpen] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<OrderFormValues | null>(null);
+  const [inputMode, setInputMode] = useState<'manual' | 'paste'>('manual');
+  const [templateText, setTemplateText] = useState('');
+  const [createAs, setCreateAs] = useState<'BOOKING' | 'READY'>(defaultStatus);
 
   const isDelivered = order?.runner_status === 'DELIVERED';
   const isAdmin = role === 'admin';
@@ -416,7 +530,9 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
     },
   });
 
+  // Reset form whenever the sheet opens or order/mode changes
   useEffect(() => {
+    if (!open) return; // Only reset when opening
     if (order && mode === 'edit') {
       form.reset({
         order_code: order.order_code || '',
@@ -442,10 +558,14 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         notes: '',
         payment_method: 'COD',
       });
-      setItemsInitialized(false);
+      setItems([{ product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
+      setItemsInitialized(true);
       setDeletedItemIds([]);
+      setInputMode('manual');
+      setTemplateText('');
+      setCreateAs(defaultStatus);
     }
-  }, [order, mode, form]);
+  }, [open, order, mode, form]);
 
   useEffect(() => {
     if (mode === 'edit' && existingItems.length > 0 && !itemsInitialized) {
@@ -459,9 +579,6 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         notes: item.notes || '',
         isNew: false,
       })));
-      setItemsInitialized(true);
-    } else if (mode === 'create' && !itemsInitialized) {
-      setItems([{ product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
       setItemsInitialized(true);
     }
   }, [mode, existingItems, itemsInitialized]);
@@ -571,7 +688,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
           ...orderData,
           salesperson_id: profile!.id,
           order_owner_id: orderOwnerId,
-          status: defaultStatus,
+          status: createAs,
         } as any);
         orderId = result.id;
       } else if (order) {
@@ -607,9 +724,25 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         }
       }
 
+      // Reset form state immediately on success so re-opening the modal is clean
+      if (mode === 'create') {
+        form.reset({
+          order_code: '',
+          customer_name: '',
+          phone: '',
+          address: '',
+          area: '',
+          channel: '',
+          notes: '',
+          payment_method: 'COD',
+        });
+        setItems([{ product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
+        setItemsInitialized(true);
+        setDeletedItemIds([]);
+      }
       onOpenChange(false);
     } catch (error) {
-      // Error handled by mutation hooks
+      // Error handled by mutation hooks — form data preserved for retry
     }
   };
 
@@ -667,7 +800,33 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
             </div>
           </div>
 
+          {/* ─── Input Mode Toggle (create only) ─── */}
+          {mode === 'create' && (
+            <div className="px-6 pt-3 pb-0">
+              <Tabs value={inputMode} onValueChange={(v) => setInputMode(v as 'manual' | 'paste')}>
+                <TabsList className="w-full">
+                  <TabsTrigger value="manual" className="flex-1 text-sm">Manual Entry</TabsTrigger>
+                  <TabsTrigger value="paste" className="flex-1 text-sm">
+                    <ClipboardPaste className="h-3.5 w-3.5 mr-1.5" />
+                    Paste Template
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          )}
+
           {/* ─── Scrollable Content ─── */}
+          {mode === 'create' && inputMode === 'paste' ? (
+            <PasteTemplateView
+              templateText={templateText}
+              setTemplateText={setTemplateText}
+              products={products}
+              form={form}
+              setItems={setItems}
+              setInputMode={setInputMode}
+              onOpenChange={onOpenChange}
+            />
+          ) : (
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             {/* Locked banner */}
             {isLocked && (
@@ -722,6 +881,31 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                             ))}
                           </SelectContent>
                         </Select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Destination selector - create mode only */}
+                  {mode === 'create' && (
+                    <div className="mb-5">
+                      <label className="text-xs font-medium text-muted-foreground mb-2 block">Create As</label>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant={createAs === 'BOOKING' ? 'default' : 'outline'}
+                          onClick={() => setCreateAs('BOOKING')}
+                          className="flex-1 rounded-full h-9 text-sm"
+                        >
+                          Booking
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={createAs === 'READY' ? 'default' : 'outline'}
+                          onClick={() => setCreateAs('READY')}
+                          className="flex-1 rounded-full h-9 text-sm"
+                        >
+                          Ready
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -1015,6 +1199,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
               </form>
             </Form>
           </div>
+          )}
 
           {/* ─── Sticky Summary Footer ─── */}
           <div className="border-t border-border/50 bg-card px-6 py-4 shadow-[0_-4px_12px_-4px_hsl(0_0%_0%/0.06)]">

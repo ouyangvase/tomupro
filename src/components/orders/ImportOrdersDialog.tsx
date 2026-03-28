@@ -20,6 +20,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useValidAreas } from '@/hooks/useValidAreas';
@@ -415,6 +416,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           description: `Successfully imported ${created} order(s)${newErrors.length > 0 ? ` with ${newErrors.length} error(s)` : ''}`,
         });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
+        invalidateOrderQueries(queryClient);
       }
 
       if (newErrors.length === 0) {

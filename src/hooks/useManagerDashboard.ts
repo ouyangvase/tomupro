@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 import { startOfMonth, subDays, format } from 'date-fns';
 
 export type PeriodType = 'last7' | 'mtd';
@@ -55,26 +56,30 @@ export interface ManagerDashboardData {
 export function useManagerDashboard(period: PeriodType = 'mtd') {
   const { user, role } = useAuth();
   const { data: teamMembers = [] } = useTeamMembers();
-  
+
   return useQuery({
-    queryKey: ['manager-dashboard', user?.id, period, teamMembers.map(t => t.id)],
+    queryKey: ['manager-dashboard', user?.id, period],
     queryFn: async (): Promise<ManagerDashboardData> => {
       if (!user?.id) throw new Error('Not authenticated');
-      
+
       const now = new Date();
-      const periodStart = period === 'last7' 
-        ? subDays(now, 7) 
+      const periodStart = period === 'last7'
+        ? subDays(now, 7)
         : startOfMonth(now);
       const periodStartStr = format(periodStart, 'yyyy-MM-dd');
-      
-      // Team member IDs including manager
-      const teamIds = [user.id, ...teamMembers.map(t => t.id)];
-      
-      // Fetch team orders
+
+      // Use shared cache for team visibility (avoids redundant RPC calls)
+      const visibleIds = await getVisibleOwnerIdsCached();
+
+      const teamIds = visibleIds && visibleIds.length > 0
+        ? visibleIds
+        : [user.id];
+
+      // Fetch team orders using explicit salesperson_id filter
       const { data: teamOrders, error: ordersError } = await supabase
         .from('orders')
         .select('id, status, runner_status, total_amount, salesperson_id, created_at')
-        .or(`owner_manager_id_snapshot.eq.${user.id},salesperson_id.in.(${teamIds.join(',')})`)
+        .in('salesperson_id', teamIds)
         .gte('created_at', periodStartStr);
       
       if (ordersError) throw ordersError;
@@ -114,7 +119,7 @@ export function useManagerDashboard(period: PeriodType = 'mtd') {
       const { data: inbounds, error: inboundError } = await supabase
         .from('inbound_shipments')
         .select('id, status, salesperson_id')
-        .or(`salesperson_id.eq.${user.id},salesperson_id.in.(${teamIds.join(',')})`)
+        .in('salesperson_id', teamIds)
         .eq('status', 'ACKNOWLEDGED')
         .gte('created_at', periodStartStr);
       
@@ -146,7 +151,7 @@ export function useManagerDashboard(period: PeriodType = 'mtd') {
           actionRequiredCount: actionRequiredOrders.length,
         },
         teamHealth: {
-          activeTeamMembers: teamMembers.filter(m => m.is_active).length,
+          activeTeamMembers: teamIds.length - 1, // Exclude manager from count
           teamMembersWithOrders: salespersonDeliveries.size,
           dependencyRatio,
           topBottomGapRatio,

@@ -213,13 +213,9 @@ export function useLeaderboardRankings(
   const startStr = formatDateForQuery(start);
   const endStr = formatDateForQuery(end);
 
-  useEffect(() => {
-    const channel = supabase.channel('leaderboard-orders-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['leaderboard-rankings'] });
-      }).subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [queryClient]);
+  // Removed: leaderboard-orders-realtime subscription
+  // The orders table gets many writes; a blanket realtime sub here was redundant
+  // with the 60s polling interval below. Polling alone is sufficient for leaderboard.
 
   const query = useQuery({
     queryKey: ['leaderboard-rankings', periodMode, primaryMetric, startStr, endStr, selectedMonth, selectedQuarter, selectedYear],
@@ -249,8 +245,8 @@ export function useLeaderboardRankings(
       });
       return { rankings, lastUpdated: new Date() };
     },
-    refetchInterval: 30000,
-    staleTime: 5000,
+    refetchInterval: 60000,
+    staleTime: 30000,
   });
   return query;
 }

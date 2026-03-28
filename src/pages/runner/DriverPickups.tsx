@@ -43,6 +43,8 @@ export default function DriverPickups() {
         reference_id: pickupId,
         priority: 'HIGH',
       });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
       toast.success('Notification sent to driver');
     } catch (error) {
       toast.error('Failed to send notification');

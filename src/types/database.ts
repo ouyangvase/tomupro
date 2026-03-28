@@ -218,8 +218,11 @@ export interface InboundShipment {
   status: InboundStatus;
   notes: string | null;
   created_at: string;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
   runner?: Profile;
   salesperson?: Profile;
+  acknowledged_by_profile?: Profile;
   inbound_items?: InboundItem[];
 }
 

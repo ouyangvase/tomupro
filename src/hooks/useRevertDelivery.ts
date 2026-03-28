@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import type { MovementType, ReferenceType } from '@/types/database';
 
 interface RevertDeliveryParams {
@@ -173,11 +174,8 @@ export function useRevertDelivery() {
       return { success: true, stockReversed: order.stock_deducted, reason };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['stock_movements'] });
-      queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast'] });
       
       const message = result.stockReversed
         ? 'Delivery reverted and stock added back'

@@ -44,7 +44,7 @@ export function TeamViewToggle({
     <div className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 ${className}`}>
       {/* View Mode Toggle */}
       <div className="flex items-center gap-2">
-        <Label className="text-xs text-muted-foreground whitespace-nowrap">View:</Label>
+        <Label className="text-xs font-medium text-foreground/70 whitespace-nowrap">View:</Label>
         <ToggleGroup
           type="single"
           value={viewMode}
@@ -54,7 +54,7 @@ export function TeamViewToggle({
           <ToggleGroupItem
             value="my"
             aria-label="My Data"
-            className="data-[state=on]:bg-background data-[state=on]:shadow-sm px-3 h-8 text-xs"
+            className="data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=off]:text-foreground/60 px-3 h-8 text-xs font-medium"
           >
             <User className="h-3 w-3 mr-1" />
             My Data
@@ -62,7 +62,7 @@ export function TeamViewToggle({
           <ToggleGroupItem
             value="team"
             aria-label="Team Data"
-            className="data-[state=on]:bg-background data-[state=on]:shadow-sm px-3 h-8 text-xs"
+            className="data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=off]:text-foreground/60 px-3 h-8 text-xs font-medium"
           >
             <Users className="h-3 w-3 mr-1" />
             Team Data
@@ -76,7 +76,7 @@ export function TeamViewToggle({
           <span className="text-xs text-muted-foreground">Loading team…</span>
         ) : hasAnyMembers ? (
           <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">Salesperson:</Label>
+            <Label className="text-xs font-medium text-foreground/70 whitespace-nowrap">Salesperson:</Label>
             <Select value={selectedMember} onValueChange={onMemberChange}>
               <SelectTrigger className="w-[200px] h-8 text-xs">
                 <SelectValue placeholder="All Team" />
@@ -126,11 +126,11 @@ export function TeamViewToggle({
  * Hook to manage team view state for manager role
  * Includes both traditional team members AND shared subjects
  */
-export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
+export function useTeamViewState(defaultViewMode: ViewMode = 'team') {
   const { role, profile } = useAuth();
   const { data: teamMembers = [] } = useTeamMembers();
   
-  // Default view mode for managers (defaults to 'my' now)
+  // Default view mode for managers — defaults to 'team' so managers see all data immediately
   const [viewMode, setViewMode] = useState<ViewMode>(role === 'manager' ? defaultViewMode : 'my');
   const [selectedMember, setSelectedMember] = useState<string>('all');
 
@@ -146,18 +146,20 @@ export function useTeamViewState(defaultViewMode: ViewMode = 'my') {
   // Calculate salesperson IDs based on view mode and selected member
   const getFilteredSalespersonIds = (): string[] | undefined => {
     if (role !== 'manager' || !profile?.id) return undefined;
-    
+
     if (viewMode === 'my') {
       // My Data mode: only show current user's data
       return [profile.id];
     }
-    
+
     // Team Data mode
     if (selectedMember === 'all') {
-      // All team: include manager + all accessible members (team + shared)
-      return [profile.id, ...allAccessibleMembers.map(m => m.id)];
+      // All team: return undefined to let the server-side get_visible_owner_ids()
+      // RPC handle the full visibility scope. This avoids client-side intersection
+      // issues where useTeamMembers may return fewer members than the RPC due to RLS.
+      return undefined;
     }
-    
+
     // Specific member selected
     return [selectedMember];
   };

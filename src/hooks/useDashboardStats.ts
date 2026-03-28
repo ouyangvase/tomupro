@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServerVisibleIds } from '@/hooks/useTeamVisibility';
+import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 import { startOfDay, endOfDay, startOfMonth } from 'date-fns';
 
 export interface DashboardStats {
@@ -84,7 +85,7 @@ export function useSalespersonStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // 60s (realtime handles urgent updates via targeted invalidation)
   });
 }
 
@@ -100,13 +101,8 @@ export function useManagerStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // Get visible owner IDs from server RPC
-      const { data: visibleIds, error: visibleError } = await supabase.rpc('get_visible_owner_ids');
-      
-      if (visibleError) {
-        console.error('Failed to fetch visible owner IDs:', visibleError);
-        throw visibleError;
-      }
+      // Get visible owner IDs from shared cache
+      const visibleIds = await getVisibleOwnerIdsCached();
 
       // If no visible IDs, return zeros
       if (!visibleIds || visibleIds.length === 0) {
@@ -238,7 +234,7 @@ export function useManagerStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 }
 
@@ -301,7 +297,7 @@ export function useRunnerStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 }
 
@@ -393,7 +389,7 @@ export function useAdminStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 }
 
@@ -423,6 +419,6 @@ export function useRecentActivity(limit: number = 10) {
       return data || [];
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 }

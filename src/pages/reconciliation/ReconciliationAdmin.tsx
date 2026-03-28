@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useBulkUpdateOrders } from '@/hooks/useOrders';
-import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
+import { usePaginatedOrders, useAllOrderIds } from '@/hooks/usePaginatedOrders';
 import { useClaimsByOrders } from '@/hooks/useClaims';
 import { useReasons } from '@/hooks/useReasons';
 import { logAudit } from '@/hooks/useAuditLogs';
@@ -35,6 +35,12 @@ export default function ReconciliationAdmin() {
     reconciliationStatus: 'ADMIN_ACK_PENDING' as any,
     searchQuery: serverSearch || undefined,
   }, 50);
+
+  // Fetch ALL matching IDs for cross-page "Select All"
+  const { data: allOrderIds = [] } = useAllOrderIds({
+    reconciliationStatus: 'ADMIN_ACK_PENDING' as any,
+    searchQuery: serverSearch || undefined,
+  });
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
   
@@ -193,6 +199,7 @@ export default function ReconciliationAdmin() {
           onSelectionChange={setSelectedOrders}
           onSearchChange={handleSearchChange}
           emptyMessage="No pending reconciliation items"
+          allSelectableIds={allOrderIds}
           serverPagination={{
             enabled: true,
             page: pagination.page,

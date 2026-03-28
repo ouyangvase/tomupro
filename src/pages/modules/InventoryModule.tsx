@@ -10,6 +10,7 @@ const InboundHistory = lazy(() => import('@/pages/inbound/InboundHistory'));
 const StockAdjustment = lazy(() => import('@/pages/inventory/StockAdjustment'));
 const WarehouseManagement = lazy(() => import('@/pages/admin/WarehouseManagement'));
 const ProductsPage = lazy(() => import('@/pages/products/ProductsPage'));
+const StockIntegrityAudit = lazy(() => import('@/pages/admin/StockIntegrityAudit'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -25,7 +26,8 @@ export default function InventoryModule() {
   const allTabs = [
     { id: 'balance', label: 'Stock Balance', roles: ['admin', 'manager', 'salesperson', 'runner'] },
     { id: 'inbound', label: 'Inbound Pending', roles: ['admin', 'salesperson', 'manager'] },
-    { id: 'inbound-history', label: 'Inbound History', roles: ['admin'] },
+    { id: 'inbound-history', label: 'Inbound History', roles: ['admin', 'runner'] },
+    { id: 'stock-audit', label: 'Stock Audit', roles: ['admin', 'runner'] },
     { id: 'adjustments', label: 'Adjustments', roles: ['admin'] },
     { id: 'warehouses', label: 'Warehouses', roles: ['admin'] },
     { id: 'products', label: 'Products', roles: ['admin', 'manager', 'salesperson'] },
@@ -51,6 +53,7 @@ export default function InventoryModule() {
             {activeTab === 'balance' && <InventoryBalance />}
             {activeTab === 'inbound' && <InboundPending />}
             {activeTab === 'inbound-history' && <InboundHistory />}
+            {activeTab === 'stock-audit' && <StockIntegrityAudit />}
             {activeTab === 'adjustments' && <StockAdjustment />}
             {activeTab === 'warehouses' && <WarehouseManagement />}
             {activeTab === 'products' && <ProductsPage />}

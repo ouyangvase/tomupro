@@ -13,10 +13,14 @@ import { useCreatePickupOrder } from '@/hooks/usePickupOrders';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { Plus, Loader2, Zap } from 'lucide-react';
 import { useMemo } from 'react';
+import { isScientificNotation } from '@/lib/phone';
 
 const pickupSchema = z.object({
   customer_name: z.string().min(1, 'Customer name is required'),
-  phone: z.string().min(1, 'Phone is required'),
+  phone: z.string().min(1, 'Phone is required').refine(
+    (val) => !isScientificNotation(val),
+    'Phone number appears corrupted (scientific notation detected). Please enter the actual phone number.'
+  ),
   address: z.string().min(1, 'Address is required'),
   order_owner_id: z.string().min(1, 'Order owner is required'),
   payment_method: z.enum(['COD', 'TRANSFER']),

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/types/database';
 
 interface OrderFilters {
@@ -15,6 +16,9 @@ interface OrderFilters {
   areaFilter?: string; // Server-side exact match on area
   deliveredDateFrom?: string; // ISO date string for delivered_at >= filter
   deliveredDateTo?: string; // ISO date string for delivered_at <= filter
+  // Server-side filter for action-required orders:
+  // salesperson_action_required=true OR (runner_status=FAILED_DELIVERY AND status!=CANCELLED)
+  actionRequired?: boolean;
 }
 
 export function useOrders(filters?: OrderFilters) {
@@ -64,6 +68,12 @@ export function useOrders(filters?: OrderFilters) {
       if (filters?.excludeDeliveredAndFailed) {
         query = query.neq('runner_status', 'DELIVERED');
         query = query.neq('runner_status', 'FAILED_DELIVERY');
+      }
+
+      // Action-required filter: salesperson_action_required=true OR runner_status=FAILED_DELIVERY (non-cancelled)
+      if (filters?.actionRequired) {
+        query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+        query = query.neq('status', 'CANCELLED');
       }
       
       // Server-side search filter for better performance on large datasets
@@ -182,7 +192,7 @@ export function useCreateOrder() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast({ title: 'Order created successfully' });
     },
     onError: (error: Error) => {
@@ -207,7 +217,7 @@ export function useUpdateOrder() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast({ title: 'Order updated successfully' });
     },
     onError: (error: Error) => {
@@ -222,6 +232,22 @@ export function useBulkUpdateOrders() {
 
   return useMutation({
     mutationFn: async ({ ids, updates }: { ids: string[]; updates: Partial<Order> }) => {
+      // Block runners from setting runner_status to DELIVERED via direct table update.
+      // Deliveries must go through the process-delivery edge function which handles stock.
+      if ((updates as any).runner_status === 'DELIVERED') {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('user_directory')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+          if (profile?.role === 'runner') {
+            throw new Error('Runners cannot bulk-mark orders as delivered. Use the delivery process instead.');
+          }
+        }
+      }
+
       const { error } = await supabase
         .from('orders')
         .update(updates as any)
@@ -229,7 +255,7 @@ export function useBulkUpdateOrders() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast({ title: 'Orders updated successfully' });
     },
     onError: (error: Error) => {

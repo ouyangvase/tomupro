@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { buildWhatsAppUrl } from '@/lib/phone';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -118,7 +119,6 @@ function WorkflowStep({ step, icon, title, desc, active }: { step: number; icon:
 export default function SalespersonActionInbox() {
   const navigate = useNavigate();
   const { profile, role } = useAuth();
-  const { data: allOrders = [], isLoading, refetch } = useOrders();
   const isMobile = useIsMobile();
 
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -132,43 +132,61 @@ export default function SalespersonActionInbox() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [showGuide, setShowGuide] = useState(false);
 
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState('my');
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState(
+    // Default to 'team' for managers so OCC matches Team Alerts count
+    role === 'manager' ? 'team' : 'my'
+  );
   const { data: teamMembers = [] } = useTeamMembers();
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
 
-  const { data: visibleIds, isLoading: visibleIdsLoading } = useQuery({
+  // Fetch visible owner IDs for managers (shared cache)
+  const { data: visibleOwnerIds } = useQuery({
     queryKey: ['visible-owner-ids', profile?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_visible_owner_ids');
-      if (error) return null;
-      return data;
+      const { getVisibleOwnerIdsCached } = await import('@/lib/visibleOwnerIdsCache');
+      return getVisibleOwnerIdsCached();
     },
-    enabled: !!profile?.id,
+    enabled: !!profile?.id && role === 'manager',
+    staleTime: 60000,
   });
+
+  // Build server-side filters for action-required orders
+  const orderFilters = useMemo(() => {
+    const filters: Parameters<typeof useOrders>[0] = { actionRequired: true };
+
+    // For salesperson: explicitly filter server-side
+    if (role === 'salesperson' && profile?.id) {
+      filters.salespersonId = profile.id;
+    } else if (role === 'manager' && profile?.id) {
+      // Manager: use explicit salesperson filter based on view mode
+      // This avoids relying on RLS which may not return orders correctly
+      if (viewMode === 'my') {
+        filters.salespersonIds = [profile.id];
+      } else if (selectedMember !== 'all') {
+        filters.salespersonIds = [selectedMember];
+      } else if (visibleOwnerIds && visibleOwnerIds.length > 0) {
+        // Team Data / All: use server-side visible owner IDs from RPC
+        filters.salespersonIds = visibleOwnerIds;
+      }
+    }
+    // Admin: no salesperson filter needed (sees all)
+
+    return filters;
+  }, [role, profile?.id, viewMode, selectedMember, visibleOwnerIds]);
+
+  const { data: allOrders = [], isLoading, refetch } = useOrders(orderFilters);
 
   const canViewAll = role === 'admin';
   const canViewGroup = role === 'manager';
 
   // ── Filter orders ──
+  // Server-side now handles: actionRequired=true + salesperson visibility (via salespersonIds)
+  // Client-side applies: needsSalespersonAction check, source/priority/time/search filters
   const actionRequiredOrders = useMemo(() => {
-    if (visibleIdsLoading && !canViewAll) return [];
     let filtered = allOrders.filter(order => needsSalespersonAction(order));
 
-    if (canViewAll) { /* admin sees all */ }
-    else if (canViewGroup) {
-      if (viewMode === 'my') {
-        filtered = filtered.filter(order => order.salesperson_id === profile?.id);
-      } else {
-        if (selectedMember !== 'all') {
-          filtered = filtered.filter(order => order.salesperson_id === selectedMember);
-        } else {
-          const accessibleIds = [profile?.id, ...teamMemberIds].filter(Boolean) as string[];
-          if (accessibleIds.length > 0) filtered = filtered.filter(order => accessibleIds.includes(order.salesperson_id));
-        }
-      }
-    } else {
-      filtered = filtered.filter(order => order.salesperson_id === profile?.id);
-    }
+    // No client-side team filtering needed — server-side orderFilters already scope by team/member/my
+    // For salesperson: already filtered server-side by salesperson_id, no additional client filter needed
 
     if (salespersonFilter !== 'all') filtered = filtered.filter(o => o.salesperson_id === salespersonFilter);
     if (sourceFilter !== 'all') filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
@@ -198,7 +216,7 @@ export default function SalespersonActionInbox() {
       const pOrder = { high: 0, medium: 1, low: 2 };
       return pOrder[getOrderPriority(a)] - pOrder[getOrderPriority(b)];
     });
-  }, [allOrders, profile?.id, sourceFilter, salespersonFilter, searchQuery, canViewAll, canViewGroup, viewMode, selectedMember, teamMemberIds, visibleIdsLoading, timeFilter, priorityFilter]);
+  }, [allOrders, sourceFilter, salespersonFilter, searchQuery, timeFilter, priorityFilter]);
 
   // ── Salesperson filter data ──
   const salespersonIds = useMemo(() => [...new Set(allOrders.filter(o => needsSalespersonAction(o)).map(o => o.salesperson_id))], [allOrders]);
@@ -514,7 +532,7 @@ export default function SalespersonActionInbox() {
                             className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (order.phone) window.open(`https://wa.me/${order.phone.replace(/\D/g, '')}`, '_blank');
+                              if (order.phone) { const url = buildWhatsAppUrl(order.phone); if (url) window.open(url, '_blank'); }
                             }}
                           >
                             <PhoneCall className="h-3 w-3" />
@@ -825,7 +843,7 @@ export default function SalespersonActionInbox() {
                                   className="h-7 w-7 p-0"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (order.phone) window.open(`https://wa.me/${order.phone.replace(/\D/g, '')}`, '_blank');
+                                    if (order.phone) { const url = buildWhatsAppUrl(order.phone); if (url) window.open(url, '_blank'); }
                                   }}
                                 >
                                   <PhoneCall className="h-3.5 w-3.5" />

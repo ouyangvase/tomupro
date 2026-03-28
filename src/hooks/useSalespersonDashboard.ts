@@ -38,6 +38,9 @@ export interface SalespersonPerformanceStats {
   failedOrdersCount: number;
   pendingDeliveryCount: number;
   pendingClaimCount: number;
+  // Count matching OCC's needsSalespersonAction logic:
+  // salesperson_action_required=true OR (runner_status=FAILED_DELIVERY AND status!=CANCELLED)
+  actionRequiredCount: number;
   
   // Stock snapshot
   stockItems: Array<{
@@ -77,6 +80,7 @@ export function useSalespersonDashboard() {
         failedOrdersRes,
         pendingDeliveryRes,
         pendingClaimRes,
+        actionRequiredRes,
         stockBalanceRes,
         rankingRes,
         targetRes,
@@ -125,6 +129,15 @@ export function useSalespersonDashboard() {
           .eq('salesperson_id', user.id)
           .eq('runner_status', 'DELIVERED')
           .eq('reconciliation_status', 'NOT_CLAIMED'),
+
+        // Action-required count: matches OCC's needsSalespersonAction logic
+        // salesperson_action_required=true OR runner_status=FAILED_DELIVERY (non-cancelled)
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('salesperson_id', user.id)
+          .or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY')
+          .neq('status', 'CANCELLED'),
         
         // Stock balance for this salesperson
         supabase
@@ -356,6 +369,7 @@ export function useSalespersonDashboard() {
         failedOrdersCount: failedOrdersRes.count || 0,
         pendingDeliveryCount: pendingDeliveryRes.count || 0,
         pendingClaimCount: pendingClaimRes.count || 0,
+        actionRequiredCount: actionRequiredRes.count || 0,
         stockItems,
         ranking,
       } as SalespersonPerformanceStats;

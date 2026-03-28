@@ -43,6 +43,10 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
 
     const beforeStatus = order.runner_status;
 
+    // Map next step to the correct salesperson_action_type
+    // DB constraint allows: FOLLOWUP_CUSTOMER, RESCHEDULE_DELIVERY, UPDATE_ADDRESS, CANCEL_ORDER
+    const actionType = failedNextStep === 'RESCHEDULE' ? 'RESCHEDULE_DELIVERY' : 'FOLLOWUP_CUSTOMER';
+
     await updateOrder.mutateAsync({
       id: order.id,
       runner_status: 'FAILED_DELIVERY',
@@ -51,7 +55,7 @@ export function FailedDeliveryDialog({ order, open, onOpenChange }: FailedDelive
       failed_next_step: failedNextStep,
       next_delivery_date: failedNextStep === 'RESCHEDULE' ? nextDeliveryDate : null,
       salesperson_action_required: true,
-      salesperson_action_type: 'FAILED_DELIVERY',
+      salesperson_action_type: actionType,
     });
 
     // Log audit

@@ -5,8 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useClaimBatches } from '@/hooks/useClaimBatches';
+import { useClaimBatches, useClaimBatchDetails } from '@/hooks/useClaimBatches';
 import { useRunners } from '@/hooks/useUserDirectory';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, getYear, getMonth } from 'date-fns';
 import { Receipt, Eye, DollarSign, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import type { ClaimBatch, ClaimBatchStatus } from '@/types/database';
@@ -50,12 +52,27 @@ function getInitials(name: string) {
 }
 
 export default function ClaimBatchesHistory() {
-  const { data: batches = [], isLoading } = useClaimBatches();
+  const { user, profile } = useAuth();
+  const role = profile?.role;
+  const isRunner = role === 'runner';
+
+  // Runner: always filter to own batches; Admin: fetch all
+  const batchFilters = useMemo(() => {
+    if (isRunner && user?.id) return { runnerId: user.id };
+    return undefined;
+  }, [isRunner, user?.id]);
+
+  const { data: batches = [], isLoading } = useClaimBatches(batchFilters);
   const { data: runners = [] } = useRunners();
   
   const [selectedBatch, setSelectedBatch] = useState<ClaimBatch | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
+
+  // Fetch order details on demand when a batch is selected for viewing
+  const { data: batchDetails = [], isLoading: detailsLoading } = useClaimBatchDetails(
+    detailsOpen ? selectedBatch?.id : undefined
+  );
   
   const [selectedRunnerId, setSelectedRunnerId] = useState<string>('__all__');
   const [selectedStatus, setSelectedStatus] = useState<string>('__all__');
@@ -81,13 +98,21 @@ export default function ClaimBatchesHistory() {
     setDetailsOpen(true);
   };
 
-  const handleExportSelected = () => {
+  const handleExportSelected = async () => {
     const selectedBatches = filteredBatches.filter(b => selectedRows.includes(b.id));
     const exportRows: Record<string, unknown>[] = [];
+
+    // Fetch order details for all selected batches
     for (const batch of selectedBatches) {
-      for (const item of batch.items || []) {
-        const order = item.order;
-        if (!order) continue;
+      const orderIds = (batch.items || []).map((i: any) => i.order_id);
+      if (orderIds.length === 0) continue;
+
+      const { data: orders } = await supabase
+        .from('orders')
+        .select('id, order_code, order_date, customer_name, area, total_amount, payment_method, reconciliation_status, order_items(*, product:products(sku_code, sku_name))')
+        .in('id', orderIds);
+
+      for (const order of orders || []) {
         const orderItems = (order as any).order_items || [];
         const itemsStr = orderItems.map((oi: any) => {
           const sku = oi.product?.sku_code || oi.sku_label || '-';
@@ -142,67 +167,78 @@ export default function ClaimBatchesHistory() {
     };
   }, [filteredBatches]);
 
-  const columns: Column<ClaimBatch>[] = [
-    {
-      key: 'batch_code', header: 'Batch #', sortable: true,
-      render: (batch) => <span className="font-mono font-medium text-primary">{(batch as any).batch_code || '-'}</span>,
-    },
-    {
-      key: 'submitted_at', header: 'Submitted', sortable: true,
-      render: (batch) => (
-        <span className="text-sm">{format(parseISO(batch.submitted_at), 'MMM dd, yyyy HH:mm')}</span>
-      ),
-    },
-    {
-      key: 'runner', header: 'Runner', sortable: true,
-      render: (batch) => {
-        const name = batch.runner?.display_name || '-';
-        return (
-          <div className="flex items-center gap-2">
-            <Avatar className="h-7 w-7">
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(name)}</AvatarFallback>
-            </Avatar>
-            <span className="text-sm font-medium">{name}</span>
-          </div>
-        );
+  const columns: Column<ClaimBatch>[] = useMemo(() => {
+    const cols: Column<ClaimBatch>[] = [
+      {
+        key: 'batch_code', header: 'Batch #', sortable: true,
+        render: (batch) => <span className="font-mono font-medium text-primary">{(batch as any).batch_code || '-'}</span>,
       },
-    },
-    { key: 'items', header: 'Orders', render: (batch) => batch.items?.length || 0 },
-    {
-      key: 'total_amount', header: 'Total Amount', sortable: true,
-      render: (batch) => <span className="font-semibold">{formatBND(Number(batch.total_amount))}</span>,
-    },
-    {
-      key: 'status', header: 'Status', filterable: true,
-      render: (batch) => (
-        <Badge className={cn("border", statusColors[batch.status])}>
-          {batch.status === 'ADMIN_ACK_PENDING' ? 'Pending' : 'Claimed'}
-        </Badge>
-      ),
-    },
-    {
-      key: 'admin_ack_at', header: 'Acknowledged',
-      render: (batch) => batch.admin_ack_at 
-        ? format(parseISO(batch.admin_ack_at), 'MMM dd, yyyy HH:mm') 
-        : <span className="text-muted-foreground">-</span>,
-    },
-    {
-      key: 'note', header: 'Note',
-      render: (batch) => (
-        <span className="truncate max-w-[150px] block text-sm" title={batch.note || ''}>
-          {batch.note || '-'}
-        </span>
-      ),
-    },
-    {
-      key: 'actions', header: 'Actions',
-      render: (batch) => (
-        <Button size="sm" variant="outline" onClick={() => handleViewDetails(batch)} className="rounded-lg">
-          <Eye className="h-4 w-4 mr-1" /> Details
-        </Button>
-      ),
-    },
-  ];
+      {
+        key: 'submitted_at', header: 'Submitted', sortable: true,
+        render: (batch) => (
+          <span className="text-sm">{format(parseISO(batch.submitted_at), 'MMM dd, yyyy HH:mm')}</span>
+        ),
+      },
+    ];
+
+    // Only show Runner column for non-runner roles (admin sees all runners)
+    if (!isRunner) {
+      cols.push({
+        key: 'runner', header: 'Runner', sortable: true,
+        render: (batch) => {
+          const name = batch.runner?.display_name || '-';
+          return (
+            <div className="flex items-center gap-2">
+              <Avatar className="h-7 w-7">
+                <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(name)}</AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium">{name}</span>
+            </div>
+          );
+        },
+      });
+    }
+
+    cols.push(
+      { key: 'items', header: 'Orders', render: (batch) => batch.items?.length || 0 },
+      {
+        key: 'total_amount', header: 'Total Amount', sortable: true,
+        render: (batch) => <span className="font-semibold">{formatBND(Number(batch.total_amount))}</span>,
+      },
+      {
+        key: 'status', header: 'Status', filterable: true,
+        render: (batch) => (
+          <Badge className={cn("border", statusColors[batch.status])}>
+            {batch.status === 'ADMIN_ACK_PENDING' ? 'Pending' : 'Claimed'}
+          </Badge>
+        ),
+      },
+      {
+        key: 'admin_ack_at', header: 'Acknowledged',
+        render: (batch) => batch.admin_ack_at
+          ? format(parseISO(batch.admin_ack_at), 'MMM dd, yyyy HH:mm')
+          : <span className="text-muted-foreground">-</span>,
+      },
+      {
+        key: 'note', header: 'Note',
+        render: (batch) => (
+          <span className="truncate max-w-[150px] block text-sm" title={batch.note || ''}>
+            {batch.note || '-'}
+          </span>
+        ),
+      },
+      {
+        key: 'actions', header: 'Actions',
+        render: (batch) => (
+          <Button size="sm" variant="outline" onClick={() => handleViewDetails(batch)} className="rounded-lg">
+            <Eye className="h-4 w-4 mr-1" /> Details
+          </Button>
+        ),
+      },
+    );
+
+    return cols;
+  }, [isRunner]);
 
   return (
     <AppLayout>
@@ -211,7 +247,7 @@ export default function ClaimBatchesHistory() {
         <PageHero
           icon={<Receipt className="h-6 w-6 text-primary" />}
           title="Claim Batches History"
-          subtitle="Complete history of all runner claim batches"
+          subtitle={isRunner ? "Your claim batch history" : "Complete history of all runner claim batches"}
         />
 
         {/* Financial Summary Cards */}
@@ -267,15 +303,17 @@ export default function ClaimBatchesHistory() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3 p-4 bg-secondary/30 rounded-xl border border-border/30">
-          <Select value={selectedRunnerId} onValueChange={setSelectedRunnerId}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Runners" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All Runners</SelectItem>
-              {runners.map((runner) => (
-                <SelectItem key={runner.id} value={runner.id}>{runner.display_name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!isRunner && (
+            <Select value={selectedRunnerId} onValueChange={setSelectedRunnerId}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Runners" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Runners</SelectItem>
+                {runners.map((runner) => (
+                  <SelectItem key={runner.id} value={runner.id}>{runner.display_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <Select value={selectedStatus} onValueChange={setSelectedStatus}>
             <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
@@ -337,7 +375,7 @@ export default function ClaimBatchesHistory() {
             <div className="grid grid-cols-3 gap-4">
               <div className="p-4 bg-secondary/30 rounded-xl">
                 <p className="text-sm text-muted-foreground">Total Orders</p>
-                <p className="text-2xl font-bold">{selectedBatch?.items?.length || 0}</p>
+                <p className="text-2xl font-bold">{batchDetails.length || selectedBatch?.items?.length || 0}</p>
               </div>
               <div className="p-4 bg-secondary/30 rounded-xl">
                 <p className="text-sm text-muted-foreground">Total Amount</p>
@@ -382,6 +420,9 @@ export default function ClaimBatchesHistory() {
 
             <div>
               <h3 className="font-semibold mb-2">Included Orders</h3>
+              {detailsLoading ? (
+                <div className="text-center py-4 text-muted-foreground">Loading order details...</div>
+              ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -395,21 +436,22 @@ export default function ClaimBatchesHistory() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {selectedBatch?.items?.map((item) => (
+                  {batchDetails.map((item: any) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-mono text-sm">{item.order?.order_code || '-'}</TableCell>
-                      <TableCell>{item.order && format(new Date(item.order.order_date), 'MMM dd')}</TableCell>
-                      <TableCell>{item.order?.customer_name}</TableCell>
+                      <TableCell>{item.order?.order_date ? format(new Date(item.order.order_date), 'MMM dd') : '-'}</TableCell>
+                      <TableCell>{item.order?.customer_name || '-'}</TableCell>
                       <TableCell>{item.order?.area || '-'}</TableCell>
                       <TableCell>{formatBND(Number(item.order?.total_amount || 0))}</TableCell>
-                      <TableCell>{item.order?.payment_method}</TableCell>
+                      <TableCell>{item.order?.payment_method || '-'}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{item.order?.reconciliation_status?.replace(/_/g, ' ')}</Badge>
+                        <Badge variant="outline">{item.order?.reconciliation_status?.replace(/_/g, ' ') || '-'}</Badge>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              )}
             </div>
           </div>
         </DialogContent>

@@ -1,6 +1,28 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
+import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
+
+/**
+ * Fetches the visible owner IDs for the current user via shared cache.
+ * Admin returns null (sees everything), other roles return their allowed salesperson IDs.
+ */
+export function useVisibleOwnerIds() {
+  const { user, role } = useAuth();
+
+  return useQuery({
+    queryKey: ['visible-owner-ids', user?.id, role],
+    queryFn: async () => {
+      if (role === 'admin') return null; // admin sees everything
+      return getVisibleOwnerIdsCached();
+    },
+    enabled: !!user?.id,
+    staleTime: 60000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
 
 export interface DeliveredOrder {
   id: string;
@@ -61,7 +83,7 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
     queryKey: ['delivered-orders-fast', runnerId, salespersonId, salespersonIds, limit, offset],
     queryFn: async () => {
       const startTime = performance.now();
-      
+
       const { data, error } = await supabase.rpc('get_delivered_orders_fast', {
         p_runner_id: runnerId || null,
         p_salesperson_id: salespersonId || null,
@@ -86,6 +108,53 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
     enabled,
     staleTime: 30000, // 30 seconds
     gcTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+/**
+ * Batch-loading hook that fetches ALL delivered orders by paginating through
+ * the RPC in 1000-row chunks. Works around Supabase PostgREST max_rows=1000 limit.
+ * Use this when you need the complete dataset for client-side filtering.
+ */
+export function useDeliveredOrdersFastAll(params: Omit<UseDeliveredOrdersParams, 'limit' | 'offset'> & { totalHint?: number } = {}) {
+  const { runnerId, salespersonId, salespersonIds, enabled = true, totalHint } = params;
+  const BATCH_SIZE = 1000;
+
+  return useQuery({
+    queryKey: ['delivered-orders-fast-all', runnerId, salespersonId, salespersonIds],
+    queryFn: async () => {
+      const startTime = performance.now();
+      let allRows: DeliveredOrder[] = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase.rpc('get_delivered_orders_fast', {
+          p_runner_id: runnerId || null,
+          p_salesperson_id: salespersonId || null,
+          p_salesperson_ids: salespersonIds || null,
+          p_limit: BATCH_SIZE,
+          p_offset: offset,
+        });
+
+        if (error) throw error;
+
+        const batch = (data || []) as DeliveredOrder[];
+        allRows = allRows.concat(batch);
+        offset += batch.length;
+
+        // If we got fewer than BATCH_SIZE, we've reached the end
+        hasMore = batch.length >= BATCH_SIZE;
+      }
+
+      const duration = performance.now() - startTime;
+      console.log(`[PERF] get_delivered_orders_fast_all: ${allRows.length} rows in ${duration.toFixed(0)}ms (${Math.ceil(offset / BATCH_SIZE)} batches)`);
+
+      return allRows;
+    },
+    enabled,
+    staleTime: 60000, // 1 minute (larger dataset, cache longer)
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 }
 
@@ -248,9 +317,7 @@ export function useMarkDeliveredFast() {
     onSettled: () => {
       // Debounced refetch after 1.5s to pick up background processing results
       setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast'] });
-        queryClient.invalidateQueries({ queryKey: ['delivered-summary'] });
+        invalidateOrderQueries(queryClient);
       }, 1500);
     },
   });
@@ -312,8 +379,7 @@ export function useMarkDeliveredEdge() {
       toast({ title: 'Delivered successfully' });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+      invalidateOrderQueries(queryClient);
     },
   });
 }

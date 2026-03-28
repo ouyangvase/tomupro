@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 
 interface SetAutoRescheduleParams {
   orderId: string;
@@ -61,7 +62,7 @@ export function useSetAutoReschedule() {
       return { success: true, nextDate: params.nextDate };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['reschedule-history'] });
       toast.success(`Auto reschedule set. Order will move to Ready on ${data.nextDate}`);
     },

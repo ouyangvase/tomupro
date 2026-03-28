@@ -1,6 +1,6 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, QueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -10,47 +10,111 @@ interface RealtimePayload {
   old: Record<string, unknown>;
 }
 
+/**
+ * Debounced, targeted invalidation for realtime order changes.
+ *
+ * Instead of invalidating ALL 25+ query keys on every single order change,
+ * we batch realtime events and only invalidate the minimum set of queries
+ * needed. Stats/badge queries are debounced (5s) since they don't need
+ * instant updates — the polling interval already handles freshness.
+ */
+const STATS_DEBOUNCE_MS = 5000;
+let statsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function invalidateOrderListQueries(queryClient: QueryClient) {
+  // Only invalidate the core order list queries — these are what users see
+  queryClient.invalidateQueries({ queryKey: ['orders'] });
+  queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
+  queryClient.invalidateQueries({ queryKey: ['team-orders'] });
+  queryClient.invalidateQueries({ queryKey: ['team-orders-server'] });
+}
+
+function debouncedInvalidateStats(queryClient: QueryClient) {
+  if (statsDebounceTimer) clearTimeout(statsDebounceTimer);
+  statsDebounceTimer = setTimeout(() => {
+    statsDebounceTimer = null;
+    // Stats and badge queries — batched and debounced
+    queryClient.invalidateQueries({ queryKey: ['sidebar-badge'] });
+    queryClient.invalidateQueries({ queryKey: ['runner-inbox-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['ready-order-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['runner-dashboard-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['action-required-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['salesperson-dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+  }, STATS_DEBOUNCE_MS);
+}
+
+function invalidateDeliveryRelated(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast'] });
+  queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast-all'] });
+  queryClient.invalidateQueries({ queryKey: ['delivered-summary'] });
+  queryClient.invalidateQueries({ queryKey: ['delivered-summary-filtered'] });
+  queryClient.invalidateQueries({ queryKey: ['claims'] });
+  queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+  queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+}
+
 export function useRealtimeOrderUpdates() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { profile } = useAuth();
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const handleOrderChange = useCallback((payload: RealtimePayload) => {
     const { eventType, new: newRecord, old: oldRecord } = payload;
-    
-    // Invalidate queries to refresh data
-    queryClient.invalidateQueries({ queryKey: ['orders'] });
-    
-    // Check if this is relevant to the current user
-    if (!profile) return;
-    
-    const newOrder = newRecord as { 
-      driver_id?: string; 
+
+    const newOrder = newRecord as {
+      id?: string;
+      status?: string;
+      runner_status?: string;
+      driver_id?: string;
       runner_id?: string;
       order_code?: string;
       customer_name?: string;
       driver_status?: string;
       runner_accept_status?: string;
+      reconciliation_status?: string;
     };
     const oldOrder = oldRecord as typeof newOrder;
 
+    // --- Targeted invalidation based on what actually changed ---
+
+    // Always invalidate the core order lists (lightweight, users need fresh data)
+    invalidateOrderListQueries(queryClient);
+
+    // Debounce stats/badges — they don't need sub-second freshness
+    debouncedInvalidateStats(queryClient);
+
+    // Only invalidate delivery-related queries when delivery state changes
+    const deliveryChanged =
+      newOrder.runner_status !== oldOrder?.runner_status ||
+      newOrder.reconciliation_status !== oldOrder?.reconciliation_status ||
+      newOrder.status !== oldOrder?.status;
+
+    if (deliveryChanged) {
+      invalidateDeliveryRelated(queryClient);
+    }
+
+    // --- Role-specific toast notifications ---
+    if (!profile) return;
+
     // Driver notifications
     if (profile.role === 'driver') {
-      // New order assigned to this driver
-      if (eventType === 'UPDATE' && 
-          newOrder.driver_id === profile.id && 
+      if (eventType === 'UPDATE' &&
+          newOrder.driver_id === profile.id &&
           oldOrder.driver_id !== profile.id) {
         toast({
           title: '🚚 New Order Assigned!',
           description: `Order ${newOrder.order_code} - ${newOrder.customer_name}`,
         });
-        // Play notification sound
         playNotificationSound();
       }
-      
-      // Order unassigned from this driver
-      if (eventType === 'UPDATE' && 
-          oldOrder.driver_id === profile.id && 
+
+      if (eventType === 'UPDATE' &&
+          oldOrder.driver_id === profile.id &&
           newOrder.driver_id !== profile.id) {
         toast({
           title: 'Order Reassigned',
@@ -62,8 +126,7 @@ export function useRealtimeOrderUpdates() {
 
     // Runner notifications
     if (profile.role === 'runner') {
-      // Driver marked order as delivered
-      if (eventType === 'UPDATE' && 
+      if (eventType === 'UPDATE' &&
           newOrder.runner_id === profile.id &&
           newOrder.driver_status === 'DRIVER_DELIVERED' &&
           oldOrder.driver_status !== 'DRIVER_DELIVERED') {
@@ -73,9 +136,8 @@ export function useRealtimeOrderUpdates() {
         });
         playNotificationSound();
       }
-      
-      // Driver marked order as failed
-      if (eventType === 'UPDATE' && 
+
+      if (eventType === 'UPDATE' &&
           newOrder.runner_id === profile.id &&
           newOrder.driver_status === 'DRIVER_FAILED' &&
           oldOrder.driver_status !== 'DRIVER_FAILED') {
@@ -92,10 +154,7 @@ export function useRealtimeOrderUpdates() {
   useEffect(() => {
     if (!profile?.id) return;
 
-    // Debounce subscription setup to prevent flapping
     const timeoutId = setTimeout(() => {
-      console.log('Setting up realtime subscription for orders...');
-      
       const channel = supabase
         .channel(`orders-realtime-${profile.id}`)
         .on(
@@ -106,25 +165,19 @@ export function useRealtimeOrderUpdates() {
             table: 'orders',
           },
           (payload) => {
-            console.log('Realtime order update:', payload);
             handleOrderChange(payload as unknown as RealtimePayload);
           }
         )
-        .subscribe((status) => {
-          console.log('Realtime subscription status:', status);
-        });
+        .subscribe();
 
-      // Store channel reference for cleanup
-      (window as any).__ordersChannel = channel;
+      channelRef.current = channel;
     }, 150);
 
     return () => {
       clearTimeout(timeoutId);
-      const channel = (window as any).__ordersChannel;
-      if (channel) {
-        console.log('Cleaning up realtime subscription...');
-        supabase.removeChannel(channel);
-        delete (window as any).__ordersChannel;
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
   }, [profile?.id, handleOrderChange]);
@@ -148,7 +201,6 @@ export function useRealtimePickupUpdates() {
           table: 'driver_pickups',
         },
         (payload) => {
-          console.log('Realtime pickup update:', payload);
           queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
           queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
           
@@ -208,7 +260,6 @@ export function useRealtimeReturnUpdates() {
           table: 'driver_returns',
         },
         (payload) => {
-          console.log('Realtime return update:', payload);
           queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
           queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
           

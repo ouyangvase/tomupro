@@ -19,6 +19,7 @@ export function useInboundShipments(filters?: InboundFilters) {
           *,
           runner:profiles!inbound_shipments_runner_id_fkey(id, display_name, email),
           salesperson:profiles!inbound_shipments_salesperson_id_fkey(id, display_name, email),
+          acknowledged_by_profile:profiles!inbound_shipments_acknowledged_by_fkey(id, display_name, email),
           inbound_items(*)
         `)
         .order('created_at', { ascending: false });

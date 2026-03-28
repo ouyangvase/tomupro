@@ -210,9 +210,63 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Sync daily digest notifications to Firebase (non-blocking batch)
+    try {
+      const firebaseItems: Array<Record<string, unknown>> = [];
+
+      // Salesperson digests
+      for (const m of salespersonMetrics) {
+        const totalPending = m.bookingDue + m.bookingOverdue + m.readyNotAssigned + m.disputeOpen;
+        if (totalPending > 0) {
+          firebaseItems.push({
+            type: 'notification',
+            userId: m.userId,
+            title: 'Daily Digest',
+            body: `You have ${totalPending} pending items.`,
+            notificationType: 'DAILY_DIGEST',
+          });
+        }
+      }
+
+      // Runner digests
+      for (const runner of runners) {
+        firebaseItems.push({
+          type: 'notification',
+          userId: runner.id,
+          title: 'Daily Digest',
+          body: 'Your daily delivery summary is ready.',
+          notificationType: 'DAILY_DIGEST',
+        });
+      }
+
+      // Manager + admin digests
+      for (const mgr of [...managers, ...admins]) {
+        firebaseItems.push({
+          type: 'notification',
+          userId: mgr.id,
+          title: 'Daily Digest',
+          body: 'Your daily team overview is ready.',
+          notificationType: 'DAILY_DIGEST',
+        });
+      }
+
+      if (firebaseItems.length > 0) {
+        fetch(`${supabaseUrl}/functions/v1/sync-to-firebase`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ type: 'batch', items: firebaseItems }),
+        }).catch((err) => console.error('[sync-to-firebase] daily-digest error:', err));
+      }
+    } catch (_syncErr) {
+      // non-blocking
+    }
+
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         generated: {
           salespersons: salespersonMetrics.length,
           runners: runners.length,

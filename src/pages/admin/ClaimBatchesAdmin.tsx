@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { useClaimBatches, useApproveClaimBatch, useRejectClaimBatch } from '@/hooks/useClaimBatches';
+import { useClaimBatches, useApproveClaimBatch, useRejectClaimBatch, useClaimBatchDetails } from '@/hooks/useClaimBatches';
 import { format } from 'date-fns';
 import { CheckCircle, Receipt, Loader2, XCircle, TrendingDown, Clock, DollarSign, Users } from 'lucide-react';
 import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
@@ -38,6 +38,11 @@ export default function ClaimBatchesAdmin() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [bulkApproving, setBulkApproving] = useState(false);
+
+  // Fetch order details on demand when a batch is selected
+  const { data: batchDetails = [], isLoading: detailsLoading } = useClaimBatchDetails(
+    detailsOpen ? selectedBatch?.id : undefined
+  );
 
   const stats = useMemo(() => ({
     totalPending: batches.length,
@@ -372,37 +377,44 @@ export default function ClaimBatchesAdmin() {
             )}
 
             <div>
-              <h3 className="font-semibold mb-2">Included Orders</h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Order Ref</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Area</TableHead>
-                    <TableHead className="text-right">Amount (BND)</TableHead>
-                    <TableHead>Payment</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedBatch?.items?.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        {item.order && format(new Date(item.order.order_date), 'MMM dd')}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {item.order?.order_code}
-                      </TableCell>
-                      <TableCell>{item.order?.customer_name}</TableCell>
-                      <TableCell>{item.order?.area || '-'}</TableCell>
-                      <TableCell className="text-right font-mono font-medium">
-                        {formatBND(item.order?.total_amount)}
-                      </TableCell>
-                      <TableCell>{item.order?.payment_method}</TableCell>
+              <h3 className="font-semibold mb-2">Included Orders ({selectedBatch?.items?.length || 0})</h3>
+              {detailsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading order details...</span>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Order Ref</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Area</TableHead>
+                      <TableHead className="text-right">Amount (BND)</TableHead>
+                      <TableHead>Payment</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {(batchDetails as any[])?.map((item: any) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          {item.order && format(new Date(item.order.order_date), 'MMM dd')}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {item.order?.order_code}
+                        </TableCell>
+                        <TableCell>{item.order?.customer_name}</TableCell>
+                        <TableCell>{item.order?.area || '-'}</TableCell>
+                        <TableCell className="text-right font-mono font-medium">
+                          {formatBND(item.order?.total_amount)}
+                        </TableCell>
+                        <TableCell>{item.order?.payment_method}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
           </div>
 

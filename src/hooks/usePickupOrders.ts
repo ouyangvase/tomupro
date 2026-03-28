@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { toUpperLatin } from '@/lib/uppercase';
 
 export type PickupOperationalStatus =
@@ -70,8 +71,7 @@ export function useCreatePickupOrder() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      invalidateOrderQueries(queryClient);
       toast({ title: 'Pickup order created' });
     },
     onError: (error: Error) => {
@@ -113,8 +113,7 @@ export function useUpdatePickupStatus() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      invalidateOrderQueries(queryClient);
       toast({ title: 'Status updated' });
     },
     onError: (error: Error) => {

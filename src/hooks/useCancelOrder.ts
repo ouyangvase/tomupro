@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { logAudit } from '@/hooks/useAuditLogs';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 
 interface CancelOrderParams {
   orderIds: string[];
@@ -64,7 +65,7 @@ export function useCancelOrders() {
       return { cancelledCount: orderIds.length };
     },
     onSuccess: ({ cancelledCount }) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast({ 
         title: `${cancelledCount} order${cancelledCount !== 1 ? 's' : ''} cancelled`,
         description: 'Orders moved to Cancelled Sales'

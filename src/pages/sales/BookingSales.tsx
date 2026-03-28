@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
-import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
+import { usePaginatedOrders, useAllOrderIds } from '@/hooks/usePaginatedOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { Plus, Clock, Search, X, Upload, Download, ShoppingBag, ArrowRight, CalendarClock, UserX, UserCheck, Filter } from 'lucide-react';
+import { Plus, Clock, Search, X, Upload, Download, ShoppingBag, ArrowRight, CalendarClock, UserX, UserCheck, Filter, Loader2 } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -28,7 +28,8 @@ import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewT
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
-import { exportOrderLines, exportSelectedOrderLines } from '@/lib/csv';
+import { exportOrderLines } from '@/lib/csv';
+import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -52,14 +53,19 @@ export default function BookingSales() {
   const [serverSearch, setServerSearch] = useState('');
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
 
-  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('my');
+  const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('team');
 
-  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders({
-    status: 'BOOKING',
+  const orderFilters = useMemo(() => ({
+    status: 'BOOKING' as const,
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
     searchQuery: serverSearch || undefined,
-  }, 50);
+  }), [isManager, salespersonIds, role, profile?.id, serverSearch]);
+
+  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders(orderFilters, 50);
+
+  // Fetch ALL matching IDs for cross-page "Select All"
+  const { data: allOrderIds = [] } = useAllOrderIds(orderFilters);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 
@@ -126,14 +132,51 @@ export default function BookingSales() {
     setSelectedRows([]);
   };
 
-  const handleExport = () => exportOrderLines(orders, 'booking_orders');
+  const [exporting, setExporting] = useState(false);
+  const [exportingMsg, setExportingMsg] = useState('');
 
-  const handleExportSelected = () => {
+  const handleExport = async () => {
+    setExporting(true);
+    setExportingMsg('Fetching all orders...');
+    try {
+      const allOrders = await fetchOrdersForExport(orderFilters, undefined, role, (phase, fetched, total) => {
+        if (phase === 'data') setExportingMsg(`Fetching orders... ${fetched}/${total}`);
+      });
+      setExportingMsg('Generating CSV...');
+      exportOrderLines(allOrders, 'booking_orders');
+      toast({ title: `Exported ${allOrders.length} orders` });
+    } catch (err) {
+      const detail = err instanceof ExportError ? err.detail : (err instanceof Error ? err.message : 'Unknown error');
+      toast({ title: 'Export failed', description: detail, variant: 'destructive' });
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
+      setExportingMsg('');
+    }
+  };
+
+  const handleExportSelected = async () => {
     if (selectedRows.length === 0) {
       toast({ title: 'Please select at least 1 order to export', variant: 'destructive' });
       return;
     }
-    exportSelectedOrderLines(orders, selectedRows, 'booking_orders_selected');
+    setExporting(true);
+    setExportingMsg(`Exporting ${selectedRows.length} orders...`);
+    try {
+      const allOrders = await fetchOrdersForExport(orderFilters, selectedRows, role, (phase, fetched, total) => {
+        if (phase === 'data') setExportingMsg(`Fetching orders... ${fetched}/${total}`);
+      });
+      setExportingMsg('Generating CSV...');
+      exportOrderLines(allOrders, 'booking_orders_selected');
+      toast({ title: `Exported ${allOrders.length} orders` });
+    } catch (err) {
+      const detail = err instanceof ExportError ? err.detail : (err instanceof Error ? err.message : 'Unknown error');
+      toast({ title: 'Export failed', description: detail, variant: 'destructive' });
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
+      setExportingMsg('');
+    }
   };
 
   const handleCreateNew = () => {
@@ -154,11 +197,11 @@ export default function BookingSales() {
     }
   };
 
-  const isAllSelected = orders.length > 0 && selectedRows.length === orders.length;
+  const isAllSelected = allOrderIds.length > 0 && selectedRows.length === allOrderIds.length;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedRows(orders.map(o => o.id));
+      setSelectedRows(allOrderIds);
     } else {
       setSelectedRows([]);
     }
@@ -206,7 +249,7 @@ export default function BookingSales() {
               isAllSelected={isAllSelected}
               onSelectAll={handleSelectAll}
               selectedCount={selectedRows.length}
-              totalCount={orders.length}
+              totalCount={allOrderIds.length || pagination.totalCount}
             />
           )}
 
@@ -233,7 +276,7 @@ export default function BookingSales() {
                     primaryFields={[
                       { label: 'Customer', value: order.customer_name || '-' },
                       { label: 'Amount', value: formatBND(order.total_amount) },
-                      { label: 'Imported', value: format(new Date(order.created_at), 'MMM dd, HH:mm') },
+                      ...(order.next_delivery_date ? [{ label: 'Ready on', value: format(new Date(order.next_delivery_date), 'MMM dd, yyyy') }] : []),
                       { label: 'Items', value: displayText },
                     ]}
                     expandedFields={[
@@ -262,10 +305,22 @@ export default function BookingSales() {
               selectedCount={selectedRows.length}
               onClearSelection={() => setSelectedRows([])}
             >
-              <Button size="sm" onClick={handleConvertToReady}>
-                Convert to Ready
+              <Button size="sm" onClick={handleConvertToReady} className="rounded-full flex-1">
+                <ArrowRight className="h-4 w-4 mr-1" /> Convert to Ready
               </Button>
-              <Button size="sm" variant="destructive" onClick={() => setCancelDialogOpen(true)}>
+              {selectedRows.length === 1 && (
+                <Button size="sm" variant="outline" onClick={() => {
+                  const order = orders.find(o => o.id === selectedRows[0]);
+                  if (order) { setRescheduleOrder(order); setRescheduleDialogOpen(true); }
+                }} className="rounded-full">
+                  <Clock className="h-3 w-3 mr-1" /> Reschedule
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={handleExportSelected} disabled={exporting} className="rounded-full">
+                {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+                Export
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => setCancelDialogOpen(true)} className="rounded-full">
                 Cancel
               </Button>
             </MobileBulkActionsBar>
@@ -323,8 +378,8 @@ export default function BookingSales() {
                     <Plus className="h-4 w-4 mr-2" />
                     New Order
                   </Button>
-                  <Button onClick={handleExport} variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
+                  <Button onClick={handleExport} variant="outline" disabled={exporting}>
+                    {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     Export
                   </Button>
                 </div>
@@ -410,7 +465,8 @@ export default function BookingSales() {
                     Reschedule
                   </Button>
                 )}
-                <Button size="sm" variant="outline" onClick={handleExportSelected} className="rounded-full">
+                <Button size="sm" variant="outline" onClick={handleExportSelected} disabled={exporting} className="rounded-full">
+                  {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
                   Export
                 </Button>
                 {role !== 'manager' && role !== 'salesperson' && (
@@ -448,6 +504,7 @@ export default function BookingSales() {
           totalPages={pagination.totalPages}
           onPageChange={setPage}
           isFetching={isFetching}
+          allSelectableIds={allOrderIds}
         />
       </div>
 

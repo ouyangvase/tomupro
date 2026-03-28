@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isScientificNotation } from '@/lib/phone';
 
 /**
  * Parses various date formats and returns YYYY-MM-DD or empty string
@@ -73,7 +74,10 @@ export const orderLineSchema = z.object({
   order_ref: z.string().min(1, 'order_ref is required (system will not generate)').max(100, 'order_ref too long'),
   order_date: z.string().transform(parseFlexibleDate),
   customer_name: z.string().min(1, 'Customer name is required').max(255, 'Customer name too long'),
-  phone: z.string().min(1, 'Phone is required').max(50, 'Phone too long'),
+  phone: z.string().min(1, 'Phone is required').max(50, 'Phone too long').refine(
+    (val) => !isScientificNotation(val),
+    'Phone number format invalid (scientific notation like 6.28E+12 detected). Please format the phone column as TEXT in your spreadsheet and re-export.'
+  ),
   address: z.string().min(1, 'Address is required').max(500, 'Address too long'),
   area: z.string().max(100).optional().default(''),
   channel: z.string().max(100).optional().default(''),

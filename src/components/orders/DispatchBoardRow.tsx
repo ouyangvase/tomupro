@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Phone } from 'lucide-react';
+import { Phone, CalendarClock } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
@@ -154,6 +154,19 @@ export function DispatchBoardRow({ order, isSelected, selectable, onSelect, onCl
             {displayText}
           </p>
         </div>
+
+        {/* Line 3: Reschedule / next delivery date (only shown when set) */}
+        {order.next_delivery_date && (
+          <div className={cn("flex items-center gap-4 mt-1", selectable && "pl-8")}>
+            <div className="w-[110px] shrink-0" />
+            <div className="flex items-center gap-1.5">
+              <CalendarClock className="h-3 w-3 text-primary" />
+              <span className="text-xs font-medium text-primary">
+                Ready on: {format(new Date(order.next_delivery_date), 'MMM dd, yyyy')}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

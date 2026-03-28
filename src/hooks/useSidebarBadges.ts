@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 
 export function useSidebarBadges(): Record<string, number> {
   const { user, profile } = useAuth();
@@ -39,6 +40,19 @@ export function useSidebarBadges(): Record<string, number> {
           .select('id', { count: 'exact', head: true })
           .eq('runner_id', user.id)
           .eq('runner_status', 'FAILED_DELIVERY');
+        if (error) return 0;
+        return count || 0;
+      }
+
+      if (role === 'manager') {
+        const visibleIds = await getVisibleOwnerIdsCached();
+        if (!visibleIds || visibleIds.length === 0) return 0;
+        const { count, error } = await supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('salesperson_id', visibleIds)
+          .neq('status', 'CANCELLED')
+          .or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
         if (error) return 0;
         return count || 0;
       }

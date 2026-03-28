@@ -228,7 +228,7 @@ export function SalespersonDashboard() {
 
       {/* Section 3: Action Required */}
       <MissionSection icon={AlertCircle} title="Action Required" urgencyCount={
-        ((dashData?.failedOrdersCount ?? 0) + (dashData?.pendingDeliveryCount ?? 0) + (dashData?.pendingClaimCount ?? 0)) || undefined
+        (dashData?.actionRequiredCount ?? 0) || undefined
       }>
         <div className="grid gap-4 md:grid-cols-3">
           <Card 
@@ -246,18 +246,18 @@ export function SalespersonDashboard() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Failed Orders</p>
+                  <p className="text-sm font-medium text-muted-foreground">Action Required</p>
                   {isLoading ? <Skeleton className="h-10 w-16 mt-1" /> : (
-                    <p className={cn("text-4xl font-bold tracking-tight", (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground")}>
-                      <AnimatedCounter value={dashData?.failedOrdersCount ?? 0} />
+                    <p className={cn("text-4xl font-bold tracking-tight", (dashData?.actionRequiredCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground")}>
+                      <AnimatedCounter value={dashData?.actionRequiredCount ?? 0} />
                     </p>
                   )}
                 </div>
-                <div className={cn("p-3 rounded-2xl transition-colors", (dashData?.failedOrdersCount ?? 0) > 0 ? "bg-destructive/20 group-hover:bg-destructive/30" : "bg-secondary")}>
-                  <XCircle className={cn("h-7 w-7", (dashData?.failedOrdersCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground/50")} />
+                <div className={cn("p-3 rounded-2xl transition-colors", (dashData?.actionRequiredCount ?? 0) > 0 ? "bg-destructive/20 group-hover:bg-destructive/30" : "bg-secondary")}>
+                  <XCircle className={cn("h-7 w-7", (dashData?.actionRequiredCount ?? 0) > 0 ? "text-destructive" : "text-muted-foreground/50")} />
                 </div>
               </div>
-              {(dashData?.failedOrdersCount ?? 0) > 0 && (
+              {(dashData?.actionRequiredCount ?? 0) > 0 && (
                 <Button size="sm" variant="destructive" className="w-full gap-2 shadow-lg">
                   Resolve Now <ArrowRight className="h-4 w-4" />
                 </Button>

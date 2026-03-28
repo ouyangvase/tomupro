@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import type { Claim, ClaimMethod } from '@/types/database';
 
 interface ClaimFilters {
@@ -66,7 +67,7 @@ export function useCreateClaim() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast({ title: 'Claim created successfully' });
     },
     onError: (error: Error) => {
@@ -120,7 +121,7 @@ export function useCreateClaimWithDeliveryFee() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       toast({ title: 'Claim submitted successfully' });
     },
     onError: (error: Error) => {

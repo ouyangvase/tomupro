@@ -2,7 +2,7 @@
 
 export function exportToCSV<T extends Record<string, unknown>>(
   data: T[],
-  columns: { key: string; header: string }[],
+  columns: { key: string; header: string; forceText?: boolean }[],
   filename: string
 ) {
   if (data.length === 0) return;
@@ -12,17 +12,30 @@ export function exportToCSV<T extends Record<string, unknown>>(
     columns.map(col => {
       const value = item[col.key];
       if (value === null || value === undefined) return '';
-      if (typeof value === 'object') return JSON.stringify(value);
+      if (typeof value === 'object') return JSON.stringify(value).replace(/"/g, '""');
       return String(value).replace(/"/g, '""');
     })
   );
 
+  // Build CSV with forceText support for phone-like columns.
+  // forceText columns output as ="value" which Excel interprets as a text formula,
+  // preserving leading zeros and + signs.
   const csvContent = [
     headers.map(h => `"${h}"`).join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ...rows.map(row =>
+      row.map((cell, i) => {
+        if (columns[i]?.forceText && cell !== '') {
+          // Output: "=""value""" — Excel evaluates ="" as formula returning text
+          return `"=""${cell}"""`;
+        }
+        return `"${cell}"`;
+      }).join(',')
+    )
   ].join('\n');
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // Add UTF-8 BOM so Excel correctly detects encoding
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
@@ -189,10 +202,11 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-export function downloadTemplate(type: 'orders' | 'order_lines') {
+export function downloadTemplate(type: 'orders' | 'order_lines' | 'delivery_result') {
   const templates = {
     orders: 'order_ref,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes\n"ORD-001","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-15","Rush order"',
-    order_lines: 'order_ref,order_date,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes,sku_name_or_code,qty,price\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget A",2,29.99\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget B",1,49.99\n"ORD-002","2024-01-15","Jane Smith","555-5678","456 Oak Ave","Uptown","Social","TRANSFER","2024-01-21","Gift order","Premium Pack",1,99.99'
+    order_lines: 'order_ref,order_date,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes,sku_name_or_code,qty,price\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget A",2,29.99\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget B",1,49.99\n"ORD-002","2024-01-15","Jane Smith","555-5678","456 Oak Ave","Uptown","Social","TRANSFER","2024-01-21","Gift order","Premium Pack",1,99.99',
+    delivery_result: 'ORDER CODE,STATUS,REMARK\n"ORD-001","DELIVERED",""\n"ORD-002","FAILED","Customer not at home"\n"ORD-003","DELIVERED",""\n"ORD-004","FAILED","Wrong address"',
   };
 
   const blob = new Blob([templates[type]], { type: 'text/csv;charset=utf-8;' });
@@ -226,9 +240,10 @@ export interface OrderLineExport {
   next_delivery_date: string;
   sku_code: string;
   sku_name: string;
-  qty: number;
-  amount: number;
-  total_amount: number;
+  item_qty: number;
+  item_unit_price: number;
+  item_line_total: number;
+  order_total: number;
   delivered_timestamp: string;
   driver_name: string;
 }
@@ -271,9 +286,10 @@ export function exportOrderLines(
         delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
         sku_code: '',
         sku_name: '',
-        qty: 0,
-        amount: 0,
-        total_amount: Number(order.total_amount) || 0,
+        item_qty: 0,
+        item_unit_price: 0,
+        item_line_total: 0,
+        order_total: order.total_amount != null ? Number(order.total_amount) : 0,
       });
     } else {
       // Export one line per order item
@@ -304,9 +320,10 @@ export function exportOrderLines(
           delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
           sku_code: item.product?.sku_code || '',
           sku_name: item.product?.sku_name || item.sku_label || '',
-          qty: item.qty || 0,
-          amount: Number(item.line_total) || 0,
-          total_amount: Number(order.total_amount) || 0,
+          item_qty: item.qty != null ? Number(item.qty) : 0,
+          item_unit_price: item.price != null ? Number(item.price) : 0,
+          item_line_total: item.line_total != null ? Number(item.line_total) : 0,
+          order_total: order.total_amount != null ? Number(order.total_amount) : 0,
         });
       }
     }
@@ -318,7 +335,7 @@ export function exportOrderLines(
     { key: 'order_date', header: 'order_date' },
     { key: 'imported_timestamp', header: 'imported_timestamp' },
     { key: 'customer_name', header: 'customer_name' },
-    { key: 'phone', header: 'phone' },
+    { key: 'phone', header: 'phone', forceText: true },
     { key: 'address', header: 'address' },
     { key: 'area', header: 'area' },
     { key: 'channel', header: 'channel' },
@@ -337,9 +354,10 @@ export function exportOrderLines(
     { key: 'delivered_timestamp', header: 'delivered_timestamp' },
     { key: 'sku_code', header: 'sku_code' },
     { key: 'sku_name', header: 'sku_name' },
-    { key: 'qty', header: 'qty' },
-    { key: 'amount', header: 'amount' },
-    { key: 'total_amount', header: 'total_amount' },
+    { key: 'item_qty', header: 'item_qty' },
+    { key: 'item_unit_price', header: 'item_unit_price' },
+    { key: 'item_line_total', header: 'item_line_total' },
+    { key: 'order_total', header: 'order_total' },
   ];
 
   exportToCSV(lines as any, columns, filename);
@@ -371,9 +389,10 @@ export interface RunnerOrderLineExport {
   salesperson_name: string;
   sku_code: string;
   sku_name: string;
-  qty: number;
-  line_amount: number;  // Individual line item amount
-  order_total: number;  // Order's total for reference
+  item_qty: number;
+  item_unit_price: number;
+  item_line_total: number;
+  order_total: number;
 }
 
 export function exportRunnerOrderLines(
@@ -398,9 +417,10 @@ export function exportRunnerOrderLines(
         salesperson_name: order.salesperson?.display_name || '',
         sku_code: 'UNKNOWN',
         sku_name: 'UNKNOWN',
-        qty: 0,
-        line_amount: 0,
-        order_total: Number(order.total_amount) || 0,
+        item_qty: 0,
+        item_unit_price: 0,
+        item_line_total: 0,
+        order_total: order.total_amount != null ? Number(order.total_amount) : 0,
       });
     } else {
       // Export one line per order item
@@ -409,7 +429,7 @@ export function exportRunnerOrderLines(
         const skuCode = item.product?.sku_code || item.sku_label || 'UNKNOWN';
         // Get SKU name - fallback to sku_label if product not linked
         const skuName = item.product?.sku_name || item.sku_label || 'UNKNOWN';
-        
+
         lines.push({
           order_ref: order.order_code || '',
           customer_name: order.customer_name || '',
@@ -421,9 +441,10 @@ export function exportRunnerOrderLines(
           salesperson_name: order.salesperson?.display_name || '',
           sku_code: skuCode,
           sku_name: skuName,
-          qty: item.qty || 0,
-          line_amount: Number(item.line_total) || 0,
-          order_total: Number(order.total_amount) || 0,
+          item_qty: item.qty != null ? Number(item.qty) : 0,
+          item_unit_price: item.price != null ? Number(item.price) : 0,
+          item_line_total: item.line_total != null ? Number(item.line_total) : 0,
+          order_total: order.total_amount != null ? Number(order.total_amount) : 0,
         });
       }
     }
@@ -432,7 +453,7 @@ export function exportRunnerOrderLines(
   const columns = [
     { key: 'order_ref', header: 'order_ref' },
     { key: 'customer_name', header: 'customer_name' },
-    { key: 'phone', header: 'phone' },
+    { key: 'phone', header: 'phone', forceText: true },
     { key: 'address', header: 'address' },
     { key: 'area', header: 'area' },
     { key: 'payment_method', header: 'payment_method' },
@@ -440,8 +461,9 @@ export function exportRunnerOrderLines(
     { key: 'salesperson_name', header: 'salesperson_name' },
     { key: 'sku_code', header: 'sku_code' },
     { key: 'sku_name', header: 'sku_name' },
-    { key: 'qty', header: 'qty' },
-    { key: 'line_amount', header: 'line_amount' },
+    { key: 'item_qty', header: 'item_qty' },
+    { key: 'item_unit_price', header: 'item_unit_price' },
+    { key: 'item_line_total', header: 'item_line_total' },
     { key: 'order_total', header: 'order_total' },
   ];
 
@@ -524,7 +546,7 @@ export function exportDeliveredOrderLines(
   const columns = [
     { key: 'order_ref', header: 'order_ref' },
     { key: 'customer_name', header: 'customer_name' },
-    { key: 'phone', header: 'phone' },
+    { key: 'phone', header: 'phone', forceText: true },
     { key: 'address', header: 'address' },
     { key: 'area', header: 'area' },
     { key: 'salesperson_name', header: 'salesperson_name' },

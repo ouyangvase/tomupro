@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 
 interface ReviewParams {
   orderId: string;
@@ -123,8 +124,7 @@ export function useRunnerReviewOrder() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['reschedule-history'] });
       toast.success('Order reviewed and updated');
     },

@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -32,6 +32,7 @@ export interface BackfillOptions {
 export type { QuickRepairResult } from './useFullStockIntegrity';
 
 export function useStockBackfill() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (options: BackfillOptions): Promise<BackfillResult> => {
       const { data, error } = await supabase.functions.invoke('backfill-stock-movements', {
@@ -43,13 +44,18 @@ export function useStockBackfill() {
     },
     onSuccess: (data) => {
       if (data.dryRun) {
-        const issues = data.results.missingDeductionsCreated + 
-                       data.results.duplicateDeductionsReversed + 
+        const issues = data.results.missingDeductionsCreated +
+                       data.results.duplicateDeductionsReversed +
                        data.results.warehouseTypeMismatches +
                        data.results.failedQueueCleared;
         toast.info(`Dry run complete. Found ${issues} issues to fix.`);
       } else {
         toast.success(`Repair complete. Fixed ${data.results.missingDeductionsCreated} deductions.`);
+        queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+        queryClient.invalidateQueries({ queryKey: ['stock_movements'] });
+        queryClient.invalidateQueries({ queryKey: ['filtered-stock-balance'] });
+        queryClient.invalidateQueries({ queryKey: ['full-stock-integrity-audit'] });
+        queryClient.invalidateQueries({ queryKey: ['stock-integrity-summary'] });
       }
     },
     onError: (error: Error) => {

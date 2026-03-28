@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { RoleChangeBanner } from "@/components/RoleChangeBanner";
+import RealtimeProvider from "@/components/RealtimeProvider";
 import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
 import LocationPermissionGate from "@/components/driver/LocationPermissionGate";
 import { ProfileGate } from "@/components/auth/ProfileGate";
@@ -45,8 +46,8 @@ import { FloatingHelpButton } from "./components/guide/FloatingHelpButton";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
+      staleTime: 15_000,
+      refetchOnWindowFocus: true,
     },
   },
 });
@@ -138,6 +139,7 @@ function ProtectedModule({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   return (
+    <RealtimeProvider>
     <Routes>
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -222,6 +224,7 @@ function AppRoutes() {
       <Route path="/settings/*" element={<Navigate to="/settings/profile" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </RealtimeProvider>
   );
 }
 
