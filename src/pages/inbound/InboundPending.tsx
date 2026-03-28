@@ -93,8 +93,8 @@ export default function InboundPending() {
 
   const shipmentFilters = (() => {
     const base: { salespersonId?: string; status: 'PENDING_SP_ACK' } = { status: 'PENDING_SP_ACK' };
-    if (viewMode === 'my_data') {
-      // Everyone sees only their own inbound by default
+    if (viewMode === 'my_data' && role !== 'admin') {
+      // Non-admin sees only their own inbound by default; admin sees all
       base.salespersonId = user?.id;
     }
     // For shared/all_accessible, don't pass salespersonId — filter after fetch with accessibleIds
