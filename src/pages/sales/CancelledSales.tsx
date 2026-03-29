@@ -41,7 +41,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
-export default function CancelledSales() {
+export default function CancelledSales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);

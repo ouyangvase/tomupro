@@ -37,7 +37,7 @@ import { useUserDirectory } from '@/hooks/useUserDirectory';
 import type { Order } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
 
-export default function BookingSales() {
+export default function BookingSales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -505,6 +505,7 @@ export default function BookingSales() {
           onPageChange={setPage}
           isFetching={isFetching}
           allSelectableIds={allOrderIds}
+          highlightOrderId={highlightOrderId}
         />
       </div>
 

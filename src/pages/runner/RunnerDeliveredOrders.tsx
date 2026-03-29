@@ -1,8 +1,9 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -126,10 +127,25 @@ const claimStatusColors: Record<ReconciliationStatus, string> = {
   DISPUTE: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
 
-export default function RunnerDeliveredOrders() {
+export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { user, profile, role } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to highlighted order
+  useEffect(() => {
+    if (highlightOrderId) {
+      const timer = setTimeout(() => {
+        const el = tableContainerRef.current?.querySelector(`[data-order-id="${highlightOrderId}"]`)
+          || document.querySelector(`[data-order-id="${highlightOrderId}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightOrderId]);
   
   // Approved delivery charges map for the runner (area -> charge_amount)
   const { data: approvedChargeMap = {} } = useApprovedChargeMap();
@@ -1332,7 +1348,10 @@ export default function RunnerDeliveredOrders() {
                         const salespersonDisplayName = order.salesperson?.display_name || (order as any).created_by_name_snapshot || 'Deleted User';
 
                         return (
-                          <TableRow key={order.id} className={isSelected || isExportSelected ? 'bg-primary/5' : ''}>
+                          <TableRow key={order.id} data-order-id={order.id} className={cn(
+                            isSelected || isExportSelected ? 'bg-primary/5' : '',
+                            highlightOrderId === order.id && 'ring-2 ring-yellow-400/60 bg-yellow-50/50 dark:bg-yellow-900/10 animate-pulse'
+                          )}>
                             {isAdminOrManager && (
                               <TableCell>
                                 <Checkbox

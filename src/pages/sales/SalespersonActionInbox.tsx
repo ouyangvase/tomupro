@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO, isToday, isThisWeek, isThisMonth } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -116,10 +116,11 @@ function WorkflowStep({ step, icon, title, desc, active }: { step: number; icon:
 }
 
 // ── Main component ──
-export default function SalespersonActionInbox() {
+export default function SalespersonActionInbox({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const navigate = useNavigate();
   const { profile, role } = useAuth();
   const isMobile = useIsMobile();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [salespersonFilter, setSalespersonFilter] = useState<string>('all');
@@ -131,6 +132,22 @@ export default function SalespersonActionInbox() {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [showGuide, setShowGuide] = useState(false);
+
+  // Scroll to highlighted order and auto-select it
+  useEffect(() => {
+    if (highlightOrderId) {
+      const timer = setTimeout(() => {
+        const el = containerRef.current?.querySelector(`[data-order-id="${highlightOrderId}"]`)
+          || document.querySelector(`[data-order-id="${highlightOrderId}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        // Auto-select the highlighted order
+        setSelectedRows(new Set([highlightOrderId]));
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightOrderId]);
 
   const { viewMode, setViewMode, selectedMember, setSelectedMember, isManager } = useTeamViewState(
     // Default to 'team' for managers so OCC matches Team Alerts count
@@ -746,10 +763,12 @@ export default function SalespersonActionInbox() {
                     return (
                       <TableRow
                         key={order.id}
+                        data-order-id={order.id}
                         className={cn(
                           "transition-colors",
                           selectedRows.has(order.id) ? "bg-muted/50" : "",
-                          priority === 'high' && "bg-destructive/[0.02]"
+                          priority === 'high' && "bg-destructive/[0.02]",
+                          highlightOrderId === order.id && "ring-2 ring-yellow-400/60 bg-yellow-50/50 dark:bg-yellow-900/10 animate-pulse"
                         )}
                       >
                         <TableCell>

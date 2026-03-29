@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -22,6 +23,7 @@ interface DispatchBoardProps {
   isFetching?: boolean;
   // Cross-page selection: ALL matching IDs from the full filtered dataset
   allSelectableIds?: string[];
+  highlightOrderId?: string | null;
 }
 
 export function DispatchBoard({
@@ -38,7 +40,9 @@ export function DispatchBoard({
   onPageChange,
   isFetching,
   allSelectableIds,
+  highlightOrderId,
 }: DispatchBoardProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const allIdsCount = allSelectableIds ? allSelectableIds.length : orders.length;
   const isAllSelected = allIdsCount > 0 &&
     (allSelectableIds
@@ -57,6 +61,19 @@ export function DispatchBoard({
       onSelectionChange([]);
     }
   };
+
+  // Scroll to highlighted order
+  useEffect(() => {
+    if (highlightOrderId && !loading && orders.length > 0) {
+      const timer = setTimeout(() => {
+        const el = containerRef.current?.querySelector(`[data-order-id="${highlightOrderId}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightOrderId, loading, orders]);
 
   if (loading) {
     return (
@@ -81,7 +98,7 @@ export function DispatchBoard({
   }
 
   return (
-    <div className="space-y-1">
+    <div ref={containerRef} className="space-y-1">
       {/* Header bar */}
       {selectable && (
         <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-secondary/50 border border-border">
@@ -116,6 +133,7 @@ export function DispatchBoard({
             key={order.id}
             order={order}
             isSelected={selectedRows.includes(order.id)}
+            isHighlighted={highlightOrderId === order.id}
             selectable={selectable}
             onSelect={(checked) => {
               if (checked) {

@@ -1,6 +1,6 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
 const BookingSales = lazy(() => import('@/pages/sales/BookingSales'));
@@ -26,6 +26,19 @@ const tabs = [
 export default function OrdersModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'booking';
+  const highlightOrderId = searchParams.get('highlight') || null;
+
+  // Clear highlight param after 4 seconds so it doesn't persist on refresh
+  useEffect(() => {
+    if (highlightOrderId) {
+      const timer = setTimeout(() => {
+        const params = new URLSearchParams(searchParams);
+        params.delete('highlight');
+        setSearchParams(params, { replace: true });
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightOrderId]);
 
   return (
     <div className="space-y-4">
@@ -41,11 +54,11 @@ export default function OrdersModule() {
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
-            {activeTab === 'booking' && <BookingSales />}
-            {activeTab === 'ready' && <ReadySales />}
-            {activeTab === 'delivered' && <RunnerDeliveredOrders />}
-            {activeTab === 'cancelled' && <CancelledSales />}
-            {activeTab === 'action-required' && <SalespersonActionInbox />}
+            {activeTab === 'booking' && <BookingSales highlightOrderId={highlightOrderId} />}
+            {activeTab === 'ready' && <ReadySales highlightOrderId={highlightOrderId} />}
+            {activeTab === 'delivered' && <RunnerDeliveredOrders highlightOrderId={highlightOrderId} />}
+            {activeTab === 'cancelled' && <CancelledSales highlightOrderId={highlightOrderId} />}
+            {activeTab === 'action-required' && <SalespersonActionInbox highlightOrderId={highlightOrderId} />}
           </div>
         </Suspense>
       </EmbeddedProvider>

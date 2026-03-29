@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 interface DispatchBoardRowProps {
   order: Order;
   isSelected: boolean;
+  isHighlighted?: boolean;
   selectable: boolean;
   onSelect: (checked: boolean) => void;
   onClick: () => void;
@@ -52,15 +53,17 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   );
 }
 
-export function DispatchBoardRow({ order, isSelected, selectable, onSelect, onClick }: DispatchBoardRowProps) {
+export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick }: DispatchBoardRowProps) {
   const { displayText } = formatOrderItemsDisplay(order.order_items);
 
   return (
     <div
+      data-order-id={order.id}
       className={cn(
         'group rounded-lg border bg-card transition-all cursor-pointer',
         'hover:shadow-sm hover:border-primary/15',
-        isSelected && 'ring-2 ring-primary/20 border-primary/20 bg-primary/[0.02]'
+        isSelected && 'ring-2 ring-primary/20 border-primary/20 bg-primary/[0.02]',
+        isHighlighted && 'ring-2 ring-yellow-400/60 border-yellow-400/40 bg-yellow-50/50 dark:bg-yellow-900/10 animate-pulse'
       )}
       onClick={onClick}
     >

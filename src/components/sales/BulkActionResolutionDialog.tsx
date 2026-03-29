@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { 
@@ -68,6 +68,16 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
 
   // Fetch cancel reasons from cancel_reasons table
   const { data: cancelReasons = [] } = useCancelReasons(true);
+
+  // Auto-select Auto Reschedule when dialog opens and orders have reschedule dates
+  useEffect(() => {
+    if (open && orders.length > 0 && !results) {
+      const hasRescheduleDates = orders.some(o => o.next_delivery_date != null);
+      if (hasRescheduleDates) {
+        setResolutionType('AUTO_RESCHEDULE');
+      }
+    }
+  }, [open, orders]);
 
   // Check delivered orders
   const deliveredOrders = useMemo(() => 

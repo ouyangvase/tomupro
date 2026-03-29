@@ -55,7 +55,7 @@ import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/Mobile
 import { cn } from '@/lib/utils';
 import type { Order } from '@/types/database';
 
-export default function ReadySales() {
+export default function ReadySales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const { data: userDirectory = [] } = useUserDirectory();
@@ -491,6 +491,7 @@ export default function ReadySales() {
             onPageChange={setPage}
             isFetching={isFetching}
             allSelectableIds={allOrderIds}
+            highlightOrderId={highlightOrderId}
           />
         )}
       </div>
