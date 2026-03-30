@@ -568,6 +568,12 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
+      // Build a lookup map from locally known orders for enriching error entries
+      const orderLookup = new Map<string, { order_code: string; customer_name: string; area: string | null }>();
+      for (const o of allFilteredOrders) {
+        orderLookup.set(o.id, { order_code: o.order_code, customer_name: o.customer_name || '?', area: o.area || null });
+      }
+
       let totalSuccess = 0;
       const allFailedOrders: ClaimBatchResult['failed_orders'] = [];
 
@@ -603,13 +609,14 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
         // If we got an error but no structured data at all
         if (!data?.success && !data?.failed_orders && (response.error || data?.error)) {
           const errorMsg = data?.error || response.error?.message || 'Failed to submit batch';
-          // Convert all orders in this group to failed entries
+          // Enrich with local order data instead of showing "?"
           for (const oid of group.orderIds) {
+            const local = orderLookup.get(oid);
             allFailedOrders.push({
               order_id: oid,
-              order_code: '?',
-              customer_name: '?',
-              area: null,
+              order_code: local?.order_code || '?',
+              customer_name: local?.customer_name || '?',
+              area: local?.area || null,
               reason: errorMsg,
             });
           }

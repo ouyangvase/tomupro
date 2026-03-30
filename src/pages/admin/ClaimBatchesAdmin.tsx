@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { useClaimBatches, useApproveClaimBatch, useRejectClaimBatch, useClaimBatchDetails } from '@/hooks/useClaimBatches';
+import { useClaimBatches, useApproveClaimBatch, useRejectClaimBatch, useClaimBatchDetails, useRemoveOrderFromBatch, useOrderBatchLookup } from '@/hooks/useClaimBatches';
 import { format } from 'date-fns';
-import { CheckCircle, Receipt, Loader2, XCircle, TrendingDown, Clock, DollarSign, Users } from 'lucide-react';
+import { CheckCircle, Receipt, Loader2, XCircle, TrendingDown, Clock, DollarSign, Users, Search, Trash2 } from 'lucide-react';
 import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { ClaimBatchTimeline } from '@/components/runner/ClaimBatchTimeline';
@@ -32,12 +33,18 @@ export default function ClaimBatchesAdmin() {
   const { data: batches = [], isLoading } = useClaimBatches({ status: 'ADMIN_ACK_PENDING' });
   const approveClaimBatch = useApproveClaimBatch();
   const rejectClaimBatch = useRejectClaimBatch();
+  const removeOrderFromBatch = useRemoveOrderFromBatch();
   const [selectedBatch, setSelectedBatch] = useState<ClaimBatch | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [bulkApproving, setBulkApproving] = useState(false);
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderSearchInput, setOrderSearchInput] = useState('');
+
+  // Order-to-batch lookup
+  const { data: lookupResult, isLoading: lookupLoading } = useOrderBatchLookup(orderSearchQuery);
 
   // Fetch order details on demand when a batch is selected
   const { data: batchDetails = [], isLoading: detailsLoading } = useClaimBatchDetails(
@@ -263,6 +270,115 @@ export default function ClaimBatchesAdmin() {
           </Card>
         </div>
 
+        {/* Order-to-Batch Lookup */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 flex items-center gap-2">
+                <Input
+                  placeholder="Search order by code (e.g. XT409)..."
+                  value={orderSearchInput}
+                  onChange={(e) => setOrderSearchInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') setOrderSearchQuery(orderSearchInput); }}
+                  className="max-w-xs h-9"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setOrderSearchQuery(orderSearchInput)}
+                  disabled={!orderSearchInput.trim()}
+                >
+                  Find Batch
+                </Button>
+                {orderSearchQuery && (
+                  <Button size="sm" variant="ghost" onClick={() => { setOrderSearchQuery(''); setOrderSearchInput(''); }}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Lookup result */}
+            {lookupLoading && orderSearchQuery && (
+              <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Searching...
+              </div>
+            )}
+            {!lookupLoading && orderSearchQuery && lookupResult === null && (
+              <p className="text-sm text-muted-foreground mt-3">No order found with code "{orderSearchQuery}"</p>
+            )}
+            {!lookupLoading && lookupResult?.order && (
+              <div className="mt-3 p-3 rounded-lg border bg-muted/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono font-bold text-sm">{lookupResult.order.order_code}</span>
+                    <span className="text-sm text-muted-foreground">{lookupResult.order.customer_name}</span>
+                    {lookupResult.order.area && <Badge variant="outline" className="text-xs">{lookupResult.order.area}</Badge>}
+                    <Badge className={cn(
+                      'text-xs',
+                      lookupResult.order.reconciliation_status === 'NOT_CLAIMED' ? 'bg-muted text-muted-foreground' :
+                      lookupResult.order.reconciliation_status === 'ADMIN_ACK_PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                      lookupResult.order.reconciliation_status === 'CLAIMED' ? 'bg-green-100 text-green-800' :
+                      'bg-red-100 text-red-800'
+                    )}>
+                      {lookupResult.order.reconciliation_status}
+                    </Badge>
+                  </div>
+                  <span className="text-sm font-semibold">{formatBND(lookupResult.order.total_amount)}</span>
+                </div>
+                {lookupResult.batch ? (
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">In batch:</span>
+                      <span className="font-mono font-semibold text-primary">{(lookupResult.batch as any).batch_code}</span>
+                      <span className="text-muted-foreground">
+                        ({lookupResult.batch.status}) &middot; Submitted {format(new Date(lookupResult.batch.submitted_at), 'MMM dd, yyyy HH:mm')}
+                      </span>
+                      {(lookupResult.batch as any).runner?.display_name && (
+                        <span className="text-muted-foreground">by {(lookupResult.batch as any).runner.display_name}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const batch = batches.find(b => b.id === lookupResult.batch?.id);
+                          if (batch) handleViewDetails(batch);
+                        }}
+                      >
+                        View Batch
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          if (lookupResult.batch && confirm(`Remove order ${lookupResult.order.order_code} from batch ${(lookupResult.batch as any).batch_code}?`)) {
+                            removeOrderFromBatch.mutate({
+                              batchId: lookupResult.batch.id,
+                              orderId: lookupResult.order.id,
+                            });
+                            setOrderSearchQuery('');
+                            setOrderSearchInput('');
+                          }
+                        }}
+                        disabled={removeOrderFromBatch.isPending}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                        Remove from Batch
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Not in any claim batch.</p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <DataGrid
           data={batches}
           columns={columns}
@@ -393,6 +509,7 @@ export default function ClaimBatchesAdmin() {
                       <TableHead>Area</TableHead>
                       <TableHead className="text-right">Amount (BND)</TableHead>
                       <TableHead>Payment</TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -410,6 +527,25 @@ export default function ClaimBatchesAdmin() {
                           {formatBND(item.order?.total_amount)}
                         </TableCell>
                         <TableCell>{item.order?.payment_method}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              if (selectedBatch && confirm(`Remove order ${item.order?.order_code} from this batch?`)) {
+                                removeOrderFromBatch.mutate({
+                                  batchId: selectedBatch.id,
+                                  orderId: item.order_id,
+                                });
+                              }
+                            }}
+                            disabled={removeOrderFromBatch.isPending}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Remove
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

@@ -300,3 +300,180 @@ export function useRejectClaimBatch() {
 export function useAcknowledgeClaimBatch() {
   return useApproveClaimBatch();
 }
+
+/**
+ * Remove a single order from a claim batch.
+ * Deletes the batch item, deletes the claim, reverts the order to NOT_CLAIMED,
+ * and recalculates batch totals.
+ */
+export function useRemoveOrderFromBatch() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ batchId, orderId }: { batchId: string; orderId: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // 1. Delete the batch item
+      const { error: deleteItemError } = await supabase
+        .from('claim_batch_items')
+        .delete()
+        .eq('batch_id', batchId)
+        .eq('order_id', orderId);
+
+      if (deleteItemError) throw deleteItemError;
+
+      // 2. Delete the claim for this order
+      await supabase
+        .from('claims')
+        .delete()
+        .eq('order_id', orderId);
+
+      // 3. Revert order to NOT_CLAIMED
+      const { error: orderError } = await supabase
+        .from('orders')
+        .update({ reconciliation_status: 'NOT_CLAIMED' })
+        .eq('id', orderId);
+
+      if (orderError) throw orderError;
+
+      // 4. Recalculate batch totals from remaining items
+      const { data: remainingItems } = await supabase
+        .from('claim_batch_items')
+        .select('order_id')
+        .eq('batch_id', batchId);
+
+      const remainingOrderIds = (remainingItems || []).map(i => i.order_id);
+
+      if (remainingOrderIds.length === 0) {
+        // Batch is now empty — delete it
+        await supabase.from('claim_batches').delete().eq('id', batchId);
+      } else {
+        // Fetch remaining order amounts to recalculate
+        const { data: remainingOrders } = await supabase
+          .from('orders')
+          .select('id, total_amount, area')
+          .in('id', remainingOrderIds);
+
+        // Fetch batch for exchange rate
+        const { data: batch } = await supabase
+          .from('claim_batches')
+          .select('exchange_rate_to_rm, runner_id')
+          .eq('id', batchId)
+          .single();
+
+        // Fetch delivery charges for the runner
+        const { data: charges } = await supabase
+          .from('delivery_charges')
+          .select('area, charge_amount')
+          .eq('runner_id', batch?.runner_id || '')
+          .eq('status', 'APPROVED')
+          .is('superseded_at', null);
+
+        const chargeMap = new Map(
+          (charges || []).map(c => [c.area?.toLowerCase(), Number(c.charge_amount)])
+        );
+
+        let grossBND = 0;
+        let deliveryChargesBND = 0;
+        for (const o of remainingOrders || []) {
+          const amt = Number(o.total_amount);
+          grossBND += amt;
+          if (o.area) {
+            deliveryChargesBND += chargeMap.get(o.area.toLowerCase()) || 0;
+          }
+        }
+        const netBND = grossBND - deliveryChargesBND;
+        const rate = Number(batch?.exchange_rate_to_rm || 0);
+
+        await supabase
+          .from('claim_batches')
+          .update({
+            total_amount: netBND,
+            total_bnd: netBND,
+            gross_bnd: grossBND,
+            delivery_charges_bnd: deliveryChargesBND,
+            net_bnd: netBND,
+            total_rm: rate > 0 ? Number((netBND * rate).toFixed(2)) : null,
+            gross_rm: rate > 0 ? Number((grossBND * rate).toFixed(2)) : null,
+            delivery_charges_rm: rate > 0 ? Number((deliveryChargesBND * rate).toFixed(2)) : null,
+            net_rm: rate > 0 ? Number((netBND * rate).toFixed(2)) : null,
+          })
+          .eq('id', batchId);
+      }
+
+      // 5. Audit log
+      await supabase.from('audit_logs').insert({
+        actor_id: user.id,
+        action: 'ORDER_REMOVED_FROM_BATCH',
+        entity_type: 'claim_batch',
+        entity_id: batchId,
+        after_json: {
+          removed_order_id: orderId,
+          remaining_count: remainingOrderIds.length,
+        },
+      });
+
+      return { batchId, orderId, remainingCount: remainingOrderIds.length };
+    },
+    onSuccess: (data) => {
+      invalidateOrderQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['claim-batch-details'] });
+      toast({
+        title: 'Order Removed',
+        description: data.remainingCount === 0
+          ? 'Order removed. Batch was empty and has been deleted.'
+          : `Order removed from batch. ${data.remainingCount} order(s) remaining.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
+/**
+ * Look up which claim batch an order belongs to (by order code).
+ */
+export function useOrderBatchLookup(orderCode: string) {
+  return useQuery({
+    queryKey: ['order-batch-lookup', orderCode],
+    queryFn: async () => {
+      if (!orderCode || orderCode.trim().length < 2) return null;
+
+      // Find the order by code
+      const { data: orders } = await supabase
+        .from('orders')
+        .select('id, order_code, customer_name, area, total_amount, reconciliation_status')
+        .ilike('order_code', orderCode.trim())
+        .limit(1);
+
+      if (!orders || orders.length === 0) return null;
+      const order = orders[0];
+
+      // Find the batch item
+      const { data: item } = await supabase
+        .from('claim_batch_items')
+        .select('batch_id')
+        .eq('order_id', order.id)
+        .limit(1);
+
+      if (!item || item.length === 0) {
+        return { order, batch: null };
+      }
+
+      // Fetch the batch
+      const { data: batch } = await supabase
+        .from('claim_batches')
+        .select('*, runner:profiles!claim_batches_runner_id_fkey(display_name)')
+        .eq('id', item[0].batch_id)
+        .single();
+
+      return { order, batch };
+    },
+    enabled: !!orderCode && orderCode.trim().length >= 2,
+    staleTime: 10000,
+  });
+}

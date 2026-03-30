@@ -18,6 +18,7 @@ interface FailedOrder {
   customer_name: string;
   area: string | null;
   reason: string;
+  existing_batch_code?: string;
 }
 
 interface ValidOrder {
@@ -84,13 +85,15 @@ serve(async (req) => {
     // Build lookup for fetched orders
     const orderMap = new Map((orders || []).map(o => [o.id, o]));
 
-    // ── Fetch existing batch items ──
+    // ── Fetch existing batch items with batch reference ──
     const { data: existingBatchItems } = await supabase
       .from('claim_batch_items')
-      .select('order_id')
+      .select('order_id, batch:claim_batches(batch_code, submitted_at)')
       .in('order_id', orderIds);
 
-    const alreadyInBatch = new Set((existingBatchItems || []).map(i => i.order_id));
+    const alreadyInBatch = new Map<string, { batch_code: string; submitted_at: string }>(
+      (existingBatchItems || []).map((i: any) => [i.order_id, i.batch])
+    );
 
     // ── Fetch delivery charges ──
     const { data: deliveryCharges } = await supabase
@@ -143,7 +146,16 @@ serve(async (req) => {
 
       // Check if already in a batch
       if (alreadyInBatch.has(order.id)) {
-        failedOrders.push({ ...base, reason: 'Already included in an existing claim batch' });
+        const batchInfo = alreadyInBatch.get(order.id);
+        const batchRef = batchInfo?.batch_code || '?';
+        const submittedDate = batchInfo?.submitted_at
+          ? new Date(batchInfo.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '?';
+        failedOrders.push({
+          ...base,
+          reason: `Already in batch ${batchRef} (submitted ${submittedDate})`,
+          existing_batch_code: batchInfo?.batch_code,
+        });
         continue;
       }
 
@@ -254,11 +266,52 @@ serve(async (req) => {
       const { error: itemsError } = await supabase.from('claim_batch_items').insert(chunk);
       if (itemsError) {
         console.error(`[submit-bulk-claim] batch items error (chunk ${i}):`, itemsError);
+        // Clean up the batch we just created
         await supabase.from('claim_batch_items').delete().eq('batch_id', batch.id);
         await supabase.from('claim_batches').delete().eq('id', batch.id);
+
+        // Detect UNIQUE constraint violation (order already in another batch)
+        if (itemsError.message?.includes('claim_batch_items_order_id_unique') || itemsError.code === '23505') {
+          // Log anomaly
+          await supabase.from('audit_logs').insert({
+            actor_id: user.id,
+            action: 'CLAIM_ANOMALY_DETECTED',
+            entity_type: 'claim_batch',
+            entity_id: batch.id,
+            after_json: {
+              reason: 'UNIQUE constraint violation during batch item insert',
+              error: itemsError.message,
+              order_ids: validOrderIds,
+            },
+          });
+
+          return json({
+            success: false,
+            error: 'One or more orders were claimed by another batch while processing. Please refresh and try again.',
+            failed_orders: validOrders.map(o => ({
+              order_id: o.id,
+              order_code: o.order_code,
+              customer_name: o.customer_name || '?',
+              area: o.area,
+              reason: 'Concurrent claim conflict — order already in another batch. Please refresh and retry.',
+            })),
+            success_count: 0,
+            failed_count: validOrders.length,
+          });
+        }
+
         return json({
           success: false,
           error: 'Failed to add orders to batch. Please try again.',
+          failed_orders: validOrders.map(o => ({
+            order_id: o.id,
+            order_code: o.order_code,
+            customer_name: o.customer_name || '?',
+            area: o.area,
+            reason: 'Failed to add to batch — database error. Please retry.',
+          })),
+          success_count: 0,
+          failed_count: validOrders.length,
           debug: { step: 'insert_batch_items', details: itemsError.message },
         });
       }
@@ -303,7 +356,10 @@ serve(async (req) => {
       entity_type: 'claim_batch',
       entity_id: batch.id,
       after_json: {
+        batch_code: batch.batch_code,
         order_count: validOrders.length,
+        order_ids: validOrderIds,
+        order_codes: validOrders.map(o => o.order_code),
         gross_amount: totalGrossAmount,
         delivery_fees: totalDeliveryFees,
         net_amount_bnd: totalNetBND,
@@ -311,6 +367,7 @@ serve(async (req) => {
         net_amount_rm: totalNetRM,
         partial: isPartial,
         failed_count: failedOrders.length,
+        failed_reasons: failedOrders.map(f => ({ order_id: f.order_id, order_code: f.order_code, reason: f.reason })),
       },
     });
 
@@ -341,6 +398,7 @@ serve(async (req) => {
       success: true,
       partial: isPartial,
       batchId: batch.id,
+      batchCode: batch.batch_code,
       orderCount: validOrders.length,
       success_count: validOrders.length,
       failed_count: failedOrders.length,

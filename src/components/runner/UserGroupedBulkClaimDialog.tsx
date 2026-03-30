@@ -50,6 +50,7 @@ export interface ClaimBatchResult {
     customer_name: string;
     area: string | null;
     reason: string;
+    existing_batch_code?: string;
   }[];
   error?: string;
 }
@@ -266,9 +267,16 @@ export function UserGroupedBulkClaimDialog({
                       <div key={fo.order_id || idx} className="p-3 space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-mono font-semibold">{fo.order_code}</span>
-                          {fo.area && (
-                            <Badge variant="outline" className="text-[10px]">{fo.area}</Badge>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {fo.existing_batch_code && (
+                              <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                                Batch: {fo.existing_batch_code}
+                              </Badge>
+                            )}
+                            {fo.area && (
+                              <Badge variant="outline" className="text-[10px]">{fo.area}</Badge>
+                            )}
+                          </div>
                         </div>
                         <p className="text-xs text-muted-foreground">{fo.customer_name}</p>
                         <div className="flex items-start gap-1.5">
