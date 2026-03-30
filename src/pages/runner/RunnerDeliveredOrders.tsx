@@ -71,7 +71,7 @@ import {
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
-import { UserGroupedBulkClaimDialog, type ClaimGroupSubmission } from '@/components/runner/UserGroupedBulkClaimDialog';
+import { UserGroupedBulkClaimDialog, type ClaimGroupSubmission, type ClaimBatchResult } from '@/components/runner/UserGroupedBulkClaimDialog';
 import { RevertDeliveryDialog } from '@/components/admin/RevertDeliveryDialog';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
 import { supabase } from '@/integrations/supabase/client';
@@ -126,6 +126,55 @@ const claimStatusColors: Record<ReconciliationStatus, string> = {
   SETTLED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   DISPUTE: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
+
+// Enhanced claim status badge that differentiates NOT_CLAIMED sub-states
+function ClaimEligibilityBadge({ order, approvedChargeMap, canClaim }: { order: Order; approvedChargeMap: Record<string, number>; canClaim: boolean }) {
+  const status = order.reconciliation_status;
+
+  // Non-NOT_CLAIMED statuses use the standard label/color
+  if (status !== 'NOT_CLAIMED') {
+    return (
+      <Badge className={claimStatusColors[status]}>
+        {claimStatusLabels[status]}
+      </Badge>
+    );
+  }
+
+  // NOT_CLAIMED sub-states (only differentiate for runners who can claim)
+  if (!canClaim) {
+    return (
+      <Badge className={claimStatusColors.NOT_CLAIMED}>
+        {claimStatusLabels.NOT_CLAIMED}
+      </Badge>
+    );
+  }
+
+  // Check area and charge rate
+  if (!order.area) {
+    return (
+      <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
+        Missing Area
+      </Badge>
+    );
+  }
+
+  const area = order.area.toLowerCase();
+  if (approvedChargeMap[area] === undefined) {
+    return (
+      <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
+        No Charge Rate
+      </Badge>
+    );
+  }
+
+  // Fully claimable
+  return (
+    <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+      <CheckCircle className="h-3 w-3 mr-1" />
+      Claimable
+    </Badge>
+  );
+}
 
 export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { user, profile, role } = useAuth();
@@ -511,16 +560,16 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
   }, [allFilteredOrders, deliveryChargesMap]);
 
   // Handle bulk claim submission (grouped — supports multiple batches)
-  const handleGroupedClaimSubmit = async (groups: ClaimGroupSubmission[]) => {
-    if (groups.length === 0) return;
+  const handleGroupedClaimSubmit = async (groups: ClaimGroupSubmission[]): Promise<ClaimBatchResult> => {
+    if (groups.length === 0) return { success_count: 0, failed_count: 0, failed_orders: [] };
 
     setIsSubmitting(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
-      let totalClaimed = 0;
-      const errors: string[] = [];
+      let totalSuccess = 0;
+      const allFailedOrders: ClaimBatchResult['failed_orders'] = [];
 
       for (const group of groups) {
         const response = await supabase.functions.invoke('submit-bulk-claim', {
@@ -531,41 +580,72 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
           },
         });
 
-        if (response.error) {
-          errors.push(response.error.message || 'Failed to submit batch');
-        } else if (!response.data?.success) {
-          errors.push(response.data?.error || 'Failed to submit batch');
-        } else {
-          totalClaimed += group.orderIds.length;
+        // Parse error response — supabase.functions.invoke may wrap non-2xx
+        let data = response.data;
+        if (response.error && !data) {
+          // Try to extract JSON from FunctionsHttpError context
+          try {
+            const ctx = (response.error as any)?.context;
+            if (ctx && typeof ctx.json === 'function') {
+              data = await ctx.json();
+            }
+          } catch {
+            // Fall through to generic error
+          }
+        }
+
+        if (data?.success || data?.success_count > 0) {
+          totalSuccess += data.success_count || data.orderCount || 0;
+        }
+        if (data?.failed_orders?.length > 0) {
+          allFailedOrders.push(...data.failed_orders);
+        }
+        // If we got an error but no structured data at all
+        if (!data?.success && !data?.failed_orders && (response.error || data?.error)) {
+          const errorMsg = data?.error || response.error?.message || 'Failed to submit batch';
+          // Convert all orders in this group to failed entries
+          for (const oid of group.orderIds) {
+            allFailedOrders.push({
+              order_id: oid,
+              order_code: '?',
+              customer_name: '?',
+              area: null,
+              reason: errorMsg,
+            });
+          }
         }
       }
 
-      if (errors.length > 0 && totalClaimed === 0) {
-        throw new Error(errors[0]);
-      }
-
-      if (totalClaimed > 0) {
-        toast.success(
-          groups.length === 1
-            ? `Successfully claimed ${totalClaimed} order(s)`
-            : `Successfully claimed ${totalClaimed} order(s) in ${groups.length} batches`
-        );
-      }
-      if (errors.length > 0) {
-        toast.error(`${errors.length} batch(es) failed: ${errors[0]}`);
-      }
-
-      setSelectedIds(new Set());
-      setBulkClaimOpen(false);
+      // Invalidate queries regardless
       queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast-all'] });
       queryClient.invalidateQueries({ queryKey: ['delivered-summary'] });
       queryClient.invalidateQueries({ queryKey: ['delivered-summary-filtered'] });
       queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
+
+      // Show summary toast
+      if (totalSuccess > 0) {
+        toast.success(`${totalSuccess} order(s) claimed successfully`);
+      }
+      if (totalSuccess > 0 && allFailedOrders.length === 0) {
+        // Full success — clear selection and close dialog
+        setSelectedIds(new Set());
+      }
+
+      return {
+        success_count: totalSuccess,
+        failed_count: allFailedOrders.length,
+        failed_orders: allFailedOrders,
+      };
     } catch (error) {
       console.error('Grouped bulk claim error:', error);
-      throw error;
+      return {
+        success_count: 0,
+        failed_count: 0,
+        failed_orders: [],
+        error: error instanceof Error ? error.message : 'Claim batch submission failed. Please try again or contact admin.',
+      };
     } finally {
       setIsSubmitting(false);
     }
@@ -1190,9 +1270,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                     orderRef={order.order_code}
                     areaBadge={order.area ? <Badge variant="outline" className="text-xs">{order.area}</Badge> : undefined}
                     statusBadge={
-                      <Badge className={claimStatusColors[order.reconciliation_status]}>
-                        {claimStatusLabels[order.reconciliation_status]}
-                      </Badge>
+                      <ClaimEligibilityBadge order={order} approvedChargeMap={approvedChargeMap} canClaim={canClaim} />
                     }
                     selectable={canClaim && isClaimable}
                     isSelected={isSelected}
@@ -1464,15 +1542,13 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                               )}
                             </TableCell>
                             <TableCell>
-                              <Badge className={claimStatusColors[order.reconciliation_status]}>
-                                {claimStatusLabels[order.reconciliation_status]}
-                              </Badge>
+                              <ClaimEligibilityBadge order={order} approvedChargeMap={approvedChargeMap} canClaim={canClaim} />
                             </TableCell>
                             {canClaim && (
                               <TableCell>
                                 {isClaimable && (
-                                  <Button 
-                                    size="sm" 
+                                  <Button
+                                    size="sm"
                                     variant="outline"
                                     onClick={() => handleSingleClaim(order)}
                                   >

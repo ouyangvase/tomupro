@@ -16,11 +16,16 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, AlertCircle, Info, TrendingDown, Banknote, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Loader2, AlertCircle, Info, TrendingDown, Banknote, Users,
+  ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle,
+} from 'lucide-react';
 import { formatBND, formatRM, convertBNDtoRM } from '@/lib/currency';
 import { useClaimPreview } from '@/hooks/useDeliveryChargePreview';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import type { Order } from '@/types/database';
+
+// ── Exported types ──
 
 interface UserGroup {
   salespersonId: string;
@@ -36,15 +41,30 @@ export interface ClaimGroupSubmission {
   note?: string;
 }
 
+export interface ClaimBatchResult {
+  success_count: number;
+  failed_count: number;
+  failed_orders: {
+    order_id: string;
+    order_code: string;
+    customer_name: string;
+    area: string | null;
+    reason: string;
+  }[];
+  error?: string;
+}
+
 interface UserGroupedBulkClaimDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   orders: Order[];
-  onSubmitBatches: (groups: ClaimGroupSubmission[]) => Promise<void>;
+  onSubmitBatches: (groups: ClaimGroupSubmission[]) => Promise<ClaimBatchResult>;
   isSubmitting: boolean;
   onRemoveInvalidOrders?: (invalidOrderIds: string[]) => void;
   onNavigateToCharges?: () => void;
 }
+
+// ── Component ──
 
 export function UserGroupedBulkClaimDialog({
   open,
@@ -55,6 +75,7 @@ export function UserGroupedBulkClaimDialog({
   onRemoveInvalidOrders,
   onNavigateToCharges,
 }: UserGroupedBulkClaimDialogProps) {
+  // PLACEHOLDER: form state
   const [exchangeRate, setExchangeRate] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
@@ -62,14 +83,15 @@ export function UserGroupedBulkClaimDialog({
   const [deselectedGroups, setDeselectedGroups] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  // PLACEHOLDER: results state
+  const [results, setResults] = useState<ClaimBatchResult | null>(null);
+
   const rate = parseFloat(exchangeRate) || 0;
   const isValidRate = rate > 0 && rate <= 99.9999;
 
-  // Get claim preview for all orders (handles delivery charge calculations)
   const preview = useClaimPreview(orders, rate);
   const hasMissingCharges = preview.missingAreas.length > 0;
 
-  // Invalid orders (missing area charges)
   const invalidOrders = useMemo(() => {
     if (!hasMissingCharges) return [];
     return preview.orderBreakdown.filter(ob => {
@@ -78,46 +100,33 @@ export function UserGroupedBulkClaimDialog({
     });
   }, [preview, hasMissingCharges]);
 
-  // Group orders by salesperson_id
+  // PLACEHOLDER: user groups
   const userGroups = useMemo(() => {
     const groupMap = new Map<string, UserGroup>();
-
     for (const order of orders) {
       const spId = order.salesperson_id || 'unknown';
       const spName = order.salesperson?.display_name
         || (order as any).created_by_name_snapshot
         || 'Unknown User';
-
       if (!groupMap.has(spId)) {
-        groupMap.set(spId, {
-          salespersonId: spId,
-          salespersonName: spName,
-          orders: [],
-          orderCount: 0,
-          grossBND: 0,
-        });
+        groupMap.set(spId, { salespersonId: spId, salespersonName: spName, orders: [], orderCount: 0, grossBND: 0 });
       }
-
       const group = groupMap.get(spId)!;
       group.orders.push(order);
       group.orderCount += 1;
       group.grossBND += Number(order.total_amount);
     }
-
     return Array.from(groupMap.values()).sort((a, b) => b.orderCount - a.orderCount);
   }, [orders]);
 
   const hasMultipleUsers = userGroups.length > 1;
 
-  // Selected groups (all selected by default, user can deselect)
   const selectedGroups = useMemo(() => {
     return userGroups.filter(g => !deselectedGroups.has(g.salespersonId));
   }, [userGroups, deselectedGroups]);
 
   const selectedOrderCount = selectedGroups.reduce((sum, g) => sum + g.orderCount, 0);
-  const selectedGrossBND = selectedGroups.reduce((sum, g) => sum + g.grossBND, 0);
 
-  // Get preview for selected orders only
   const selectedOrders = useMemo(() => {
     const selectedSpIds = new Set(selectedGroups.map(g => g.salespersonId));
     return orders.filter(o => selectedSpIds.has(o.salesperson_id || 'unknown'));
@@ -125,13 +134,12 @@ export function UserGroupedBulkClaimDialog({
 
   const selectedPreview = useClaimPreview(selectedOrders, rate);
 
+  // PLACEHOLDER: handlers
   const toggleGroup = (spId: string) => {
     setDeselectedGroups(prev => {
       const next = new Set(prev);
-      if (next.has(spId)) {
-        next.delete(spId);
-      } else {
-        // Don't allow deselecting all groups
+      if (next.has(spId)) { next.delete(spId); }
+      else {
         if (selectedGroups.length <= 1 && !next.has(spId)) return prev;
         next.add(spId);
       }
@@ -153,6 +161,7 @@ export function UserGroupedBulkClaimDialog({
       setExchangeRate('');
       setNote('');
       setError('');
+      setResults(null);
       setDeselectedGroups(new Set());
       setExpandedGroups(new Set());
       setBatchMode('separate');
@@ -168,34 +177,16 @@ export function UserGroupedBulkClaimDialog({
   };
 
   const handleSubmit = async () => {
-    if (!isValidRate) {
-      setError('Please enter a valid exchange rate (0.0001 - 99.9999)');
-      return;
-    }
-
-    if (hasMissingCharges) {
-      setError(`Cannot submit: ${invalidOrders.length} order(s) have no approved delivery charge. Remove them first.`);
-      return;
-    }
-
-    if (selectedGroups.length === 0) {
-      setError('Please select at least one user group');
-      return;
-    }
+    if (!isValidRate) { setError('Please enter a valid exchange rate (0.0001 - 99.9999)'); return; }
+    if (hasMissingCharges) { setError(`Cannot submit: ${invalidOrders.length} order(s) have no approved delivery charge. Remove them first.`); return; }
+    if (selectedGroups.length === 0) { setError('Please select at least one user group'); return; }
 
     setError('');
     try {
       let submissions: ClaimGroupSubmission[];
-
       if (batchMode === 'merged' || !hasMultipleUsers) {
-        // Single batch with all selected orders
-        submissions = [{
-          orderIds: selectedOrders.map(o => o.id),
-          exchangeRate: rate,
-          note: note || undefined,
-        }];
+        submissions = [{ orderIds: selectedOrders.map(o => o.id), exchangeRate: rate, note: note || undefined }];
       } else {
-        // Separate batch per user group
         submissions = selectedGroups.map(group => ({
           orderIds: group.orders.map(o => o.id),
           exchangeRate: rate,
@@ -203,16 +194,115 @@ export function UserGroupedBulkClaimDialog({
         }));
       }
 
-      await onSubmitBatches(submissions);
-      handleClose();
+      const result = await onSubmitBatches(submissions);
+
+      // If full success with no failures, close immediately
+      if (result.success_count > 0 && result.failed_count === 0 && !result.error) {
+        handleClose();
+        return;
+      }
+
+      // If there are failures or errors, show results view
+      setResults(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit claim');
+      setError(err instanceof Error ? err.message : 'Claim batch submission failed. Please try again or contact admin.');
     }
   };
 
-  // Calculate RM amounts for display
   const netRM = isValidRate ? convertBNDtoRM(selectedPreview.netBND, rate) : 0;
 
+  // ── RESULTS VIEW ──
+  if (results) {
+    return (
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Claim Submission Results</DialogTitle>
+            <DialogDescription>
+              {results.success_count > 0 && results.failed_count > 0
+                ? 'Some orders were submitted, but others failed.'
+                : results.success_count > 0
+                ? 'All orders submitted successfully.'
+                : 'Claim submission failed.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Generic error */}
+            {results.error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{results.error}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Success summary */}
+            {results.success_count > 0 && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800">
+                <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-green-700 dark:text-green-400">
+                    {results.success_count} order(s) submitted successfully
+                  </p>
+                  <p className="text-xs text-green-600/80 dark:text-green-500/80">
+                    Claim batch created and awaiting admin approval.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Failed orders */}
+            {results.failed_count > 0 && results.failed_orders.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-destructive">
+                  <XCircle className="h-4 w-4" />
+                  <span className="text-sm font-semibold">
+                    {results.failed_count} order(s) failed
+                  </span>
+                </div>
+                <ScrollArea className="max-h-[300px] border rounded-lg">
+                  <div className="divide-y">
+                    {results.failed_orders.map((fo, idx) => (
+                      <div key={fo.order_id || idx} className="p-3 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-mono font-semibold">{fo.order_code}</span>
+                          {fo.area && (
+                            <Badge variant="outline" className="text-[10px]">{fo.area}</Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{fo.customer_name}</p>
+                        <div className="flex items-start gap-1.5">
+                          <AlertTriangle className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
+                          <p className="text-xs text-destructive font-medium">{fo.reason}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+
+            {/* Guidance */}
+            {results.failed_count > 0 && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  Failed orders were not included in the claim batch. Fix the issues and try claiming them again.
+                  Contact admin if orders need area or charge corrections.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button onClick={handleClose}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ── FORM VIEW (unchanged) ──
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -220,9 +310,7 @@ export function UserGroupedBulkClaimDialog({
           <DialogTitle className="flex items-center gap-2">
             Submit Claim Batch
             {hasMultipleUsers && (
-              <Badge variant="outline" className="text-xs">
-                {userGroups.length} users
-              </Badge>
+              <Badge variant="outline" className="text-xs">{userGroups.length} users</Badge>
             )}
           </DialogTitle>
           <DialogDescription>
@@ -242,12 +330,7 @@ export function UserGroupedBulkClaimDialog({
               </Alert>
               <div className="flex flex-col gap-2 sm:flex-row">
                 {onRemoveInvalidOrders && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-destructive/50 text-destructive hover:bg-destructive/10"
-                    onClick={handleRemoveInvalid}
-                  >
+                  <Button variant="outline" size="sm" className="border-destructive/50 text-destructive hover:bg-destructive/10" onClick={handleRemoveInvalid}>
                     Remove Invalid Orders ({invalidOrders.length})
                   </Button>
                 )}
@@ -261,7 +344,7 @@ export function UserGroupedBulkClaimDialog({
             </div>
           )}
 
-          {/* User Group Section — only show when multiple users */}
+          {/* User Group Section */}
           {hasMultipleUsers && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -270,20 +353,10 @@ export function UserGroupedBulkClaimDialog({
                   <span>Orders by User</span>
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    variant={batchMode === 'separate' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setBatchMode('separate')}
-                  >
+                  <Button variant={batchMode === 'separate' ? 'default' : 'outline'} size="sm" className="h-7 text-xs" onClick={() => setBatchMode('separate')}>
                     Separate Batches
                   </Button>
-                  <Button
-                    variant={batchMode === 'merged' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setBatchMode('merged')}
-                  >
+                  <Button variant={batchMode === 'merged' ? 'default' : 'outline'} size="sm" className="h-7 text-xs" onClick={() => setBatchMode('merged')}>
                     Merge All
                   </Button>
                 </div>
@@ -299,43 +372,26 @@ export function UserGroupedBulkClaimDialog({
                 {userGroups.map(group => {
                   const isSelected = !deselectedGroups.has(group.salespersonId);
                   const isExpanded = expandedGroups.has(group.salespersonId);
-
                   return (
-                    <Card
-                      key={group.salespersonId}
-                      className={`transition-colors ${isSelected ? 'border-primary/30 bg-primary/5' : 'opacity-50 bg-muted/30'}`}
-                    >
+                    <Card key={group.salespersonId} className={`transition-colors ${isSelected ? 'border-primary/30 bg-primary/5' : 'opacity-50 bg-muted/30'}`}>
                       <CardContent className="p-3">
                         <div className="flex items-center gap-3">
                           {batchMode === 'separate' && (
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleGroup(group.salespersonId)}
-                              disabled={isSelected && selectedGroups.length <= 1}
-                            />
+                            <Checkbox checked={isSelected} onCheckedChange={() => toggleGroup(group.salespersonId)} disabled={isSelected && selectedGroups.length <= 1} />
                           )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-medium truncate">{group.salespersonName}</span>
                               <div className="flex items-center gap-2 shrink-0">
-                                <Badge variant="secondary" className="text-xs">
-                                  {group.orderCount} order{group.orderCount !== 1 ? 's' : ''}
-                                </Badge>
+                                <Badge variant="secondary" className="text-xs">{group.orderCount} order{group.orderCount !== 1 ? 's' : ''}</Badge>
                                 <span className="text-sm font-semibold">{formatBND(group.grossBND)}</span>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={() => toggleExpand(group.salespersonId)}
-                                >
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => toggleExpand(group.salespersonId)}>
                                   {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                                 </Button>
                               </div>
                             </div>
                           </div>
                         </div>
-
-                        {/* Expanded: show order list */}
                         {isExpanded && (
                           <div className="mt-2 pl-8 space-y-1 max-h-[150px] overflow-y-auto">
                             {group.orders.map(o => (
@@ -363,12 +419,9 @@ export function UserGroupedBulkClaimDialog({
               <Banknote className="h-4 w-4" />
               <span>BND Breakdown</span>
               {hasMultipleUsers && batchMode === 'separate' && (
-                <Badge variant="outline" className="text-xs ml-auto">
-                  {selectedGroups.length} batch{selectedGroups.length !== 1 ? 'es' : ''}
-                </Badge>
+                <Badge variant="outline" className="text-xs ml-auto">{selectedGroups.length} batch{selectedGroups.length !== 1 ? 'es' : ''}</Badge>
               )}
             </div>
-
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Orders Selected</span>
@@ -379,10 +432,7 @@ export function UserGroupedBulkClaimDialog({
                 <span className="font-medium">{formatBND(selectedPreview.grossBND)}</span>
               </div>
               <div className="flex justify-between text-sm text-destructive">
-                <span className="flex items-center gap-1">
-                  <TrendingDown className="h-3 w-3" />
-                  Delivery Charges
-                </span>
+                <span className="flex items-center gap-1"><TrendingDown className="h-3 w-3" />Delivery Charges</span>
                 <span>-{formatBND(selectedPreview.deliveryChargesBND)}</span>
               </div>
               <Separator />
@@ -395,23 +445,9 @@ export function UserGroupedBulkClaimDialog({
 
           {/* Exchange Rate Input */}
           <div className="space-y-2">
-            <Label htmlFor="exchangeRate">
-              Exchange Rate (BND &rarr; RM) <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="exchangeRate"
-              type="number"
-              step="0.0001"
-              min="0.0001"
-              max="99.9999"
-              placeholder="e.g., 3.1223"
-              value={exchangeRate}
-              onChange={(e) => setExchangeRate(e.target.value)}
-              disabled={isSubmitting}
-            />
-            <p className="text-xs text-muted-foreground">
-              Enter today's BND to RM exchange rate (up to 4 decimals)
-            </p>
+            <Label htmlFor="exchangeRate">Exchange Rate (BND &rarr; RM) <span className="text-destructive">*</span></Label>
+            <Input id="exchangeRate" type="number" step="0.0001" min="0.0001" max="99.9999" placeholder="e.g., 3.1223" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} disabled={isSubmitting} />
+            <p className="text-xs text-muted-foreground">Enter today's BND to RM exchange rate (up to 4 decimals)</p>
           </div>
 
           {/* RM Preview */}
@@ -425,10 +461,7 @@ export function UserGroupedBulkClaimDialog({
                 <span className="font-medium">{formatRM(convertBNDtoRM(selectedPreview.grossBND, rate))}</span>
               </div>
               <div className="flex justify-between text-sm text-destructive">
-                <span className="flex items-center gap-1">
-                  <TrendingDown className="h-3 w-3" />
-                  Delivery Charges (RM)
-                </span>
+                <span className="flex items-center gap-1"><TrendingDown className="h-3 w-3" />Delivery Charges (RM)</span>
                 <span>-{formatRM(convertBNDtoRM(selectedPreview.deliveryChargesBND, rate))}</span>
               </div>
               <Separator />
@@ -453,14 +486,7 @@ export function UserGroupedBulkClaimDialog({
           {/* Optional Note */}
           <div className="space-y-2">
             <Label htmlFor="note">Note (Optional)</Label>
-            <Textarea
-              id="note"
-              placeholder="Add a note for this claim batch..."
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              disabled={isSubmitting}
-              maxLength={500}
-            />
+            <Textarea id="note" placeholder="Add a note for this claim batch..." value={note} onChange={(e) => setNote(e.target.value)} disabled={isSubmitting} maxLength={500} />
           </div>
 
           {/* Error Display */}
@@ -473,24 +499,12 @@ export function UserGroupedBulkClaimDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isSubmitting || !isValidRate || hasMissingCharges || selectedGroups.length === 0}
-          >
+          <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting || !isValidRate || hasMissingCharges || selectedGroups.length === 0}>
             {isSubmitting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Submitting...
-              </>
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Submitting...</>
             ) : (
-              <>
-                Submit {batchMode === 'separate' && hasMultipleUsers
-                  ? `${selectedGroups.length} Batch${selectedGroups.length !== 1 ? 'es' : ''}`
-                  : 'Claim'}
-              </>
+              <>Submit {batchMode === 'separate' && hasMultipleUsers ? `${selectedGroups.length} Batch${selectedGroups.length !== 1 ? 'es' : ''}` : 'Claim'}</>
             )}
           </Button>
         </DialogFooter>
