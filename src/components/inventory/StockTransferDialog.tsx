@@ -6,9 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { useCreateStockTransfer } from '@/hooks/useStockVisibility';
 import { useWarehouses, useStockBalance } from '@/hooks/useInventory';
+import { toast } from 'sonner';
 import type { TransferItemInput } from '@/types/stock-visibility';
 
 interface StockTransferDialogProps {
@@ -72,12 +73,29 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
     return getSourceQty(productId);
   };
   
+  // Check if any item exceeds available stock
+  const hasOverstock = items.some(i => {
+    if (!i.product_id || i.qty <= 0) return false;
+    return i.qty > getSourceQty(i.product_id);
+  });
+
   const handleSubmit = async () => {
     if (!fromWarehouse || !toWarehouse) return;
-    
+
     const validItems = items.filter(i => i.product_id && i.qty > 0);
     if (validItems.length === 0) return;
-    
+
+    // Client-side validation: check qty doesn't exceed available
+    for (const item of validItems) {
+      const available = getSourceQty(item.product_id);
+      if (item.qty > available) {
+        const product = availableProducts.find(p => p.id === item.product_id);
+        const label = product?.sku_code || product?.sku_name || item.product_id;
+        toast.error(`Insufficient stock for ${label}. Available: ${available}, Requested: ${item.qty}`);
+        return;
+      }
+    }
+
     await createTransfer.mutateAsync({
       from_owner_id: fromOwnerId,
       to_owner_id: toOwnerId,
@@ -86,7 +104,7 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
       items: validItems.map(({ product_id, qty }) => ({ product_id, qty })),
       notes: notes || undefined,
     });
-    
+
     onOpenChange(false);
     resetForm();
   };
@@ -102,9 +120,10 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
     if (!open) resetForm();
   }, [open]);
   
-  const isValid = fromOwnerId && toOwnerId && fromOwnerId !== toOwnerId && 
-    fromWarehouse && toWarehouse && 
-    items.some(i => i.product_id && i.qty > 0);
+  const isValid = fromOwnerId && toOwnerId && fromOwnerId !== toOwnerId &&
+    fromWarehouse && toWarehouse &&
+    items.some(i => i.product_id && i.qty > 0) &&
+    !hasOverstock;
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -198,9 +217,16 @@ export function StockTransferDialog({ open, onOpenChange, users }: StockTransfer
                         <Input
                           type="number"
                           min={1}
+                          max={getSourceQty(item.product_id) || undefined}
                           value={item.qty}
-                          onChange={e => updateItem(item.key, 'qty', parseInt(e.target.value) || 1)}
+                          onChange={e => updateItem(item.key, 'qty', Math.max(1, parseInt(e.target.value) || 1))}
+                          className={item.product_id && item.qty > getSourceQty(item.product_id) ? 'border-red-500 text-red-600' : ''}
                         />
+                        {item.product_id && item.qty > getSourceQty(item.product_id) && (
+                          <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> Exceeds available
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {getSourceQty(item.product_id)}

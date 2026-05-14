@@ -242,11 +242,10 @@ export function useDeleteVisibilityOverride() {
   });
 }
 
-// Create stock transfer (admin only)
+// Create stock transfer (admin only) — uses atomic RPC function
 export function useCreateStockTransfer() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  
+
   return useMutation({
     mutationFn: async (data: {
       from_owner_id: string;
@@ -256,147 +255,37 @@ export function useCreateStockTransfer() {
       items: TransferItemInput[];
       notes?: string;
     }) => {
-      // First, fetch source products to get their details
-      const productIds = data.items.map(item => item.product_id);
-      const { data: sourceProducts, error: sourceProductsError } = await supabase
-        .from('products')
-        .select('*')
-        .in('id', productIds);
-      
-      if (sourceProductsError) throw sourceProductsError;
-      
-      // Check if destination user has matching products (by sku_code or sku_name)
-      // and create them if they don't exist
-      const productIdMap: Record<string, string> = {}; // source product_id -> destination product_id
-      
-      for (const sourceProduct of sourceProducts || []) {
-        // First try to find existing product for destination user by sku_code
-        let destProductId: string | null = null;
-        
-        if (sourceProduct.sku_code) {
-          const { data: existingByCode } = await supabase
-            .from('products')
-            .select('id')
-            .eq('owner_user_id', data.to_owner_id)
-            .eq('sku_code', sourceProduct.sku_code)
-            .eq('is_active', true)
-            .single();
-          
-          if (existingByCode) {
-            destProductId = existingByCode.id;
-          }
-        }
-        
-        // If not found by sku_code, try by sku_name
-        if (!destProductId) {
-          const { data: existingByName } = await supabase
-            .from('products')
-            .select('id')
-            .eq('owner_user_id', data.to_owner_id)
-            .eq('sku_name', sourceProduct.sku_name)
-            .eq('is_active', true)
-            .single();
-          
-          if (existingByName) {
-            destProductId = existingByName.id;
-          }
-        }
-        
-        // If still not found, create new product for destination user
-        if (!destProductId) {
-          const { data: newProduct, error: createError } = await supabase
-            .from('products')
-            .insert({
-              owner_user_id: data.to_owner_id,
-              sku_code: sourceProduct.sku_code,
-              sku_name: sourceProduct.sku_name,
-              is_active: true,
-              created_by: user?.id,
-            })
-            .select()
-            .single();
-          
-          if (createError) throw createError;
-          destProductId = newProduct.id;
-        }
-        
-        productIdMap[sourceProduct.id] = destProductId;
+      const itemsJson = data.items
+        .filter(i => i.product_id && i.qty > 0)
+        .map(i => ({ product_id: i.product_id, qty: i.qty }));
+
+      if (itemsJson.length === 0) throw new Error('No valid items to transfer');
+
+      const { data: result, error } = await supabase.rpc('execute_stock_transfer', {
+        p_from_owner_id: data.from_owner_id,
+        p_to_owner_id: data.to_owner_id,
+        p_from_warehouse_id: data.from_warehouse_id,
+        p_to_warehouse_id: data.to_warehouse_id,
+        p_items: itemsJson,
+        p_notes: data.notes || null,
+      });
+
+      if (error) throw new Error(error.message);
+
+      const res = result as any;
+      if (!res?.success) {
+        throw new Error(res?.error || 'Transfer failed — no changes were made');
       }
-      
-      // Create transfer record
-      const { data: transfer, error: transferError } = await supabase
-        .from('stock_transfers')
-        .insert({
-          from_owner_id: data.from_owner_id,
-          to_owner_id: data.to_owner_id,
-          from_warehouse_id: data.from_warehouse_id,
-          to_warehouse_id: data.to_warehouse_id,
-          notes: data.notes,
-          created_by: user?.id,
-        })
-        .select()
-        .single();
-      
-      if (transferError) throw transferError;
-      
-      // Create transfer items - IMPORTANT: Store SOURCE product IDs (not destination)
-      // This ensures the transfer record references the original owner's products
-      const itemsToInsert = data.items.map(item => ({
-        transfer_id: transfer.id,
-        product_id: item.product_id, // Source product ID from the dialog
-        qty: item.qty,
-      }));
-      
-      const { error: itemsError } = await supabase
-        .from('stock_transfer_items')
-        .insert(itemsToInsert);
-      
-      if (itemsError) throw itemsError;
-      
-      // Create stock movements with correct product IDs for each direction
-      const movements = [];
-      for (const item of data.items) {
-        // Source product ID - owned by from_owner, used for TRANSFER_OUT
-        const sourceProductId = item.product_id;
-        // Destination product ID - mapped to to_owner's equivalent product, used for TRANSFER_IN
-        const destProductId = productIdMap[item.product_id];
-        
-        // TRANSFER_OUT from source warehouse (uses SOURCE product ID)
-        movements.push({
-          warehouse_id: data.from_warehouse_id,
-          product_id: sourceProductId,
-          movement_type: 'TRANSFER_OUT' as const,
-          qty_change: -item.qty,
-          reference_type: 'STOCK_TRANSFER' as const,
-          reference_id: transfer.id,
-          created_by: user?.id,
-        });
-        
-        // TRANSFER_IN to destination warehouse (uses DESTINATION product ID)
-        movements.push({
-          warehouse_id: data.to_warehouse_id,
-          product_id: destProductId,
-          movement_type: 'TRANSFER_IN' as const,
-          qty_change: item.qty,
-          reference_type: 'STOCK_TRANSFER' as const,
-          reference_id: transfer.id,
-          created_by: user?.id,
-        });
-      }
-      
-      const { error: movementsError } = await supabase
-        .from('stock_movements')
-        .insert(movements);
-      
-      if (movementsError) throw movementsError;
-      
-      return transfer;
+
+      return res;
     },
-    onSuccess: () => {
+    onSuccess: (_data) => {
       queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
       queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
       queryClient.invalidateQueries({ queryKey: ['filtered-stock-balance'] });
-      toast.success('Stock transferred successfully');
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
+      const res = _data as any;
+      toast.success(`Stock transferred: ${res.items_processed} item(s), ${res.total_qty} total qty`);
     },
     onError: (error: Error) => {
       toast.error(`Transfer failed: ${error.message}`);

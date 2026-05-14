@@ -71,25 +71,39 @@ serve(async (req) => {
 
     console.log(`[submit-bulk-claim] runner=${user.id} count=${orderIds.length} orderIds=${JSON.stringify(orderIds)}`);
 
-    // ── Fetch orders with display fields ──
-    const { data: orders, error: ordersError } = await supabase
-      .from('orders')
-      .select('id, order_code, customer_name, total_amount, area, runner_status, reconciliation_status, runner_id')
-      .in('id', orderIds);
+    // ── Fetch orders with display fields (chunked to avoid URL length limit) ──
+    const QUERY_CHUNK = 200;
+    const allOrders: any[] = [];
+    for (let i = 0; i < orderIds.length; i += QUERY_CHUNK) {
+      const chunk = orderIds.slice(i, i + QUERY_CHUNK);
+      const { data: chunkData, error: chunkError } = await supabase
+        .from('orders')
+        .select('id, order_code, customer_name, total_amount, area, runner_status, reconciliation_status, runner_id, delivered_at')
+        .in('id', chunk);
 
-    if (ordersError) {
-      console.error('[submit-bulk-claim] fetch orders error:', ordersError);
-      return json({ success: false, error: 'Failed to fetch orders' });
+      if (chunkError) {
+        console.error(`[submit-bulk-claim] fetch orders error (chunk ${i}):`, chunkError);
+        return json({ success: false, error: 'Failed to fetch orders' });
+      }
+      if (chunkData) allOrders.push(...chunkData);
     }
+
+    const orders = allOrders;
 
     // Build lookup for fetched orders
     const orderMap = new Map((orders || []).map(o => [o.id, o]));
 
-    // ── Fetch existing batch items with batch reference ──
-    const { data: existingBatchItems } = await supabase
-      .from('claim_batch_items')
-      .select('order_id, batch:claim_batches(batch_code, submitted_at)')
-      .in('order_id', orderIds);
+    // ── Fetch existing batch items with batch reference (chunked) ──
+    const allBatchItems: any[] = [];
+    for (let i = 0; i < orderIds.length; i += QUERY_CHUNK) {
+      const chunk = orderIds.slice(i, i + QUERY_CHUNK);
+      const { data: chunkData } = await supabase
+        .from('claim_batch_items')
+        .select('order_id, batch:claim_batches(batch_code, submitted_at)')
+        .in('order_id', chunk);
+      if (chunkData) allBatchItems.push(...chunkData);
+    }
+    const existingBatchItems = allBatchItems;
 
     const alreadyInBatch = new Map<string, { batch_code: string; submitted_at: string }>(
       (existingBatchItems || []).map((i: any) => [i.order_id, i.batch])
@@ -138,6 +152,12 @@ serve(async (req) => {
         continue;
       }
 
+      // Check delivered_at timestamp exists
+      if (!order.delivered_at) {
+        failedOrders.push({ ...base, reason: 'Order has no delivery timestamp — delivery not confirmed' });
+        continue;
+      }
+
       // Check reconciliation status
       if (order.reconciliation_status !== 'NOT_CLAIMED') {
         failedOrders.push({ ...base, reason: `Already claimed or submitted (status: ${order.reconciliation_status})` });
@@ -159,40 +179,31 @@ serve(async (req) => {
         continue;
       }
 
-      // Check delivery charge
-      if (order.area) {
-        const fee = chargesByArea.get(order.area.toLowerCase());
-        if (fee === undefined) {
-          failedOrders.push({ ...base, reason: `No approved delivery charge for area: ${order.area}` });
-          continue;
-        }
-        validOrders.push({
-          id: order.id,
-          order_code: order.order_code,
-          customer_name: order.customer_name,
-          total_amount: Number(order.total_amount),
-          area: order.area,
-          runner_id: order.runner_id,
-          runner_status: order.runner_status,
-          reconciliation_status: order.reconciliation_status,
-          delivery_fee: fee,
-          net_claim_amount: Number(order.total_amount) - fee,
-        });
-      } else {
-        // No area → 0 delivery fee
-        validOrders.push({
-          id: order.id,
-          order_code: order.order_code,
-          customer_name: order.customer_name,
-          total_amount: Number(order.total_amount),
-          area: null,
-          runner_id: order.runner_id,
-          runner_status: order.runner_status,
-          reconciliation_status: order.reconciliation_status,
-          delivery_fee: 0,
-          net_claim_amount: Number(order.total_amount),
-        });
+      // Check area is set (required by DB trigger enforce_claim_delivery_charge)
+      if (!order.area || order.area.trim() === '') {
+        failedOrders.push({ ...base, reason: 'Order has no delivery area set — contact admin to assign an area' });
+        continue;
       }
+
+      // Check delivery charge
+      const fee = chargesByArea.get(order.area.trim().toLowerCase());
+      if (fee === undefined) {
+        failedOrders.push({ ...base, reason: `No approved delivery charge for area: ${order.area}` });
+        continue;
+      }
+
+      validOrders.push({
+        id: order.id,
+        order_code: order.order_code,
+        customer_name: order.customer_name,
+        total_amount: Number(order.total_amount),
+        area: order.area.trim(),
+        runner_id: order.runner_id,
+        runner_status: order.runner_status,
+        reconciliation_status: order.reconciliation_status,
+        delivery_fee: fee,
+        net_claim_amount: Number(order.total_amount) - fee,
+      });
     }
 
     console.log(`[submit-bulk-claim] validation: ${validOrders.length} valid, ${failedOrders.length} failed`);
