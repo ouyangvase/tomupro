@@ -20,6 +20,7 @@ import { lazy, Suspense } from "react";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
+import Landing from "./pages/Landing";
 
 // Module pages
 const OrdersModule = lazy(() => import("./pages/modules/OrdersModule"));
@@ -137,12 +138,39 @@ function ProtectedModule({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Public marketing landing for logged-out visitors at "/".
+// Logged-in users keep the existing Dashboard experience unchanged.
+function RootRoute() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span>Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Landing />;
+  }
+
+  return (
+    <ProtectedRoute>
+      <Dashboard />
+    </ProtectedRoute>
+  );
+}
+
 function AppRoutes() {
   return (
     <RealtimeProvider>
     <Routes>
       <Route path="/auth" element={<Auth />} />
-      <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/" element={<RootRoute />} />
       
       {/* Module routes */}
       <Route path="/orders" element={<ProtectedModule><OrdersModule /></ProtectedModule>} />
