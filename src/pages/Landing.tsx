@@ -4,8 +4,6 @@ import "./Landing.css";
 
 const ASSETS = "/landing";
 
-// Demo parcel data for the marketing tracking widget.
-// TODO: wire to your real tracking lookup if you want it live on the public page.
 const PARCELS: Record<string, { status: string; loc: string; eta: string }> = {
   "310724636": { status: "Out for Delivery", loc: "Sengkurong Hub, Brunei-Muara", eta: "Today, before 5:00 PM" },
   "310724700": { status: "Delivered", loc: "Kuala Belait", eta: "Delivered · 1:20 PM" },
@@ -17,14 +15,18 @@ export default function Landing() {
   const [trackRes, setTrackRes] = useState<any>(null);
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
   const [sent, setSent] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add("in")),
-      { threshold: 0.12 }
+      { threshold: 0.1 }
     );
     document.querySelectorAll(".tomupro-landing .rv").forEach((el) => io.observe(el));
-    return () => io.disconnect();
+
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    window.addEventListener("scroll", onScroll);
+    return () => { io.disconnect(); window.removeEventListener("scroll", onScroll); };
   }, []);
 
   function track() {
@@ -39,7 +41,6 @@ export default function Landing() {
       alert("Please enter your name and email.");
       return;
     }
-    // TODO: persist to Supabase (e.g. supabase.from('contact_messages').insert(...))
     setSent(true);
   }
 
@@ -48,35 +49,34 @@ export default function Landing() {
 
   return (
     <div className="tomupro-landing">
+
       {/* ===== NAV ===== */}
-      <header className="pnav">
+      <header className={`pnav${scrolled ? " pnav-scrolled" : ""}`}>
         <div className="pnav-inner">
           <a href="#home" className="pbrand">
-            <img src={`${ASSETS}/logo-griffin.png`} alt="TOMUPRO" />
-            <span className="wm">
+            <img src={`${ASSETS}/logo-griffin.png`} alt="TOMUPRO logo" />
+            <div className="pbrand-text">
               <b>TOMU<span>PRO</span></b>
               <small>Brunei Logistics Operating System</small>
-            </span>
+            </div>
           </a>
           <nav className={"plinks" + (menuOpen ? " open" : "")} id="plinks">
             <a href="#services">Solutions</a>
             <a href="#features">Features</a>
-            <a href="#" onClick={noop}>Pricing</a>
-            <a href="#" onClick={noop}>Blog</a>
             <a href="#track">Tracking</a>
+            <a href="#success">About</a>
             <a href="#contact">Contact</a>
             <Link to="/auth" className="menu-only mlogin">Merchant Login</Link>
             <a href="#contact" className="menu-only mdemo">Book Demo</a>
           </nav>
           <div className="pnav-cta">
-            <Link to="/auth" className="pbtn-login" title="Merchant Cloud System login">
+            <Link to="/auth" className="pbtn-login">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 21c0-4 4-6.5 8-6.5s8 2.5 8 6.5" />
+                <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6.5 8-6.5s8 2.5 8 6.5" />
               </svg>
-              Merchant Login
+              Log In
             </Link>
-            <a href="#contact" className="pbtn-demo">Book Demo</a>
+            <a href="#contact" className="pbtn-demo">Get Started →</a>
           </div>
           <button className="pmenu" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">☰</button>
         </div>
@@ -84,34 +84,136 @@ export default function Landing() {
 
       {/* ===== HERO ===== */}
       <section className="phero" id="home">
-        <div className="phero-bg" />
-        <div className="phero-overlay" />
         <div className="phero-inner">
-          <div className="phero-label">Brunei Logistics Operating System</div>
-          <h1>Deliver More.<br />Manage Less.</h1>
-          <p className="phero-sub">
-            Manage deliveries, COD payouts, warehouse operations, runners and merchants from one intelligent platform built for Brunei.
-          </p>
-          <div className="phero-cta">
-            <a href="#contact" className="pbtn pbtn-gold">Book a Demo <span>→</span></a>
-            <a href="#dashboard" className="pbtn pbtn-ghost">View Dashboard</a>
+
+          {/* Left: text */}
+          <div className="phero-text rv">
+            <div className="phero-badge">
+              <span className="phero-badge-dot" />
+              AI-Powered Operations
+            </div>
+            <h1>
+              AI Logistics<br />
+              Platform &amp;<br />
+              <span className="phero-accent">Last-Mile<br />Delivery</span><br />
+              in Brunei
+            </h1>
+            <p className="phero-sub">
+              TOMUPRO is an AI-powered logistics platform in Brunei that provides last-mile delivery,
+              fulfillment, courier services, and delivery management systems for businesses.
+            </p>
+            <div className="phero-cta">
+              <a href="#contact" className="pbtn pbtn-dark">Start Free →</a>
+              <a href="#dashboard" className="pbtn pbtn-outline-dark">▶ Watch Demo</a>
+            </div>
+            <div className="phero-trust">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              No credit card required &nbsp;·&nbsp;
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+              &nbsp; 5 min setup &nbsp;·&nbsp;
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              &nbsp; Free forever plan
+            </div>
           </div>
-          <div className="phero-mobile-img" />
-          <div className="phero-metrics">
-            <div className="gcard"><div className="n">120+</div><div className="l">Active Merchants</div></div>
-            <div className="gcard"><div className="n">500,000+</div><div className="l">Parcels Managed</div></div>
-            <div className="gcard"><div className="n">4</div><div className="l">Districts Covered</div></div>
-            <div className="gcard"><div className="n">Weekly</div><div className="l">COD Payouts</div></div>
+
+          {/* Right: dashboard mockup */}
+          <div className="phero-visual rv">
+            <div className="dash-mock">
+              <div className="dash-bar">
+                <div className="dash-dots"><span /><span /><span /></div>
+                <div className="dash-url">app.tomu.my/dashboard</div>
+                <div className="dash-notif">
+                  <span className="notif-dot" />Order Delivered
+                </div>
+              </div>
+              <div className="dash-body">
+                <div className="dash-stats">
+                  <div className="dstat">
+                    <div className="dstat-label">Total Orders</div>
+                    <div className="dstat-val">2,847</div>
+                    <div className="dstat-badge green">+12.5%</div>
+                  </div>
+                  <div className="dstat">
+                    <div className="dstat-label">In Transit</div>
+                    <div className="dstat-val">48</div>
+                    <div className="dstat-badge blue">+3 today</div>
+                  </div>
+                  <div className="dstat">
+                    <div className="dstat-label">Revenue</div>
+                    <div className="dstat-val" style={{fontSize:"18px"}}>BND 84.2k</div>
+                    <div className="dstat-badge green">+8.3%</div>
+                  </div>
+                </div>
+                <div className="dash-chart-title">Weekly Performance</div>
+                <div className="dash-chart">
+                  {[45,55,40,65,50,75,60,88,72,95].map((h, i) => (
+                    <div key={i} className={`dash-bar-item${i >= 7 ? " hi" : i === 5 ? " md" : ""}`} style={{height:`${h}%`}} />
+                  ))}
+                </div>
+                <div className="dash-orders">
+                  <div className="do-row">
+                    <div className="do-icon" style={{background:"#dcfce7"}}>📦</div>
+                    <div className="do-info"><div className="do-id">ORD-2847</div><div className="do-loc">BSB → Tutong</div></div>
+                    <div className="do-status delivered">Delivered</div>
+                  </div>
+                  <div className="do-row">
+                    <div className="do-icon" style={{background:"#dbeafe"}}>🚚</div>
+                    <div className="do-info"><div className="do-id">ORD-2846</div><div className="do-loc">Seria → KB</div></div>
+                    <div className="do-status transit">In Transit</div>
+                  </div>
+                  <div className="do-row">
+                    <div className="do-icon" style={{background:"#fef9c3"}}>💵</div>
+                    <div className="do-info"><div className="do-id">ORD-2845</div><div className="do-loc">COD · BND 18.50</div></div>
+                    <div className="do-status pending">Pending</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Floating cards */}
+            <div className="float-card fc-top">
+              <div className="fc-icon" style={{background:"#dcfce7"}}>✅</div>
+              <div><div className="fc-title">Order Delivered</div><div className="fc-sub">ORD-2847 · just now</div></div>
+            </div>
+            <div className="float-card fc-bottom">
+              <div className="fc-icon" style={{background:"#dbeafe"}}>🚚</div>
+              <div><div className="fc-title">12 Drivers Active</div><div className="fc-sub">All routes covered</div></div>
+            </div>
           </div>
         </div>
       </section>
+
+      {/* ===== STATS STRIP ===== */}
+      <div className="stats-strip">
+        <div className="stats-inner">
+          <div className="sstat rv">
+            <div className="sstat-icon">📦</div>
+            <div className="sstat-num">10,000<span>+</span></div>
+            <div className="sstat-label">Orders Processed</div>
+          </div>
+          <div className="sstat rv">
+            <div className="sstat-icon">👥</div>
+            <div className="sstat-num">50<span>+</span></div>
+            <div className="sstat-label">Active Teams</div>
+          </div>
+          <div className="sstat rv">
+            <div className="sstat-icon">📈</div>
+            <div className="sstat-num">99.9<span>%</span></div>
+            <div className="sstat-label">System Uptime</div>
+          </div>
+          <div className="sstat rv">
+            <div className="sstat-icon">🚚</div>
+            <div className="sstat-num">500k<span>+</span></div>
+            <div className="sstat-label">Deliveries Tracked</div>
+          </div>
+        </div>
+      </div>
 
       {/* ===== SERVICE 1: LAST MILE ===== */}
       <section id="services">
         <div className="wrap split rv">
           <div className="txt">
             <div className="eyebrow">Last-Mile Delivery</div>
-            <h2>From Small Parcels to Bulky Loads</h2>
+            <h2>From Small Parcels<br />to Bulky Loads</h2>
             <p>An economical delivery service for small, large, heavy and irregular-sized parcels — delivered by car, van or pick-up, up to 500&nbsp;kg, from just BND&nbsp;2.</p>
             <div className="svc-tags">
               <span className="svc-tag">Last-Mile Delivery</span>
@@ -120,38 +222,51 @@ export default function Landing() {
             </div>
             <a href="#contact" className="btn btn-line">Learn More</a>
           </div>
-          <div className="media">
+          <div className="media photo-card">
             <img src={`${ASSETS}/truck-last-mile.jpg`} alt="TOMUPRO last-mile delivery truck" />
+            <div className="photo-overlay">
+              <div className="photo-tag">Last-Mile · Brunei-wide</div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ===== SERVICE 2: MERCHANT CLOUD ===== */}
-      <section id="dashboard" style={{ background: "var(--soft)" }}>
+      <section id="dashboard" className="section-alt">
         <div className="wrap split rev rv">
-          <div className="screen">
+          <div className="screen screen-lg">
             <div className="screen-bar"><span /><span /><span /></div>
             <img src={`${ASSETS}/dashboard-merchant.jpg`} alt="TOMUPRO merchant dashboard" />
           </div>
           <div className="txt">
             <div className="eyebrow">Merchant Cloud System</div>
-            <h2>Track Every Delivery in One Place</h2>
-            <p>One-stop solution for merchants to manage orders, routes, pickups and drop-offs. See every shipment&rsquo;s live status from a single, simple dashboard.</p>
+            <h2>Track Every Delivery<br />in One Place</h2>
+            <p>One-stop solution for merchants to manage orders, routes, pickups and drop-offs. See every shipment's live status from a single, simple dashboard.</p>
+            <div className="check-list">
+              <div className="check-item"><span className="check-mark">✓</span> Real-time parcel tracking</div>
+              <div className="check-item"><span className="check-mark">✓</span> AI route optimization</div>
+              <div className="check-item"><span className="check-mark">✓</span> Driver &amp; fleet management</div>
+            </div>
             <Link to="/auth" className="btn btn-line">Merchant Login</Link>
           </div>
         </div>
       </section>
 
-      {/* ===== COD PAYOUT & FINANCE ===== */}
+      {/* ===== COD PAYOUT ===== */}
       <section>
         <div className="wrap split rv">
           <div className="txt">
             <div className="eyebrow">COD Payout &amp; Finance</div>
-            <h2>Cash on Delivery, Settled Weekly</h2>
-            <p>Collect cash on delivery and get paid straight to your bank account — every week. Track collections, reconciliation and payouts in one clear finance dashboard, with no manual matching.</p>
+            <h2>Cash on Delivery,<br />Settled Weekly</h2>
+            <p>Collect cash on delivery and get paid straight to your bank account — every week. Track collections, reconciliation and payouts with no manual matching.</p>
+            <div className="check-list">
+              <div className="check-item"><span className="check-mark">✓</span> Automated reconciliation</div>
+              <div className="check-item"><span className="check-mark">✓</span> Weekly bank transfers</div>
+              <div className="check-item"><span className="check-mark">✓</span> Full payment reports</div>
+            </div>
             <a href="#contact" className="btn btn-line">Learn More</a>
           </div>
-          <div className="screen">
+          <div className="screen screen-lg">
             <div className="screen-bar"><span /><span /><span /></div>
             <img src={`${ASSETS}/dashboard-cod.jpg`} alt="TOMUPRO COD payout and finance dashboard" />
           </div>
@@ -159,27 +274,73 @@ export default function Landing() {
       </section>
 
       {/* ===== FEATURES ===== */}
-      <section className="feat-sec">
+      <section className="feat-sec" id="features">
         <div className="wrap">
           <div className="feat-head rv">
+            <div className="eyebrow" style={{textAlign:"center"}}>Platform Features</div>
             <h2>Everything Your Business Needs</h2>
-            <p>Convenient, cost-effective shipping for individuals and small to medium businesses selling online and in-store.</p>
+            <p>One platform to manage your entire delivery operation — from dispatch to doorstep to payment.</p>
           </div>
-          <div className="feats">
-            <div className="feat rv">
-              <div className="ic"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 6h20l8 8v28H10z" /><path d="M30 6v8h8" /><path d="M16 24h16M16 30h16M16 36h10" /></svg></div>
-              <h3>Business Insights &amp; Reports</h3>
-              <p>A clear dashboard helps you understand your shipments and make better decisions.</p>
+          <div className="feats-v2">
+            <div className="feat-card rv">
+              <div className="feat-card-top" style={{background:"#1a2744"}}>
+                <div className="feat-card-icon">🗺️</div>
+              </div>
+              <div className="feat-card-body">
+                <div className="feat-card-tag">AI Routing</div>
+                <h3>Smart Route Optimization</h3>
+                <p>AI automatically plans the most efficient delivery routes. Reduce time on road, fuel costs, and driver fatigue every day.</p>
+              </div>
             </div>
-            <div className="feat rv">
-              <div className="ic"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 10v28M14 10v28M18 10v28M24 10v28M28 10v28M34 10v28M38 10v28" strokeLinecap="round" /></svg></div>
-              <h3>Real-Time Tracking</h3>
-              <p>Know exactly where your parcels are, with a status update for every delivery.</p>
+            <div className="feat-card rv">
+              <div className="feat-card-top" style={{background:"#0f4c35"}}>
+                <div className="feat-card-icon">📡</div>
+              </div>
+              <div className="feat-card-body">
+                <div className="feat-card-tag">Tracking</div>
+                <h3>Real-Time Parcel Tracking</h3>
+                <p>Live GPS tracking for every parcel. Your customers always know exactly where their order is at every step.</p>
+              </div>
             </div>
-            <div className="feat rv">
-              <div className="ic"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round"><rect x="6" y="9" width="36" height="24" rx="3" /><path d="M18 39h12M24 33v6" strokeLinecap="round" /></svg></div>
-              <h3>Manage It All in One Place</h3>
-              <p>Book pick-up and delivery from your PC or mobile — wherever you are.</p>
+            <div className="feat-card rv">
+              <div className="feat-card-top" style={{background:"#7c3a00"}}>
+                <div className="feat-card-icon">💵</div>
+              </div>
+              <div className="feat-card-body">
+                <div className="feat-card-tag">Payments</div>
+                <h3>COD Management</h3>
+                <p>Full cash-on-delivery support with automated reconciliation, payout tracking, and payment reports. Zero manual work.</p>
+              </div>
+            </div>
+            <div className="feat-card rv">
+              <div className="feat-card-top" style={{background:"#2d1b69"}}>
+                <div className="feat-card-icon">📊</div>
+              </div>
+              <div className="feat-card-body">
+                <div className="feat-card-tag">Analytics</div>
+                <h3>Business Insights &amp; Reports</h3>
+                <p>Deep insights into delivery rates, team performance, revenue, and operational efficiency — all in one clear dashboard.</p>
+              </div>
+            </div>
+            <div className="feat-card rv">
+              <div className="feat-card-top" style={{background:"#0a3d4d"}}>
+                <div className="feat-card-icon">👥</div>
+              </div>
+              <div className="feat-card-body">
+                <div className="feat-card-tag">Fleet</div>
+                <h3>Driver &amp; Fleet Management</h3>
+                <p>Assign jobs, monitor real-time location, and manage your entire driver team's performance from one dashboard.</p>
+              </div>
+            </div>
+            <div className="feat-card rv">
+              <div className="feat-card-top" style={{background:"#3d1a0a"}}>
+                <div className="feat-card-icon">🏭</div>
+              </div>
+              <div className="feat-card-body">
+                <div className="feat-card-tag">Fulfillment</div>
+                <h3>Warehouse &amp; Inventory</h3>
+                <p>End-to-end order fulfillment and inventory management for eCommerce and retail businesses across Brunei.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -190,9 +351,9 @@ export default function Landing() {
         <div className="full-bg" />
         <div className="full-overlay" />
         <div className="full-inner wrap rv">
-          <h2>Fulfillment Center</h2>
-          <p>Pick &amp; pack, warehousing and last-mile delivery.</p>
-          <p className="sm">Get your own warehouse space in Brunei.</p>
+          <div className="eyebrow" style={{color:"#D4AF37",textAlign:"center"}}>Fulfillment Center</div>
+          <h2>Warehouse, Pick &amp; Pack,<br />Last-Mile Delivery</h2>
+          <p>Get your own warehouse space in Brunei. We handle storage, picking, packing and final delivery.</p>
         </div>
         <div className="track-wrap rv">
           <h3>Track Your Parcel</h3>
@@ -253,7 +414,7 @@ export default function Landing() {
               <div>
                 <div className="nm">Little Daisy Boutique</div>
                 <div className="ro">Fashion Retailer, Brunei</div>
-                <div className="qt">“TOMUPRO has transformed our delivery operations. Our customers love the fast and reliable service, and we love how easy it is to manage everything in one place.”</div>
+                <div className="qt">"TOMUPRO has transformed our delivery operations. Our customers love the fast and reliable service, and we love how easy it is to manage everything in one place."</div>
                 <div className="pn">Nurul Afiqah</div>
                 <div className="pr">Founder</div>
               </div>
@@ -261,7 +422,20 @@ export default function Landing() {
           </div>
           <div className="rv">
             <div className="success-photo"><img src={`${ASSETS}/merchant-photo.jpg`} alt="Little Daisy Boutique founder" /></div>
-            <div className="quote-card"><span className="qm">“</span><p>The real-time tracking and dedicated support from TOMUPRO give us peace of mind and help us focus on growing our business.</p></div>
+            <div className="quote-card"><span className="qm">"</span><p>The real-time tracking and dedicated support from TOMUPRO give us peace of mind and help us focus on growing our business.</p></div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== CTA BANNER ===== */}
+      <section className="cta-banner">
+        <div className="wrap cta-inner rv">
+          <div className="eyebrow" style={{color:"#D4AF37",textAlign:"center"}}>Get Started</div>
+          <h2>Ready to Scale Your<br /><span className="cta-accent">Deliveries?</span></h2>
+          <p>Join businesses across Brunei who trust TOMUPRO to power their logistics. Start free, scale as you grow.</p>
+          <div className="cta-btns">
+            <a href="#contact" className="pbtn pbtn-gold">Book a Demo →</a>
+            <Link to="/auth" className="pbtn pbtn-ghost-light">Merchant Login</Link>
           </div>
         </div>
       </section>
@@ -300,7 +474,10 @@ export default function Landing() {
       <footer>
         <div className="wrap foot">
           <div className="fbrand">
-            <div className="fbrand-top"><img className="fgriffin" src={`${ASSETS}/logo-griffin.png`} alt="TOMUPRO" /><b>TOMU<span>PRO</span></b></div>
+            <div className="fbrand-top">
+              <img className="fgriffin" src={`${ASSETS}/logo-griffin.png`} alt="TOMUPRO" />
+              <b>TOMU<span>PRO</span></b>
+            </div>
             <p>A one-stop solution for online retailers offering their products to Brunei — and vice versa.</p>
           </div>
           <div>
@@ -319,12 +496,16 @@ export default function Landing() {
             </div>
           </div>
           <div>
-            <h5>Search</h5>
-            <div className="fsearch"><input type="text" placeholder="Search…" /><button>⌕</button></div>
+            <h5>Quick Links</h5>
+            <div className="frow2"><span className="i">→</span><a href="#services">Services</a></div>
+            <div className="frow2"><span className="i">→</span><a href="#features">Features</a></div>
+            <div className="frow2"><span className="i">→</span><a href="#track">Track Parcel</a></div>
+            <div className="frow2"><span className="i">→</span><a href="#contact">Contact</a></div>
           </div>
         </div>
         <div className="foot-bottom">© 2026 <b>TOMUPRO</b> Brunei. All rights reserved. · Powered by TOMUPRO</div>
       </footer>
+
     </div>
   );
 }
