@@ -47,6 +47,13 @@ export const useAuth = () => {
   return context;
 };
 
+const clearSupabaseAuthStorage = () => {
+  Object.keys(localStorage)
+    .filter((key) => key === 'supabase.auth.token' || /^sb-.+-auth-token$/.test(key))
+    .forEach((key) => localStorage.removeItem(key));
+  sessionStorage.clear();
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -70,10 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Clear stale tokens function - used when session refresh fails
   const clearAuthState = useCallback(() => {
-    const projectId = 'dtcchduronwsyunyakxj';
-    localStorage.removeItem(`sb-${projectId}-auth-token`);
-    localStorage.removeItem('supabase.auth.token');
-    sessionStorage.clear();
+    clearSupabaseAuthStorage();
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -94,11 +98,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Sign out error during account disable:', error);
     }
     
-    // Clear all Supabase auth tokens
-    const projectId = 'dtcchduronwsyunyakxj';
-    localStorage.removeItem(`sb-${projectId}-auth-token`);
-    localStorage.removeItem('supabase.auth.token');
-    sessionStorage.clear();
+    // Clear all Supabase auth tokens, including tokens from older project refs.
+    clearSupabaseAuthStorage();
     
     // Clear local state
     setUser(null);
@@ -471,11 +472,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Sign out error:', error);
     }
     
-    // Always clear local state regardless of API response
-    const projectId = 'dtcchduronwsyunyakxj';
-    localStorage.removeItem(`sb-${projectId}-auth-token`);
-    localStorage.removeItem('supabase.auth.token');
-    sessionStorage.clear();
+    // Always clear local state regardless of API response.
+    clearSupabaseAuthStorage();
     
     // Clear local state
     setUser(null);
