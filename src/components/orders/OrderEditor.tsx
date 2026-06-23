@@ -392,7 +392,7 @@ function PasteTemplateView({
         sku_label: item.matchedProductName || item.skuNameRaw,
         qty: item.qty,
         price: item.price,
-        line_total: item.qty * item.price,
+        line_total: item.price,
         notes: item.lineNotes,
         isNew: true,
       })));
