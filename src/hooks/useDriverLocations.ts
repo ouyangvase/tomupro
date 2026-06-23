@@ -94,7 +94,7 @@ export const useDriverLatestLocations = (driverIds?: string[]) => {
       isLoading: firebaseResult.isLoading,
       isError: false,
       error: null,
-      refetch: async () => ({ data: adaptedData, error: null, isError: false, isLoading: false, isSuccess: true, failureCount: 0, failureReason: null, errorUpdateCount: 0, status: 'success' as const, fetchStatus: 'idle' as const, isFetched: true, isFetchedAfterMount: true, isFetching: false, isInitialLoading: false, isPaused: false, isPlaceholderData: false, isPending: false, isRefetchError: false, isRefetching: false, isStale: false, isSuccess: true, dataUpdatedAt: Date.now(), errorUpdatedAt: 0 }),
+      refetch: async () => ({ data: adaptedData, error: null, isError: false, isLoading: false, failureCount: 0, failureReason: null, errorUpdateCount: 0, status: 'success' as const, fetchStatus: 'idle' as const, isFetched: true, isFetchedAfterMount: true, isFetching: false, isInitialLoading: false, isPaused: false, isPlaceholderData: false, isPending: false, isRefetchError: false, isRefetching: false, isStale: false, isSuccess: true, dataUpdatedAt: Date.now(), errorUpdatedAt: 0 }),
     } as unknown as ReturnType<typeof useQuery<LatestDriverLocation[]>>;
   }
 
