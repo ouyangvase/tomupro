@@ -168,7 +168,7 @@ export default function IntegrationSettings() {
             <Input
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://vegwxtqfrltghvtgocqd.supabase.co/functions/v1/webhook"
+              placeholder="https://dtcchduronwsyunyakxj.supabase.co/functions/v1/webhook"
               type="url"
             />
           </div>

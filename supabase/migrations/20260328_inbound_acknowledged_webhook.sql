@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 INSERT INTO integration_settings (integration_name, webhook_url, webhook_enabled, shared_secret)
 VALUES (
   'pulsecontrol',
-  'https://vegwxtqfrltghvtgocqd.supabase.co/functions/v1/tomupro-webhook',
+  'https://dtcchduronwsyunyakxj.supabase.co/functions/v1/tomupro-webhook',
   true,
   'sk_live_12345'
 )
