@@ -1,0 +1,1 @@
+import{e as s,s as t}from"./index-CcYjDdHK.js";function a(e){return s({queryKey:["products","by-owner",e],queryFn:async()=>{if(!e)return[];const{data:u,error:r}=await t.from("products").select("id, sku_code, sku_name").eq("owner_user_id",e).eq("is_active",!0).order("sku_code",{ascending:!0});if(r)throw r;return u},enabled:!!e})}function o(e){return a(e)}export{a,o as u};
