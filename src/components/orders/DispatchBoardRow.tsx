@@ -6,6 +6,7 @@ import { Phone, CalendarClock } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
+import { getOrderDisplayAmount } from '@/lib/orderAmount';
 import { format } from 'date-fns';
 
 interface DispatchBoardRowProps {
@@ -121,7 +122,7 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
           {/* Amount + Payment */}
           <div className="w-[110px] shrink-0 text-right">
             <span className="text-sm font-bold tabular-nums text-foreground">
-              {formatBND(order.total_amount)}
+              {formatBND(getOrderDisplayAmount(order))}
             </span>
             <div className="mt-0.5">
               <span className="text-[10px] text-muted-foreground font-medium">{order.payment_method}</span>

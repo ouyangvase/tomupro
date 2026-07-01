@@ -49,6 +49,7 @@ import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { useReadyOrderStats } from '@/hooks/useReadyOrderStats';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
+import { getOrderDisplayAmount } from '@/lib/orderAmount';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
@@ -459,7 +460,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                     primaryFields={[
                       { label: 'Imported', value: format(new Date(order.created_at), 'MMM dd, HH:mm') },
                       { label: 'Items', value: displayText },
-                      { label: 'Amount', value: formatBND(order.total_amount) },
+                      { label: 'Amount', value: formatBND(getOrderDisplayAmount(order)) },
                       { label: 'Runner', value: order.runner?.display_name || 'Unassigned' },
                     ]}
                     expandedFields={[
