@@ -61,8 +61,8 @@ export function useMySharedAccess() {
           products: share.scope_products,
           stock: share.scope_stock_balance,
           inbound: share.scope_inbound,
-          delivered_orders: share.scope_delivered_orders ?? false,
-          claims: share.scope_claims ?? false,
+          delivered_orders: (share as any).scope_delivered_orders ?? false,
+          claims: (share as any).scope_claims ?? false,
         },
       })) as SharedAccessInfo[];
     },

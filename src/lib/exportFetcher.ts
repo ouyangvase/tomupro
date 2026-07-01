@@ -32,7 +32,7 @@ export class ExportError extends Error {
     this.name = 'ExportError';
     this.phase = phase;
     this.detail = detail;
-    if (cause) this.cause = cause;
+    if (cause) (this as unknown as { cause: unknown }).cause = cause;
   }
 }
 
