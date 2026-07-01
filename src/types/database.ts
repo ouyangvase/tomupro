@@ -112,6 +112,7 @@ export interface Order {
   cancelled_by: string | null;
   cancelled_at: string | null;
   delivered_at: string | null;
+  runner_assigned_at: string | null;
   // Runner review fields
   runner_review_status: string | null;
   runner_final_outcome: string | null;

@@ -225,10 +225,10 @@ export default function RunnerInbox() {
           const term = `%${serverSearch.trim()}%`;
           query = query.or(`order_code.ilike.${term},customer_name.ilike.${term},area.ilike.${term},phone.ilike.${term},address.ilike.${term}`);
         }
-        if (filters.runnerStatus) query = query.eq('runner_status', filters.runnerStatus);
+        if (filters.runnerStatus) query = query.eq('runner_status', filters.runnerStatus as any);
         if (filters.area && filters.area !== 'all') query = query.eq('area', filters.area);
         if (filters.driverId && filters.driverId !== 'all') query = query.eq('driver_id', filters.driverId);
-        if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
+        if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus as any);
 
         const { data: allOrders } = await query.limit(2000);
         if (allOrders) {
