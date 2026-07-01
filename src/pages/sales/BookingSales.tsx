@@ -32,6 +32,7 @@ import { exportOrderLines } from '@/lib/csv';
 import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
+import { getOrderDisplayAmount } from '@/lib/orderAmount';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import type { Order } from '@/types/database';
@@ -275,7 +276,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                     statusBadge={<StatusBadge status={order.runner_status} type="runner" />}
                     primaryFields={[
                       { label: 'Customer', value: order.customer_name || '-' },
-                      { label: 'Amount', value: formatBND(order.total_amount) },
+                      { label: 'Amount', value: formatBND(getOrderDisplayAmount(order)) },
                       ...(order.next_delivery_date ? [{ label: 'Ready on', value: format(new Date(order.next_delivery_date), 'MMM dd, yyyy') }] : []),
                       { label: 'Items', value: displayText },
                     ]}
