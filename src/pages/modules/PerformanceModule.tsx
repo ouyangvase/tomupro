@@ -9,6 +9,7 @@ const ManagerRankingBoard = lazy(() => import('@/pages/manager/ManagerRankingBoa
 const ManagerImpactBoard = lazy(() => import('@/pages/manager/ManagerImpactBoard'));
 const DriverRanking = lazy(() => import('@/pages/runner/DriverRanking'));
 const DriverRankingPage = lazy(() => import('@/pages/driver/DriverRankingPage'));
+const RunnerAuditLog = lazy(() => import('@/pages/runner/RunnerAuditLog'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -23,12 +24,14 @@ export default function PerformanceModule() {
 
   const getTabs = () => {
     if (role === 'driver') return [{ id: 'ranking', label: 'Ranking' }];
-    if (role === 'runner') return [{ id: 'driver-ranking', label: 'Driver Ranking' }];
+    if (role === 'runner') return [{ id: 'driver-ranking', label: 'Driver Ranking' }, { id: 'audit-log', label: 'Audit Trail' }];
+    if (role === 'runner_assistant') return [{ id: 'audit-log', label: 'Audit Trail' }];
     if (role === 'salesperson') return [{ id: 'leaderboard', label: 'Leaderboard' }];
     return [
       { id: 'leaderboard', label: 'Leaderboard' },
       { id: 'ranking', label: 'Ranking Board' },
       { id: 'impact', label: 'Impact Board' },
+      { id: 'audit-log', label: 'Audit Trail' },
     ];
   };
 
@@ -56,6 +59,7 @@ export default function PerformanceModule() {
             {activeTab === 'ranking' && (role === 'driver' ? <DriverRankingPage /> : <ManagerRankingBoard />)}
             {activeTab === 'impact' && <ManagerImpactBoard />}
             {activeTab === 'driver-ranking' && <DriverRanking />}
+            {activeTab === 'audit-log' && <RunnerAuditLog />}
           </div>
         </Suspense>
       </EmbeddedProvider>

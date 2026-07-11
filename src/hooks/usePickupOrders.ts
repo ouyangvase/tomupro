@@ -13,11 +13,12 @@ export type PickupOperationalStatus =
 
 interface CreatePickupOrderParams {
   customer_name: string;
-  phone: string;
-  address: string;
+  phone?: string;
+  address?: string;
+  area?: string;
   order_owner_id: string;
   payment_method: 'COD' | 'TRANSFER';
-  pickup_fee: number;
+  pickup_fee?: number;
   notes?: string;
   total_amount?: number;
 }
@@ -46,9 +47,9 @@ export function useCreatePickupOrder() {
           order_code: orderCode,
           order_date: new Date().toISOString().split('T')[0],
           customer_name: toUpperLatin(params.customer_name),
-          phone: params.phone,
-          address: toUpperLatin(params.address),
-          area: '',
+          phone: params.phone || null,
+          address: params.address ? toUpperLatin(params.address) : null,
+          area: params.area ? toUpperLatin(params.area) : '',
           payment_method: params.payment_method,
           total_amount: params.total_amount || 0,
           total_qty: 0,

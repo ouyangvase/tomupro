@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 import type { ClaimBatch, ClaimBatchStatus, Profile } from '@/types/database';
 
 interface ClaimBatchFilters {
@@ -137,11 +138,11 @@ export function useSubmitBulkClaim() {
 export function useApproveClaimBatch() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (batchId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Get batch items first
       const { data: batch, error: fetchError } = await supabase
@@ -217,11 +218,11 @@ export function useApproveClaimBatch() {
 export function useRejectClaimBatch() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ batchId, rejectionReason }: { batchId: string; rejectionReason?: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Get batch items first
       const { data: batch, error: fetchError } = await supabase
@@ -309,11 +310,11 @@ export function useAcknowledgeClaimBatch() {
 export function useRemoveOrderFromBatch() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ batchId, orderId }: { batchId: string; orderId: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // 1. Delete the batch item
       const { error: deleteItemError } = await supabase
@@ -446,7 +447,7 @@ export function useOrderBatchLookup(orderCode: string) {
       // Find the order by code
       const { data: orders } = await supabase
         .from('orders')
-        .select('id, order_code, customer_name, area, total_amount, reconciliation_status')
+        .select('id, order_code, customer_name, area, total_amount, reconciliation_status, runner_status, delivered_at')
         .ilike('order_code', orderCode.trim())
         .limit(1);
 
@@ -460,8 +461,15 @@ export function useOrderBatchLookup(orderCode: string) {
         .eq('order_id', order.id)
         .limit(1);
 
+      // Find claim record
+      const { data: claim } = await supabase
+        .from('claims')
+        .select('id, created_at')
+        .eq('order_id', order.id)
+        .limit(1);
+
       if (!item || item.length === 0) {
-        return { order, batch: null };
+        return { order, batch: null, claim: claim?.[0] || null };
       }
 
       // Fetch the batch
@@ -471,9 +479,177 @@ export function useOrderBatchLookup(orderCode: string) {
         .eq('id', item[0].batch_id)
         .single();
 
-      return { order, batch };
+      return { order, batch, claim: claim?.[0] || null };
     },
     enabled: !!orderCode && orderCode.trim().length >= 2,
     staleTime: 10000,
+  });
+}
+
+/**
+ * Run integrity check: find orders with inconsistent claim state.
+ */
+export function useClaimIntegrityCheck() {
+  return useQuery({
+    queryKey: ['claim-integrity-check'],
+    queryFn: async () => {
+      const issues: Array<{
+        order_id: string;
+        order_code: string;
+        customer_name: string;
+        runner_status: string;
+        reconciliation_status: string;
+        delivered_at: string | null;
+        batch_code: string | null;
+        batch_submitted_at: string | null;
+        batch_status: string | null;
+        has_claim: boolean;
+        has_batch_item: boolean;
+        issue_types: string[];
+      }> = [];
+
+      // 1. Orders in batches but not DELIVERED
+      const { data: notDelivered } = await supabase
+        .from('claim_batch_items')
+        .select('order_id, batch:claim_batches(batch_code, submitted_at, status)')
+        .not('order_id', 'is', null);
+
+      if (notDelivered) {
+        const orderIds = notDelivered.map(i => i.order_id);
+        if (orderIds.length > 0) {
+          const { data: orders } = await supabase
+            .from('orders')
+            .select('id, order_code, customer_name, runner_status, reconciliation_status, delivered_at')
+            .in('id', orderIds);
+
+          const batchMap = new Map(notDelivered.map((i: any) => [i.order_id, i.batch]));
+
+          for (const o of orders || []) {
+            const batch = batchMap.get(o.id) as any;
+            const issueTypes: string[] = [];
+
+            if (o.runner_status !== 'DELIVERED') issueTypes.push('NOT_DELIVERED');
+            if (!o.delivered_at) issueTypes.push('NULL_DELIVERED_AT');
+            if (o.delivered_at && batch?.submitted_at && new Date(batch.submitted_at) < new Date(o.delivered_at)) {
+              issueTypes.push('BATCH_BEFORE_DELIVERY');
+            }
+            if (o.reconciliation_status === 'NOT_CLAIMED') issueTypes.push('NOT_CLAIMED_BUT_IN_BATCH');
+
+            if (issueTypes.length > 0) {
+              issues.push({
+                order_id: o.id,
+                order_code: o.order_code,
+                customer_name: o.customer_name || '?',
+                runner_status: o.runner_status,
+                reconciliation_status: o.reconciliation_status,
+                delivered_at: o.delivered_at,
+                batch_code: batch?.batch_code || null,
+                batch_submitted_at: batch?.submitted_at || null,
+                batch_status: batch?.status || null,
+                has_claim: false, // will check below
+                has_batch_item: true,
+                issue_types: issueTypes,
+              });
+            }
+          }
+        }
+      }
+
+      // 2. Count orphan claims
+      const { count: orphanClaimCount } = await supabase
+        .from('claims')
+        .select('id', { count: 'exact', head: true });
+
+      const { count: batchItemCount } = await supabase
+        .from('claim_batch_items')
+        .select('id', { count: 'exact', head: true });
+
+      return {
+        issues,
+        orphanClaimEstimate: (orphanClaimCount || 0) - (batchItemCount || 0),
+        totalIssues: issues.length,
+      };
+    },
+    enabled: false, // Only run on demand
+  });
+}
+
+/**
+ * Repair a single order: remove from batch, delete claim, reset to NOT_CLAIMED.
+ */
+export function useRepairOrder() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      if (!user?.id) throw new Error('Not authenticated');
+
+      // Get order details
+      const { data: order } = await supabase
+        .from('orders')
+        .select('id, order_code, reconciliation_status')
+        .eq('id', orderId)
+        .single();
+
+      if (!order) throw new Error('Order not found');
+
+      // Find and remove batch item
+      const { data: batchItem } = await supabase
+        .from('claim_batch_items')
+        .select('id, batch_id')
+        .eq('order_id', orderId)
+        .limit(1);
+
+      let batchId: string | null = null;
+
+      if (batchItem && batchItem.length > 0) {
+        batchId = batchItem[0].batch_id;
+        // Delete batch item
+        await supabase
+          .from('claim_batch_items')
+          .delete()
+          .eq('order_id', orderId);
+      }
+
+      // Delete any claim records
+      await supabase
+        .from('claims')
+        .delete()
+        .eq('order_id', orderId);
+
+      // Reset order to NOT_CLAIMED
+      await supabase
+        .from('orders')
+        .update({ reconciliation_status: 'NOT_CLAIMED' })
+        .eq('id', orderId);
+
+      // Audit log
+      await supabase.from('audit_logs').insert({
+        actor_id: user.id,
+        action: 'ORDER_CLAIM_REPAIRED',
+        entity_type: 'order',
+        entity_id: orderId,
+        before_json: { reconciliation_status: order.reconciliation_status, had_batch_item: !!batchId },
+        after_json: { reconciliation_status: 'NOT_CLAIMED', batch_item_removed: !!batchId, claim_deleted: true },
+      });
+
+      return { orderId, orderCode: order.order_code, batchId };
+    },
+    onSuccess: (data) => {
+      invalidateOrderQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['claim-batch-details'] });
+      queryClient.invalidateQueries({ queryKey: ['order-batch-lookup'] });
+      queryClient.invalidateQueries({ queryKey: ['claim-integrity-check'] });
+      toast({
+        title: 'Order Repaired',
+        description: `${data.orderCode}: removed from batch, claim deleted, reset to NOT_CLAIMED.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Repair Failed', description: error.message });
+    },
   });
 }

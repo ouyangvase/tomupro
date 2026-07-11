@@ -72,7 +72,7 @@ export function useSalespersonActionRequiredStats() {
       } as ActionRequiredStats;
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 120000,
   });
 }
 
@@ -111,7 +111,7 @@ export function useRunnerActionRequiredStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 120000,
   });
 }
 
@@ -212,7 +212,7 @@ export function useManagerActionRequiredStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 120000,
   });
 }
 
@@ -304,6 +304,6 @@ export function useAdminActionRequiredStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 120000,
   });
 }

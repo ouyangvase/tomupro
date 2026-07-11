@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface DriverRanking {
   driver_id: string;
@@ -36,11 +37,12 @@ export function useRunnerDriverRanking(runnerId?: string) {
 
 // Fetch own ranking (driver view)
 export function useMyDriverRanking() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['my-driver-ranking'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+      if (!user?.id) return null;
       
       const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
       
@@ -59,12 +61,13 @@ export function useMyDriverRanking() {
 
 // Check if ranking is visible for driver
 export function useIsRankingVisible() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['ranking-visibility'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return false;
-      
+      if (!user?.id) return false;
+
       const { data, error } = await supabase
         .rpc('is_ranking_visible_for_driver', { p_driver_id: user.id });
       
@@ -101,6 +104,7 @@ export function useFeatureSetting(settingKey: string, scopeType: 'RUNNER' | 'GLO
 export function useToggleFeatureSetting() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (params: {
@@ -109,8 +113,7 @@ export function useToggleFeatureSetting() {
       scopeId?: string;
       value: boolean;
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Upsert the setting
       const { error } = await supabase
@@ -140,11 +143,12 @@ export function useToggleFeatureSetting() {
 
 // Get team ranking for driver (if visible)
 export function useTeamRankingForDriver() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['team-ranking-for-driver'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!user?.id) return [];
 
       // First check visibility
       const { data: isVisible } = await supabase

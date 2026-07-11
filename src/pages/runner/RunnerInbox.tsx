@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useBulkUpdateOrders } from '@/hooks/useOrders';
 import { useMarkDeliveredFast } from '@/hooks/useDeliveredOrders';
 import { RunnerDeliverConfirmDialog } from '@/components/runner/RunnerDeliverConfirmDialog';
+import { ReceiptConfirmDialog } from '@/components/runner/ReceiptConfirmDialog';
 import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useRunnerInboxStats } from '@/hooks/useRunnerInboxStats';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,6 +20,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
 import { FailedDeliveryDialog } from '@/components/runner/FailedDeliveryDialog';
 import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
+import { AssignToDriverDialog } from '@/components/runner/AssignToDriverDialog';
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import { exportRunnerOrderLines } from '@/lib/csv';
@@ -27,7 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
 import type { Order } from '@/types/database';
-import { Package, Truck, Loader2, DollarSign, Search, Download, Upload, Clock, Eye, ChevronLeft, ChevronRight, Phone, AlertTriangle, Calendar, CheckCircle } from 'lucide-react';
+import { Package, Truck, Loader2, DollarSign, Search, Download, Upload, Clock, Eye, ChevronLeft, ChevronRight, Phone, AlertTriangle, Calendar, CheckCircle, UserPlus, ImageIcon } from 'lucide-react';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { OrderFiltersPanel, type OrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
@@ -36,19 +38,26 @@ import { WhatsAppPhoneLinkCompact } from '@/components/orders/WhatsAppPhoneLink'
 import { format, startOfDay, subDays, startOfWeek, endOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 
 export default function RunnerInbox() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { data: myDrivers = [] } = useMyDrivers();
   const { data: validAreas = [] } = useValidAreas();
+
+  // Runner Assistant binding
+  const isAssistant = role === 'runner_assistant';
+  const { data: assistantBinding, isLoading: assistantLoading } = useMyAssistantBinding();
+  const effectiveRunnerId = isAssistant ? assistantBinding?.runner_id : user?.id;
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
   const [bulkClaimDialogOpen, setBulkClaimDialogOpen] = useState(false);
+  const [assignDriverDialogOpen, setAssignDriverDialogOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [serverSearch, setServerSearch] = useState('');
@@ -62,6 +71,8 @@ export default function RunnerInbox() {
 
   const [deliverConfirmOpen, setDeliverConfirmOpen] = useState(false);
   const [pendingDeliverId, setPendingDeliverId] = useState<string | null>(null);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
 
   const areaOptions = useMemo(() => validAreas.map(a => ({ label: a, value: a })), [validAreas]);
   const driverOptions = useMemo(() => myDrivers.map(d => ({ label: d.driver?.display_name || 'Unknown', value: d.driver_id })), [myDrivers]);
@@ -83,18 +94,20 @@ export default function RunnerInbox() {
   }, [datePreset]);
 
   const orderFilters = useMemo(() => ({
-    runnerId: user?.id,
+    runnerId: effectiveRunnerId,
     excludeDeliveredAndFailed: true as const,
     searchQuery: serverSearch || undefined,
     runnerStatus: filters.runnerStatus as any,
     areaFilter: filters.area,
     driverId: filters.driverId,
     reconciliationStatus: filters.reconciliationStatus as any,
+    paymentMethod: isReceiptOnlyAssistant ? 'TRANSFER' : filters.paymentMethod,
+    receiptStatus: filters.receiptStatus,
     sortField: 'runner_assigned_at',
     sortDirection: 'desc' as const,
     assignedDateFrom: assignedDateRange.from,
     assignedDateTo: assignedDateRange.to,
-  }), [user?.id, serverSearch, filters.runnerStatus, filters.area, filters.driverId, filters.reconciliationStatus, assignedDateRange.from, assignedDateRange.to]);
+  }), [effectiveRunnerId, serverSearch, filters.runnerStatus, filters.area, filters.driverId, filters.reconciliationStatus, filters.paymentMethod, filters.receiptStatus, assignedDateRange.from, assignedDateRange.to, isReceiptOnlyAssistant]);
 
   const { data: orders, isLoading, isFetching, pagination, setPage, refetch } = usePaginatedOrders(orderFilters, 50);
 
@@ -135,7 +148,19 @@ export default function RunnerInbox() {
   }, [selectedRows, orders]);
 
   const handleBulkTake = () => {
-    bulkUpdateOrders.mutate({ ids: selectedRows, updates: { runner_status: 'TAKEN' } });
+    const orderIds = [...selectedRows];
+    bulkUpdateOrders.mutate(
+      { ids: orderIds, updates: { runner_status: 'TAKEN' } },
+      {
+        onSuccess: () => {
+          import('@/hooks/useAuditLogs').then(({ logAudit }) => {
+            for (const id of orderIds) {
+              logAudit({ entity_type: 'order', entity_id: id, action: 'taken', after_json: { runner_status: 'TAKEN' } });
+            }
+          });
+        },
+      }
+    );
     setSelectedRows([]);
   };
 
@@ -173,6 +198,13 @@ export default function RunnerInbox() {
   };
 
   const handleSingleDeliver = (orderId: string) => {
+    // Check if this is a TRANSFER order that needs receipt confirmation first
+    const order = orders.find(o => o.id === orderId);
+    if (order?.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed') {
+      setReceiptOrder(order);
+      setReceiptDialogOpen(true);
+      return;
+    }
     setPendingDeliverId(orderId);
     setDeliverConfirmOpen(true);
   };
@@ -245,17 +277,49 @@ export default function RunnerInbox() {
     }
   };
 
+  // Runner Assistant: show loading or not-assigned state
+  if (isAssistant && assistantLoading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[300px]">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (isAssistant && !assistantBinding) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center min-h-[300px] text-center px-4 space-y-3">
+          <Package className="h-12 w-12 text-muted-foreground/40" />
+          <h2 className="text-lg font-semibold">Not Assigned</h2>
+          <p className="text-sm text-muted-foreground max-w-md">
+            You are not assigned to any runner yet. Please contact your administrator to set up your runner assignment.
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // Permission helpers for assistant
+  const canDeliver = !isAssistant || !!assistantBinding?.can_deliver;
+  const canConfirmReceipt = !isAssistant || !!assistantBinding?.can_confirm_receipt;
+  // Scenario flags for the 3 permission situations
+  const hasNoDeliveryAccess = isAssistant && !assistantBinding?.can_deliver;
+  const isReceiptOnlyAssistant = isAssistant && !!assistantBinding?.can_confirm_receipt && !assistantBinding?.can_deliver;
+
   return (
     <AppLayout>
       <div className="space-y-4 pb-24 md:pb-4">
         {/* Page Hero */}
         <PageHero
           icon={<Package className="h-6 w-6 text-primary" />}
-          title="Runner Inbox"
-          subtitle="Manage your assigned deliveries"
+          title={hasNoDeliveryAccess ? "Receipt Inbox" : "Runner Inbox"}
+          subtitle={hasNoDeliveryAccess ? "Confirm transfer receipts for your runner" : "Manage your assigned deliveries"}
           image={capybaraRunner}
           imageAlt="Runner Capybara"
-          actions={
+          actions={!hasNoDeliveryAccess ? (
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)} className="rounded-full">
                 <Upload className="h-4 w-4 mr-1" /> Import
@@ -267,23 +331,35 @@ export default function RunnerInbox() {
                 Refresh
               </Button>
             </div>
-          }
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="rounded-full">
+              Refresh
+            </Button>
+          )}
         />
 
         {/* Compact Stats */}
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: 'Active', value: totalActive, color: 'text-foreground' },
-            { label: 'Assigned', value: assignedCount, color: 'text-[hsl(var(--status-success))]' },
-            { label: 'Taken', value: takenCount, color: 'text-primary' },
-            { label: 'No Driver', value: noDriverCount, color: 'text-[hsl(var(--status-warning))]' },
-          ].map(s => (
-            <Card key={s.label} className="p-2.5 text-center">
-              <p className={cn("text-lg font-bold tabular-nums", s.color)}>{s.value}</p>
-              <p className="text-[10px] text-muted-foreground font-medium">{s.label}</p>
-            </Card>
-          ))}
-        </div>
+        {!hasNoDeliveryAccess && (
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: 'Active', value: totalActive, color: 'text-foreground' },
+              { label: 'Assigned', value: assignedCount, color: 'text-[hsl(var(--status-success))]' },
+              { label: 'Taken', value: takenCount, color: 'text-primary' },
+              { label: 'No Driver', value: noDriverCount, color: 'text-[hsl(var(--status-warning))]' },
+            ].map(s => (
+              <Card key={s.label} className="p-2.5 text-center">
+                <p className={cn("text-lg font-bold tabular-nums", s.color)}>{s.value}</p>
+                <p className="text-[10px] text-muted-foreground font-medium">{s.label}</p>
+              </Card>
+            ))}
+          </div>
+        )}
+        {hasNoDeliveryAccess && (
+          <Card className="p-3 text-center">
+            <p className="text-lg font-bold tabular-nums">{pagination.totalCount}</p>
+            <p className="text-[10px] text-muted-foreground font-medium">Transfer Orders</p>
+          </Card>
+        )}
 
         {/* Search */}
         <div className="relative">
@@ -297,42 +373,46 @@ export default function RunnerInbox() {
         </div>
 
         {/* Filters */}
-        <OrderFiltersPanel
-          filters={filters}
-          onFiltersChange={setFilters}
-          areaOptions={areaOptions}
-          driverOptions={driverOptions}
-          showDriverFilter
-          showRunnerStatus
-          showDriverStatus={false}
-          showOrderStatus={false}
-          showReconciliationStatus
-        />
+        {!hasNoDeliveryAccess && (
+          <OrderFiltersPanel
+            filters={filters}
+            onFiltersChange={setFilters}
+            areaOptions={areaOptions}
+            driverOptions={driverOptions}
+            showDriverFilter
+            showRunnerStatus
+            showDriverStatus={false}
+            showOrderStatus={false}
+            showReconciliationStatus
+          />
+        )}
 
         {/* Assigned date quick filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-xs text-muted-foreground font-medium shrink-0">Assigned:</span>
-          {([
-            { id: 'all', label: 'All' },
-            { id: 'today', label: 'Today' },
-            { id: 'yesterday', label: 'Yesterday' },
-            { id: 'this_week', label: 'This Week' },
-          ] as const).map(p => (
-            <Button
-              key={p.id}
-              size="sm"
-              variant={datePreset === p.id ? 'default' : 'outline'}
-              onClick={() => setDatePreset(p.id)}
-              className={cn('rounded-full h-7 text-xs px-3', datePreset === p.id && 'shadow-sm')}
-            >
-              {p.label}
-            </Button>
-          ))}
-        </div>
+        {!hasNoDeliveryAccess && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-xs text-muted-foreground font-medium shrink-0">Assigned:</span>
+            {([
+              { id: 'all', label: 'All' },
+              { id: 'today', label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: 'this_week', label: 'This Week' },
+            ] as const).map(p => (
+              <Button
+                key={p.id}
+                size="sm"
+                variant={datePreset === p.id ? 'default' : 'outline'}
+                onClick={() => setDatePreset(p.id)}
+                className={cn('rounded-full h-7 text-xs px-3', datePreset === p.id && 'shadow-sm')}
+              >
+                {p.label}
+              </Button>
+            ))}
+          </div>
+        )}
 
         {/* Desktop Bulk Actions */}
-        {!isMobile && selectedRows.length > 0 && (
+        {!isMobile && !hasNoDeliveryAccess && selectedRows.length > 0 && (
           <Card className="p-3 border-primary/30 bg-primary/5 rounded-xl">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-sm font-bold text-primary">
@@ -341,6 +421,9 @@ export default function RunnerInbox() {
               <div className="flex items-center gap-2 flex-wrap">
                 <Button size="sm" variant="secondary" onClick={handleBulkTake} className="rounded-full">
                   <Truck className="h-4 w-4 mr-1" /> Take {selectedRows.length} Jobs
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setAssignDriverDialogOpen(true)} className="rounded-full">
+                  <UserPlus className="h-4 w-4 mr-1" /> Assign Driver
                 </Button>
                 {canBulkClaim && (
                   <Button size="sm" variant="secondary" onClick={() => setBulkClaimDialogOpen(true)} disabled={submitBulkClaim.isPending} className="rounded-full">
@@ -391,7 +474,10 @@ export default function RunnerInbox() {
                 onDeliver={() => handleSingleDeliver(order.id)}
                 onReject={() => { setSelectedOrder(order); setFailedDialogOpen(true); }}
                 onView={() => handleRowClick(order)}
+                onViewReceipt={() => { setReceiptOrder(order); setReceiptDialogOpen(true); }}
                 isMobile={isMobile}
+                canDeliver={canDeliver}
+                canConfirmReceipt={canConfirmReceipt}
               />
             ))}
           </div>
@@ -417,10 +503,13 @@ export default function RunnerInbox() {
       </div>
 
       {/* Mobile Bulk Actions Bar */}
-      {isMobile && selectedRows.length > 0 && (
+      {isMobile && !hasNoDeliveryAccess && selectedRows.length > 0 && (
         <MobileBulkActionsBar selectedCount={selectedRows.length} onClearSelection={() => setSelectedRows([])}>
           <Button size="sm" variant="secondary" onClick={handleBulkTake} className="rounded-full flex-1">
             <Truck className="h-4 w-4 mr-1" /> Take
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setAssignDriverDialogOpen(true)} className="rounded-full flex-1">
+            <UserPlus className="h-4 w-4 mr-1" /> Assign Driver
           </Button>
           <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting} className="rounded-full">
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -446,6 +535,26 @@ export default function RunnerInbox() {
         count={1}
         onConfirm={confirmDeliver}
         isLoading={markDelivered.isPending}
+      />
+      <ReceiptConfirmDialog
+        open={receiptDialogOpen}
+        onOpenChange={setReceiptDialogOpen}
+        order={receiptOrder}
+        readOnly={!canConfirmReceipt}
+        onConfirmed={() => {
+          // After receipt is confirmed, auto-open deliver dialog only if user has delivery access
+          if (receiptOrder && canDeliver) {
+            setPendingDeliverId(receiptOrder.id);
+            setDeliverConfirmOpen(true);
+          }
+          setReceiptOrder(null);
+        }}
+      />
+      <AssignToDriverDialog
+        open={assignDriverDialogOpen}
+        onOpenChange={setAssignDriverDialogOpen}
+        orderIds={selectedRows}
+        onSuccess={() => setSelectedRows([])}
       />
     </AppLayout>
   );
@@ -475,16 +584,23 @@ interface RunnerOrderCardProps {
   onDeliver: () => void;
   onReject: () => void;
   onView: () => void;
+  onViewReceipt?: () => void;
   isMobile: boolean;
+  canDeliver: boolean;
+  canConfirmReceipt: boolean;
 }
 
-function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, isMobile }: RunnerOrderCardProps) {
+function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, onViewReceipt, isMobile, canDeliver, canConfirmReceipt }: RunnerOrderCardProps) {
+  const isReceiptBlocked = order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed';
+
+  const isMobileRejected = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
 
   if (isMobile) {
     return (
       <Card className={cn(
         'overflow-hidden transition-all',
-        isSelected && 'ring-2 ring-primary/30 border-primary/20'
+        isSelected && 'ring-2 ring-primary/30 border-primary/20',
+        isMobileRejected && 'border-red-300 dark:border-red-800/60 bg-red-50/30 dark:bg-red-950/10'
       )}>
         <div className="p-3 space-y-2.5">
           {/* Row 1: Checkbox + Order Ref + Status */}
@@ -513,9 +629,18 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
           </div>
 
           {/* Row 3: Amount + Payment + Assigned date */}
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex items-center gap-2 text-xs flex-wrap">
             <span className="font-bold tabular-nums text-foreground text-sm">{formatBND(order.total_amount)}</span>
-            <Badge variant="outline" className="text-[9px] px-1.5 py-0">{order.payment_method}</Badge>
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{order.payment_method}</Badge>
+            {order.payment_method === 'TRANSFER' && (
+              <Badge variant="outline" className={`text-xs px-2.5 py-0.5 font-semibold ${
+                order.receipt_status === 'confirmed' ? 'bg-green-500/15 text-green-700 border-green-500/30' :
+                order.receipt_status === 'rejected' ? 'bg-red-500/15 text-red-700 border-red-500/30' :
+                'bg-yellow-500/15 text-yellow-700 border-yellow-500/30'
+              }`}>
+                {order.receipt_status === 'confirmed' ? 'Receipt Confirmed' : order.receipt_status === 'rejected' ? 'Receipt Rejected' : 'Receipt Pending'}
+              </Badge>
+            )}
             <span className="text-muted-foreground ml-auto flex items-center gap-1">
               <Clock className="h-3 w-3" />
               {order.runner_assigned_at
@@ -525,15 +650,20 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
           </div>
 
           {/* Row 4: Actions - full width */}
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-2 pt-1 flex-wrap">
             <StatusBadgeInline status={order.runner_status} />
-            {(order.runner_status === 'ASSIGNED' || order.runner_status === 'TAKEN') && (
+            {canDeliver && (order.runner_status === 'ASSIGNED' || order.runner_status === 'TAKEN') && (
               <>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={(e) => { e.stopPropagation(); onDeliver(); }}
-                  className="rounded-full h-9 px-3 border-primary/40 text-primary hover:bg-primary/10"
+                  disabled={isReceiptBlocked}
+                  className={cn("rounded-full h-9 px-3", isReceiptBlocked
+                    ? "opacity-50 cursor-not-allowed"
+                    : "border-primary/40 text-primary hover:bg-primary/10"
+                  )}
+                  title={isReceiptBlocked ? "Receipt must be confirmed before delivery" : undefined}
                 >
                   <CheckCircle className="h-4 w-4 mr-1" /> Delivered
                 </Button>
@@ -546,6 +676,16 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
                   <AlertTriangle className="h-4 w-4 mr-1" /> Reject
                 </Button>
               </>
+            )}
+            {order.payment_method === 'TRANSFER' && order.receipt_url && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => { e.stopPropagation(); onViewReceipt?.(); }}
+                className="rounded-full h-9 px-3"
+              >
+                <ImageIcon className="h-4 w-4 mr-1" /> Receipt
+              </Button>
             )}
             <Button
               size="sm"
@@ -562,11 +702,13 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
   }
 
   // Desktop row
+  const isRejectedReceipt = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
   return (
     <Card
       className={cn(
         'cursor-pointer hover:shadow-sm hover:border-primary/15 transition-all',
-        isSelected && 'ring-2 ring-primary/20 border-primary/20 bg-primary/[0.02]'
+        isSelected && 'ring-2 ring-primary/20 border-primary/20 bg-primary/[0.02]',
+        isRejectedReceipt && 'border-red-300 dark:border-red-800/60 bg-red-50/30 dark:bg-red-950/10'
       )}
       onClick={onView}
     >
@@ -600,9 +742,18 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
         </div>
 
         {/* Amount */}
-        <div className="w-[90px] shrink-0 text-right">
+        <div className="w-[120px] shrink-0 text-right">
           <span className="text-sm font-bold tabular-nums">{formatBND(order.total_amount)}</span>
           <div className="mt-0.5 text-[10px] text-muted-foreground">{order.payment_method}</div>
+          {order.payment_method === 'TRANSFER' && (
+            <Badge variant="outline" className={`mt-1 text-[11px] px-2 py-0.5 font-semibold ${
+              order.receipt_status === 'confirmed' ? 'bg-green-500/15 text-green-700 border-green-500/30' :
+              order.receipt_status === 'rejected' ? 'bg-red-500/15 text-red-700 border-red-500/30' :
+              'bg-yellow-500/15 text-yellow-700 border-yellow-500/30'
+            }`}>
+              {order.receipt_status === 'confirmed' ? 'Receipt OK' : order.receipt_status === 'rejected' ? 'Receipt Rejected' : 'Receipt Pending'}
+            </Badge>
+          )}
         </div>
 
         {/* Status */}
@@ -623,16 +774,31 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
         </div>
 
         {/* Actions */}
-        <div className="w-[220px] shrink-0 flex items-center gap-1.5 justify-end" onClick={e => e.stopPropagation()}>
-          {(order.runner_status === 'ASSIGNED' || order.runner_status === 'TAKEN') && (
+        <div className="w-[280px] shrink-0 flex items-center gap-1.5 justify-end flex-wrap" onClick={e => e.stopPropagation()}>
+          {canDeliver && (order.runner_status === 'ASSIGNED' || order.runner_status === 'TAKEN') && (
             <>
-              <Button size="sm" variant="outline" onClick={onDeliver} className="rounded-full h-8 text-xs px-2.5 border-primary/40 text-primary hover:bg-primary/10">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onDeliver}
+                disabled={isReceiptBlocked}
+                className={cn("rounded-full h-8 text-xs px-2.5", isReceiptBlocked
+                  ? "opacity-50 cursor-not-allowed"
+                  : "border-primary/40 text-primary hover:bg-primary/10"
+                )}
+                title={isReceiptBlocked ? "Receipt must be confirmed before delivery" : undefined}
+              >
                 <CheckCircle className="h-3.5 w-3.5 mr-1" /> Delivered
               </Button>
               <Button size="sm" variant="outline" onClick={onReject} className="rounded-full h-8 text-xs px-2.5 border-destructive/40 text-destructive hover:bg-destructive/10">
                 <AlertTriangle className="h-3.5 w-3.5 mr-1" /> Reject
               </Button>
             </>
+          )}
+          {order.payment_method === 'TRANSFER' && order.receipt_url && (
+            <Button size="sm" variant="outline" onClick={() => onViewReceipt?.()} className="rounded-full h-8 px-2.5 text-xs">
+              <ImageIcon className="h-3.5 w-3.5 mr-1" /> Receipt
+            </Button>
           )}
           <Button size="sm" variant="outline" onClick={onView} className="rounded-full h-8 px-2.5">
             <Eye className="h-3.5 w-3.5" />

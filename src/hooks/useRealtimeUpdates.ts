@@ -18,16 +18,22 @@ interface RealtimePayload {
  * needed. Stats/badge queries are debounced (5s) since they don't need
  * instant updates — the polling interval already handles freshness.
  */
-const STATS_DEBOUNCE_MS = 5000;
+const STATS_DEBOUNCE_MS = 8000;
+const ORDER_LIST_DEBOUNCE_MS = 2000;
 let statsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let orderListDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function invalidateOrderListQueries(queryClient: QueryClient) {
-  // Only invalidate the core order list queries — these are what users see
-  queryClient.invalidateQueries({ queryKey: ['orders'] });
-  queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
-  queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
-  queryClient.invalidateQueries({ queryKey: ['team-orders'] });
-  queryClient.invalidateQueries({ queryKey: ['team-orders-server'] });
+  // Debounce order list invalidations to batch rapid-fire changes
+  if (orderListDebounceTimer) clearTimeout(orderListDebounceTimer);
+  orderListDebounceTimer = setTimeout(() => {
+    orderListDebounceTimer = null;
+    queryClient.invalidateQueries({ queryKey: ['orders'] });
+    queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+    queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
+    queryClient.invalidateQueries({ queryKey: ['team-orders'] });
+    queryClient.invalidateQueries({ queryKey: ['team-orders-server'] });
+  }, ORDER_LIST_DEBOUNCE_MS);
 }
 
 function debouncedInvalidateStats(queryClient: QueryClient) {

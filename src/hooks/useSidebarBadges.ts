@@ -60,8 +60,8 @@ export function useSidebarBadges(): Record<string, number> {
       return 0;
     },
     enabled: !!user && !!role,
-    refetchInterval: 60000,
-    staleTime: 30000,
+    refetchInterval: 180000,
+    staleTime: 120000,
   });
 
   // Pending claim batches (admin)
@@ -77,8 +77,8 @@ export function useSidebarBadges(): Record<string, number> {
       return count || 0;
     },
     enabled: !!user && role === 'admin',
-    refetchInterval: 60000,
-    staleTime: 30000,
+    refetchInterval: 180000,
+    staleTime: 120000,
   });
 
   // Runner inbox count
@@ -95,8 +95,8 @@ export function useSidebarBadges(): Record<string, number> {
       return count || 0;
     },
     enabled: !!user && role === 'runner',
-    refetchInterval: 60000,
-    staleTime: 30000,
+    refetchInterval: 180000,
+    staleTime: 120000,
   });
 
   const badges: Record<string, number> = {};

@@ -75,6 +75,6 @@ export function useRunnerInboxStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 120000,
   });
 }

@@ -31,6 +31,8 @@ interface MobileOrderCardProps {
   secondaryActions?: React.ReactNode;
   // Click handler
   onClick?: () => void;
+  // Extra className for the card
+  className?: string;
 }
 
 export function MobileOrderCard({
@@ -46,6 +48,7 @@ export function MobileOrderCard({
   primaryAction,
   secondaryActions,
   onClick,
+  className,
 }: MobileOrderCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasExpandedContent = expandedFields.length > 0 || secondaryActions;
@@ -55,7 +58,8 @@ export function MobileOrderCard({
       className={cn(
         'p-3 transition-colors overflow-hidden',
         isSelected && 'bg-primary/5 border-primary/30',
-        onClick && 'active:bg-secondary/50'
+        onClick && 'active:bg-secondary/50',
+        className
       )}
     >
       {/* Header Row: Checkbox + Order Ref + Area + Status */}

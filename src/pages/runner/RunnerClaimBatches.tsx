@@ -88,6 +88,7 @@ export default function RunnerClaimBatches() {
       key: 'status',
       header: 'Status',
       filterable: true,
+      minWidth: '180px',
       render: (batch) => (
         <ClaimBatchTimeline
           status={batch.status}

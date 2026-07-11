@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useDriverOnboarding } from "@/hooks/useDriverOnboarding";
 import { useAuth } from "@/contexts/AuthContext";
 import { Truck, ArrowRight, Loader2 } from "lucide-react";
-import tomuLogo from "@/assets/tomu-logo.png";
+import { AppLogo } from "@/components/brand/AppLogo";
 
 const DriverOnboarding: React.FC = () => {
   const navigate = useNavigate();
@@ -79,11 +79,7 @@ const DriverOnboarding: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <img 
-            src={tomuLogo} 
-            alt="TOMU Logo" 
-            className="mx-auto h-16 w-16 object-contain mb-4" 
-          />
+          <AppLogo size="md" className="mx-auto mb-4" />
           <div className="mx-auto h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
             <Truck className="h-8 w-8 text-primary" />
           </div>

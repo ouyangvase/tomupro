@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -11,17 +11,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCreatePickupOrder } from '@/hooks/usePickupOrders';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
+import { useValidAreas } from '@/hooks/useValidAreas';
+import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Loader2, Zap } from 'lucide-react';
-import { useMemo } from 'react';
 import { isScientificNotation } from '@/lib/phone';
 
-const pickupSchema = z.object({
+// Full schema for admin/manager roles
+const fullPickupSchema = z.object({
   customer_name: z.string().min(1, 'Customer name is required'),
   phone: z.string().min(1, 'Phone is required').refine(
     (val) => !isScientificNotation(val),
     'Phone number appears corrupted (scientific notation detected). Please enter the actual phone number.'
   ),
   address: z.string().min(1, 'Address is required'),
+  area: z.string().optional(),
   order_owner_id: z.string().min(1, 'Order owner is required'),
   payment_method: z.enum(['COD', 'TRANSFER']),
   pickup_fee: z.coerce.number().min(0, 'Must be 0 or more'),
@@ -29,12 +32,29 @@ const pickupSchema = z.object({
   notes: z.string().optional(),
 });
 
-type PickupFormValues = z.infer<typeof pickupSchema>;
+// Simplified schema for runner role
+const runnerPickupSchema = z.object({
+  customer_name: z.string().min(1, 'Customer name is required'),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  area: z.string().min(1, 'Area is required'),
+  order_owner_id: z.string().min(1, 'Order owner is required'),
+  payment_method: z.enum(['COD', 'TRANSFER']),
+  pickup_fee: z.coerce.number().optional(),
+  total_amount: z.coerce.number().optional(),
+  notes: z.string().optional(),
+});
+
+type PickupFormValues = z.infer<typeof fullPickupSchema>;
 
 export function CreatePickupOrderDialog() {
   const [open, setOpen] = useState(false);
   const createPickup = useCreatePickupOrder();
   const { data: users = [] } = useUserDirectory();
+  const { data: validAreas = [] } = useValidAreas();
+  const { role } = useAuth();
+
+  const isRunner = role === 'runner';
 
   const userOptions = useMemo(() =>
     users
@@ -43,12 +63,18 @@ export function CreatePickupOrderDialog() {
     [users]
   );
 
+  const areaOptions = useMemo(() =>
+    validAreas.map(a => ({ label: a, value: a })),
+    [validAreas]
+  );
+
   const form = useForm<PickupFormValues>({
-    resolver: zodResolver(pickupSchema),
+    resolver: zodResolver(isRunner ? runnerPickupSchema : fullPickupSchema),
     defaultValues: {
       customer_name: '',
       phone: '',
       address: '',
+      area: '',
       order_owner_id: '',
       payment_method: 'COD',
       pickup_fee: 0,
@@ -60,12 +86,13 @@ export function CreatePickupOrderDialog() {
   const onSubmit = async (values: PickupFormValues) => {
     await createPickup.mutateAsync({
       customer_name: values.customer_name,
-      phone: values.phone,
-      address: values.address,
+      phone: isRunner ? undefined : values.phone,
+      address: isRunner ? undefined : values.address,
+      area: values.area,
       order_owner_id: values.order_owner_id,
       payment_method: values.payment_method,
-      pickup_fee: values.pickup_fee,
-      total_amount: values.total_amount,
+      pickup_fee: isRunner ? 0 : (values.pickup_fee ?? 0),
+      total_amount: isRunner ? 0 : (values.total_amount ?? 0),
       notes: values.notes,
     });
     form.reset();
@@ -89,6 +116,7 @@ export function CreatePickupOrderDialog() {
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Customer Name — always shown */}
             <FormField control={form.control} name="customer_name" render={({ field }) => (
               <FormItem>
                 <FormLabel>Customer Name</FormLabel>
@@ -97,22 +125,48 @@ export function CreatePickupOrderDialog() {
               </FormItem>
             )} />
 
-            <FormField control={form.control} name="phone" render={({ field }) => (
+            {/* Area — always shown, required for runner */}
+            <FormField control={form.control} name="area" render={({ field }) => (
               <FormItem>
-                <FormLabel>Phone</FormLabel>
-                <FormControl><Input placeholder="+673..." {...field} /></FormControl>
+                <FormLabel>Area {isRunner && <span className="text-destructive">*</span>}</FormLabel>
+                <FormControl>
+                  <SearchableSelect
+                    options={areaOptions}
+                    value={field.value || ''}
+                    onValueChange={field.onChange}
+                    placeholder="Select area..."
+                    searchPlaceholder="Search areas..."
+                    emptyMessage="No matching area found."
+                    allOption={{ label: 'No area selected', value: '' }}
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )} />
 
-            <FormField control={form.control} name="address" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Address</FormLabel>
-                <FormControl><Textarea placeholder="Pickup address" rows={2} {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+            {/* Phone — hidden for runner */}
+            {!isRunner && (
+              <FormField control={form.control} name="phone" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone</FormLabel>
+                  <FormControl><Input placeholder="+673..." {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
 
+            {/* Address — hidden for runner */}
+            {!isRunner && (
+              <FormField control={form.control} name="address" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address</FormLabel>
+                  <FormControl><Textarea placeholder="Pickup address" rows={2} {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
+
+            {/* Order Owner — always shown */}
             <FormField control={form.control} name="order_owner_id" render={({ field }) => (
               <FormItem>
                 <FormLabel>Order Owner</FormLabel>
@@ -128,7 +182,8 @@ export function CreatePickupOrderDialog() {
               </FormItem>
             )} />
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* Payment Type + Charges — charges hidden for runner */}
+            {isRunner ? (
               <FormField control={form.control} name="payment_method" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Payment Type</FormLabel>
@@ -142,24 +197,44 @@ export function CreatePickupOrderDialog() {
                   <FormMessage />
                 </FormItem>
               )} />
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="payment_method" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Type</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="COD">COD</SelectItem>
+                        <SelectItem value="TRANSFER">Paid</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
 
-              <FormField control={form.control} name="pickup_fee" render={({ field }) => (
+                <FormField control={form.control} name="pickup_fee" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Charges (BND)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+            )}
+
+            {/* Order Amount — hidden for runner */}
+            {!isRunner && (
+              <FormField control={form.control} name="total_amount" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Charges (BND)</FormLabel>
+                  <FormLabel>Order Amount (BND) <span className="text-muted-foreground text-xs">optional</span></FormLabel>
                   <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
-            </div>
+            )}
 
-            <FormField control={form.control} name="total_amount" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Order Amount (BND) <span className="text-muted-foreground text-xs">optional</span></FormLabel>
-                <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-
+            {/* Notes — always shown */}
             <FormField control={form.control} name="notes" render={({ field }) => (
               <FormItem>
                 <FormLabel>Notes <span className="text-muted-foreground text-xs">optional</span></FormLabel>

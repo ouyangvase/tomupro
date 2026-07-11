@@ -45,15 +45,11 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
   // Get current driver position with timeout
   const updateDriverLocation = useCallback(() => {
     if (!("geolocation" in navigator)) {
-      console.log("[Route] Geolocation not available");
       return;
     }
 
-    console.log("[Route] Requesting driver location...");
-    
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        console.log("[Route] Driver location obtained:", position.coords.latitude, position.coords.longitude);
         setDriverLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
@@ -104,11 +100,9 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
     
     // Skip if calculation already in progress
     if (calculationInProgressRef.current) {
-      console.log("[Route] Calculation already in progress, skipping");
       return;
     }
 
-    console.log("[Route] Starting geocoding for", orders.length, "orders");
     lastOrderIdsRef.current = orderIds;
     calculationInProgressRef.current = true;
     setIsCalculating(true);
@@ -139,8 +133,6 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
           console.warn("[Route] Route calculation timed out after", ROUTE_TIMEOUT_MS, "ms");
           setHasTimedOut(true);
           setError("Route calculation timed out");
-        } else {
-          console.log("[Route] Geocoding completed successfully, processed", (result as GeocodedLocation[]).length, "orders");
         }
       })
       .catch((err) => {
@@ -181,7 +173,6 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
       });
       
       if (allValid && result.size === geocodedOrders.length) {
-        console.log("[Route] Using cached suggestions");
         return result;
       }
     }
@@ -214,7 +205,6 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
       suggestionCache.set(order.orderId, { result: suggestion, timestamp: now });
     });
 
-    console.log("[Route] Calculated", result.size, "suggestions");
     return result;
   }, [driverLocation, geocodedOrders]);
 
@@ -248,8 +238,6 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
 
   // Manual refresh with cache clear
   const refreshRoute = useCallback(() => {
-    console.log("[Route] Manual refresh triggered");
-    
     // Clear caches
     suggestionCache.clear();
     lastOrderIdsRef.current = "";

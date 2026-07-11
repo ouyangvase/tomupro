@@ -1,4 +1,5 @@
 // CSV Import/Export utilities
+import { format } from 'date-fns';
 
 export function exportToCSV<T extends Record<string, unknown>>(
   data: T[],
@@ -53,7 +54,7 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   channel: ['channel', 'sales_channel', 'saleschannel', 'sales channel', 'source'],
   payment_method: ['payment_method', 'paymentmethod', 'payment method', 'payment', 'pay_method', 'paymethod'],
   expected_pickup_date: ['expected_pickup_date', 'expectedpickupdate', 'expected pickup date', 'pickup_date', 'pickupdate', 'pickup date', 'delivery_date', 'deliverydate', 'delivery date'],
-  notes: ['notes', 'note', 'remarks', 'remark', 'comment', 'comments'],
+  notes: ['notes', 'note', 'remark', 'remarks', 'comment', 'comments', 'order notes', 'order_notes', 'ordernotes'],
   sku_name_or_code: ['sku_name_or_code', 'skunameorcode', 'sku name or code', 'sku', 'sku_code', 'skucode', 'sku code', 'sku_name', 'skuname', 'sku name', 'product', 'product_code', 'productcode', 'product code', 'item'],
   qty: ['qty', 'quantity', 'count', 'amount', 'units'],
   price: ['price', 'unit_price', 'unitprice', 'unit price', 'line_amount', 'lineamount', 'line amount', 'total', 'line_total', 'linetotal', 'line total'],
@@ -204,8 +205,8 @@ function parseCSVLine(line: string): string[] {
 
 export function downloadTemplate(type: 'orders' | 'order_lines' | 'delivery_result') {
   const templates = {
-    orders: 'order_ref,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes\n"ORD-001","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-15","Rush order"',
-    order_lines: 'order_ref,order_date,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,notes,sku_name_or_code,qty,price\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget A",2,29.99\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","","Widget B",1,49.99\n"ORD-002","2024-01-15","Jane Smith","555-5678","456 Oak Ave","Uptown","Social","TRANSFER","2024-01-21","Gift order","Premium Pack",1,99.99',
+    orders: 'order_ref,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,remark\n"ORD-001","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-15","Rush order"',
+    order_lines: 'order_ref,order_date,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,remark,sku_name_or_code,qty,price\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","Handle with care","Widget A",2,29.99\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","Handle with care","Widget B",1,49.99\n"ORD-002","2024-01-15","Jane Smith","+60123456789","456 Oak Ave","Uptown","Social","TRANSFER","2024-01-21","Gift order","Premium Pack",1,99.99',
     delivery_result: 'ORDER CODE,STATUS,REMARK\n"ORD-001","DELIVERED",""\n"ORD-002","FAILED","Customer not at home"\n"ORD-003","DELIVERED",""\n"ORD-004","FAILED","Wrong address"',
   };
 
@@ -385,6 +386,7 @@ export interface RunnerOrderLineExport {
   address: string;
   area: string;
   payment_method: string;
+  receipt_status: string;
   notes: string;
   salesperson_name: string;
   sku_code: string;
@@ -393,6 +395,16 @@ export interface RunnerOrderLineExport {
   item_unit_price: number;
   item_line_total: number;
   order_total: number;
+}
+
+function getReceiptStatusLabel(order: any): string {
+  if (order.payment_method !== 'TRANSFER') return '';
+  switch (order.receipt_status) {
+    case 'rejected': return 'REJECTED';
+    case 'confirmed': return 'ACCEPTED';
+    case 'pending': return 'PENDING';
+    default: return 'NOT CONFIRMED';
+  }
 }
 
 export function exportRunnerOrderLines(
@@ -413,6 +425,7 @@ export function exportRunnerOrderLines(
         address: order.address || '',
         area: order.area || '',
         payment_method: order.payment_method || '',
+        receipt_status: getReceiptStatusLabel(order),
         notes: order.notes || '',
         salesperson_name: order.salesperson?.display_name || '',
         sku_code: 'UNKNOWN',
@@ -437,6 +450,7 @@ export function exportRunnerOrderLines(
           address: order.address || '',
           area: order.area || '',
           payment_method: order.payment_method || '',
+          receipt_status: getReceiptStatusLabel(order),
           notes: order.notes || '',
           salesperson_name: order.salesperson?.display_name || '',
           sku_code: skuCode,
@@ -457,6 +471,7 @@ export function exportRunnerOrderLines(
     { key: 'address', header: 'address' },
     { key: 'area', header: 'area' },
     { key: 'payment_method', header: 'payment_method' },
+    { key: 'receipt_status', header: 'receipt_status' },
     { key: 'notes', header: 'notes' },
     { key: 'salesperson_name', header: 'salesperson_name' },
     { key: 'sku_code', header: 'sku_code' },
@@ -484,7 +499,11 @@ export function exportSelectedRunnerOrderLines(
   return true;
 }
 
-// Delivered orders export - one row per order with combined items
+// Delivered orders export - one row per SKU item for stock tracking
+// Source of truth rules:
+//   Order-level (from imported order): order_ref, customer_name, phone, address, area, payment_method, delivery_charges
+//   Item-level (from SKU row): sku_code, sku_qty, amount (line_total)
+//   Delivered-level: delivered_timestamp (delivered_at, formatted to match app UI)
 export interface DeliveredOrderExport {
   order_ref: string;
   customer_name: string;
@@ -494,8 +513,9 @@ export interface DeliveredOrderExport {
   salesperson_name: string;
   delivered_timestamp: string;
   items: string;
-  total_qty: number;
-  total_amount: number;
+  sku_code: string;
+  sku_qty: number;
+  amount: number;
   payment_method: string;
   delivery_charges: number;
 }
@@ -506,41 +526,70 @@ export function exportDeliveredOrderLines(
   filename: string
 ) {
   const lines: DeliveredOrderExport[] = [];
-  
+
   for (const order of orders) {
     const orderItems = order.order_items || [];
     const chargeKey = `${order.runner_id}:${order.area || ''}`;
     const deliveryCharge = deliveryChargesMap.get(chargeKey) || 0;
-    
-    // Combine all items into a single readable string and sum qty
+
+    // Build human-readable items summary
     let itemsSummary = '';
-    let totalQty = 0;
-    
     if (orderItems.length > 0) {
       const itemParts: string[] = [];
       for (const item of orderItems) {
         const skuName = item.product?.sku_name || item.sku_label || 'Unknown';
         const qty = item.qty || 0;
-        totalQty += qty;
         itemParts.push(`${skuName} x ${qty}`);
       }
       itemsSummary = itemParts.join('; ');
     }
-    
-    lines.push({
+
+    // Format delivered_timestamp to match app UI display: "dd MMM yyyy HH:mm"
+    let formattedTimestamp = '';
+    if (order.delivered_at) {
+      try {
+        formattedTimestamp = format(new Date(order.delivered_at), 'dd MMM yyyy HH:mm');
+      } catch {
+        formattedTimestamp = order.delivered_at;
+      }
+    }
+
+    // Shared order-level fields (source of truth: original imported order)
+    const baseRow = {
       order_ref: order.order_code || '',
       customer_name: order.customer_name || '',
       phone: order.phone || '',
       address: order.address || '',
       area: order.area || '',
       salesperson_name: order.salesperson?.display_name || order.created_by_name_snapshot || '',
-      delivered_timestamp: order.delivered_at || order.driver_delivered_at || '',
+      delivered_timestamp: formattedTimestamp,
       items: itemsSummary,
-      total_qty: totalQty,
-      total_amount: Number(order.total_amount) || 0,
       payment_method: order.payment_method || '',
       delivery_charges: deliveryCharge,
-    });
+    };
+
+    if (orderItems.length > 0) {
+      // One row per SKU item — amount from item.line_total (row-level, not order total)
+      for (const item of orderItems) {
+        const skuCode = item.product?.sku_code || item.sku_label || '';
+        // Extract code portion before "/" if sku_label contains "CODE/DESCRIPTION"
+        const parsedCode = skuCode.includes('/') ? skuCode.split('/')[0].trim() : skuCode;
+        lines.push({
+          ...baseRow,
+          sku_code: parsedCode,
+          sku_qty: item.qty || 0,
+          amount: item.line_total != null ? Number(item.line_total) : 0,
+        });
+      }
+    } else {
+      // Order with no items — still export one row
+      lines.push({
+        ...baseRow,
+        sku_code: '',
+        sku_qty: 0,
+        amount: Number(order.total_amount) || 0,
+      });
+    }
   }
 
   const columns = [
@@ -552,8 +601,9 @@ export function exportDeliveredOrderLines(
     { key: 'salesperson_name', header: 'salesperson_name' },
     { key: 'delivered_timestamp', header: 'delivered_timestamp' },
     { key: 'items', header: 'items' },
-    { key: 'total_qty', header: 'qty' },
-    { key: 'total_amount', header: 'total_amount' },
+    { key: 'sku_code', header: 'sku_code' },
+    { key: 'sku_qty', header: 'sku_qty' },
+    { key: 'amount', header: 'amount' },
     { key: 'payment_method', header: 'payment_method' },
     { key: 'delivery_charges', header: 'delivery_charges' },
   ];

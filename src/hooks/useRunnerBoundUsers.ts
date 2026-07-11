@@ -24,8 +24,6 @@ export function useRunnerBoundUsers() {
     queryFn: async () => {
       if (!user?.id) return [] as BoundUser[];
 
-      console.log('[useRunnerBoundUsers] Fetching bound users for runner ID:', user.id);
-
       // Use the unified view that combines salesperson and manager bindings
       const { data, error } = await supabase
         .from('v_runner_target_users')
@@ -37,8 +35,6 @@ export function useRunnerBoundUsers() {
         console.error('[useRunnerBoundUsers] Error fetching from view:', error);
         throw error;
       }
-
-      console.log('[useRunnerBoundUsers] Raw results from view:', data?.length);
 
       // Deduplicate by user_id, keep users with warehouses preferred
       const userMap = new Map<string, BoundUser>();
@@ -60,12 +56,6 @@ export function useRunnerBoundUsers() {
       });
 
       const result = Array.from(userMap.values());
-
-      console.log('[useRunnerBoundUsers] Final bound users:', result.length);
-      console.log('[useRunnerBoundUsers] Roles breakdown:', {
-        salespersons: result.filter(u => u.role === 'salesperson').length,
-        managers: result.filter(u => u.role === 'manager').length,
-      });
 
       return result;
     },

@@ -7,10 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { 
-  Database, CheckCircle, AlertCircle, RefreshCw, Package
+import {
+  Database, CheckCircle, AlertCircle, RefreshCw, Package,
+  ArrowDownToLine, ArrowUpFromLine, Truck, Settings2
 } from 'lucide-react';
-import { useMovementDrilldown } from '@/hooks/useStockIntegrity';
+import {
+  useInboundSources, useDeliveredSources,
+  useTransferSources, useAdjustmentSources,
+} from '@/hooks/useAuditSourceRecords';
 import { 
   useFullStockIntegrityAudit, 
   useStockIntegritySummary,
@@ -264,103 +268,325 @@ export default function StockIntegrityAudit() {
 }
 
 function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; onClose: () => void }) {
-  const { data: movements = [], isLoading } = useMovementDrilldown(row?.warehouse_id, row?.product_id);
-  
+  const { data: inboundRecords = [], isLoading: loadingInbound } = useInboundSources(row?.warehouse_id, row?.product_id);
+  const { data: deliveredRecords = [], isLoading: loadingDelivered } = useDeliveredSources(row?.product_id, row?.owner_user_id);
+  const { data: transferRecords = [], isLoading: loadingTransfers } = useTransferSources(row?.warehouse_id, row?.product_id);
+  const { data: adjustmentRecords = [], isLoading: loadingAdjustments } = useAdjustmentSources(row?.warehouse_id, row?.product_id);
+
+  // Compute totals from source records
+  const totals = useMemo(() => {
+    const inbound = inboundRecords.reduce((s, r) => s + r.qty, 0);
+    const delivered = deliveredRecords.reduce((s, r) => s + r.qty, 0);
+    const transferIn = transferRecords.filter(r => r.direction === 'IN').reduce((s, r) => s + r.qty, 0);
+    const transferOut = transferRecords.filter(r => r.direction === 'OUT').reduce((s, r) => s + Math.abs(r.qty), 0);
+    const positiveAdj = adjustmentRecords.filter(r => r.qty > 0).reduce((s, r) => s + r.qty, 0);
+    const negativeAdj = adjustmentRecords.filter(r => r.qty < 0).reduce((s, r) => s + Math.abs(r.qty), 0);
+    const balance = inbound + transferIn + positiveAdj - delivered - transferOut - negativeAdj;
+    return { inbound, delivered, transferIn, transferOut, positiveAdj, negativeAdj, balance };
+  }, [inboundRecords, deliveredRecords, transferRecords, adjustmentRecords]);
+
+  const totalDeduct = totals.delivered + totals.transferOut + totals.negativeAdj;
+  const anyLoading = loadingInbound || loadingDelivered || loadingTransfers || loadingAdjustments;
+  const dataReady = !anyLoading && (inboundRecords.length > 0 || deliveredRecords.length > 0 || transferRecords.length > 0 || adjustmentRecords.length > 0);
+
   if (!row) return null;
-  
+
+  const hasReconciliationMismatch = dataReady && row.stored_balance !== totals.balance;
+
   return (
     <Dialog open={!!row} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Movement History: {row.sku_code} / {row.sku_name}
+            Stock Audit: {row.sku_code} / {row.sku_name}
           </DialogTitle>
         </DialogHeader>
-        
-        <div className="space-y-4">
-          {/* Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg bg-primary/10 border border-primary/30">
-              <p className="text-xs text-muted-foreground">Inbound</p>
-              <p className="text-xl font-bold text-primary">+{row.inbound_qty}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted border">
-              <p className="text-xs text-muted-foreground">Adjustments</p>
-              <p className="text-xl font-bold">{row.adjustment_qty >= 0 ? '+' : ''}{row.adjustment_qty}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
-              <p className="text-xs text-muted-foreground">Delivered</p>
-              <p className="text-xl font-bold text-destructive">-{row.delivered_qty}</p>
-            </div>
-            <div className={cn(
-              "p-3 rounded-lg border",
-              row.computed_balance < 0 ? "bg-destructive/10 border-destructive/30" : "bg-primary/10 border-primary/30"
-            )}>
-              <p className="text-xs text-muted-foreground">Balance</p>
-              <p className={cn("text-xl font-bold", row.computed_balance < 0 ? "text-destructive" : "text-primary")}>
-                {row.computed_balance}
-              </p>
-            </div>
-          </div>
-          
+
+        <div className="space-y-5">
           {/* Owner/Warehouse info */}
           <div className="flex gap-4 text-sm text-muted-foreground">
             <span>Owner: <strong className="text-foreground">{row.owner_name}</strong></span>
             <span>Warehouse: <strong className="text-foreground">{row.warehouse_name}</strong></span>
           </div>
-          
-          {/* Movement list */}
-          <div className="border rounded-lg overflow-hidden">
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-primary/10 border border-primary/30">
+              <p className="text-xs text-muted-foreground">Inbound</p>
+              <p className="text-xl font-bold text-primary">+{anyLoading ? '...' : totals.inbound}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+              <p className="text-xs text-muted-foreground">Transfer In</p>
+              <p className="text-xl font-bold text-blue-600">+{anyLoading ? '...' : totals.transferIn}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+              <p className="text-xs text-muted-foreground">Total Deduct</p>
+              <p className="text-xl font-bold text-destructive">-{anyLoading ? '...' : totalDeduct}</p>
+            </div>
+            <div className={cn(
+              "p-3 rounded-lg border",
+              totals.balance < 0 ? "bg-destructive/10 border-destructive/30" : "bg-primary/10 border-primary/30"
+            )}>
+              <p className="text-xs text-muted-foreground">Current Balance</p>
+              <p className={cn("text-xl font-bold", totals.balance < 0 ? "text-destructive" : "text-primary")}>
+                {anyLoading ? '...' : totals.balance}
+              </p>
+            </div>
+          </div>
+
+          {/* Balance Calculation Breakdown */}
+          {dataReady && (
+            <Card className="border-dashed">
+              <CardHeader className="p-3 pb-1">
+                <CardTitle className="text-sm font-semibold">Balance Calculation</CardTitle>
+              </CardHeader>
+              <CardContent className="p-3 pt-1">
+                <div className="space-y-1 font-mono text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Inbound</span><span className="text-primary font-medium">+{totals.inbound}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Transfer In</span><span className="text-blue-600 font-medium">+{totals.transferIn}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Positive Adjustment</span><span className="text-primary font-medium">+{totals.positiveAdj}</span></div>
+                  <div className="border-t my-1" />
+                  <div className="flex justify-between"><span className="text-muted-foreground">Delivered</span><span className="text-destructive font-medium">-{totals.delivered}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Transfer Out</span><span className="text-warning font-medium">-{totals.transferOut}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Negative Adjustment</span><span className="text-destructive font-medium">-{totals.negativeAdj}</span></div>
+                  <div className="border-t border-foreground/30 my-1" />
+                  <div className="flex justify-between font-bold">
+                    <span>Current Balance</span>
+                    <span className={totals.balance < 0 ? "text-destructive" : "text-primary"}>= {totals.balance}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Reconciliation Check */}
+          {dataReady && (
+            <div className={cn(
+              "rounded-lg border p-3 flex items-start gap-3",
+              hasReconciliationMismatch
+                ? "bg-destructive/10 border-destructive/40"
+                : "bg-primary/5 border-primary/30"
+            )}>
+              {hasReconciliationMismatch ? (
+                <AlertCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+              ) : (
+                <CheckCircle className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+              )}
+              <div className="text-sm">
+                <p className="font-semibold">
+                  {hasReconciliationMismatch ? 'Reconciliation Mismatch' : 'Reconciliation OK'}
+                </p>
+                <div className="text-muted-foreground mt-1 space-y-0.5">
+                  <p>Calculated Balance (from source records): <strong className="text-foreground">{totals.balance}</strong></p>
+                  <p>Stored Inventory Balance: <strong className="text-foreground">{row.stored_balance}</strong></p>
+                  {hasReconciliationMismatch && (
+                    <p className="text-destructive font-semibold mt-1">
+                      Variance: {totals.balance - row.stored_balance > 0 ? '+' : ''}{totals.balance - row.stored_balance}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===== SOURCE RECORD SECTIONS ===== */}
+
+          {/* Inbound History Source */}
+          <SourceSection
+            title="Inbound History Source"
+            icon={<ArrowDownToLine className="h-4 w-4 text-primary" />}
+            count={inboundRecords.length}
+            total={totals.inbound}
+            totalLabel="Total Inbound"
+            totalColor="text-primary"
+            isLoading={loadingInbound}
+          >
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="p-2 text-left">Date</th>
+                  <th className="p-2 text-left">Tracking</th>
+                  <th className="p-2 text-right">Qty</th>
+                  <th className="p-2 text-left">Created By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inboundRecords.map((r) => (
+                  <tr key={r.id} className="border-t">
+                    <td className="p-2 text-muted-foreground">{format(new Date(r.inbound_date), 'MMM dd, HH:mm')}</td>
+                    <td className="p-2 text-muted-foreground">{r.tracking_no}</td>
+                    <td className="p-2 text-right font-mono text-primary">+{r.qty}</td>
+                    <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </SourceSection>
+
+          {/* Delivered Orders Source */}
+          <SourceSection
+            title="Delivered Orders Source"
+            icon={<Truck className="h-4 w-4 text-destructive" />}
+            count={deliveredRecords.length}
+            total={totals.delivered}
+            totalLabel="Total Delivered"
+            totalColor="text-destructive"
+            isLoading={loadingDelivered}
+          >
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="p-2 text-left">Delivered Date</th>
+                  <th className="p-2 text-left">Order ID</th>
+                  <th className="p-2 text-right">Qty</th>
+                  <th className="p-2 text-left">Customer</th>
+                  <th className="p-2 text-left">Delivered By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveredRecords.map((r) => (
+                  <tr key={r.id} className="border-t">
+                    <td className="p-2 text-muted-foreground">{r.delivered_at ? format(new Date(r.delivered_at), 'MMM dd, HH:mm') : '-'}</td>
+                    <td className="p-2 font-medium">{r.order_code}</td>
+                    <td className="p-2 text-right font-mono text-destructive">-{r.qty}</td>
+                    <td className="p-2 text-muted-foreground">{r.customer_name}</td>
+                    <td className="p-2 text-muted-foreground">{r.delivered_by_name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </SourceSection>
+
+          {/* Transfer Source */}
+          <SourceSection
+            title="Transfer Source"
+            icon={<ArrowUpFromLine className="h-4 w-4 text-blue-500" />}
+            count={transferRecords.length}
+            total={null}
+            totalLabel=""
+            totalColor=""
+            isLoading={loadingTransfers}
+          >
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="p-2 text-left">Date</th>
+                  <th className="p-2 text-left">Direction</th>
+                  <th className="p-2 text-right">Qty</th>
+                  <th className="p-2 text-left">From / To</th>
+                  <th className="p-2 text-left">Created By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transferRecords.map((r) => (
+                  <tr key={r.id} className="border-t">
+                    <td className="p-2 text-muted-foreground">{format(new Date(r.transfer_date), 'MMM dd, HH:mm')}</td>
+                    <td className="p-2">
+                      <Badge variant={r.direction === 'IN' ? 'default' : 'secondary'} className="text-xs">
+                        {r.direction === 'IN' ? 'Transfer In' : 'Transfer Out'}
+                      </Badge>
+                    </td>
+                    <td className={cn("p-2 text-right font-mono", r.direction === 'IN' ? "text-blue-600" : "text-warning")}>
+                      {r.direction === 'IN' ? '+' : ''}{r.qty}
+                    </td>
+                    <td className="p-2 text-muted-foreground">{r.counterpart_name}</td>
+                    <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </SourceSection>
+
+          {/* Adjustment Source */}
+          <SourceSection
+            title="Adjustment Source"
+            icon={<Settings2 className="h-4 w-4 text-amber-500" />}
+            count={adjustmentRecords.length}
+            total={null}
+            totalLabel=""
+            totalColor=""
+            isLoading={loadingAdjustments}
+          >
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="p-2 text-left">Date</th>
                   <th className="p-2 text-left">Type</th>
                   <th className="p-2 text-right">Qty</th>
-                  <th className="p-2 text-left">Reference</th>
                   <th className="p-2 text-left">Created By</th>
                 </tr>
               </thead>
               <tbody>
-                {isLoading && (
-                  <tr>
-                    <td colSpan={5} className="p-4 text-center text-muted-foreground">Loading...</td>
-                  </tr>
-                )}
-                {movements.map((m) => (
-                  <tr key={m.id} className="border-t">
-                    <td className="p-2 text-muted-foreground">
-                      {format(new Date(m.created_at), 'MMM dd, HH:mm')}
-                    </td>
+                {adjustmentRecords.map((r) => (
+                  <tr key={r.id} className="border-t">
+                    <td className="p-2 text-muted-foreground">{format(new Date(r.adjustment_date), 'MMM dd, HH:mm')}</td>
                     <td className="p-2">
-                      <Badge variant={
-                        m.movement_type === 'INBOUND' ? 'default' :
-                        m.movement_type.includes('DEDUCT') ? 'destructive' :
-                        m.movement_type.includes('TRANSFER') ? 'secondary' : 'outline'
-                      } className="text-xs">
-                        {m.movement_type}
-                      </Badge>
+                      <Badge variant="outline" className="text-xs">{r.movement_type}</Badge>
                     </td>
-                    <td className={cn(
-                      "p-2 text-right font-mono",
-                      m.qty_change > 0 ? "text-primary" : "text-destructive"
-                    )}>
-                      {m.qty_change > 0 ? '+' : ''}{m.qty_change}
+                    <td className={cn("p-2 text-right font-mono", r.qty > 0 ? "text-primary" : "text-destructive")}>
+                      {r.qty > 0 ? '+' : ''}{r.qty}
                     </td>
-                    <td className="p-2 text-xs text-muted-foreground">
-                      {m.order_code && <span className="font-medium">{m.order_code}</span>}
-                      {m.inbound_tracking && <span>Tracking: {m.inbound_tracking}</span>}
-                      {!m.order_code && !m.inbound_tracking && m.reference_type}
-                    </td>
-                    <td className="p-2 text-muted-foreground">{m.created_by_name || '-'}</td>
+                    <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </SourceSection>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Collapsible source section wrapper */
+function SourceSection({
+  title, icon, count, total, totalLabel, totalColor, isLoading, children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  count: number;
+  total: number | null;
+  totalLabel: string;
+  totalColor: string;
+  isLoading: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <Card>
+      <button
+        className="w-full flex items-center justify-between p-3 hover:bg-muted/30 transition-colors rounded-t-lg"
+        onClick={() => setOpen(!open)}
+      >
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          {icon}
+          {title}
+          <Badge variant="outline" className="ml-1 text-xs">{count} records</Badge>
+        </div>
+        <div className="flex items-center gap-3">
+          {total !== null && (
+            <span className={cn("text-sm font-mono font-bold", totalColor)}>
+              {totalLabel}: {total}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">{open ? '▼' : '▶'}</span>
+        </div>
+      </button>
+      {open && (
+        <CardContent className="p-0 border-t">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : count === 0 ? (
+            <div className="py-4 text-center text-sm text-muted-foreground">No records</div>
+          ) : (
+            <div className="overflow-x-auto">{children}</div>
+          )}
+        </CardContent>
+      )}
+    </Card>
   );
 }

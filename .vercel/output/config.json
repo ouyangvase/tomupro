@@ -1,7 +1,30 @@
 {
   "version": 3,
   "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
-  ]
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "^/sitemap\\.xml$",
+      "dest": "https://dtcchduronwsyunyakxj.supabase.co/functions/v1/blog-sitemap",
+      "check": true
+    },
+    {
+      "src": "^(?:/(.*))$",
+      "dest": "/index.html",
+      "check": true
+    },
+    {
+      "handle": "error"
+    },
+    {
+      "status": 404,
+      "src": "^(?!/api).*$",
+      "dest": "/404.html"
+    }
+  ],
+  "framework": {
+    "version": "5.4.19"
+  },
+  "crons": []
 }

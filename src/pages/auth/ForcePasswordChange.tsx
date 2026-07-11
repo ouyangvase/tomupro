@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import tomuLogo from '@/assets/tomu-logo.png';
+import { AppLogo } from '@/components/brand/AppLogo';
 import { KeyRound, Eye, EyeOff, Lock } from 'lucide-react';
 import { z } from 'zod';
 
@@ -105,11 +105,7 @@ export default function ForcePasswordChange({ onComplete }: ForcePasswordChangeP
         <CardHeader className="text-center pt-8 pb-4">
           {/* Logo */}
           <div className="mx-auto mb-4">
-            <img
-              src={tomuLogo}
-              alt="TOMU PRO Logo"
-              className="h-20 w-20 object-contain drop-shadow-lg"
-            />
+            <AppLogo size="lg" className="drop-shadow-lg" />
           </div>
 
           {/* Icon */}

@@ -56,6 +56,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
 
   // Auto Reschedule fields
   const [autoRescheduleRemark, setAutoRescheduleRemark] = useState('');
+  const [bulkRescheduleDate, setBulkRescheduleDate] = useState<Date | undefined>(undefined);
 
   // Convert to Booking fields
   const [newDate, setNewDate] = useState<Date | undefined>(undefined);
@@ -99,6 +100,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
   const resetForm = () => {
     setResolutionType(null);
     setAutoRescheduleRemark('');
+    setBulkRescheduleDate(undefined);
     setNewDate(undefined);
     setBookingRemark('');
     setCancelReasonId('');
@@ -123,13 +125,17 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
 
       if (resolutionType === 'AUTO_RESCHEDULE') {
         for (const order of orders) {
-          // Skip orders without reschedule date
-          if (!order.next_delivery_date) {
-            resultItems.push({ 
-              orderId: order.id, 
-              orderCode: order.order_code, 
+          // Use user-selected date, or fall back to runner's suggested date
+          const rescheduleDate = bulkRescheduleDate
+            ? format(bulkRescheduleDate, 'yyyy-MM-dd')
+            : order.next_delivery_date;
+
+          if (!rescheduleDate) {
+            resultItems.push({
+              orderId: order.id,
+              orderCode: order.order_code,
               status: 'skipped',
-              reason: 'No reschedule date'
+              reason: 'No date available (no runner date and no date selected)'
             });
             continue;
           }
@@ -141,18 +147,19 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               cycle_no: (order.reschedule_cycle_no || 0) + 1,
               from_status: order.operational_status || order.status,
               to_status: 'BOOKING_AUTO_RESCHEDULE',
-              next_delivery_date: order.next_delivery_date,
-              comment: `Salesperson confirmed auto-reschedule: ${autoRescheduleRemark || 'Bulk action'}`,
+              next_delivery_date: rescheduleDate,
+              comment: `Auto-reschedule confirmed: ${autoRescheduleRemark || 'Bulk action'}`,
               rescheduled_by: profile.id,
             });
 
             await updateOrder.mutateAsync({
               id: order.id,
               status: 'BOOKING',
-              expected_pickup_date: order.next_delivery_date,
+              expected_pickup_date: rescheduleDate,
+              next_delivery_date: rescheduleDate,
               salesperson_action_required: false,
               salesperson_action_type: 'RESCHEDULE_DELIVERY',
-              last_status_note: `Auto-reschedule confirmed for ${order.next_delivery_date}`,
+              last_status_note: `Auto-reschedule confirmed for ${rescheduleDate}`,
               runner_status: 'UNASSIGNED',
               runner_id: null,
               driver_id: null,
@@ -163,9 +170,9 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
 
             resultItems.push({ orderId: order.id, orderCode: order.order_code, status: 'success' });
           } catch (error: any) {
-            resultItems.push({ 
-              orderId: order.id, 
-              orderCode: order.order_code, 
+            resultItems.push({
+              orderId: order.id,
+              orderCode: order.order_code,
               status: 'failed',
               reason: error.message || 'Update failed'
             });
@@ -332,7 +339,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
 
   const canSubmit = () => {
     if (!resolutionType) return false;
-    if (resolutionType === 'AUTO_RESCHEDULE') return ordersWithRescheduleDate.length > 0;
+    if (resolutionType === 'AUTO_RESCHEDULE') return !!(bulkRescheduleDate || ordersWithRescheduleDate.length > 0);
     if (resolutionType === 'CONVERT_TO_BOOKING') return !!newDate;
     if (resolutionType === 'CANCEL') {
       if (!cancelReasonId) return false;
@@ -479,27 +486,23 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
           >
             <div className={cn(
               "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
-              resolutionType === 'AUTO_RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50",
-              ordersWithRescheduleDate.length === 0 && "opacity-50 cursor-not-allowed"
+              resolutionType === 'AUTO_RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
             )}>
-              <RadioGroupItem value="AUTO_RESCHEDULE" id="bulk-auto-reschedule" disabled={ordersWithRescheduleDate.length === 0} />
+              <RadioGroupItem value="AUTO_RESCHEDULE" id="bulk-auto-reschedule" />
               <div className="flex-1">
-                <Label htmlFor="bulk-auto-reschedule" className={cn("font-medium cursor-pointer", ordersWithRescheduleDate.length === 0 && "cursor-not-allowed")}>
+                <Label htmlFor="bulk-auto-reschedule" className="font-medium cursor-pointer">
                   <div className="flex items-center gap-2">
                     <CalendarCheck className="h-4 w-4 text-green-600" />
                     Auto Reschedule
                   </div>
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  {ordersWithRescheduleDate.length > 0 
-                    ? `${ordersWithRescheduleDate.length} order(s) have reschedule dates - will auto-assign on those dates`
-                    : "No orders have reschedule dates"}
+                  {ordersWithRescheduleDate.length > 0
+                    ? `${ordersWithRescheduleDate.length} order(s) have runner-suggested dates`
+                    : "Select a reschedule date for all orders"}
+                  {ordersWithoutRescheduleDate.length > 0 && ordersWithRescheduleDate.length > 0 &&
+                    ` — ${ordersWithoutRescheduleDate.length} without dates will use your selected date`}
                 </p>
-                {ordersWithoutRescheduleDate.length > 0 && ordersWithRescheduleDate.length > 0 && (
-                  <p className="text-xs text-yellow-600 mt-1">
-                    {ordersWithoutRescheduleDate.length} order(s) will be skipped (no reschedule date)
-                  </p>
-                )}
               </div>
             </div>
 
@@ -538,17 +541,46 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
         </div>
 
         {/* Resolution-specific fields */}
-        {resolutionType === 'AUTO_RESCHEDULE' && ordersWithRescheduleDate.length > 0 && (
+        {resolutionType === 'AUTO_RESCHEDULE' && (
           <div className="space-y-4 p-4 border rounded-lg bg-green-50/50 dark:bg-green-900/10">
-            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
-              <CalendarCheck className="h-5 w-5" />
-              <span className="font-medium">
-                {ordersWithRescheduleDate.length} order(s) will be auto-rescheduled
-              </span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Each order will move to Booking Sales and auto-assign to a runner on its scheduled date.
-            </p>
+            {ordersWithoutRescheduleDate.length > 0 && (
+              <div className="space-y-2">
+                <Label>Reschedule Date {ordersWithRescheduleDate.length === 0 ? '*' : '(for orders without runner date)'}</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !bulkRescheduleDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {bulkRescheduleDate ? format(bulkRescheduleDate, 'PPP') : 'Select date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={bulkRescheduleDate}
+                      onSelect={setBulkRescheduleDate}
+                      disabled={(date) => date < new Date()}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <p className="text-xs text-muted-foreground">
+                  {ordersWithRescheduleDate.length > 0
+                    ? `${ordersWithoutRescheduleDate.length} order(s) without runner dates will use this date. ${ordersWithRescheduleDate.length} order(s) with runner dates will keep their dates.`
+                    : `All ${orders.length} order(s) will use this date.`}
+                </p>
+              </div>
+            )}
+            {ordersWithRescheduleDate.length > 0 && ordersWithoutRescheduleDate.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                All {ordersWithRescheduleDate.length} order(s) have runner-suggested dates and will be auto-rescheduled.
+              </p>
+            )}
             <div className="space-y-2">
               <Label>Note (Optional)</Label>
               <Textarea

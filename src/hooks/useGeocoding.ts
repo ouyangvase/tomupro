@@ -131,8 +131,6 @@ export const useGeocoding = () => {
       return [];
     }
 
-    console.log("[Geocoding] Starting geocode for", orders.length, "orders");
-    
     // Cancel any previous geocoding operation
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -144,22 +142,11 @@ export const useGeocoding = () => {
     const results: GeocodedLocation[] = [];
 
     try {
-      // Check how many are already cached
-      let cachedCount = 0;
-      orders.forEach(order => {
-        const cached = geocodeCache.get(order.address);
-        if (cached && Date.now() - cached.timestamp < GEOCODE_CACHE_TTL_MS && cached.coords) {
-          cachedCount++;
-        }
-      });
-      console.log("[Geocoding]", cachedCount, "orders already cached");
-
       // Process in batches to avoid rate limiting
       const batchSize = 5;
       for (let i = 0; i < orders.length; i += batchSize) {
         // Check if aborted
         if (signal.aborted) {
-          console.log("[Geocoding] Operation aborted");
           break;
         }
         
@@ -201,7 +188,6 @@ export const useGeocoding = () => {
         }
       }
 
-      console.log("[Geocoding] Completed, geocoded", results.length, "of", orders.length, "orders");
       setGeocodedOrders(results);
       return results;
     } catch (error: any) {
@@ -214,7 +200,6 @@ export const useGeocoding = () => {
   }, [geocodeAddress]);
 
   const clearCache = useCallback(() => {
-    console.log("[Geocoding] Cache cleared");
     geocodeCache.clear();
   }, []);
 

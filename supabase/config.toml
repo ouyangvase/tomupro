@@ -23,3 +23,18 @@ verify_jwt = false
 
 [functions.test-webhook-proxy]
 verify_jwt = false
+
+[functions.send-telegram-daily]
+verify_jwt = false
+
+[functions.sync-google-sheet]
+verify_jwt = false
+
+[functions.receive-article]
+verify_jwt = false
+
+[functions.blog-sitemap]
+verify_jwt = false
+
+[functions.submit-interest]
+verify_jwt = false

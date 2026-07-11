@@ -2,11 +2,13 @@ import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, ClipboardList, Truck, Trophy, Users, DollarSign,
-  Package, Settings, LogOut, Loader2, AlertCircle, GraduationCap
+  Package, Settings, LogOut, Loader2, AlertCircle, GraduationCap, Send
 } from "lucide-react";
-import capybaraHero from "@/assets/capybara-hero.png";
+import { AppLogo } from "@/components/brand/AppLogo";
+import { AppName } from "@/components/brand/AppName";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
+import capybaraMascot from "@/assets/capybara-order-assistant.png";
 import {
   Sidebar, SidebarContent, SidebarHeader, SidebarFooter, useSidebar
 } from "@/components/ui/sidebar";
@@ -24,16 +26,16 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["admin", "manager", "salesperson", "runner", "driver"] },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["admin", "manager", "salesperson", "runner", "driver", "runner_assistant"] },
   { title: "Orders", url: "/orders", icon: ClipboardList, roles: ["admin", "manager", "salesperson"] },
-  { title: "Dispatch", url: "/dispatch", icon: Truck, roles: ["admin", "runner"] },
+  { title: "Dispatch", url: "/dispatch", icon: Truck, roles: ["admin", "runner", "runner_assistant"] },
   { title: "Delivery", url: "/delivery", icon: Truck, roles: ["driver"] },
   { title: "Performance", url: "/performance", icon: Trophy, roles: ["admin", "manager", "salesperson", "runner", "driver"] },
   { title: "Team", url: "/team", icon: Users, roles: ["admin", "manager"] },
-  { title: "Finance", url: "/finance", icon: DollarSign, roles: ["admin", "runner"] },
+  { title: "Finance", url: "/finance", icon: DollarSign, roles: ["admin", "runner", "finance_viewer"] },
   { title: "Inventory", url: "/inventory", icon: Package, roles: ["admin", "manager", "salesperson", "runner"] },
   { title: "System", url: "/system", icon: Settings, roles: ["admin"] },
-  { title: "Guide", url: "/guide", icon: GraduationCap, roles: ["admin", "manager", "salesperson", "runner", "driver"] },
+  { title: "Guide", url: "/guide", icon: GraduationCap, roles: ["admin", "manager", "salesperson", "runner", "driver", "runner_assistant"] },
 ];
 
 function BadgePill({ count, urgent }: { count: number; urgent?: boolean }) {
@@ -60,7 +62,9 @@ const roleLabels: Record<string, string> = {
   manager: "Manager",
   salesperson: "Salesperson",
   runner: "Runner",
+  runner_assistant: "Runner Assistant",
   driver: "Driver",
+  finance_viewer: "Finance Viewer",
 };
 
 export function AppSidebar() {
@@ -102,10 +106,10 @@ export function AppSidebar() {
       <Sidebar className={cn("border-r border-border/30 bg-sidebar", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
         <SidebarHeader className="p-4 border-b border-border/30">
           <div className="flex items-center gap-3">
-            <img src={capybaraHero} alt="TOMUPRO" className="h-9 w-9 object-contain" />
+            <AppLogo size="sm" />
             {!collapsed && (
               <div>
-                <h2 className="font-extrabold text-base tracking-tight">TOMU<span className="text-primary">PRO</span></h2>
+                <h2 className="font-extrabold text-base tracking-tight"><AppName highlight /></h2>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <Loader2 className="h-3 w-3 animate-spin text-primary" />
                   <p className="text-[11px] text-muted-foreground">Loading...</p>
@@ -129,10 +133,10 @@ export function AppSidebar() {
       <Sidebar className={cn("border-r border-border/30 bg-sidebar", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
         <SidebarHeader className="p-4 border-b border-border/30">
           <div className="flex items-center gap-3">
-            <img src={capybaraHero} alt="TOMUPRO" className="h-9 w-9 object-contain" />
+            <AppLogo size="sm" />
             {!collapsed && (
               <div>
-                <h2 className="font-extrabold text-base tracking-tight">TOMU<span className="text-primary">PRO</span></h2>
+                <h2 className="font-extrabold text-base tracking-tight"><AppName highlight /></h2>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <AlertCircle className="h-3 w-3 text-destructive" />
                   <p className="text-[11px] text-destructive">Profile Error</p>
@@ -166,11 +170,11 @@ export function AppSidebar() {
       {/* Brand */}
       <SidebarHeader className="p-4 border-b border-border/30">
         <div className="flex items-center gap-3">
-          <img src={capybaraHero} alt="TOMUPRO" className="h-9 w-9 object-contain drop-shadow-md" />
+          <AppLogo size="sm" className="drop-shadow-md" />
           {!collapsed && (
             <div>
               <h2 className="font-extrabold text-base tracking-tight">
-                TOMU<span className="text-primary">PRO</span>
+                <AppName highlight />
               </h2>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--status-success))] animate-pulse" />
@@ -242,15 +246,16 @@ export function AppSidebar() {
 
       {/* Footer */}
       <SidebarFooter className="p-3 border-t border-border/30">
+        {/* User Card */}
         {!collapsed && (
-          <div className="flex items-center gap-3 mb-3 p-2.5 rounded-lg bg-secondary/40 border border-border/30">
-            <div className="relative">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
-                <span className="text-xs font-bold text-primary-foreground">
+          <div className="flex items-center gap-3 mb-3 p-2.5 rounded-2xl bg-secondary/40 border border-border/20">
+            <div className="relative shrink-0">
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C99D4E] to-[#A67C3D] flex items-center justify-center shadow-sm">
+                <span className="text-xs font-bold text-white">
                   {profile?.display_name?.charAt(0).toUpperCase() || "U"}
                 </span>
               </div>
-              <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-[hsl(var(--status-success))] rounded-full border-2 border-sidebar" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-[hsl(var(--status-success))] rounded-full border-2 border-sidebar" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate">{profile?.display_name}</p>
@@ -259,12 +264,84 @@ export function AppSidebar() {
           </div>
         )}
 
+        {/* Telegram Premium Card */}
+        {!collapsed && (
+          <div className="relative mb-2.5 group/tg">
+            {/* Capybara mascot peeking over card */}
+            <img
+              src={capybaraMascot}
+              alt=""
+              className="absolute -top-8 right-3 h-11 w-11 object-contain pointer-events-none z-10 drop-shadow-md transition-transform duration-300 group-hover/tg:-translate-y-0.5"
+            />
+            <NavLink
+              to="/settings/telegram"
+              className={({ isActive }) => cn(
+                "relative flex items-center gap-3 px-3 py-3 rounded-[18px] transition-all duration-200 overflow-hidden border",
+                "bg-gradient-to-r from-[#FFF9F0] to-[#F6E7C8] dark:from-[#2A2216] dark:to-[#1E1A12]",
+                "border-[rgba(201,157,78,0.15)] dark:border-[rgba(201,157,78,0.25)]",
+                "shadow-[0_2px_8px_rgba(201,157,78,0.08)] hover:shadow-[0_4px_16px_rgba(201,157,78,0.15)]",
+                "active:scale-[0.98]",
+                isActive && "ring-1 ring-[#C99D4E]/30 shadow-[0_4px_16px_rgba(201,157,78,0.15)]"
+              )}
+            >
+              {/* Telegram icon badge */}
+              <div className="h-10 w-10 rounded-xl bg-white dark:bg-[#333] flex items-center justify-center shadow-[0_1px_4px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_4px_rgba(0,0,0,0.2)] shrink-0 transition-shadow duration-200 group-hover/tg:shadow-[0_2px_8px_rgba(201,157,78,0.15)]">
+                <Send className="h-[18px] w-[18px] text-[#C99D4E]" />
+              </div>
+              {/* Text */}
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-[#5C4A28] dark:text-[#E8D5B0] leading-tight">
+                  Telegram Settings
+                </p>
+                <p className="text-[10px] text-[#9C8660] dark:text-[#8B7A5E] leading-tight mt-0.5">
+                  Manage notifications
+                </p>
+              </div>
+            </NavLink>
+          </div>
+        )}
+
+        {/* Collapsed Telegram button */}
+        {collapsed && (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <NavLink
+                  to="/settings/telegram"
+                  className={({ isActive }) => cn(
+                    "relative flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition-all duration-200 mb-2 group/tgc",
+                    "bg-gradient-to-br from-[#FFF9F0] to-[#F6E7C8] dark:from-[#2A2216] dark:to-[#1E1A12]",
+                    "border border-[rgba(201,157,78,0.15)] dark:border-[rgba(201,157,78,0.25)]",
+                    "shadow-[0_1px_4px_rgba(201,157,78,0.08)] hover:shadow-[0_2px_8px_rgba(201,157,78,0.15)]",
+                    "active:scale-95",
+                    isActive && "ring-1 ring-[#C99D4E]/30"
+                  )}
+                >
+                  <img
+                    src={capybaraMascot}
+                    alt=""
+                    className="absolute -top-5 -right-1.5 h-7 w-7 object-contain pointer-events-none opacity-90 group-hover/tgc:opacity-100 transition-all duration-200 group-hover/tgc:-translate-y-0.5"
+                  />
+                  <Send className="h-4 w-4 text-[#C99D4E]" />
+                </NavLink>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="font-medium">Telegram Settings</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {/* Sign Out */}
         <Button
-          variant="outline"
+          variant="ghost"
           size={collapsed ? "icon" : "default"}
           onClick={signOut}
           disabled={signingOut}
-          className="w-full gap-2 border-border/40 hover:bg-destructive/8 hover:text-destructive hover:border-destructive/25 rounded-lg text-sm"
+          className={cn(
+            "w-full gap-2 rounded-2xl text-sm font-medium transition-all duration-200",
+            collapsed
+              ? "h-10 w-10 mx-auto"
+              : "h-9 bg-white dark:bg-[#1A1A1A] border border-border/30 dark:border-[#333] hover:bg-[#FFF9F0] dark:hover:bg-[#262626] hover:border-[rgba(201,157,78,0.2)] text-muted-foreground hover:text-foreground shadow-none"
+          )}
         >
           {signingOut ? (
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />

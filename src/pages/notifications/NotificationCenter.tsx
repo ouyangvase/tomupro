@@ -4,16 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  CheckCheck, Bell, AlertTriangle, Package, 
+import {
+  CheckCheck, Bell, AlertTriangle, Package,
   Truck, DollarSign, Archive, Clock, CheckCircle, XCircle,
   Eye, UserPlus, Zap, Inbox, BarChart3, Settings,
-  ChevronDown
+  ChevronDown, Bug
 } from 'lucide-react';
 import { useNotifications, useMarkAsRead, useMarkAllAsRead, type Notification } from '@/hooks/useNotificationSystem';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { navigateToOrder } from '@/lib/orderNavigation';
 import capybaraEmpty from '@/assets/capybara-empty.png';
 
 type FilterTab = 'all' | 'unread' | 'action' | 'high' | 'orders' | 'finance' | 'system';
@@ -35,8 +37,11 @@ export default function NotificationCenter() {
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [expandedDebug, setExpandedDebug] = useState<Set<string>>(new Set());
 
   // Derived stats
   const unreadCount = useMemo(() => notifications.filter(n => !n.is_read).length, [notifications]);
@@ -73,7 +78,7 @@ export default function NotificationCenter() {
       markAsRead.mutate(notification.id);
     }
     if (notification.reference_type === 'order' && notification.reference_id) {
-      navigate(`/sales/ready`);
+      navigateToOrder(notification.reference_id, navigate);
     } else if (notification.reference_type === 'claim_batch' && notification.reference_id) {
       navigate(`/admin/claim-batches`);
     } else if (notification.reference_type === 'inbound' && notification.reference_id) {
@@ -85,16 +90,39 @@ export default function NotificationCenter() {
     if (notification.type === 'CLAIM_SUBMITTED' || notification.type === 'CLAIM_ACKED') {
       return { label: 'Approve Claim', action: () => navigate('/admin/claim-batches') };
     }
-    if (notification.type === 'RUNNER_ASSIGNED' || notification.status_to === 'ASSIGNED') {
-      return { label: 'Assign Runner', action: () => navigate('/sales/ready') };
-    }
     if (notification.type === 'INBOUND_PENDING') {
       return { label: 'View Inbound', action: () => navigate('/inbound/pending') };
     }
     if (notification.entity_type === 'ORDER' || notification.reference_type === 'order') {
-      return { label: 'View Order', action: () => navigate('/sales/ready') };
+      const refId = notification.reference_id;
+      // Determine label based on status transition
+      let label = 'View Order';
+      if (notification.status_to === 'DELIVERED' || notification.type === 'DELIVERED') label = 'View Delivered Order';
+      else if (notification.status_to === 'FAILED_DELIVERY' || notification.type === 'FAILED_DELIVERY') label = 'View Failed Order';
+      else if (notification.status_to === 'ASSIGNED' || notification.type === 'RUNNER_ASSIGNED') label = 'View Assignment';
+
+      return {
+        label,
+        action: () => {
+          if (refId) {
+            navigateToOrder(refId, navigate);
+          } else {
+            navigate('/orders');
+          }
+        },
+      };
     }
     return null;
+  };
+
+  const toggleDebug = (notificationId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedDebug(prev => {
+      const next = new Set(prev);
+      if (next.has(notificationId)) next.delete(notificationId);
+      else next.add(notificationId);
+      return next;
+    });
   };
 
   const getTypeIcon = (type: string, statusTo?: string) => {
@@ -307,6 +335,31 @@ export default function NotificationCenter() {
                               <Eye className="h-3 w-3 mr-1" />
                               {actionBtn.label}
                             </Button>
+                          </div>
+                        )}
+
+                        {/* Admin Debug Panel */}
+                        {isAdmin && (
+                          <div className="mt-2">
+                            <button
+                              className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors"
+                              onClick={(e) => toggleDebug(notification.id, e)}
+                            >
+                              <Bug className="h-3 w-3" />
+                              Debug
+                            </button>
+                            {expandedDebug.has(notification.id) && (
+                              <div className="mt-1.5 p-2.5 rounded bg-muted/60 border border-border/40 text-[10px] font-mono text-muted-foreground space-y-0.5" onClick={e => e.stopPropagation()}>
+                                <div><span className="text-foreground/60">id:</span> {notification.id}</div>
+                                <div><span className="text-foreground/60">type:</span> {notification.type}</div>
+                                <div><span className="text-foreground/60">ref_type:</span> {notification.reference_type || '-'}</div>
+                                <div><span className="text-foreground/60">ref_id:</span> {notification.reference_id || '-'}</div>
+                                <div><span className="text-foreground/60">entity:</span> {notification.entity_type || '-'}</div>
+                                <div><span className="text-foreground/60">transition:</span> {notification.status_from || '?'} → {notification.status_to || '?'}</div>
+                                <div><span className="text-foreground/60">priority:</span> {notification.priority || '-'}</div>
+                                <div><span className="text-foreground/60">role:</span> {notification.recipient_role || '-'}</div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

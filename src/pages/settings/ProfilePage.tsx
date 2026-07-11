@@ -15,12 +15,14 @@ import { Camera, Save, KeyRound, UserX, Loader2, Shield, Mail, User } from 'luci
 import RunnerCodeCard from '@/components/runner/RunnerCodeCard';
 import DriverLinkCard from '@/components/driver/DriverLinkCard';
 import { cn } from '@/lib/utils';
-import capybaraHero from '@/assets/capybara-hero.png';
+import { AppLogo } from '@/components/brand/AppLogo';
+import { useBranding } from '@/contexts/BrandingContext';
 
 const ProfilePage = () => {
   const { user, profile, signOut } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { branding } = useBranding();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
@@ -182,7 +184,7 @@ const ProfilePage = () => {
 
             {/* Capybara */}
             <div className="hidden md:block shrink-0">
-              <img src={capybaraHero} alt="Capybara" className="h-20 w-20 object-contain drop-shadow-lg opacity-80" />
+              <AppLogo size="lg" className="h-20 w-20 opacity-80" />
             </div>
           </div>
         </div>
@@ -191,7 +193,7 @@ const ProfilePage = () => {
         {profile.role === 'user' && (
           <Card className="border-primary/50 bg-primary/5">
             <CardHeader>
-              <CardTitle className="text-primary">Welcome to TOMU PRO!</CardTitle>
+              <CardTitle className="text-primary">Welcome to {branding.appName}!</CardTitle>
               <CardDescription>
                 Complete your profile setup below. Once an administrator assigns you a role, you'll gain access to more features.
               </CardDescription>

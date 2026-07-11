@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { guides, pageGuides, roleImages, type GuideRole } from '@/data/guideContent';
 import { Search, BookOpen, ArrowRight, HelpCircle, ChevronRight, Sparkles } from 'lucide-react';
-import capybaraHero from '@/assets/capybara-hero.png';
+import { AppLogo } from '@/components/brand/AppLogo';
 
 export function FloatingHelpButton() {
   const { profile } = useAuth();
@@ -57,7 +57,7 @@ export function FloatingHelpButton() {
           )}
           aria-label="Need Help?"
         >
-          <img src={capybaraHero} alt="Help" className="h-7 w-7 object-contain" />
+          <AppLogo size="xs" />
         </button>
       </SheetTrigger>
       <SheetContent className="w-[380px] sm:w-[420px] p-0">

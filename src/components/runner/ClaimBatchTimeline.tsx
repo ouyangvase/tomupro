@@ -16,11 +16,11 @@ interface ClaimBatchTimelineProps {
   className?: string;
 }
 
-export function ClaimBatchTimeline({ 
-  status, 
-  submittedAt, 
+export function ClaimBatchTimeline({
+  status,
+  submittedAt,
   acknowledgedAt,
-  className 
+  className
 }: ClaimBatchTimelineProps) {
   const steps: TimelineStep[] = [
     {
@@ -52,25 +52,25 @@ export function ClaimBatchTimeline({
   ];
 
   return (
-    <div className={cn("flex items-center gap-1", className)}>
+    <div className={cn("flex items-center gap-0.5", className)}>
       {steps.map((step, i) => {
         const Icon = step.icon;
         return (
-          <div key={step.label} className="flex items-center gap-1">
+          <div key={step.label} className="flex items-center gap-0.5">
             <div className="flex flex-col items-center gap-0.5">
               <div className={cn(
-                "w-7 h-7 rounded-full flex items-center justify-center text-xs transition-all",
-                step.completed 
-                  ? "bg-[hsl(var(--status-success))] text-white" 
-                  : step.active 
-                    ? "bg-[hsl(var(--status-warning)/0.2)] text-[hsl(var(--status-warning))] border-2 border-[hsl(var(--status-warning))] animate-pulse"
+                "w-5 h-5 rounded-full flex items-center justify-center transition-all",
+                step.completed
+                  ? "bg-[hsl(var(--status-success))] text-white"
+                  : step.active
+                    ? "bg-[hsl(var(--status-warning)/0.2)] text-[hsl(var(--status-warning))] border-[1.5px] border-[hsl(var(--status-warning))] animate-pulse"
                     : "bg-muted text-muted-foreground"
               )}>
-                {step.completed ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
+                {step.completed ? <Check className="h-2.5 w-2.5" /> : <Icon className="h-2.5 w-2.5" />}
               </div>
               <span className={cn(
-                "text-[10px] font-medium whitespace-nowrap",
-                step.completed ? "text-[hsl(var(--status-success))]" : 
+                "text-[8px] leading-tight font-medium whitespace-nowrap",
+                step.completed ? "text-[hsl(var(--status-success))]" :
                 step.active ? "text-[hsl(var(--status-warning))]" : "text-muted-foreground"
               )}>
                 {step.label}
@@ -78,7 +78,7 @@ export function ClaimBatchTimeline({
             </div>
             {i < steps.length - 1 && (
               <div className={cn(
-                "w-6 h-0.5 mb-4",
+                "w-3 h-[1.5px] mb-3.5",
                 step.completed ? "bg-[hsl(var(--status-success))]" : "bg-border"
               )} />
             )}

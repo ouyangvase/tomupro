@@ -17,7 +17,7 @@ const TARGET_FIELDS: { key: string; label: string; required: boolean }[] = [
   { key: 'channel', label: 'Channel', required: false },
   { key: 'payment_method', label: 'Payment Method', required: false },
   { key: 'expected_pickup_date', label: 'Pickup Date', required: false },
-  { key: 'notes', label: 'Notes', required: false },
+  { key: 'notes', label: 'Order Notes', required: false },
   { key: 'sku_name_or_code', label: 'SKU', required: false },
   { key: 'qty', label: 'Quantity', required: false },
   { key: 'price', label: 'Price', required: false },

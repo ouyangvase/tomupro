@@ -361,7 +361,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           let totalAmount = 0;
           for (const item of group.items) {
             totalQty += item.qty;
-            totalAmount += item.price;
+            totalAmount += item.price * item.qty;
           }
 
           const { data: order, error: orderError } = await supabase
@@ -373,7 +373,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               address: toUpperLatin(group.orderData.address),
               area: toUpperLatin(group.orderData.area) || null,
               channel: toUpperLatin(group.orderData.channel) || null,
-              notes: toUpperLatin(group.orderData.notes) || null,
+              notes: group.orderData.notes || null,
               order_date: group.orderData.order_date || new Date().toISOString().split('T')[0],
               payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
@@ -398,7 +398,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               sku_label: item.sku_name_or_code,
               qty: item.qty,
               price: item.price,
-              line_total: item.price,
+              line_total: item.price * item.qty,
             });
           }
           created++;

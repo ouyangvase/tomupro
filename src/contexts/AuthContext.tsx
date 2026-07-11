@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -130,7 +130,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Prevent duplicate concurrent fetches
     if (retryCount === 0 && isFetchingRef.current) {
-      console.log('[Auth] Profile fetch already in progress, skipping duplicate');
       return;
     }
     if (retryCount === 0) {
@@ -142,9 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfileStatus('loading');
       setProfileError(null);
     }
-    
-    console.log(`[Auth] Fetching profile for ${userId} (attempt ${retryCount + 1}/${maxRetries + 1})`);
-    
+
     // Add timeout wrapper using Promise.race
     const fetchWithTimeout = async (): Promise<{ data: ExtendedProfile | null; error: any }> => {
       const timeoutPromise = new Promise<{ data: null; error: { message: string } }>((resolve) => {
@@ -204,7 +201,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     // Check if password reset is required
     if (newProfile.force_password_reset) {
-      console.log('[Auth] Password reset required for user');
       setPreviousRole(newProfile.role);
       setProfile(newProfile);
       setProfileStatus('password_reset_required');
@@ -216,8 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (previousRole && previousRole !== newProfile.role) {
       setRoleChanged(true);
     }
-    
-    console.log('[Auth] Profile loaded successfully, role:', newProfile.role);
+
     isFetchingRef.current = false;
     setPreviousRole(newProfile.role);
     setProfile(newProfile);
@@ -234,7 +229,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Retry profile fetch - for use with ProfileGate
   const retryProfile = useCallback(async () => {
     if (user?.id) {
-      console.log('[Auth] Retrying profile fetch...');
       setProfileStatus('loading');
       setProfileError(null);
       await fetchProfile(user.id);
@@ -243,7 +237,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Reset session completely - for use with ProfileGate
   const resetSession = useCallback(async () => {
-    console.log('[Auth] Resetting session...');
     clearAuthState();
     try {
       await supabase.auth.signOut();
@@ -279,8 +272,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Initialize auth with proper session validation
     const initializeAuth = async () => {
       try {
-        console.log('[Auth] Initializing auth...');
-        
         // First check if we have a stored session
         const { data: { session }, error } = await supabase.auth.getSession();
         
@@ -292,13 +283,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         
         if (!session) {
-          console.log('[Auth] No session found - user needs to log in');
           if (mounted) setLoading(false);
           return;
         }
         
         // Validate session with a getUser call (this checks if token is actually valid)
-        console.log('[Auth] Validating session...');
         const isValid = await validateSession();
         
         if (!isValid) {
@@ -308,7 +297,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
         
-        console.log('[Auth] Session valid, fetching profile...');
         // Session is valid - proceed
         if (mounted) {
           setSession(session);
@@ -327,9 +315,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
-        
-        console.log('[Auth] Auth state changed:', event);
-        
+
         // Handle session refresh failures (e.g., invalid refresh token)
         if (event === 'TOKEN_REFRESHED' && !session) {
           console.warn('[Auth] Token refresh failed - clearing stale tokens');
@@ -340,7 +326,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Handle sign out event
         if (event === 'SIGNED_OUT') {
-          console.log('[Auth] User signed out');
           clearAuthState();
           if (mounted) setLoading(false);
           return;
@@ -388,6 +373,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [fetchProfile, clearAuthState, validateSession]);
 
+  // Ref for current profile to avoid realtime subscription churn
+  const profileRef = useRef(profile);
+  useEffect(() => { profileRef.current = profile; }, [profile]);
+
   // Subscribe to realtime changes on the profile
   useEffect(() => {
     if (!user?.id) return;
@@ -404,22 +393,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         async (payload) => {
           const newProfile = payload.new as ExtendedProfile;
-          
+
           // Check if account was disabled/resigned in real-time
           if (newProfile.status && newProfile.status !== 'active') {
             await handleAccountDisabled(
-              newProfile.status === 'resigned' 
+              newProfile.status === 'resigned'
                 ? 'Your account has been marked as resigned. Please contact admin.'
                 : 'Your account has been disabled. Please contact admin.'
             );
             return;
           }
-          
-          // Check if role changed
-          if (profile && profile.role !== newProfile.role) {
+
+          // Check if role changed (using ref to avoid subscription churn)
+          if (profileRef.current && profileRef.current.role !== newProfile.role) {
             setRoleChanged(true);
           }
-          
+
           setProfile(newProfile);
           setPreviousRole(newProfile.role);
         }
@@ -429,7 +418,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, profile, handleAccountDisabled]);
+  }, [user?.id, handleAccountDisabled]);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -486,27 +475,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSigningOut(false);
   };
 
+  const contextValue = useMemo(() => ({
+    user,
+    session,
+    profile,
+    role: profile?.role ?? null,
+    loading,
+    signingOut,
+    roleChanged,
+    profileStatus,
+    profileError,
+    dismissRoleChange,
+    refreshProfile,
+    retryProfile,
+    resetSession,
+    signIn,
+    signUp,
+    signOut,
+  }), [user, session, profile, loading, signingOut, roleChanged, profileStatus, profileError, dismissRoleChange, refreshProfile, retryProfile, resetSession, signIn, signUp, signOut]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        profile,
-        role: profile?.role ?? null,
-        loading,
-        signingOut,
-        roleChanged,
-        profileStatus,
-        profileError,
-        dismissRoleChange,
-        refreshProfile,
-        retryProfile,
-        resetSession,
-        signIn,
-        signUp,
-        signOut,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

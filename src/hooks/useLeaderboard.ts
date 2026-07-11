@@ -245,7 +245,7 @@ export function useLeaderboardRankings(
       });
       return { rankings, lastUpdated: new Date() };
     },
-    refetchInterval: 60000,
+    refetchInterval: 180000,
     staleTime: 30000,
   });
   return query;

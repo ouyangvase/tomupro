@@ -1,11 +1,117 @@
 // Custom types for the application
-export type AppRole = 'admin' | 'manager' | 'salesperson' | 'runner' | 'driver' | 'user';
+export type AppRole = 'admin' | 'manager' | 'salesperson' | 'runner' | 'driver' | 'user' | 'finance_viewer' | 'runner_assistant';
+
+// Finance Workspace types
+export type FinanceClaimStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'paid' | 'voided';
+export type FinanceClaimCategory = 'fuel' | 'packaging' | 'toll' | 'parking' | 'equipment' | 'other';
+export type CompanyMemberRole = 'owner' | 'admin' | 'runner' | 'viewer';
+export type CompanyMemberStatus = 'pending' | 'active' | 'suspended';
+export type FinanceTransactionType = 'income' | 'expense' | 'transfer';
+export type FinanceTransactionStatus = 'pending' | 'confirmed' | 'voided';
+export type FinanceReportStatus = 'draft' | 'closed';
+
+export interface Company {
+  id: string;
+  company_name: string;
+  owner_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompanyMember {
+  id: string;
+  company_id: string;
+  user_id: string;
+  role: CompanyMemberRole;
+  invited_by: string | null;
+  status: CompanyMemberStatus;
+  created_at: string;
+  // Joined
+  user?: Profile;
+  company?: Company;
+}
+
+export interface FinanceClaim {
+  id: string;
+  company_id: string;
+  claim_no: string;
+  runner_user_id: string;
+  tracking_number: string | null;
+  order_id: string | null;
+  claim_date: string;
+  category: FinanceClaimCategory;
+  description: string;
+  amount: number;
+  payment_method: string | null;
+  receipt_url: string | null;
+  notes: string | null;
+  status: FinanceClaimStatus;
+  admin_note: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  paid_by: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined
+  runner?: Profile;
+  approver?: Profile;
+}
+
+export interface FinanceTransaction {
+  id: string;
+  company_id: string;
+  source_type: string;
+  source_id: string | null;
+  transaction_date: string;
+  type: FinanceTransactionType;
+  category: string;
+  description: string;
+  amount: number;
+  status: FinanceTransactionStatus;
+  created_by: string;
+  approved_by: string | null;
+  created_at: string;
+  // Joined
+  creator?: Profile;
+}
+
+export interface FinanceMonthlyReport {
+  id: string;
+  company_id: string;
+  report_month: string;
+  total_income: number;
+  total_expense: number;
+  net_profit: number;
+  gross_profit: number;
+  profit_margin: number;
+  closed_by: string | null;
+  closed_at: string | null;
+  status: FinanceReportStatus;
+  // Joined
+  closer?: Profile;
+}
+
+export interface FinanceAuditLog {
+  id: string;
+  company_id: string;
+  user_id: string;
+  action: string;
+  module: string;
+  record_id: string | null;
+  before_data: any;
+  after_data: any;
+  created_at: string;
+  // Joined
+  user?: Profile;
+}
 export type WarehouseType = 'SALESPERSON' | 'RUNNER' | 'MANAGER';
 export type PaymentMethod = 'COD' | 'TRANSFER';
 export type OrderStatus = 'BOOKING' | 'READY' | 'CANCELLED';
 export type RunnerStatus = 'UNASSIGNED' | 'ASSIGNED' | 'TAKEN' | 'DELIVERED' | 'FAILED_DELIVERY';
 export type DriverStatus = 'UNASSIGNED' | 'ASSIGNED' | 'OUT_FOR_DELIVERY' | 'DRIVER_DELIVERED' | 'DRIVER_FAILED' | 'RETURN_REQUIRED';
 export type RunnerAcceptStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
+export type ReceiptStatus = 'pending' | 'confirmed' | 'rejected';
 export type FailedNextStep = 'RESCHEDULE' | 'SALESPERSON_CONTACT';
 
 export interface OrderItem {
@@ -37,6 +143,19 @@ export interface RunnerDriver {
   created_at: string;
   driver?: Profile;
   runner?: Profile;
+}
+
+export interface RunnerAssistant {
+  id: string;
+  runner_id: string;
+  assistant_id: string;
+  can_deliver: boolean;
+  can_confirm_receipt: boolean;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  runner?: Profile;
+  assistant?: Profile;
 }
 
 export interface Profile {
@@ -83,6 +202,7 @@ export interface Order {
   area: string | null;
   channel: string | null;
   notes: string | null;
+  remark: string | null;
   payment_method: PaymentMethod;
   salesperson_id: string;
   runner_id: string | null;
@@ -124,6 +244,12 @@ export interface Order {
   salesperson_action_due_date: string | null;
   last_status_note: string | null;
   reschedule_flag: boolean | null;
+  // Receipt verification fields
+  receipt_url: string | null;
+  receipt_status: ReceiptStatus | null;
+  receipt_confirmed_by: string | null;
+  receipt_confirmed_at: string | null;
+  receipt_rejected_reason: string | null;
   // Operational tracking fields
   operational_status: string;
   reschedule_cycle_no: number;

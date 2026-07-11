@@ -6,6 +6,7 @@ import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 const UsersSettings = lazy(() => import('@/pages/settings/UsersSettings'));
 const PendingStockApprovals = lazy(() => import('@/pages/manager/PendingStockApprovals'));
 const ManagerOversight = lazy(() => import('@/pages/manager/ManagerOversight'));
+const RunnerAssistantSettings = lazy(() => import('@/pages/settings/RunnerAssistantSettings'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -15,6 +16,7 @@ const Loading = () => (
 
 const tabs = [
   { id: 'users', label: 'Users' },
+  { id: 'assistants', label: 'Assistants' },
   { id: 'approvals', label: 'Pending Approvals' },
   { id: 'oversight', label: 'Team Oversight' },
 ];
@@ -38,6 +40,7 @@ export default function TeamModule() {
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
             {activeTab === 'users' && <UsersSettings />}
+            {activeTab === 'assistants' && <RunnerAssistantSettings />}
             {activeTab === 'approvals' && <PendingStockApprovals />}
             {activeTab === 'oversight' && <ManagerOversight />}
           </div>

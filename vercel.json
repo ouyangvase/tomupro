@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/sitemap.xml",
+      "destination": "https://dtcchduronwsyunyakxj.supabase.co/functions/v1/blog-sitemap"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -180,7 +180,7 @@ export function useManagerDashboard(period: PeriodType = 'mtd') {
       };
     },
     enabled: !!user?.id && (role === 'manager' || role === 'admin'),
-    refetchInterval: 30000,
+    refetchInterval: 120000,
   });
 }
 

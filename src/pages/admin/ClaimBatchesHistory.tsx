@@ -4,13 +4,14 @@ import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useClaimBatches, useClaimBatchDetails } from '@/hooks/useClaimBatches';
 import { useRunners } from '@/hooks/useUserDirectory';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, getYear, getMonth } from 'date-fns';
-import { Receipt, Eye, DollarSign, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Receipt, Eye, DollarSign, Clock, CheckCircle, AlertCircle, Calculator, ArrowRight } from 'lucide-react';
 import type { ClaimBatch, ClaimBatchStatus } from '@/types/database';
 import { PageHero } from '@/components/dashboard/PageHero';
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
@@ -68,6 +69,7 @@ export default function ClaimBatchesHistory() {
   const [selectedBatch, setSelectedBatch] = useState<ClaimBatch | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [exchangeRate, setExchangeRate] = useState<string>('3.40');
 
   // Fetch order details on demand when a batch is selected for viewing
   const { data: batchDetails = [], isLoading: detailsLoading } = useClaimBatchDetails(
@@ -133,7 +135,7 @@ export default function ClaimBatchesHistory() {
           amount: Number(order.total_amount || 0),
           payment_method: order.payment_method || '',
           reconciliation_status: order.reconciliation_status?.replace(/_/g, ' ') || '',
-          note: batch.note || '',
+          earned: Number(batch.delivery_charges_bnd) || 0,
         });
       }
     }
@@ -144,7 +146,7 @@ export default function ClaimBatchesHistory() {
       { key: 'customer_name', header: 'Customer' }, { key: 'area', header: 'Area' },
       { key: 'items', header: 'Items (SKU x Qty)' }, { key: 'total_qty', header: 'Total Qty' },
       { key: 'amount', header: 'Amount (BND)' }, { key: 'payment_method', header: 'Payment Method' },
-      { key: 'reconciliation_status', header: 'Claim Status' }, { key: 'note', header: 'Note' },
+      { key: 'reconciliation_status', header: 'Claim Status' }, { key: 'earned', header: 'Earned (BND)' },
     ], 'claim_batches_orders_export');
   };
 
@@ -164,6 +166,7 @@ export default function ClaimBatchesHistory() {
       pendingAmount: pending.reduce((sum, b) => sum + Number(b.total_amount), 0),
       claimedCount: claimed.length,
       claimedAmount: claimed.reduce((sum, b) => sum + Number(b.total_amount), 0),
+      totalEarned: filteredBatches.reduce((sum, b) => sum + (Number(b.delivery_charges_bnd) || 0), 0),
     };
   }, [filteredBatches]);
 
@@ -220,12 +223,13 @@ export default function ClaimBatchesHistory() {
           : <span className="text-muted-foreground">-</span>,
       },
       {
-        key: 'note', header: 'Note',
-        render: (batch) => (
-          <span className="truncate max-w-[150px] block text-sm" title={batch.note || ''}>
-            {batch.note || '-'}
-          </span>
-        ),
+        key: 'delivery_charges_bnd', header: 'Earned', sortable: true,
+        render: (batch) => {
+          const earned = Number(batch.delivery_charges_bnd) || 0;
+          return earned > 0
+            ? <span className="font-medium text-green-600 dark:text-green-400">{formatBND(earned)}</span>
+            : <span className="text-muted-foreground">-</span>;
+        },
       },
       {
         key: 'actions', header: 'Actions',
@@ -251,7 +255,7 @@ export default function ClaimBatchesHistory() {
         />
 
         {/* Financial Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="relative overflow-hidden border-border/50">
             <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full -translate-y-1/2 translate-x-1/2" />
             <CardContent className="pt-5 pb-4 relative">
@@ -284,6 +288,19 @@ export default function ClaimBatchesHistory() {
               </div>
               <p className="text-3xl font-bold text-[hsl(var(--status-success))]"><AnimatedCounter value={stats.claimedCount} /></p>
               <p className="text-sm text-muted-foreground mt-1">{formatBND(stats.claimedAmount)}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-green-500/30 bg-green-500/5">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="pt-5 pb-4 relative">
+              <div className="flex items-center gap-2 mb-1">
+                <Receipt className="h-4 w-4 text-green-600" />
+                <p className="text-xs font-medium text-muted-foreground">Total Earned</p>
+              </div>
+              <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                <AnimatedCounter value={stats.totalEarned} formatter={(v) => formatBND(v)} />
+              </p>
             </CardContent>
           </Card>
 
@@ -346,6 +363,58 @@ export default function ClaimBatchesHistory() {
 
           <Button variant="ghost" size="sm" onClick={clearFilters}>Clear Filters</Button>
         </div>
+
+        {/* BND → RM Calculator */}
+        {selectedRows.length > 0 && (() => {
+          const selected = filteredBatches.filter(b => selectedRows.includes(b.id));
+          const totalBND = selected.reduce((sum, b) => sum + Number(b.total_amount), 0);
+          const totalOrders = selected.reduce((sum, b) => sum + (b.items?.length || 0), 0);
+          const rate = parseFloat(exchangeRate) || 0;
+          const totalRM = totalBND * rate;
+          return (
+            <Card className="border-primary/40 bg-gradient-to-r from-primary/5 to-blue-50/50">
+              <CardContent className="py-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Calculator className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold">Currency Calculator</span>
+                  <Badge variant="outline" className="ml-auto text-xs">{selectedRows.length} batch{selectedRows.length > 1 ? 'es' : ''} selected &middot; {totalOrders} orders</Badge>
+                </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  {/* BND Total */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground mb-1">Total BND</p>
+                    <p className="text-2xl font-bold text-primary">{formatBND(totalBND)}</p>
+                  </div>
+
+                  {/* Rate Input */}
+                  <div className="flex items-center gap-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Rate (BND → RM)</p>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground font-medium">×</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={exchangeRate}
+                          onChange={(e) => setExchangeRate(e.target.value)}
+                          className="w-24 h-9 text-center font-semibold"
+                        />
+                      </div>
+                    </div>
+                    <ArrowRight className="h-5 w-5 text-muted-foreground mt-5" />
+                  </div>
+
+                  {/* RM Total */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground mb-1">Total RM</p>
+                    <p className="text-2xl font-bold text-emerald-600">RM {totalRM.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         <DataGrid
           data={filteredBatches}

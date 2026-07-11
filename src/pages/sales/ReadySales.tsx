@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
@@ -69,6 +69,16 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   const [mobileSearch, setMobileSearch] = useState('');
   const [serverSearch, setServerSearch] = useState('');
+
+  // Debounce mobile search → server search (300ms)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setServerSearch(mobileSearch);
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [mobileSearch]);
   
   const [managerSelectedSalesperson, setManagerSelectedSalesperson] = useState<string>('');
   
@@ -92,7 +102,10 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     role === 'salesperson' ? profile?.id : undefined
   );
 
-  const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+  const handleSearchChange = useCallback((q: string) => {
+    setMobileSearch(q);
+    setServerSearch(q);
+  }, []);
 
   const filteredOrders = useMemo(() => {
     return applyOrderFilters(orders, panelFilters);
@@ -190,10 +203,20 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
 
   const handleAssignRunner = () => {
     if (!selectedRunner || selectedRows.length === 0) return;
-    bulkUpdateOrders.mutate({
-      ids: selectedRows,
-      updates: { runner_id: selectedRunner, runner_status: 'ASSIGNED' },
-    });
+    const orderIds = [...selectedRows];
+    const runnerId = selectedRunner;
+    bulkUpdateOrders.mutate(
+      { ids: orderIds, updates: { runner_id: runnerId, runner_status: 'ASSIGNED' } },
+      {
+        onSuccess: () => {
+          import('@/hooks/useAuditLogs').then(({ logAudit }) => {
+            for (const id of orderIds) {
+              logAudit({ entity_type: 'order', entity_id: id, action: 'runner_assigned', after_json: { runner_id: runnerId, runner_status: 'ASSIGNED' } });
+            }
+          });
+        },
+      }
+    );
     setAssignDialogOpen(false);
     setSelectedRunner('');
     setSelectedRows([]);
@@ -346,7 +369,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search orders..."
-              value={serverSearch}
+              value={mobileSearch}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-9 h-10 rounded-full border-border/60 bg-card"
             />
@@ -441,7 +464,9 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
             {isLoading ? (
               <div className="text-center py-8 text-muted-foreground">Loading...</div>
             ) : filteredOrders.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">No ready orders</div>
+              <div className="text-center py-8 text-muted-foreground">
+                {serverSearch ? `No orders found for "${serverSearch}"` : "No ready orders"}
+              </div>
             ) : (
               filteredOrders.map((order) => {
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
@@ -451,7 +476,17 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                     id={order.id}
                     orderRef={order.order_code}
                     areaBadge={order.area ? <Badge variant="outline" className="text-xs">{order.area}</Badge> : undefined}
-                    statusBadge={<StatusBadge status={order.runner_status} type="runner" />}
+                    statusBadge={
+                      <>
+                        <StatusBadge status={order.runner_status} type="runner" />
+                        {order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected' && (
+                          <Badge variant="outline" className="text-[10px] font-semibold px-1.5 py-0 bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
+                            Receipt Rejected
+                          </Badge>
+                        )}
+                      </>
+                    }
+                    className={order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected' ? 'border-red-300 dark:border-red-800/60 bg-red-50/30 dark:bg-red-950/10' : undefined}
                     selectable={isEditable}
                     isSelected={selectedRows.includes(order.id)}
                     onSelectionChange={(checked) => toggleSelection(order.id, checked)}

@@ -1,1 +1,16 @@
-{"orgId":"team_DXbOF5VvrqAEkSiA0wUTIwf4","projectId":"prj_3NE7gEIzMdNDJyqK5yiicdt0dx2Z"}
+{
+  "projectId": "prj_3NE7gEIzMdNDJyqK5yiicdt0dx2Z",
+  "orgId": "team_DXbOF5VvrqAEkSiA0wUTIwf4",
+  "projectName": "tomupro",
+  "settings": {
+    "createdAt": 1769551356109,
+    "framework": "vite",
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}

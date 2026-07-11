@@ -1,14 +1,10 @@
 import type { Order, OrderItem } from '@/types/database';
 import { sanitizePhoneForWhatsApp, isScientificNotation } from '@/lib/phone';
 
-const BRUNEI_COUNTRY_CODE = '673';
-
 /**
- * Sanitize phone number following the exact formula logic:
- * - Remove all non-digits
- * - If starts with "673", strip first 3 digits
- * - Return local number
- * - If scientific notation detected, return empty (corrupted value)
+ * Sanitize phone number for WhatsApp.
+ * Returns digits with country code (Brunei 673 prepended for local numbers,
+ * international numbers returned as-is with their own country code).
  */
 export function sanitizePhoneNumber(phone: string): string {
   return sanitizePhoneForWhatsApp(phone);
@@ -91,18 +87,19 @@ Tomu Enterprise`;
 /**
  * Generate WhatsApp URL for an order
  * Uses api.whatsapp.com/send format as specified
+ * Handles both Brunei and international numbers correctly.
  */
 export function generateWhatsAppUrl(order: Order): string | null {
-  const local = sanitizePhoneNumber(order.phone);
-  
-  if (!local) {
+  const phoneDigits = sanitizePhoneNumber(order.phone);
+
+  if (!phoneDigits) {
     return null;
   }
-  
+
   const message = generateWhatsAppMessage(order);
   const encodedMessage = encodeURIComponent(message);
-  
-  return `https://api.whatsapp.com/send?phone=${BRUNEI_COUNTRY_CODE}${local}&text=${encodedMessage}`;
+
+  return `https://api.whatsapp.com/send?phone=${phoneDigits}&text=${encodedMessage}`;
 }
 
 /**

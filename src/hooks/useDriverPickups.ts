@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface DriverPickup {
   id: string;
@@ -37,11 +38,12 @@ export interface BlockingOrder {
 
 // Fetch pickups for a runner (all their drivers)
 export function useRunnerPickups() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['runner-pickups'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('driver_pickups')
@@ -60,11 +62,12 @@ export function useRunnerPickups() {
 
 // Fetch pickups for a driver
 export function useDriverPickups() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['driver-pickups'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('driver_pickups')
@@ -100,6 +103,7 @@ export function useDriverBlockingOrders(driverId: string | undefined) {
 export function useCreatePickup() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (params: {
@@ -109,8 +113,7 @@ export function useCreatePickup() {
       items: { product_id: string; qty: number; required_qty?: number; buffer_qty?: number }[];
       force?: boolean; // Allow bypassing blocking order checks
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Check for blocking orders first (unless force is true)
       if (!params.force) {
@@ -257,11 +260,12 @@ export function useDeletePickup() {
 
 // Fetch driver allocated stock view
 export function useDriverAllocatedStock(driverId?: string) {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['driver-allocated-stock', driverId],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // If no driverId provided, use current user (for driver's own view)
       const targetDriverId = driverId || user.id;

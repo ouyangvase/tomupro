@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface DriverReturn {
   id: string;
@@ -47,11 +48,12 @@ export function useRunnerReturns() {
 
 // Fetch returns for a driver
 export function useDriverReturns() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['driver-returns'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('driver_returns')
@@ -72,6 +74,7 @@ export function useDriverReturns() {
 export function useCreateReturn() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (params: {
@@ -80,8 +83,7 @@ export function useCreateReturn() {
       notes?: string;
       items: { product_id: string; qty: number }[];
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Create return - validation is handled in the dialog
       // We allow manual returns for flexibility
@@ -126,11 +128,11 @@ export function useCreateReturn() {
 export function useAcknowledgeReturn() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (returnId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       const { error } = await supabase
         .from('driver_returns')

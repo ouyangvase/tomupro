@@ -1,0 +1,243 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+
+/* ── Types ── */
+
+export interface TelegramBotSettings {
+  id: string;
+  bot_token: string | null;
+  bot_enabled: boolean;
+  daily_send_time: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface UserTelegramSettings {
+  user_id: string;
+  chat_id: string | null;
+  telegram_enabled: boolean;
+  receive_stock_balance: boolean;
+  receive_delivered_not_claimed: boolean;
+  hide_zero_stock_sku: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TelegramPermission {
+  id: string;
+  user_id: string;
+  admin_enabled: boolean;
+  can_receive_stock_balance: boolean;
+  can_receive_delivered_not_claimed: boolean;
+  allowed_stock_owner_ids: string[];
+  allowed_warehouse_ids: string[];
+  allowed_runner_ids: string[];
+  allowed_team_user_ids: string[];
+  see_all_stock: boolean;
+  can_view_all_data: boolean;
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface TelegramLog {
+  id: string;
+  user_id: string;
+  chat_id: string | null;
+  notification_type: string;
+  sent_at: string;
+  status: string;
+  error_message: string | null;
+  message_preview: string | null;
+}
+
+/* ── Bot Settings (Admin) ── */
+
+export function useTelegramBotSettings() {
+  return useQuery({
+    queryKey: ['telegram-bot-settings'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('telegram_bot_settings')
+        .select('*')
+        .limit(1)
+        .single();
+      if (error) throw error;
+      return data as TelegramBotSettings;
+    },
+  });
+}
+
+export function useUpdateBotSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (updates: Partial<TelegramBotSettings>) => {
+      // Get the single row first
+      const { data: existing } = await (supabase as any)
+        .from('telegram_bot_settings')
+        .select('id')
+        .limit(1)
+        .single();
+      if (!existing) throw new Error('Bot settings not found');
+      const { error } = await (supabase as any)
+        .from('telegram_bot_settings')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telegram-bot-settings'] }),
+  });
+}
+
+/* ── User Telegram Settings ── */
+
+export function useMyTelegramSettings(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['user-telegram-settings', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data, error } = await (supabase as any)
+        .from('user_telegram_settings')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as UserTelegramSettings | null;
+    },
+    enabled: !!userId,
+  });
+}
+
+export function useAllUserTelegramSettings() {
+  return useQuery({
+    queryKey: ['all-user-telegram-settings'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('user_telegram_settings')
+        .select('*');
+      if (error) throw error;
+      return (data || []) as UserTelegramSettings[];
+    },
+  });
+}
+
+export function useUpsertMyTelegramSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (settings: Partial<UserTelegramSettings> & { user_id: string }) => {
+      const { error } = await (supabase as any)
+        .from('user_telegram_settings')
+        .upsert({
+          ...settings,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['user-telegram-settings', v.user_id] });
+      qc.invalidateQueries({ queryKey: ['all-user-telegram-settings'] });
+    },
+  });
+}
+
+/* ── Permissions (Admin) ── */
+
+export function useAllTelegramPermissions() {
+  return useQuery({
+    queryKey: ['telegram-permissions'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('telegram_notification_permissions')
+        .select('*');
+      if (error) throw error;
+      return (data || []) as TelegramPermission[];
+    },
+  });
+}
+
+export function useMyTelegramPermission(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['telegram-permission', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data, error } = await (supabase as any)
+        .from('telegram_notification_permissions')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as TelegramPermission | null;
+    },
+    enabled: !!userId,
+  });
+}
+
+export function useUpsertTelegramPermission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (perm: Partial<TelegramPermission> & { user_id: string }) => {
+      const { error } = await (supabase as any)
+        .from('telegram_notification_permissions')
+        .upsert({
+          ...perm,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telegram-permissions'] }),
+  });
+}
+
+/* ── Logs ── */
+
+export function useTelegramLogs(limit = 50) {
+  return useQuery({
+    queryKey: ['telegram-logs', limit],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('telegram_notification_logs')
+        .select('*')
+        .order('sent_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data || []) as TelegramLog[];
+    },
+  });
+}
+
+export function useMyLatestTelegramLog(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['telegram-log-latest', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data, error } = await (supabase as any)
+        .from('telegram_notification_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .order('sent_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as TelegramLog | null;
+    },
+    enabled: !!userId,
+  });
+}
+
+/* ── Test / Send via Edge Function ── */
+
+export async function sendTelegramTest(chatId: string, message: string) {
+  const { data, error } = await supabase.functions.invoke('send-telegram-daily', {
+    body: { action: 'test', chat_id: chatId, message },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function triggerDailyReport(testUserId?: string) {
+  const { data, error } = await supabase.functions.invoke('send-telegram-daily', {
+    body: { action: 'send_daily', test_user_id: testUserId },
+  });
+  if (error) throw error;
+  return data;
+}

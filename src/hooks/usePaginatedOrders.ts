@@ -24,12 +24,19 @@ export interface PaginatedOrderFilters {
   deliveredDateTo?: string;
   assignedDateFrom?: string;
   assignedDateTo?: string;
+  nextDeliveryDateFrom?: string;
+  nextDeliveryDateTo?: string;
   sortField?: string;
   sortDirection?: 'asc' | 'desc';
   // Exclude delivered and failed orders (for runner inbox active view)
   excludeDeliveredAndFailed?: boolean;
   // Custom: salesperson_action_required = true
   salespersonActionRequired?: boolean;
+  // Action-required: salesperson_action_required=true OR runner_status=FAILED_DELIVERY (non-cancelled)
+  actionRequired?: boolean;
+  // Payment & receipt filters
+  paymentMethod?: string;
+  receiptStatus?: string;
 }
 
 export interface PaginationState {
@@ -147,6 +154,12 @@ export function usePaginatedOrders(
         query = query.eq('salesperson_action_required', true);
       }
 
+      // Action-required: salesperson_action_required=true OR runner_status=FAILED_DELIVERY (non-cancelled)
+      if (filters.actionRequired) {
+        query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+        query = query.neq('status', 'CANCELLED');
+      }
+
       // Visibility: team filtering
       // Skip salesperson visibility filtering when runnerId is set
       // (runner views orders assigned to them, not orders they created)
@@ -202,6 +215,25 @@ export function usePaginatedOrders(
       // Date range - runner_assigned_at
       if (filters.assignedDateFrom) query = query.gte('runner_assigned_at', filters.assignedDateFrom);
       if (filters.assignedDateTo) query = query.lte('runner_assigned_at', filters.assignedDateTo);
+
+      // Date range - next_delivery_date
+      if (filters.nextDeliveryDateFrom) query = query.gte('next_delivery_date', filters.nextDeliveryDateFrom);
+      if (filters.nextDeliveryDateTo) query = query.lte('next_delivery_date', filters.nextDeliveryDateTo);
+
+      // Payment method filter
+      if (filters.paymentMethod) {
+        query = query.eq('payment_method', filters.paymentMethod);
+      }
+
+      // Receipt status filter (implies TRANSFER)
+      if (filters.receiptStatus) {
+        query = query.eq('payment_method', 'TRANSFER');
+        if (filters.receiptStatus === 'pending') {
+          query = query.or('receipt_status.eq.pending,receipt_status.is.null');
+        } else {
+          query = query.eq('receipt_status', filters.receiptStatus);
+        }
+      }
 
       const { data: ordersData, error: ordersError, count } = await query;
       if (ordersError) throw ordersError;
@@ -335,6 +367,10 @@ export function useAllOrderIds(
         if (filters.salespersonActionRequired) {
           query = query.eq('salesperson_action_required', true);
         }
+        if (filters.actionRequired) {
+          query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+          query = query.neq('status', 'CANCELLED');
+        }
 
         // Visibility: team filtering
         const skipVisibilityFilter = !!filters.runnerId;
@@ -381,6 +417,22 @@ export function useAllOrderIds(
         if (filters.deliveredDateTo) query = query.lte('delivered_at', filters.deliveredDateTo);
         if (filters.assignedDateFrom) query = query.gte('runner_assigned_at', filters.assignedDateFrom);
         if (filters.assignedDateTo) query = query.lte('runner_assigned_at', filters.assignedDateTo);
+        if (filters.nextDeliveryDateFrom) query = query.gte('next_delivery_date', filters.nextDeliveryDateFrom);
+        if (filters.nextDeliveryDateTo) query = query.lte('next_delivery_date', filters.nextDeliveryDateTo);
+
+        // Payment method filter
+        if (filters.paymentMethod) {
+          query = query.eq('payment_method', filters.paymentMethod);
+        }
+        // Receipt status filter (implies TRANSFER)
+        if (filters.receiptStatus) {
+          query = query.eq('payment_method', 'TRANSFER');
+          if (filters.receiptStatus === 'pending') {
+            query = query.or('receipt_status.eq.pending,receipt_status.is.null');
+          } else {
+            query = query.eq('receipt_status', filters.receiptStatus);
+          }
+        }
 
         const { data, error: queryError } = await query;
         if (queryError) throw queryError;

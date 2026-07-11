@@ -12,6 +12,7 @@ import { useUnreadCount, useNotifications, useMarkAsRead, type Notification } fr
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { navigateToOrder } from '@/lib/orderNavigation';
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
@@ -29,7 +30,7 @@ export function NotificationBell() {
 
     // Navigate to relevant entity
     if (notification.reference_type === 'order' && notification.reference_id) {
-      navigate(`/sales/ready`);
+      navigateToOrder(notification.reference_id, navigate);
     } else if (notification.reference_type === 'claim_batch' && notification.reference_id) {
       navigate(`/admin/claim-batches`);
     } else if (notification.reference_type === 'inbound' && notification.reference_id) {

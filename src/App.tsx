@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { BrandingProvider } from "@/contexts/BrandingContext";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { RoleChangeBanner } from "@/components/RoleChangeBanner";
 import RealtimeProvider from "@/components/RealtimeProvider";
@@ -17,7 +18,7 @@ import { ResponsiveLayout } from "@/components/layout/ResponsiveLayout";
 import { lazy, Suspense } from "react";
 
 // Pages
-import Auth from "./pages/Auth";
+import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 
@@ -31,23 +32,48 @@ const FinanceModule = lazy(() => import("./pages/modules/FinanceModule"));
 const InventoryModule = lazy(() => import("./pages/modules/InventoryModule"));
 const SystemModule = lazy(() => import("./pages/modules/SystemModule"));
 
-// Standalone pages that remain as direct routes
-import ProfilePage from "./pages/settings/ProfilePage";
-import NotificationCenter from "./pages/notifications/NotificationCenter";
-import DriverOnboarding from "./pages/driver/DriverOnboarding";
-import EventCreate from "./pages/admin/EventCreate";
-import EventDetail from "./pages/admin/EventDetail";
-import UserEventsPage from "./pages/events/UserEventsPage";
-import { EventPopupModal } from "./components/events/EventPopupModal";
-import GuideCenterPage from "./pages/guide/GuideCenterPage";
-import { OnboardingFlow } from "./components/guide/OnboardingFlow";
-import { FloatingHelpButton } from "./components/guide/FloatingHelpButton";
+// SEO landing pages
+const LogisticsServiceBrunei = lazy(() => import("./pages/seo/LogisticsServiceBrunei"));
+const LastMileDeliveryBrunei = lazy(() => import("./pages/seo/LastMileDeliveryBrunei"));
+const FulfillmentServiceBrunei = lazy(() => import("./pages/seo/FulfillmentServiceBrunei"));
+const DeliveryManagementSystem = lazy(() => import("./pages/seo/DeliveryManagementSystem"));
+const LogisticsCompanyBrunei = lazy(() => import("./pages/seo/LogisticsCompanyBrunei"));
+const CourierServiceBrunei = lazy(() => import("./pages/seo/CourierServiceBrunei"));
+const SameDayDeliveryBrunei = lazy(() => import("./pages/seo/SameDayDeliveryBrunei"));
+const EcommerceDeliveryBrunei = lazy(() => import("./pages/seo/EcommerceDeliveryBrunei"));
+const ParcelDeliveryBrunei = lazy(() => import("./pages/seo/ParcelDeliveryBrunei"));
+const DeliveryAppBrunei = lazy(() => import("./pages/seo/DeliveryAppBrunei"));
+
+// Blog pages
+const BlogIndex = lazy(() => import("./pages/blog/BlogIndex"));
+const BlogPost = lazy(() => import("./pages/blog/BlogPost"));
+
+// Auth pages
+const ResetPassword = lazy(() => import("./pages/auth/ResetPassword"));
+
+// Standalone pages (lazy-loaded — rarely visited)
+const ProfilePage = lazy(() => import("./pages/settings/ProfilePage"));
+const NotificationCenter = lazy(() => import("./pages/notifications/NotificationCenter"));
+const TelegramUserSettings = lazy(() => import("./pages/settings/TelegramUserSettings"));
+const TelegramLogsPage = lazy(() => import("./pages/settings/TelegramLogsPage"));
+const DriverOnboarding = lazy(() => import("./pages/driver/DriverOnboarding"));
+const EventCreate = lazy(() => import("./pages/admin/EventCreate"));
+const EventDetail = lazy(() => import("./pages/admin/EventDetail"));
+const UserEventsPage = lazy(() => import("./pages/events/UserEventsPage"));
+const GuideCenterPage = lazy(() => import("./pages/guide/GuideCenterPage"));
+const OrderNotFound = lazy(() => import("./pages/orders/OrderNotFound"));
+const EventPopupModal = lazy(() => import("./components/events/EventPopupModal").then(m => ({ default: m.EventPopupModal })));
+const OnboardingFlow = lazy(() => import("./components/guide/OnboardingFlow").then(m => ({ default: m.OnboardingFlow })));
+const FloatingHelpButton = lazy(() => import("./components/guide/FloatingHelpButton").then(m => ({ default: m.FloatingHelpButton })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 15_000,
-      refetchOnWindowFocus: true,
+      staleTime: 5 * 60 * 1000,          // 5 minutes — prevents excessive refetches
+      gcTime: 10 * 60 * 1000,            // 10 minutes garbage collection
+      refetchOnWindowFocus: false,        // Disable — was causing cascade refetches on every tab switch
+      retry: 2,                           // Reduce retries from default 3
+      refetchOnReconnect: 'always',       // Still refetch when network reconnects
     },
   },
 });
@@ -137,14 +163,42 @@ function ProtectedModule({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ProtectedStandalone({ children }: { children: React.ReactNode }) {
+  return (
+    <ProtectedRoute>
+      <Suspense fallback={<ModuleLoading />}>
+        {children}
+      </Suspense>
+    </ProtectedRoute>
+  );
+}
+
 function AppRoutes() {
   return (
-    <RealtimeProvider>
     <Routes>
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-      
-      {/* Module routes */}
+      {/* Public routes — no RealtimeProvider, no auth */}
+      <Route path="/auth" element={<LandingPage />} />
+      <Route path="/reset-password" element={<Suspense fallback={<ModuleLoading />}><ResetPassword /></Suspense>} />
+
+      {/* SEO landing pages */}
+      <Route path="/logistics-service-brunei" element={<Suspense fallback={<ModuleLoading />}><LogisticsServiceBrunei /></Suspense>} />
+      <Route path="/last-mile-delivery-brunei" element={<Suspense fallback={<ModuleLoading />}><LastMileDeliveryBrunei /></Suspense>} />
+      <Route path="/fulfillment-service-brunei" element={<Suspense fallback={<ModuleLoading />}><FulfillmentServiceBrunei /></Suspense>} />
+      <Route path="/delivery-management-system" element={<Suspense fallback={<ModuleLoading />}><DeliveryManagementSystem /></Suspense>} />
+      <Route path="/logistics-company-brunei" element={<Suspense fallback={<ModuleLoading />}><LogisticsCompanyBrunei /></Suspense>} />
+      <Route path="/courier-service-brunei" element={<Suspense fallback={<ModuleLoading />}><CourierServiceBrunei /></Suspense>} />
+      <Route path="/same-day-delivery-brunei" element={<Suspense fallback={<ModuleLoading />}><SameDayDeliveryBrunei /></Suspense>} />
+      <Route path="/ecommerce-delivery-brunei" element={<Suspense fallback={<ModuleLoading />}><EcommerceDeliveryBrunei /></Suspense>} />
+      <Route path="/parcel-delivery-brunei" element={<Suspense fallback={<ModuleLoading />}><ParcelDeliveryBrunei /></Suspense>} />
+      <Route path="/delivery-app-brunei" element={<Suspense fallback={<ModuleLoading />}><DeliveryAppBrunei /></Suspense>} />
+
+      {/* Blog pages */}
+      <Route path="/blog" element={<Suspense fallback={<ModuleLoading />}><BlogIndex /></Suspense>} />
+      <Route path="/blog/:slug" element={<Suspense fallback={<ModuleLoading />}><BlogPost /></Suspense>} />
+
+      <Route path="/" element={<ProtectedRoute><RealtimeProvider><Dashboard /></RealtimeProvider></ProtectedRoute>} />
+
+      {/* Module routes — wrapped in RealtimeProvider for authenticated users only */}
       <Route path="/orders" element={<ProtectedModule><OrdersModule /></ProtectedModule>} />
       <Route path="/dispatch" element={<ProtectedModule><DispatchModule /></ProtectedModule>} />
       <Route path="/delivery" element={<ProtectedModule><DeliveryModule /></ProtectedModule>} />
@@ -155,13 +209,16 @@ function AppRoutes() {
       <Route path="/system" element={<ProtectedModule><SystemModule /></ProtectedModule>} />
 
       {/* Standalone pages */}
-      <Route path="/settings/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-      <Route path="/notifications" element={<ProtectedRoute><NotificationCenter /></ProtectedRoute>} />
-      <Route path="/admin/events/create" element={<ProtectedRoute><EventCreate /></ProtectedRoute>} />
-      <Route path="/admin/events/:eventId" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
-      <Route path="/admin/events/:eventId/analytics" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
-      <Route path="/events" element={<ProtectedRoute><UserEventsPage /></ProtectedRoute>} />
-      <Route path="/guide" element={<ProtectedRoute><GuideCenterPage /></ProtectedRoute>} />
+      <Route path="/settings/profile" element={<ProtectedStandalone><ProfilePage /></ProtectedStandalone>} />
+      <Route path="/settings/telegram" element={<ProtectedStandalone><TelegramUserSettings /></ProtectedStandalone>} />
+      <Route path="/settings/telegram-logs" element={<ProtectedStandalone><TelegramLogsPage /></ProtectedStandalone>} />
+      <Route path="/notifications" element={<ProtectedStandalone><NotificationCenter /></ProtectedStandalone>} />
+      <Route path="/orders/not-found" element={<ProtectedStandalone><OrderNotFound /></ProtectedStandalone>} />
+      <Route path="/admin/events/create" element={<ProtectedStandalone><EventCreate /></ProtectedStandalone>} />
+      <Route path="/admin/events/:eventId" element={<ProtectedStandalone><EventDetail /></ProtectedStandalone>} />
+      <Route path="/admin/events/:eventId/analytics" element={<ProtectedStandalone><EventDetail /></ProtectedStandalone>} />
+      <Route path="/events" element={<ProtectedStandalone><UserEventsPage /></ProtectedStandalone>} />
+      <Route path="/guide" element={<ProtectedStandalone><GuideCenterPage /></ProtectedStandalone>} />
 
       {/* Legacy redirects — keep old bookmarks working */}
       <Route path="/sales/booking" element={<Navigate to="/orders?tab=booking" replace />} />
@@ -224,12 +281,12 @@ function AppRoutes() {
       <Route path="/settings/*" element={<Navigate to="/settings/profile" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
-    </RealtimeProvider>
   );
 }
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <BrandingProvider>
     <AuthProvider>
       <ThemeProvider>
         <LocationProvider>
@@ -238,15 +295,18 @@ const App = () => (
             <Sonner />
             <RoleChangeBanner />
             <BrowserRouter>
-              <EventPopupModal />
-              <OnboardingFlow />
-              <FloatingHelpButton />
               <AppRoutes />
+              <Suspense fallback={null}>
+                <EventPopupModal />
+                <OnboardingFlow />
+                <FloatingHelpButton />
+              </Suspense>
             </BrowserRouter>
           </TooltipProvider>
         </LocationProvider>
       </ThemeProvider>
     </AuthProvider>
+    </BrandingProvider>
   </QueryClientProvider>
 );
 

@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { getOrderTabRoute } from '@/lib/orderNavigation';
 
 interface SearchResult {
   id: string;
@@ -87,21 +88,8 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
     setQuery('');
     setShowDropdown(false);
     setIsOpen(false);
-    // Navigate to the appropriate page based on status and runner_status
-    const displayStatus = getDisplayStatus(order);
-    if (displayStatus === 'DELIVERED') {
-      navigate(`/orders?tab=delivered&highlight=${order.id}`);
-    } else if (displayStatus === 'FAILED') {
-      navigate(`/orders?tab=action-required&highlight=${order.id}`);
-    } else if (order.status === 'BOOKING') {
-      navigate(`/orders?tab=booking&highlight=${order.id}`);
-    } else if (order.status === 'CANCELLED') {
-      navigate(`/orders?tab=cancelled&highlight=${order.id}`);
-    } else if (order.status === 'READY') {
-      navigate(`/orders?tab=ready&highlight=${order.id}`);
-    } else {
-      navigate(`/orders?tab=booking&highlight=${order.id}`);
-    }
+    const route = getOrderTabRoute(order.status, order.runner_status, order.id);
+    navigate(route);
   };
 
   const clearSearch = () => {

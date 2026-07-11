@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -78,6 +77,10 @@ export default function BindingsSettings() {
   const [salespersonSearch, setSelespersonSearch] = useState('');
   const [runnerSearch, setRunnerSearch] = useState('');
 
+  // Unified user selection for runner binding (admin view)
+  const [selectedBindUser, setSelectedBindUser] = useState<Profile | null>(null);
+  const [bindUserSearch, setBindUserSearch] = useState('');
+
   // Manager binding state
   const [selectedManager, setSelectedManager] = useState<Profile | null>(null);
   const [managerSearch, setManagerSearch] = useState('');
@@ -104,7 +107,7 @@ export default function BindingsSettings() {
 
   // Manager-Runner binding hooks
   // For managers, use their own ID; for admins viewing a selected manager, use that manager's ID
-  const effectiveManagerForRunnerBinding = isManager ? profile?.id : selectedManager?.id;
+  const effectiveManagerForRunnerBinding = isManager ? profile?.id : (selectedManager?.id || (selectedBindUser?.role === 'manager' ? selectedBindUser?.id : undefined));
   const { data: managerRunnerBindings = [], isLoading: managerRunnerBindingsLoading } = useManagerRunnerBindings(
     effectiveManagerForRunnerBinding ? { managerId: effectiveManagerForRunnerBinding } : undefined
   );
@@ -116,7 +119,7 @@ export default function BindingsSettings() {
     () => users.filter((u) => u.role === 'salesperson'),
     [users]
   );
-  
+
   // For managers, only show their team's salespersons; for admins, show all
   const salespersons = useMemo(() => {
     if (isManager && teamMembers.length > 0) {
@@ -125,16 +128,35 @@ export default function BindingsSettings() {
     }
     return allSalespersons;
   }, [allSalespersons, isManager, teamMembers]);
-  
+
   const runners = useMemo(() => users.filter((u) => u.role === 'runner'), [users]);
   const managers = useMemo(() => users.filter((u) => u.role === 'manager'), [users]);
+
+  // Unified users list for runner binding (managers + salespersons)
+  const bindableUsers = useMemo(() => {
+    const combined = [...managers, ...salespersons];
+    const searchLower = bindUserSearch.toLowerCase();
+    return combined.filter(
+      (u) =>
+        !bindUserSearch ||
+        u.display_name.toLowerCase().includes(searchLower) ||
+        u.email.toLowerCase().includes(searchLower) ||
+        u.role.toLowerCase().includes(searchLower)
+    );
+  }, [managers, salespersons, bindUserSearch]);
 
   // For salesperson view, auto-select themselves
   const effectiveSalesperson = isSalesperson
     ? users.find((u) => u.id === profile?.id) || null
     : selectedSalesperson;
 
-  // Fetch bindings for selected salesperson
+  // For unified runner binding: fetch SP bindings when a salesperson is selected
+  const unifiedBindSalespersonId = selectedBindUser?.role === 'salesperson' ? selectedBindUser.id : undefined;
+  const { data: unifiedSpBindings = [], isLoading: unifiedSpBindingsLoading } = useBindings(
+    unifiedBindSalespersonId ? { salespersonId: unifiedBindSalespersonId, includeInactive: true } : undefined
+  );
+
+  // Fetch bindings for selected salesperson (old tab)
   const { data: bindings = [], isLoading: bindingsLoading } = useBindings(
     effectiveSalesperson
       ? { salespersonId: effectiveSalesperson.id, includeInactive: true }
@@ -216,6 +238,18 @@ export default function BindingsSettings() {
     );
   }, [runners, boundManagerRunnerIds, managerRunnerSearch]);
 
+  // Unified binding: available runners for selected bind user
+  const unifiedBoundRunnerIds = useMemo(() => {
+    if (!selectedBindUser) return new Set<string>();
+    if (selectedBindUser.role === 'salesperson') {
+      return new Set(unifiedSpBindings.filter((b) => b.active).map((b) => b.runner_id));
+    }
+    if (selectedBindUser.role === 'manager') {
+      return new Set(managerRunnerBindings.map((b) => b.runner_id));
+    }
+    return new Set<string>();
+  }, [selectedBindUser, unifiedSpBindings, managerRunnerBindings]);
+
   // Get member count per manager
   const getManagerMemberCount = (managerId: string) => {
     const group = managerGroups.find(g => g.manager_user_id === managerId);
@@ -226,6 +260,83 @@ export default function BindingsSettings() {
   const handleSelectSalesperson = (sp: Profile) => {
     setSelectedSalesperson(sp);
     setSelectedRunners([]);
+  };
+
+  // Unified bind user handler
+  const handleSelectBindUser = (user: Profile) => {
+    setSelectedBindUser(user);
+    setSelectedRunners([]);
+    // Also set selectedManager if it's a manager (for the manager-runner bindings hook)
+    if (user.role === 'manager') {
+      setSelectedManager(user);
+    } else if (user.role === 'salesperson') {
+      setSelectedSalesperson(user);
+    }
+  };
+
+  // Unified bind runners dialog
+  const [unifiedBindDialogOpen, setUnifiedBindDialogOpen] = useState(false);
+  const [unifiedBindRunnerSearch, setUnifiedBindRunnerSearch] = useState('');
+  const [unifiedSelectedRunners, setUnifiedSelectedRunners] = useState<string[]>([]);
+
+  const unifiedAvailableRunners = useMemo(() => {
+    const searchLower = unifiedBindRunnerSearch.toLowerCase();
+    return runners.filter(
+      (r) =>
+        !unifiedBoundRunnerIds.has(r.id) &&
+        (!unifiedBindRunnerSearch ||
+          r.display_name.toLowerCase().includes(searchLower) ||
+          r.email.toLowerCase().includes(searchLower))
+    );
+  }, [runners, unifiedBoundRunnerIds, unifiedBindRunnerSearch]);
+
+  const handleOpenUnifiedBindDialog = () => {
+    setUnifiedSelectedRunners([]);
+    setUnifiedBindRunnerSearch('');
+    setUnifiedBindDialogOpen(true);
+  };
+
+  const handleUnifiedBindRunners = async () => {
+    if (!selectedBindUser || unifiedSelectedRunners.length === 0) return;
+
+    if (selectedBindUser.role === 'salesperson') {
+      await createBindings.mutateAsync({
+        salesperson_id: selectedBindUser.id,
+        runner_ids: unifiedSelectedRunners,
+      });
+    } else if (selectedBindUser.role === 'manager') {
+      await createManagerRunnerBindings.mutateAsync({
+        manager_id: selectedBindUser.id,
+        runner_ids: unifiedSelectedRunners,
+      });
+    }
+
+    setUnifiedBindDialogOpen(false);
+    setUnifiedSelectedRunners([]);
+  };
+
+  const toggleUnifiedRunnerSelection = (runnerId: string) => {
+    setUnifiedSelectedRunners((prev) =>
+      prev.includes(runnerId)
+        ? prev.filter((id) => id !== runnerId)
+        : [...prev, runnerId]
+    );
+  };
+
+  // Unified unbind / toggle handlers
+  const handleUnifiedToggleBinding = async (bindingId: string, currentActive: boolean) => {
+    if (selectedBindUser?.role === 'salesperson') {
+      await updateBinding.mutateAsync({
+        id: bindingId,
+        active: !currentActive,
+      });
+    }
+  };
+
+  const handleUnifiedRemoveBinding = async (bindingId: string) => {
+    if (selectedBindUser?.role === 'manager') {
+      await deleteManagerRunnerBinding.mutateAsync(bindingId);
+    }
   };
 
   const handleSelectManager = async (manager: Profile) => {
@@ -378,7 +489,7 @@ export default function BindingsSettings() {
     : selectedManager?.display_name;
 
   return (
-    <AppLayout>
+    <>
       <div className="p-6 space-y-6">
         <div className="flex items-center gap-3">
           <Link2 className="h-8 w-8 text-primary" />
@@ -395,42 +506,39 @@ export default function BindingsSettings() {
         </div>
 
         {isAdmin ? (
-          // Admin view - Tabs for both SP-Runner and Manager-SP bindings
-          <Tabs defaultValue="sp-runner">
+          // Admin view - Two tabs: Runner Binding (unified) and Team Assignment
+          <Tabs defaultValue="runner-binding">
               <TabsList>
-                <TabsTrigger value="sp-runner" className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Salesperson ↔ Runner
-                </TabsTrigger>
-                <TabsTrigger value="manager-sp" className="flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Manager ↔ Salesperson
-                </TabsTrigger>
-                <TabsTrigger value="manager-runner" className="flex items-center gap-2">
+                <TabsTrigger value="runner-binding" className="flex items-center gap-2">
                   <Truck className="h-4 w-4" />
-                  Manager ↔ Runner
+                  Runner Binding
+                </TabsTrigger>
+                <TabsTrigger value="team-assignment" className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Team Assignment
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="sp-runner" className="mt-6">
-                <SalespersonRunnerBinding
-                  salespersons={salespersons}
-                  filteredSalespersons={filteredSalespersons}
-                  salespersonSearch={salespersonSearch}
-                  setSalespersonSearch={setSelespersonSearch}
-                  selectedSalesperson={effectiveSalesperson}
-                  handleSelectSalesperson={handleSelectSalesperson}
-                  bindings={bindings}
-                  bindingsLoading={bindingsLoading}
+              <TabsContent value="runner-binding" className="mt-6">
+                <UnifiedRunnerBinding
+                  users={bindableUsers}
                   usersLoading={usersLoading}
-                  canManageBindings={canManageBindings}
-                  handleOpenBindDialog={handleOpenBindDialog}
-                  handleToggleBinding={handleToggleBinding}
+                  userSearch={bindUserSearch}
+                  setUserSearch={setBindUserSearch}
+                  selectedUser={selectedBindUser}
+                  handleSelectUser={handleSelectBindUser}
+                  spBindings={unifiedSpBindings}
+                  spBindingsLoading={unifiedSpBindingsLoading}
+                  managerBindings={managerRunnerBindings}
+                  managerBindingsLoading={managerRunnerBindingsLoading}
+                  handleOpenBindDialog={handleOpenUnifiedBindDialog}
+                  handleToggleBinding={handleUnifiedToggleBinding}
+                  handleRemoveBinding={handleUnifiedRemoveBinding}
                   updateBinding={updateBinding}
                 />
             </TabsContent>
 
-            <TabsContent value="manager-sp" className="mt-6">
+            <TabsContent value="team-assignment" className="mt-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Panel: Manager List */}
                 <Card>
@@ -574,24 +682,6 @@ export default function BindingsSettings() {
                 </Card>
               </div>
             </TabsContent>
-
-            <TabsContent value="manager-runner" className="mt-6">
-              <ManagerRunnerBindingPanel
-                isAdmin={isAdmin}
-                managers={filteredManagers}
-                managersLoading={usersLoading}
-                managerSearch={managerSearch}
-                setManagerSearch={setManagerSearch}
-                selectedManager={selectedManager}
-                handleSelectManager={handleSelectManager}
-                managerRunnerBindings={managerRunnerBindings}
-                managerRunnerBindingsLoading={managerRunnerBindingsLoading}
-                availableRunnersForManager={availableRunnersForManager}
-                handleOpenManagerRunnerBindDialog={handleOpenManagerRunnerBindDialog}
-                handleConfirmRemoveRunnerBinding={handleConfirmRemoveRunnerBinding}
-                currentManagerName={currentManagerName}
-              />
-            </TabsContent>
           </Tabs>
         ) : isManager ? (
           // Manager view - Tabs for SP-Runner and Manager-Runner bindings
@@ -664,6 +754,72 @@ export default function BindingsSettings() {
           />
         )}
       </div>
+
+      {/* Unified Bind Runners Dialog (for admin Runner Binding tab) */}
+      <Dialog open={unifiedBindDialogOpen} onOpenChange={setUnifiedBindDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bind Runners to {selectedBindUser?.display_name}</DialogTitle>
+            <DialogDescription>
+              Select runners to bind to this {selectedBindUser?.role}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search runners..."
+                value={unifiedBindRunnerSearch}
+                onChange={(e) => setUnifiedBindRunnerSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <ScrollArea className="h-[300px] border rounded-md">
+              {unifiedAvailableRunners.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground">
+                  No available runners to bind
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {unifiedAvailableRunners.map((runner) => (
+                    <label
+                      key={runner.id}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={unifiedSelectedRunners.includes(runner.id)}
+                        onCheckedChange={() => toggleUnifiedRunnerSelection(runner.id)}
+                      />
+                      <div>
+                        <p className="font-medium">{runner.display_name}</p>
+                        <p className="text-sm text-muted-foreground">{runner.email}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+            {unifiedSelectedRunners.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {unifiedSelectedRunners.length} runner{unifiedSelectedRunners.length !== 1 ? 's' : ''} selected
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUnifiedBindDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUnifiedBindRunners}
+              disabled={unifiedSelectedRunners.length === 0 || createBindings.isPending || createManagerRunnerBindings.isPending}
+            >
+              {(createBindings.isPending || createManagerRunnerBindings.isPending)
+                ? 'Binding...'
+                : `Bind ${unifiedSelectedRunners.length} Runner${unifiedSelectedRunners.length !== 1 ? 's' : ''}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bind Runners Dialog */}
       <Dialog open={bindDialogOpen} onOpenChange={setBindDialogOpen}>
@@ -902,7 +1058,7 @@ export default function BindingsSettings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppLayout>
+    </>
   );
 }
 
@@ -1123,8 +1279,7 @@ function ManagerRunnerBindingPanel({
   handleConfirmRemoveRunnerBinding,
   currentManagerName,
   isManagerView = false,
-}: ManagerRunnerBindingPanelProps) {
-  return (
+}: ManagerRunnerBindingPanelProps) {  return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Left Panel: Manager List (Admin only) */}
       {isAdmin && !isManagerView && (
@@ -1253,6 +1408,214 @@ function ManagerRunnerBindingPanel({
                     </Button>
                   </div>
                 ))}
+              </div>
+            )}
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Unified Runner Binding component - shows managers + salespersons in one list
+interface UnifiedRunnerBindingProps {
+  users: Profile[];
+  usersLoading: boolean;
+  userSearch: string;
+  setUserSearch: (value: string) => void;
+  selectedUser: Profile | null;
+  handleSelectUser: (user: Profile) => void;
+  spBindings: any[];
+  spBindingsLoading: boolean;
+  managerBindings: any[];
+  managerBindingsLoading: boolean;
+  handleOpenBindDialog: () => void;
+  handleToggleBinding: (id: string, active: boolean) => void;
+  handleRemoveBinding: (id: string) => void;
+  updateBinding: any;
+}
+
+function UnifiedRunnerBinding({
+  users,
+  usersLoading,
+  userSearch,
+  setUserSearch,
+  selectedUser,
+  handleSelectUser,
+  spBindings,
+  spBindingsLoading,
+  managerBindings,
+  managerBindingsLoading,
+  handleOpenBindDialog,
+  handleToggleBinding,
+  handleRemoveBinding,
+  updateBinding,
+}: UnifiedRunnerBindingProps) {
+  const isSelectedManager = selectedUser?.role === 'manager';
+  const isSelectedSalesperson = selectedUser?.role === 'salesperson';
+  const bindings = isSelectedManager ? managerBindings : spBindings;
+  const bindingsLoading = isSelectedManager ? managerBindingsLoading : spBindingsLoading;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Left Panel: All Users (Managers + Salespersons) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Users
+          </CardTitle>
+          <CardDescription>
+            Select a manager or salesperson to manage their runner bindings
+          </CardDescription>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search users..."
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <ScrollArea className="h-[400px]">
+            {usersLoading ? (
+              <div className="p-4 text-center text-muted-foreground">
+                Loading...
+              </div>
+            ) : users.length === 0 ? (
+              <div className="p-4 text-center text-muted-foreground">
+                No users found
+              </div>
+            ) : (
+              <div className="divide-y">
+                {users.map((user) => {
+                  const isSelected = selectedUser?.id === user.id;
+                  return (
+                    <button
+                      key={user.id}
+                      onClick={() => handleSelectUser(user)}
+                      className={cn(
+                        'w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors flex items-center justify-between',
+                        isSelected && 'bg-primary/10'
+                      )}
+                    >
+                      <div>
+                        <p className="font-medium">{user.display_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {user.email}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="capitalize">
+                        {user.role}
+                      </Badge>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        </CardContent>
+      </Card>
+
+      {/* Right Panel: Bound Runners */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              {selectedUser
+                ? `Runners for ${selectedUser.display_name}`
+                : 'Select a User'}
+            </CardTitle>
+            {selectedUser && (
+              <Button size="sm" onClick={handleOpenBindDialog}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Bind Runners
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <ScrollArea className="h-[400px]">
+            {!selectedUser ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Select a user to view their runner bindings
+              </div>
+            ) : bindingsLoading ? (
+              <div className="p-4 text-center text-muted-foreground">
+                Loading...
+              </div>
+            ) : bindings.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <Truck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No runners bound to this {selectedUser.role}</p>
+                <p className="text-sm mt-2">Click "Bind Runners" to add runners</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {bindings.map((binding: any) => {
+                  const runner = binding.runner;
+                  const runnerName = runner?.display_name || runner?.email || 'Unknown Runner';
+                  const runnerEmail = runner?.display_name && runner?.email ? runner.email : null;
+
+                  return (
+                    <div
+                      key={binding.id}
+                      className={cn(
+                        'px-4 py-3 flex items-center justify-between',
+                        isSelectedSalesperson && !binding.active && 'opacity-50 bg-muted/30'
+                      )}
+                    >
+                      <div>
+                        <p className="font-medium">{runnerName}</p>
+                        {runnerEmail && (
+                          <p className="text-sm text-muted-foreground">{runnerEmail}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Bound {format(new Date(binding.created_at), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isSelectedSalesperson && (
+                          <Badge variant={binding.active ? 'default' : 'secondary'}>
+                            {binding.active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        )}
+                        {isSelectedSalesperson ? (
+                          <Button
+                            size="sm"
+                            variant={binding.active ? 'destructive' : 'outline'}
+                            onClick={() => handleToggleBinding(binding.id, binding.active)}
+                            disabled={updateBinding.isPending}
+                          >
+                            {binding.active ? (
+                              <>
+                                <Link2Off className="h-4 w-4 mr-1" />
+                                Unbind
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-4 w-4 mr-1" />
+                                Re-enable
+                              </>
+                            )}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleRemoveBinding(binding.id)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </ScrollArea>

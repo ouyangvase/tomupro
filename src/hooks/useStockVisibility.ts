@@ -283,7 +283,7 @@ export function useCreateStockTransfer() {
       queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
       queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
       queryClient.invalidateQueries({ queryKey: ['filtered-stock-balance'] });
-      queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
+      queryClient.invalidateQueries({ queryKey: ['stock_movements'] });
       const res = _data as any;
       toast.success(`Stock transferred: ${res.items_processed} item(s), ${res.total_qty} total qty`);
     },

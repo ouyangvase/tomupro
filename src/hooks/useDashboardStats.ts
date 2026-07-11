@@ -85,7 +85,7 @@ export function useSalespersonStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 60000, // 60s (realtime handles urgent updates via targeted invalidation)
+    refetchInterval: 180000, // 60s (realtime handles urgent updates via targeted invalidation)
   });
 }
 
@@ -234,7 +234,7 @@ export function useManagerStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 60000,
+    refetchInterval: 180000,
   });
 }
 
@@ -297,7 +297,7 @@ export function useRunnerStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 60000,
+    refetchInterval: 180000,
   });
 }
 
@@ -389,7 +389,7 @@ export function useAdminStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 60000,
+    refetchInterval: 180000,
   });
 }
 
@@ -419,6 +419,6 @@ export function useRecentActivity(limit: number = 10) {
       return data || [];
     },
     enabled: !!user,
-    refetchInterval: 60000,
+    refetchInterval: 180000,
   });
 }

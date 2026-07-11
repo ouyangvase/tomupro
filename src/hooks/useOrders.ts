@@ -226,6 +226,35 @@ export function useUpdateOrder() {
   });
 }
 
+/**
+ * Runner-specific mutation: update ONLY the area field of an order.
+ * Enforces that runners cannot modify any other order fields.
+ */
+export function useRunnerUpdateArea() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, area }: { id: string; area: string }) => {
+      const { data, error } = await supabase
+        .from('orders')
+        .update({ area } as any)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      invalidateOrderQueries(queryClient);
+      toast({ title: 'Area updated' });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
 export function useBulkUpdateOrders() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

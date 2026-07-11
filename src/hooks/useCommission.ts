@@ -356,7 +356,7 @@ export function useCommissionDashboard(salespersonId?: string) {
       } as CommissionDashboardStats;
     },
     enabled: !!targetId,
-    refetchInterval: 30000,
+    refetchInterval: 120000,
   });
 }
 

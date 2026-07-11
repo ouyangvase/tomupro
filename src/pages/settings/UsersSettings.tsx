@@ -71,8 +71,10 @@ const roleColors: Record<AppRole, string> = {
   manager: 'bg-primary text-primary-foreground',
   salesperson: 'bg-secondary text-secondary-foreground',
   runner: 'bg-accent text-accent-foreground',
+  runner_assistant: 'bg-accent text-accent-foreground',
   driver: 'bg-muted text-muted-foreground',
   user: 'bg-muted text-muted-foreground',
+  finance_viewer: 'bg-muted text-muted-foreground',
 };
 
 const statusColors: Record<string, string> = {
@@ -410,7 +412,9 @@ export default function UsersSettings() {
                 <SelectItem value="manager">Manager</SelectItem>
                 <SelectItem value="salesperson">Salesperson</SelectItem>
                 <SelectItem value="runner">Runner</SelectItem>
+                <SelectItem value="runner_assistant">Runner Assistant</SelectItem>
                 <SelectItem value="driver">Driver</SelectItem>
+                <SelectItem value="finance_viewer">Finance Viewer</SelectItem>
                 <SelectItem value="user">User</SelectItem>
               </SelectContent>
             </Select>
@@ -468,7 +472,9 @@ export default function UsersSettings() {
                   <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="salesperson">Salesperson</SelectItem>
                   <SelectItem value="runner">Runner</SelectItem>
+                  <SelectItem value="runner_assistant">Runner Assistant</SelectItem>
                   <SelectItem value="driver">Driver</SelectItem>
+                  <SelectItem value="finance_viewer">Finance Viewer</SelectItem>
                   <SelectItem value="user">User</SelectItem>
                 </SelectContent>
               </Select>

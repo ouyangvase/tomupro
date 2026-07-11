@@ -55,6 +55,7 @@ function DeliveryStatusBadge({ status }: { status: string }) {
 
 export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick }: DispatchBoardRowProps) {
   const { displayText } = formatOrderItemsDisplay(order.order_items);
+  const isRejectedReceipt = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
 
   return (
     <div
@@ -63,7 +64,8 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
         'group rounded-lg border bg-card transition-all cursor-pointer',
         'hover:shadow-sm hover:border-primary/15',
         isSelected && 'ring-2 ring-primary/20 border-primary/20 bg-primary/[0.02]',
-        isHighlighted && 'ring-2 ring-yellow-400/60 border-yellow-400/40 bg-yellow-50/50 dark:bg-yellow-900/10 animate-pulse'
+        isHighlighted && 'ring-2 ring-yellow-400/60 border-yellow-400/40 bg-yellow-50/50 dark:bg-yellow-900/10 animate-pulse',
+        isRejectedReceipt && 'border-red-300 dark:border-red-800/60 bg-red-50/30 dark:bg-red-950/10'
       )}
       onClick={onClick}
     >
@@ -138,8 +140,13 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
           </div>
 
           {/* Status */}
-          <div className="w-[100px] shrink-0 text-right">
+          <div className="w-[120px] shrink-0 text-right space-y-1">
             <DeliveryStatusBadge status={order.runner_status} />
+            {isRejectedReceipt && (
+              <Badge variant="outline" className="text-[10px] font-semibold px-1.5 py-0 bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
+                Receipt Rejected
+              </Badge>
+            )}
           </div>
 
           {/* Date */}

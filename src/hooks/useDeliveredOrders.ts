@@ -35,6 +35,7 @@ export interface DeliveredOrder {
   total_amount: number;
   total_qty: number;
   payment_method: string;
+  status: string;
   runner_status: string;
   reconciliation_status: string;
   delivered_at: string | null;
@@ -106,8 +107,8 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
       return (data || []) as DeliveredOrder[];
     },
     enabled,
-    staleTime: 30000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 3 * 60 * 1000, // 3 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 }
 
@@ -123,7 +124,6 @@ export function useDeliveredOrdersFastAll(params: Omit<UseDeliveredOrdersParams,
   return useQuery({
     queryKey: ['delivered-orders-fast-all', runnerId, salespersonId, salespersonIds],
     queryFn: async () => {
-      const startTime = performance.now();
       let allRows: DeliveredOrder[] = [];
       let offset = 0;
       let hasMore = true;
@@ -147,14 +147,11 @@ export function useDeliveredOrdersFastAll(params: Omit<UseDeliveredOrdersParams,
         hasMore = batch.length >= BATCH_SIZE;
       }
 
-      const duration = performance.now() - startTime;
-      console.log(`[PERF] get_delivered_orders_fast_all: ${allRows.length} rows in ${duration.toFixed(0)}ms (${Math.ceil(offset / BATCH_SIZE)} batches)`);
-
       return allRows;
     },
     enabled,
-    staleTime: 60000, // 1 minute (larger dataset, cache longer)
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes (large dataset, avoid frequent refetches)
+    gcTime: 15 * 60 * 1000, // 15 minutes (keep in cache longer to avoid re-fetching)
   });
 }
 
@@ -333,14 +330,9 @@ export function useMarkDeliveredEdge() {
 
   return useMutation({
     mutationFn: async (orderId: string) => {
-      const startTime = performance.now();
-      
       const { data, error } = await supabase.functions.invoke('process-delivery', {
         body: { orderId },
       });
-
-      const duration = performance.now() - startTime;
-      console.log(`[PERF] process-delivery edge function took ${duration.toFixed(0)}ms`);
 
       if (error) throw error;
       if (!data?.success) {

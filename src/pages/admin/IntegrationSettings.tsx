@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Loader2, Send, RefreshCw, CheckCircle, XCircle, Clock, SkipForward, Eye, EyeOff, Plug, Unplug } from 'lucide-react';
+import { Loader2, Send, RefreshCw, CheckCircle, XCircle, Clock, SkipForward, Eye, EyeOff, Plug, Unplug, Layers } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface IntegrationSetting {
@@ -51,9 +51,14 @@ export default function IntegrationSettings() {
   const [webhookEnabled, setWebhookEnabled] = useState(false);
   const [sharedSecret, setSharedSecret] = useState('');
 
+  // Smart Merge toggle state
+  const [smartMergeEnabled, setSmartMergeEnabled] = useState(true);
+  const [smartMergeSettingId, setSmartMergeSettingId] = useState<string | null>(null);
+  const [savingSmartMerge, setSavingSmartMerge] = useState(false);
+
   const fetchData = async () => {
     setLoading(true);
-    const [settingsRes, logsRes] = await Promise.all([
+    const [settingsRes, logsRes, smartMergeRes] = await Promise.all([
       supabase
         .from('integration_settings')
         .select('*')
@@ -64,6 +69,11 @@ export default function IntegrationSettings() {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50),
+      supabase
+        .from('integration_settings')
+        .select('id, webhook_enabled')
+        .eq('integration_name', 'smart_merge')
+        .maybeSingle(),
     ]);
 
     if (settingsRes.data) {
@@ -74,6 +84,10 @@ export default function IntegrationSettings() {
       setSharedSecret(s.shared_secret || '');
     }
     setLogs((logsRes.data || []) as unknown as WebhookLog[]);
+    if (smartMergeRes.data) {
+      setSmartMergeSettingId(smartMergeRes.data.id);
+      setSmartMergeEnabled(smartMergeRes.data.webhook_enabled ?? true);
+    }
     setLoading(false);
   };
 
@@ -271,6 +285,53 @@ export default function IntegrationSettings() {
               </Table>
             </div>
           )}
+        </CardContent>
+      </Card>
+      {/* Smart Merge Settings */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Layers className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-lg">Smart Delivery Merge</CardTitle>
+              <CardDescription>
+                Automatically group orders from the same customer for combined delivery
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+            <div className="space-y-0.5">
+              <Label className="font-medium text-foreground">Enable Smart Merge</Label>
+              <p className="text-xs text-muted-foreground">
+                When enabled, runners will see a "Smart Merge" tab in Dispatch that groups orders by phone, address, and delivery date
+              </p>
+            </div>
+            <Switch
+              checked={smartMergeEnabled}
+              onCheckedChange={async (checked) => {
+                setSmartMergeEnabled(checked);
+                setSavingSmartMerge(true);
+                if (smartMergeSettingId) {
+                  await supabase
+                    .from('integration_settings')
+                    .update({ webhook_enabled: checked, updated_at: new Date().toISOString() })
+                    .eq('id', smartMergeSettingId);
+                } else {
+                  const { data } = await supabase
+                    .from('integration_settings')
+                    .insert({ integration_name: 'smart_merge', webhook_enabled: checked, webhook_url: '', shared_secret: '' })
+                    .select('id')
+                    .single();
+                  if (data) setSmartMergeSettingId(data.id);
+                }
+                setSavingSmartMerge(false);
+                toast.success(checked ? 'Smart Merge enabled' : 'Smart Merge disabled');
+              }}
+              disabled={savingSmartMerge}
+            />
+          </div>
         </CardContent>
       </Card>
     </div>

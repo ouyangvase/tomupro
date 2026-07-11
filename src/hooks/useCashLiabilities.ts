@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { format, isToday, parseISO, startOfDay } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ============== Driver Deliveries Today Hook ==============
 // Used by RunnerCashDriver page to show Excel-style list of today's deliveries
@@ -19,14 +20,15 @@ export interface DriverDeliveryToday {
 }
 
 export function useDriverDeliveriesToday(driverFilter?: string) {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['driver-deliveries-today', driverFilter],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!user?.id) return [];
 
       const today = format(new Date(), 'yyyy-MM-dd');
-      
+
       let query = supabase
         .from('orders')
         .select(`
@@ -101,11 +103,12 @@ export interface GroupedLiabilities {
 
 // Get open cash liabilities for current runner, grouped by driver
 export function useRunnerCashLiabilities() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['runner-cash-liabilities'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { byDriver: [], totalOpen: 0, totalOpenAmount: 0, driverCount: 0 } as GroupedLiabilities;
+      if (!user?.id) return { byDriver: [], totalOpen: 0, totalOpenAmount: 0, driverCount: 0 } as GroupedLiabilities;
 
       const { data, error } = await supabase
         .from('cash_liabilities')
@@ -158,11 +161,12 @@ export function useRunnerCashLiabilities() {
 
 // Get settlement history for current runner
 export function useRunnerSettlementHistory() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['runner-settlement-history'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!user?.id) return [];
 
       const { data, error } = await supabase
         .from('cash_settlement_batches')
@@ -180,11 +184,11 @@ export function useRunnerSettlementHistory() {
 // Settle open cash liabilities for a specific driver
 export function useSettleDriverCash() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ driverId, note }: { driverId: string; note?: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Get all open liabilities for this runner from specific driver
       const { data: openLiabilities, error: fetchError } = await supabase
@@ -255,11 +259,11 @@ export function useSettleDriverCash() {
 // Settle all open cash liabilities (legacy)
 export function useSettleCash() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ note }: { note?: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Get all open liabilities for this runner
       const { data: openLiabilities, error: fetchError } = await supabase

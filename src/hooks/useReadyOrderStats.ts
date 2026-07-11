@@ -88,6 +88,6 @@ export function useReadyOrderStats(salespersonIds?: string[], salespersonId?: st
       };
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 120000,
   });
 }

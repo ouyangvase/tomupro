@@ -3,13 +3,16 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle, Users, Package, User, MapPin, CreditCard, Minus, ShoppingCart, FileText, Phone, MessageSquare, Hash, Search, ClipboardPaste } from 'lucide-react';
+import { CalendarIcon, Plus, Trash2, Check, ChevronsUpDown, Lock, AlertTriangle, Users, Package, User, MapPin, CreditCard, Minus, ShoppingCart, FileText, Phone, MessageSquare, Hash, Search, ClipboardPaste, Loader2, Camera, ImageIcon, X, ShieldCheck, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FailedDeliveryInfo } from '@/components/orders/FailedDeliveryInfo';
 import { RunnerReviewInfo } from '@/components/orders/RunnerReviewInfo';
 import { RescheduleHistorySection } from '@/components/orders/RescheduleHistorySection';
+import { OrderAuditHistory } from '@/components/orders/OrderAuditHistory';
 import { useValidAreas, isValidArea } from '@/hooks/useValidAreas';
 import { toUpperLatin } from '@/lib/uppercase';
+import { compressImage } from '@/lib/imageCompression';
+import { supabase } from '@/integrations/supabase/client';
 import { parseOrderTemplate, type ParsedOrder } from '@/lib/orderTemplateParser';
 import { isScientificNotation } from '@/lib/phone';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -64,7 +67,7 @@ import {
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useOrderItems, useCreateOrderItem, useUpdateOrderItem, useDeleteOrderItem, calculateOrderTotals } from '@/hooks/useOrderItems';
-import { useUpdateOrder, useCreateOrder } from '@/hooks/useOrders';
+import { useUpdateOrder, useCreateOrder, useRunnerUpdateArea } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderClaimsHistory } from '@/components/orders/OrderClaimsHistory';
 import { formatBND } from '@/lib/currency';
@@ -95,6 +98,7 @@ interface OrderEditorProps {
   order?: Order | null;
   mode: 'create' | 'edit';
   defaultStatus?: 'BOOKING' | 'READY';
+  readOnly?: boolean;
 }
 
 interface LocalOrderItem {
@@ -324,7 +328,7 @@ function OrderItemCard({
           </div>
 
           <div className="flex-1">
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Line Amount (BND)</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Unit Price (BND)</label>
             <Input
               type="number"
               value={item.price}
@@ -386,16 +390,22 @@ function PasteTemplateView({
     form.setValue('payment_method', 'COD');
 
     // Populate items
+    // For paste template: price from text is the FINAL LINE TOTAL, not unit price.
+    // Derive unit price = price / qty so the form displays correctly.
     if (result.items.length > 0) {
-      setItems(result.items.map(item => ({
-        product_id: item.matchedProductId,
-        sku_label: item.matchedProductName || item.skuNameRaw,
-        qty: item.qty,
-        price: item.price,
-        line_total: item.qty * item.price,
-        notes: item.lineNotes,
-        isNew: true,
-      })));
+      setItems(result.items.map(item => {
+        const lineTotal = item.price;
+        const unitPrice = item.qty > 0 ? Math.round((item.price / item.qty) * 100) / 100 : item.price;
+        return {
+          product_id: item.matchedProductId,
+          sku_label: item.matchedProductName || item.skuNameRaw,
+          qty: item.qty,
+          price: unitPrice,
+          line_total: lineTotal,
+          notes: item.lineNotes,
+          isNew: true,
+        };
+      }));
     }
 
     // Show summary toast (include warnings for corrupted phone, etc.)
@@ -457,8 +467,123 @@ function PasteTemplateView({
   );
 }
 
+/* ─── Runner Area Editor (isolated from disabled form) ─── */
+function RunnerAreaEditor({
+  order,
+  validAreas,
+  runnerUpdateArea,
+  onSuccess,
+}: {
+  order: Order;
+  validAreas: string[];
+  runnerUpdateArea: ReturnType<typeof useRunnerUpdateArea>;
+  onSuccess: () => void;
+}) {
+  const [areaValue, setAreaValue] = useState(order.area || '');
+  const [areaSearchOpen, setAreaSearchOpen] = useState(false);
+  const { toast } = useToast();
+
+  const upperArea = toUpperLatin(areaValue);
+  const areaIsInvalid = upperArea.length > 0 && !isValidArea(upperArea, validAreas);
+  const filteredAreas = validAreas.filter(a =>
+    a.toUpperCase().includes(upperArea.toUpperCase())
+  );
+  const hasChanged = areaValue !== (order.area || '');
+  const canSave = hasChanged && upperArea.length > 0 && !areaIsInvalid;
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    if (!isValidArea(upperArea, validAreas)) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Area',
+        description: `"${upperArea}" is not a valid TOMUPRO area.`,
+      });
+      return;
+    }
+    await runnerUpdateArea.mutateAsync({ id: order.id, area: upperArea });
+    onSuccess();
+  };
+
+  return (
+    <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <MapPin className="h-4 w-4 text-primary" />
+        <span className="text-sm font-semibold">Update Area / District</span>
+      </div>
+      <Popover open={areaSearchOpen} onOpenChange={setAreaSearchOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            className={cn(
+              "h-10 w-full justify-between text-left font-normal rounded-xl border-border/60",
+              !areaValue && "text-muted-foreground",
+              areaIsInvalid && "border-destructive/50 bg-destructive/5"
+            )}
+          >
+            <span className="truncate">{areaValue || 'Select area...'}</span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-40" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[280px] p-0 rounded-xl shadow-lg" align="start">
+          <Command>
+            <CommandInput
+              placeholder="Search areas..."
+              className="h-10"
+              value={areaValue}
+              onValueChange={(v) => setAreaValue(toUpperLatin(v))}
+            />
+            <CommandList>
+              <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
+                No matching area found.
+              </CommandEmpty>
+              <CommandGroup>
+                {filteredAreas.slice(0, 30).map((area) => (
+                  <CommandItem
+                    key={area}
+                    value={area}
+                    onSelect={() => {
+                      setAreaValue(area);
+                      setAreaSearchOpen(false);
+                    }}
+                    className="text-sm"
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", upperArea === area ? "opacity-100" : "opacity-0")} />
+                    {area}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {areaIsInvalid && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Area "{upperArea}" not found. Select a valid area.
+        </p>
+      )}
+      <Button
+        onClick={handleSave}
+        disabled={!canSave || runnerUpdateArea.isPending}
+        className="w-full h-10 rounded-xl"
+      >
+        {runnerUpdateArea.isPending ? (
+          <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+        ) : (
+          <>
+            <MapPin className="h-4 w-4 mr-2" />
+            Update Area
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
 /* ─── Main Component ─── */
-export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = 'BOOKING' }: OrderEditorProps) {
+export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = 'BOOKING', readOnly: readOnlyProp }: OrderEditorProps) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const { data: teamMembers = [] } = useTeamMembers();
@@ -497,6 +622,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const { data: existingItems = [] } = useOrderItems(order?.id);
   const createOrder = useCreateOrder();
   const updateOrder = useUpdateOrder();
+  const runnerUpdateArea = useRunnerUpdateArea();
   const createOrderItem = useCreateOrderItem();
   const updateOrderItem = useUpdateOrderItem();
   const deleteOrderItem = useDeleteOrderItem();
@@ -510,11 +636,17 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const [inputMode, setInputMode] = useState<'manual' | 'paste'>('manual');
   const [templateText, setTemplateText] = useState('');
   const [createAs, setCreateAs] = useState<'BOOKING' | 'READY'>(defaultStatus);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [receiptUploading, setReceiptUploading] = useState(false);
 
   const isDelivered = order?.runner_status === 'DELIVERED';
   const isAdmin = role === 'admin';
   const isManager = role === 'manager';
   const isLocked = isDelivered && !isAdmin;
+  const isRunner = role === 'runner';
+  const isRunnerAreaEdit = isRunner && mode === 'edit' && !readOnlyProp;
+  const isReadOnly = (isRunner && !isRunnerAreaEdit) || !!readOnlyProp;
 
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema),
@@ -598,8 +730,8 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const updateItem = (index: number, field: keyof LocalOrderItem, value: unknown) => {
     const newItems = [...items];
     (newItems[index] as any)[field] = value;
-    if (field === 'price') {
-      newItems[index].line_total = newItems[index].price;
+    if (field === 'price' || field === 'qty') {
+      newItems[index].line_total = newItems[index].qty * newItems[index].price;
     }
     if (field === 'product_id' && value) {
       const product = products.find(p => p.id === value);
@@ -623,6 +755,16 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
   const onSubmit = async (values: OrderFormValues) => {
     try {
+      // Receipt validation for TRANSFER orders
+      if (mode === 'create' && values.payment_method === 'TRANSFER' && !receiptFile) {
+        toast({
+          variant: 'destructive',
+          title: 'Receipt Required',
+          description: 'Please upload a transfer receipt photo before submitting a Bank Transfer order.',
+        });
+        return;
+      }
+
       // Area validation
       const areaValue = toUpperLatin(values.area?.trim() || '');
       if (areaValue && !isValidArea(areaValue, validAreas)) {
@@ -691,6 +833,24 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
           status: createAs,
         } as any);
         orderId = result.id;
+
+        // Upload receipt for TRANSFER orders
+        if (values.payment_method === 'TRANSFER' && receiptFile && orderId) {
+          try {
+            setReceiptUploading(true);
+            const { blob, extension } = await compressImage(receiptFile, { maxWidth: 1000, quality: 0.8 });
+            const path = `receipts/${orderId}/${Date.now()}.${extension}`;
+            const { error: uploadError } = await supabase.storage.from('receipts').upload(path, blob, { contentType: blob.type });
+            if (uploadError) throw uploadError;
+            const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
+            await (supabase as any).from('orders').update({ receipt_url: publicUrl, receipt_status: 'pending' }).eq('id', orderId);
+          } catch (uploadErr: any) {
+            console.error('[OrderEditor] Receipt upload error:', uploadErr);
+            toast({ variant: 'destructive', title: 'Receipt upload failed', description: uploadErr.message || 'Please re-upload the receipt from the order edit screen.' });
+          } finally {
+            setReceiptUploading(false);
+          }
+        }
       } else if (order) {
         await updateOrder.mutateAsync({ id: order.id, ...orderData } as any);
       }
@@ -739,6 +899,8 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         setItems([{ product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
         setItemsInitialized(true);
         setDeletedItemIds([]);
+        setReceiptFile(null);
+        setReceiptPreview(null);
       }
       onOpenChange(false);
     } catch (error) {
@@ -772,8 +934,20 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5">
                   <h2 className="text-xl font-bold text-foreground tracking-tight">
-                    {mode === 'create' ? 'Create New Order' : 'Edit Order'}
+                    {mode === 'create' ? 'Create New Order' : (isReadOnly || isRunnerAreaEdit) ? 'Order Details' : 'Edit Order'}
                   </h2>
+                  {isRunnerAreaEdit && (
+                    <Badge variant="outline" className="flex items-center gap-1 text-xs border-primary/30 text-primary">
+                      <MapPin className="h-3 w-3" />
+                      Area Editable
+                    </Badge>
+                  )}
+                  {isReadOnly && !isDelivered && !isRunnerAreaEdit && (
+                    <Badge variant="secondary" className="flex items-center gap-1 text-xs">
+                      <Lock className="h-3 w-3" />
+                      View Only
+                    </Badge>
+                  )}
                   {isDelivered && (
                     <Badge variant={isLocked ? 'destructive' : 'secondary'} className="flex items-center gap-1 text-xs">
                       <Lock className="h-3 w-3" />
@@ -784,9 +958,13 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {mode === 'create'
                     ? 'Build a customer order and prepare it for dispatch'
-                    : isLocked
-                      ? 'This order is delivered and locked.'
-                      : 'Update order details and line items'}
+                    : isRunnerAreaEdit
+                      ? 'You can update the Area / District for this order'
+                      : isReadOnly
+                        ? 'Viewing order details (read-only)'
+                        : isLocked
+                          ? 'This order is delivered and locked.'
+                          : 'Update order details and line items'}
                 </p>
                 {mode === 'create' && (
                   <div className="flex items-center gap-4 mt-2.5">
@@ -841,12 +1019,23 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
             {order && <RunnerReviewInfo order={order} />}
             {order && <RescheduleHistorySection orderId={order.id} currentCycleNo={order.reschedule_cycle_no} />}
 
+            {/* ─── Runner Area Editor (standalone, outside disabled fieldset) ─── */}
+            {isRunnerAreaEdit && order && (
+              <RunnerAreaEditor
+                order={order}
+                validAreas={validAreas}
+                runnerUpdateArea={runnerUpdateArea}
+                onSuccess={() => onOpenChange(false)}
+              />
+            )}
+
             <Form {...form}>
               <form
                 id="order-form"
                 onSubmit={form.handleSubmit(handleSubmitWithWarning)}
                 className="space-y-5"
               >
+                <fieldset disabled={isReadOnly || isRunnerAreaEdit || isLocked} className="space-y-5">
                 {/* ─── Section 1: Order Setup ─── */}
                 <SectionCard icon={FileText} title="Order Setup" subtitle="Owner, reference & channel">
                   {/* Order Owner */}
@@ -1098,6 +1287,137 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                       )}
                     />
 
+                    {/* Receipt Upload for TRANSFER orders */}
+                    {paymentMethod === 'TRANSFER' && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground block">
+                          Transfer Receipt {mode === 'create' ? '*' : ''}
+                        </label>
+                        {/* Show existing receipt in edit mode */}
+                        {mode === 'edit' && order?.receipt_url && !receiptFile && (
+                          <div className="space-y-2">
+                            <div className="relative rounded-xl overflow-hidden border bg-muted/30">
+                              <img src={order.receipt_url} alt="Transfer receipt" className="w-full max-h-48 object-contain" />
+                            </div>
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className={cn(
+                                "px-2 py-0.5 rounded-full font-medium",
+                                order.receipt_status === 'confirmed' ? "bg-primary/10 text-primary" :
+                                order.receipt_status === 'rejected' ? "bg-destructive/10 text-destructive" :
+                                "bg-amber-500/10 text-amber-600"
+                              )}>
+                                {order.receipt_status === 'confirmed' ? 'Confirmed' :
+                                 order.receipt_status === 'rejected' ? 'Rejected' : 'Pending Confirmation'}
+                              </span>
+                              {order.receipt_status === 'rejected' && order.receipt_rejected_reason && (
+                                <span className="text-destructive">Reason: {order.receipt_rejected_reason}</span>
+                              )}
+                            </div>
+                            {/* Admin force confirm */}
+                            {isAdmin && order.receipt_status === 'pending' && (
+                              <button
+                                type="button"
+                                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors"
+                                onClick={async () => {
+                                  await (supabase as any).from('orders').update({
+                                    receipt_status: 'confirmed',
+                                    receipt_confirmed_by: profile!.id,
+                                    receipt_confirmed_at: new Date().toISOString(),
+                                  }).eq('id', order.id);
+                                  const { logAudit } = await import('@/hooks/useAuditLogs');
+                                  logAudit({ entity_type: 'order', entity_id: order.id, action: 'receipt_force_confirmed', after_json: { receipt_status: 'confirmed', forced: true } });
+                                  toast({ title: 'Receipt confirmed', description: 'Receipt has been force-confirmed by admin.' });
+                                  onOpenChange(false);
+                                }}
+                              >
+                                <ShieldCheck className="h-3.5 w-3.5" /> Force Confirm Receipt
+                              </button>
+                            )}
+                            {/* Re-upload for rejected receipts (salesperson) */}
+                            {order.receipt_status === 'rejected' && !isRunner && (
+                              <label className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-primary/30 text-primary hover:bg-primary/5 cursor-pointer transition-colors">
+                                <Camera className="h-3.5 w-3.5" /> Re-upload Receipt
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    try {
+                                      setReceiptUploading(true);
+                                      const { blob, extension } = await compressImage(file, { maxWidth: 1000, quality: 0.8 });
+                                      const path = `receipts/${order.id}/${Date.now()}.${extension}`;
+                                      const { error: uploadError } = await supabase.storage.from('receipts').upload(path, blob, { contentType: blob.type });
+                                      if (uploadError) throw uploadError;
+                                      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
+                                      await (supabase as any).from('orders').update({
+                                        receipt_url: publicUrl,
+                                        receipt_status: 'pending',
+                                        receipt_rejected_reason: null,
+                                        receipt_confirmed_by: null,
+                                        receipt_confirmed_at: null,
+                                      }).eq('id', order.id);
+                                      const { logAudit } = await import('@/hooks/useAuditLogs');
+                                      logAudit({ entity_type: 'order', entity_id: order.id, action: 'receipt_re_uploaded', after_json: { receipt_url: publicUrl } });
+                                      toast({ title: 'Receipt re-uploaded', description: 'Receipt has been re-uploaded and is pending confirmation.' });
+                                      onOpenChange(false);
+                                    } catch (err: any) {
+                                      toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
+                                    } finally {
+                                      setReceiptUploading(false);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        )}
+                        {/* Upload area for new orders or when no receipt exists */}
+                        {(mode === 'create' || (mode === 'edit' && !order?.receipt_url)) && (
+                          <>
+                            {receiptPreview ? (
+                              <div className="relative rounded-xl overflow-hidden border bg-muted/30">
+                                <img src={receiptPreview} alt="Receipt preview" className="w-full max-h-48 object-contain" />
+                                <button
+                                  type="button"
+                                  onClick={() => { setReceiptFile(null); setReceiptPreview(null); }}
+                                  className="absolute top-2 right-2 p-1 rounded-full bg-destructive/80 text-white hover:bg-destructive"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="flex flex-col items-center gap-2 p-6 rounded-xl border-2 border-dashed border-border/50 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all">
+                                <Camera className="h-8 w-8 text-muted-foreground" />
+                                <span className="text-sm text-muted-foreground">Tap to upload transfer receipt</span>
+                                <span className="text-[11px] text-muted-foreground/60">Image will be compressed automatically</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      setReceiptFile(file);
+                                      setReceiptPreview(URL.createObjectURL(file));
+                                    }
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </>
+                        )}
+                        {receiptUploading && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Compressing and uploading receipt...
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <FormField
                       control={form.control}
                       name="expected_pickup_date"
@@ -1196,6 +1516,14 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                     <OrderClaimsHistory orderId={order.id} />
                   </SectionCard>
                 )}
+
+                {/* Audit History - only in edit mode */}
+                {mode === 'edit' && order && (
+                  <SectionCard icon={History} title="Audit History" subtitle="Actions performed on this order">
+                    <OrderAuditHistory orderId={order.id} />
+                  </SectionCard>
+                )}
+                </fieldset>
               </form>
             </Form>
           </div>
@@ -1229,22 +1557,24 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                className="flex-1 h-11 rounded-xl"
+                className={cn((isReadOnly || isRunnerAreaEdit) ? "w-full" : "flex-1", "h-11 rounded-xl")}
               >
-                Cancel
+                {(isReadOnly || isRunnerAreaEdit) ? 'Close' : 'Cancel'}
               </Button>
-              <Button
-                type="submit"
-                form="order-form"
-                disabled={createOrder.isPending || updateOrder.isPending || isLocked}
-                className="flex-[2] h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm"
-              >
-                {createOrder.isPending || updateOrder.isPending
-                  ? 'Saving...'
-                  : mode === 'create'
-                    ? '🚀 Create Order'
-                    : 'Save Changes'}
-              </Button>
+              {!isReadOnly && !isRunnerAreaEdit && (
+                <Button
+                  type="submit"
+                  form="order-form"
+                  disabled={createOrder.isPending || updateOrder.isPending || isLocked}
+                  className="flex-[2] h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm"
+                >
+                  {createOrder.isPending || updateOrder.isPending
+                    ? 'Saving...'
+                    : mode === 'create'
+                      ? '🚀 Create Order'
+                      : 'Save Changes'}
+                </Button>
+              )}
             </div>
           </div>
         </SheetContent>

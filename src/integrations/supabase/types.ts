@@ -72,6 +72,334 @@ export type Database = {
           },
         ]
       }
+      companies: {
+        Row: {
+          id: string
+          company_name: string
+          owner_user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_name: string
+          owner_user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_name?: string
+          owner_user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "companies_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_members: {
+        Row: {
+          id: string
+          company_id: string
+          user_id: string
+          role: Database["public"]["Enums"]["company_member_role"]
+          invited_by: string | null
+          status: Database["public"]["Enums"]["company_member_status"]
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          user_id: string
+          role?: Database["public"]["Enums"]["company_member_role"]
+          invited_by?: string | null
+          status?: Database["public"]["Enums"]["company_member_status"]
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          user_id?: string
+          role?: Database["public"]["Enums"]["company_member_role"]
+          invited_by?: string | null
+          status?: Database["public"]["Enums"]["company_member_status"]
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_members_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_audit_logs: {
+        Row: {
+          id: string
+          company_id: string
+          user_id: string
+          action: string
+          module: string
+          record_id: string | null
+          before_data: Json | null
+          after_data: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          user_id: string
+          action: string
+          module: string
+          record_id?: string | null
+          before_data?: Json | null
+          after_data?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          user_id?: string
+          action?: string
+          module?: string
+          record_id?: string | null
+          before_data?: Json | null
+          after_data?: Json | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_audit_logs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_audit_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_claims: {
+        Row: {
+          id: string
+          company_id: string
+          claim_no: string
+          runner_user_id: string
+          tracking_number: string | null
+          order_id: string | null
+          claim_date: string
+          category: Database["public"]["Enums"]["finance_claim_category"]
+          description: string
+          amount: number
+          payment_method: string | null
+          receipt_url: string | null
+          notes: string | null
+          status: Database["public"]["Enums"]["finance_claim_status"]
+          admin_note: string | null
+          approved_by: string | null
+          approved_at: string | null
+          paid_by: string | null
+          paid_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          claim_no: string
+          runner_user_id: string
+          tracking_number?: string | null
+          order_id?: string | null
+          claim_date: string
+          category: Database["public"]["Enums"]["finance_claim_category"]
+          description: string
+          amount: number
+          payment_method?: string | null
+          receipt_url?: string | null
+          notes?: string | null
+          status?: Database["public"]["Enums"]["finance_claim_status"]
+          admin_note?: string | null
+          approved_by?: string | null
+          approved_at?: string | null
+          paid_by?: string | null
+          paid_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          claim_no?: string
+          runner_user_id?: string
+          tracking_number?: string | null
+          order_id?: string | null
+          claim_date?: string
+          category?: Database["public"]["Enums"]["finance_claim_category"]
+          description?: string
+          amount?: number
+          payment_method?: string | null
+          receipt_url?: string | null
+          notes?: string | null
+          status?: Database["public"]["Enums"]["finance_claim_status"]
+          admin_note?: string | null
+          approved_by?: string | null
+          approved_at?: string | null
+          paid_by?: string | null
+          paid_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_claims_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_claims_runner_user_id_fkey"
+            columns: ["runner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_monthly_reports: {
+        Row: {
+          id: string
+          company_id: string
+          report_month: string
+          total_income: number
+          total_expense: number
+          net_profit: number
+          gross_profit: number
+          profit_margin: number
+          closed_by: string | null
+          closed_at: string | null
+          status: Database["public"]["Enums"]["finance_report_status"]
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          report_month: string
+          total_income?: number
+          total_expense?: number
+          net_profit?: number
+          gross_profit?: number
+          profit_margin?: number
+          closed_by?: string | null
+          closed_at?: string | null
+          status?: Database["public"]["Enums"]["finance_report_status"]
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          report_month?: string
+          total_income?: number
+          total_expense?: number
+          net_profit?: number
+          gross_profit?: number
+          profit_margin?: number
+          closed_by?: string | null
+          closed_at?: string | null
+          status?: Database["public"]["Enums"]["finance_report_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_monthly_reports_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_transactions: {
+        Row: {
+          id: string
+          company_id: string
+          source_type: string
+          source_id: string | null
+          transaction_date: string
+          type: Database["public"]["Enums"]["finance_transaction_type"]
+          category: string
+          description: string
+          amount: number
+          status: Database["public"]["Enums"]["finance_transaction_status"]
+          created_by: string
+          approved_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          source_type: string
+          source_id?: string | null
+          transaction_date: string
+          type: Database["public"]["Enums"]["finance_transaction_type"]
+          category: string
+          description: string
+          amount: number
+          status?: Database["public"]["Enums"]["finance_transaction_status"]
+          created_by: string
+          approved_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          source_type?: string
+          source_id?: string | null
+          transaction_date?: string
+          type?: Database["public"]["Enums"]["finance_transaction_type"]
+          category?: string
+          description?: string
+          amount?: number
+          status?: Database["public"]["Enums"]["finance_transaction_status"]
+          created_by?: string
+          approved_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_transactions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_transactions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_impersonation_sessions: {
         Row: {
           actions_count: number | null
@@ -4900,6 +5228,14 @@ export type Database = {
         | "runner"
         | "driver"
         | "user"
+        | "finance_viewer"
+      company_member_role: "owner" | "admin" | "runner" | "viewer"
+      company_member_status: "pending" | "active" | "suspended"
+      finance_claim_category: "fuel" | "packaging" | "toll" | "parking" | "equipment" | "other"
+      finance_claim_status: "draft" | "pending" | "approved" | "rejected" | "paid" | "voided"
+      finance_report_status: "draft" | "closed"
+      finance_transaction_status: "pending" | "confirmed" | "voided"
+      finance_transaction_type: "income" | "expense" | "transfer"
       attachment_type:
         | "transfer_proof"
         | "receipt_photo"

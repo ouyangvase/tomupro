@@ -382,7 +382,7 @@ export function useMyPopupEvents() {
       return (data || []) as PopupEvent[];
     },
     enabled: !!user,
-    refetchInterval: 60000,
+    refetchInterval: 180000,
   });
 }
 

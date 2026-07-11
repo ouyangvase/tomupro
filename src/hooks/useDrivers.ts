@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import type { RunnerDriver, Profile } from '@/types/database';
 import { createDriverCashLiability } from '@/hooks/useCashLiabilities';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Get drivers for a runner (with driver_code)
 export function useRunnerDrivers(runnerId?: string) {
@@ -35,11 +36,12 @@ export function useRunnerDrivers(runnerId?: string) {
 
 // Get drivers for current runner (self)
 export function useMyDrivers() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['my-drivers'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!user?.id) return [];
       
       const { data, error } = await supabase
         .from('runner_drivers')
@@ -107,13 +109,12 @@ async function fetchDriverParentRunnerId(driverId: string): Promise<string | nul
 
 // Get driver's parent runner id
 export function useDriverParentRunnerId() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['driver-parent-runner-id'],
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
+      if (!user?.id) return null;
 
       return fetchDriverParentRunnerId(user.id);
     },
@@ -122,13 +123,12 @@ export function useDriverParentRunnerId() {
 
 // Get driver's parent runner (profile)
 export function useDriverParentRunner() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['driver-parent-runner'],
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
+      if (!user?.id) return null;
 
       const runnerId = await fetchDriverParentRunnerId(user.id);
       if (!runnerId) return null;
@@ -285,18 +285,18 @@ export function useBulkAssignOrdersToDriver() {
 // Driver marks order as delivered with payment method
 export function useDriverMarkDelivered() {
   const queryClient = useQueryClient();
-  
+  const { user } = useAuth();
+
   return useMutation({
-    mutationFn: async ({ 
-      orderId, 
-      paymentMethod 
-    }: { 
-      orderId: string; 
-      paymentMethod: 'CASH' | 'TRANSFER' 
+    mutationFn: async ({
+      orderId,
+      paymentMethod
+    }: {
+      orderId: string;
+      paymentMethod: 'CASH' | 'TRANSFER'
     }) => {
       // Get current user (driver)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Get order details including runner_id
       const { data: order, error: orderError } = await supabase
@@ -568,11 +568,12 @@ export function useUnassignDriverFromOrder() {
 
 // Get orders for runner's driver inbox (all orders where runner_id = current user)
 export function useRunnerDriverOrders() {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['runner-driver-orders'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!user?.id) return [];
 
       const { data, error } = await supabase
         .from('orders')

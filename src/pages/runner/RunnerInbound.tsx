@@ -113,8 +113,14 @@ export default function RunnerInbound() {
   };
 
   const handleSubmit = async () => {
-    if (!user || !targetUserId || !trackingNo || items.length === 0) {
+    if (!user || !targetUserId || items.length === 0) {
       toast({ variant: 'destructive', title: 'Please fill all required fields and add at least one item' });
+      return;
+    }
+    // Validate tracking number: if provided, must be a real value (not just dashes/spaces)
+    const cleanedTracking = trackingNo.trim().replace(/^-+$/, '');
+    if (cleanedTracking && cleanedTracking.length < 3) {
+      toast({ variant: 'destructive', title: 'Tracking number must be at least 3 characters, or leave blank if not available' });
       return;
     }
     for (let i = 0; i < items.length; i++) {
@@ -139,10 +145,12 @@ export default function RunnerInbound() {
     setShowConfirm(false);
     setIsSubmitting(true);
     try {
+      // Clean tracking number: strip dashes-only and whitespace
+      const finalTracking = trackingNo.trim().replace(/^-+$/, '') || '';
       const shipment = await createShipment.mutateAsync({
         runner_id: user!.id,
         salesperson_id: targetUserId,
-        tracking_no: trackingNo,
+        tracking_no: finalTracking,
         arrival_date: arrivalDate,
         notes: notes || undefined,
       });
@@ -163,7 +171,7 @@ export default function RunnerInbound() {
         entity_type: 'inbound_shipment',
         entity_id: shipment.id,
         action: 'INBOUND_CREATED',
-        after_json: { tracking_no: trackingNo, items_count: items.length },
+        after_json: { tracking_no: finalTracking, items_count: items.length },
       });
       toast({ title: 'Inbound shipment submitted successfully' });
       setTargetUserId('');
@@ -179,7 +187,7 @@ export default function RunnerInbound() {
     }
   };
 
-  const canSubmit = items.length > 0 && targetUserId && trackingNo && items.every(item => item.product_id && item.qty_reported > 0);
+  const canSubmit = items.length > 0 && targetUserId && items.every(item => item.product_id && item.qty_reported > 0);
   const selectedUser = boundUsers.find(u => u.id === targetUserId);
 
   return (
@@ -307,15 +315,15 @@ export default function RunnerInbound() {
                     <Hash className="h-4.5 w-4.5 text-primary" />
                   </div>
                   <div>
-                    <p className="font-semibold text-sm">Step 2 — Tracking Number</p>
-                    <p className="text-xs text-muted-foreground">Enter or scan tracking ID</p>
+                    <p className="font-semibold text-sm">Step 2 — Tracking Number <span className="font-normal text-muted-foreground">(Optional)</span></p>
+                    <p className="text-xs text-muted-foreground">Enter tracking ID if available</p>
                   </div>
                 </div>
                 <div className="relative">
                   <Input
                     value={trackingNo}
                     onChange={(e) => setTrackingNo(e.target.value)}
-                    placeholder="Enter tracking number"
+                    placeholder="Enter tracking number (optional)"
                     className="rounded-xl h-11 pr-10"
                   />
                   <ScanBarcode className="absolute right-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground/50" />
@@ -451,6 +459,11 @@ export default function RunnerInbound() {
                         onPhotoChange={(file) => handlePhotoChange(item.id, file)}
                       />
                     ))}
+                    {items.length === 1 && (
+                      <p className="text-xs text-center text-muted-foreground pt-1">
+                        Multiple products? Click "Add Item" above to include all items in one shipment.
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -507,7 +520,7 @@ export default function RunnerInbound() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Tracking</span>
-                  <span className="font-mono font-medium">{trackingNo}</span>
+                  <span className="font-mono font-medium">{trackingNo.trim().replace(/^-+$/, '') || 'Not provided'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Arrival Date</span>

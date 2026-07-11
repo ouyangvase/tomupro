@@ -25,7 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Order } from '@/types/database';
 
-type ResolutionType = 'AUTO_RESCHEDULE' | 'CONVERT_TO_BOOKING' | 'CANCEL';
+type ResolutionType = 'AUTO_RESCHEDULE' | 'CONVERT_TO_BOOKING' | 'CONVERT_TO_READY' | 'CANCEL';
 
 interface ActionResolutionDialogProps {
   order: Order | null;
@@ -43,8 +43,9 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
   const [resolutionType, setResolutionType] = useState<ResolutionType | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto Reschedule fields - use existing next_delivery_date if available
+  // Auto Reschedule fields
   const [autoRescheduleRemark, setAutoRescheduleRemark] = useState('');
+  const [autoRescheduleDate, setAutoRescheduleDate] = useState<Date | undefined>(undefined);
 
   // Convert to Booking fields
   const [newDate, setNewDate] = useState<Date | undefined>(undefined);
@@ -64,8 +65,8 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
     return bindings.map(b => b.runner).filter(Boolean);
   }, [bindings]);
 
-  // Check if order has a reschedule date (for Auto Reschedule option)
-  const hasRescheduleDate = order?.next_delivery_date != null;
+  // Check if order has a runner-suggested reschedule date
+  const hasRunnerDate = order?.next_delivery_date != null;
   
   // Check if order is delivered (lock rule)
   const isDelivered = order?.runner_status === 'DELIVERED';
@@ -73,6 +74,7 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
   const resetForm = () => {
     setResolutionType(null);
     setAutoRescheduleRemark('');
+    setAutoRescheduleDate(undefined);
     setNewDate(undefined);
     setBookingRemark('');
     setCancelReasonId('');
@@ -93,8 +95,13 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
       const now = new Date().toISOString();
       
       if (resolutionType === 'AUTO_RESCHEDULE') {
-        if (!hasRescheduleDate) {
-          toast.error('No reschedule date available for this order');
+        // Use user-selected date, or fall back to runner's suggested date
+        const rescheduleDate = autoRescheduleDate
+          ? format(autoRescheduleDate, 'yyyy-MM-dd')
+          : order.next_delivery_date;
+
+        if (!rescheduleDate) {
+          toast.error('Please select a reschedule date');
           setIsSubmitting(false);
           return;
         }
@@ -105,19 +112,20 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           cycle_no: (order.reschedule_cycle_no || 0) + 1,
           from_status: order.operational_status || order.status,
           to_status: 'BOOKING_AUTO_RESCHEDULE',
-          next_delivery_date: order.next_delivery_date,
-          comment: `Salesperson confirmed auto-reschedule: ${autoRescheduleRemark || 'No comment'}`,
+          next_delivery_date: rescheduleDate,
+          comment: `${hasRunnerDate ? 'Confirmed' : 'Set'} auto-reschedule to ${rescheduleDate}: ${autoRescheduleRemark || 'No comment'}`,
           rescheduled_by: profile.id,
         });
 
-        // Update order - move to BOOKING, keep next_delivery_date for auto-assignment
+        // Update order - move to BOOKING with reschedule date
         await updateOrder.mutateAsync({
           id: order.id,
           status: 'BOOKING',
-          expected_pickup_date: order.next_delivery_date!,
+          expected_pickup_date: rescheduleDate,
+          next_delivery_date: rescheduleDate,
           salesperson_action_required: false,
           salesperson_action_type: 'RESCHEDULE_DELIVERY',
-          last_status_note: `Auto-reschedule confirmed for ${order.next_delivery_date}: ${autoRescheduleRemark || ''}`,
+          last_status_note: `Auto-reschedule confirmed for ${rescheduleDate}: ${autoRescheduleRemark || ''}`,
           runner_status: 'UNASSIGNED',
           runner_id: null,
           driver_id: null,
@@ -178,6 +186,35 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
         onSuccess?.();
         navigate('/sales/booking');
 
+      } else if (resolutionType === 'CONVERT_TO_READY') {
+        // Record the salesperson decision
+        await supabase.from('reschedule_history').insert({
+          order_id: order.id,
+          cycle_no: (order.reschedule_cycle_no || 0) + 1,
+          from_status: order.operational_status || order.status,
+          to_status: 'READY',
+          comment: 'Salesperson moved order directly to Ready Orders for dispatch',
+          rescheduled_by: profile.id,
+        });
+
+        // Update order - move to READY status
+        await updateOrder.mutateAsync({
+          id: order.id,
+          status: 'READY',
+          salesperson_action_required: false,
+          salesperson_action_type: 'CONVERT_TO_READY',
+          last_status_note: 'Moved to Ready Orders for dispatch',
+          runner_status: 'UNASSIGNED',
+          runner_id: null,
+          driver_id: null,
+          driver_status: null,
+        });
+
+        toast.success('Order moved to Ready Orders');
+        handleClose();
+        onSuccess?.();
+        navigate('/orders?tab=ready');
+
       } else if (resolutionType === 'CANCEL') {
         if (!cancelReasonId) {
           toast.error('Please select a cancel reason');
@@ -232,8 +269,9 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
 
   const canSubmit = () => {
     if (!resolutionType) return false;
-    if (resolutionType === 'AUTO_RESCHEDULE') return hasRescheduleDate;
+    if (resolutionType === 'AUTO_RESCHEDULE') return !!(autoRescheduleDate || hasRunnerDate);
     if (resolutionType === 'CONVERT_TO_BOOKING') return !!newDate;
+    if (resolutionType === 'CONVERT_TO_READY') return true;
     if (resolutionType === 'CANCEL') return !!cancelReasonId && !isDelivered;
     return false;
   };
@@ -321,24 +359,23 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
             onValueChange={(v) => setResolutionType(v as ResolutionType)}
             className="space-y-3"
           >
-            {/* Auto Reschedule - only show if order has next_delivery_date */}
+            {/* Auto Reschedule - always available */}
             <div className={cn(
               "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
-              resolutionType === 'AUTO_RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50",
-              !hasRescheduleDate && "opacity-50 cursor-not-allowed"
+              resolutionType === 'AUTO_RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
             )}>
-              <RadioGroupItem value="AUTO_RESCHEDULE" id="auto-reschedule" disabled={!hasRescheduleDate} />
+              <RadioGroupItem value="AUTO_RESCHEDULE" id="auto-reschedule" />
               <div className="flex-1">
-                <Label htmlFor="auto-reschedule" className={cn("font-medium cursor-pointer", !hasRescheduleDate && "cursor-not-allowed")}>
+                <Label htmlFor="auto-reschedule" className="font-medium cursor-pointer">
                   <div className="flex items-center gap-2">
                     <CalendarCheck className="h-4 w-4 text-green-600" />
                     Auto Reschedule
                   </div>
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  {hasRescheduleDate 
-                    ? `Order will auto-assign runner on ${format(parseISO(order!.next_delivery_date!), 'dd MMM yyyy')}`
-                    : "No reschedule date set by runner"}
+                  {hasRunnerDate
+                    ? `Runner suggested ${format(parseISO(order!.next_delivery_date!), 'dd MMM yyyy')} — confirm or choose a different date`
+                    : "Select a new reschedule date for this order"}
                 </p>
               </div>
             </div>
@@ -356,6 +393,22 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
                   </div>
                 </Label>
                 <p className="text-xs text-muted-foreground">Move to Booking Sales with a new date (manual assignment later)</p>
+              </div>
+            </div>
+
+            <div className={cn(
+              "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
+              resolutionType === 'CONVERT_TO_READY' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            )}>
+              <RadioGroupItem value="CONVERT_TO_READY" id="convert-ready" />
+              <div className="flex-1">
+                <Label htmlFor="convert-ready" className="font-medium cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-purple-600" />
+                    Convert to Ready
+                  </div>
+                </Label>
+                <p className="text-xs text-muted-foreground">Move this order directly to Ready Orders for dispatch</p>
               </div>
             </div>
 
@@ -383,16 +436,45 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
         </div>
 
         {/* Resolution-specific fields */}
-        {resolutionType === 'AUTO_RESCHEDULE' && hasRescheduleDate && (
+        {resolutionType === 'AUTO_RESCHEDULE' && (
           <div className="space-y-4 p-4 border rounded-lg bg-green-50/50 dark:bg-green-900/10">
-            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
-              <CalendarCheck className="h-5 w-5" />
-              <span className="font-medium">
-                Scheduled for: {format(parseISO(order!.next_delivery_date!), 'EEEE, dd MMM yyyy')}
-              </span>
+            <div className="space-y-2">
+              <Label>Reschedule Date *</Label>
+              {hasRunnerDate && !autoRescheduleDate && (
+                <p className="text-xs text-muted-foreground">
+                  Runner suggested: {format(parseISO(order!.next_delivery_date!), 'dd MMM yyyy')} — this will be used unless you pick a different date.
+                </p>
+              )}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !autoRescheduleDate && !hasRunnerDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {autoRescheduleDate
+                      ? format(autoRescheduleDate, 'PPP')
+                      : hasRunnerDate
+                        ? `${format(parseISO(order!.next_delivery_date!), 'PPP')} (runner suggested)`
+                        : 'Select date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={autoRescheduleDate || (hasRunnerDate ? parseISO(order!.next_delivery_date!) : undefined)}
+                    onSelect={setAutoRescheduleDate}
+                    disabled={(date) => date < new Date()}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <p className="text-sm text-muted-foreground">
-              When this date arrives, the order will automatically move to Ready Sales and be assigned to a runner.
+              The order will move to Booking and auto-assign to a runner on the selected date.
             </p>
             <div className="space-y-2">
               <Label>Note (Optional)</Label>

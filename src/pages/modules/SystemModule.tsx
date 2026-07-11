@@ -14,6 +14,10 @@ const LeaderboardSettings = lazy(() => import('@/pages/admin/LeaderboardSettings
 const DataSharingAdmin = lazy(() => import('@/pages/admin/DataSharingAdmin'));
 const ReasonsSettings = lazy(() => import('@/pages/settings/ReasonsSettings'));
 const IntegrationSettings = lazy(() => import('@/pages/admin/IntegrationSettings'));
+const BrandingSettings = lazy(() => import('@/pages/admin/BrandingSettings'));
+const TelegramAdminSettings = lazy(() => import('@/pages/admin/TelegramAdminSettings'));
+const GoogleSheetSettings = lazy(() => import('@/pages/admin/GoogleSheetSettings'));
+const InterestLeadsAdmin = lazy(() => import('@/pages/admin/InterestLeadsAdmin'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -22,6 +26,7 @@ const Loading = () => (
 );
 
 const tabs = [
+  { id: 'branding', label: 'Branding' },
   { id: 'stock-audit', label: 'Stock Audit' },
   { id: 'stock-rebuild', label: 'Stock Rebuild' },
   { id: 'events', label: 'Events' },
@@ -32,12 +37,15 @@ const tabs = [
   { id: 'data-sharing', label: 'Data Sharing' },
   { id: 'reasons', label: 'Reasons' },
   { id: 'integrations', label: 'Integrations' },
+  { id: 'google-sheet', label: 'Google Sheet' },
+  { id: 'telegram', label: 'Telegram' },
+  { id: 'interest-leads', label: 'Interest Leads' },
   { id: 'profile', label: 'Profile' },
 ];
 
 export default function SystemModule() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'stock-audit';
+  const activeTab = searchParams.get('tab') || 'branding';
 
   return (
     <div className="space-y-4">
@@ -53,6 +61,7 @@ export default function SystemModule() {
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
+            {activeTab === 'branding' && <BrandingSettings />}
             {activeTab === 'stock-audit' && <StockIntegrityAudit />}
             {activeTab === 'stock-rebuild' && <StockIntegrityScan />}
             {activeTab === 'events' && <EventsAdmin />}
@@ -63,6 +72,9 @@ export default function SystemModule() {
             {activeTab === 'data-sharing' && <DataSharingAdmin />}
             {activeTab === 'reasons' && <ReasonsSettings />}
             {activeTab === 'integrations' && <IntegrationSettings />}
+            {activeTab === 'google-sheet' && <GoogleSheetSettings />}
+            {activeTab === 'telegram' && <TelegramAdminSettings />}
+            {activeTab === 'interest-leads' && <InterestLeadsAdmin />}
             {activeTab === 'profile' && <ProfilePage />}
           </div>
         </Suspense>

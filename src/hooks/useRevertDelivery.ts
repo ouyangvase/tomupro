@@ -69,8 +69,6 @@ export function useRevertDelivery() {
           throw new Error('No active warehouse found for stock restoration. The salesperson may not have an active warehouse.');
         }
 
-        console.log('[REVERT] Using active warehouse:', activeWarehouseId, 'for order:', orderId);
-
         // Create RETURN_TO_OWNER movements for each item (idempotent)
         for (const item of order.order_items) {
           if (!item.product_id) continue;
@@ -85,16 +83,8 @@ export function useRevertDelivery() {
             .maybeSingle();
           
           if (existing) {
-            console.log('[REVERT] Stock already returned for product:', item.product_id);
             continue;
           }
-          
-          console.log('[REVERT] Creating RETURN_TO_OWNER movement:', {
-            orderId,
-            productId: item.product_id,
-            qty: item.qty,
-            warehouseId: activeWarehouseId,
-          });
 
           const { error: insertError } = await supabase
             .from('stock_movements')
@@ -112,8 +102,7 @@ export function useRevertDelivery() {
             console.error('[REVERT] Stock return failed:', insertError);
             throw new Error(`Failed to restore stock for product ${item.product_id}: ${insertError.message}`);
           }
-          
-          console.log('[REVERT] Stock return successful for product:', item.product_id);
+
           itemsRestored.push(item.product_id);
         }
       }

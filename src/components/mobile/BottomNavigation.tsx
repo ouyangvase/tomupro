@@ -39,6 +39,18 @@ const driverTabs: NavItem[] = [
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
 ];
 
+const financeViewerTabs: NavItem[] = [
+  { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
+  { id: 'finance', label: 'Finance', icon: <Boxes className="h-5 w-5" />, href: '/finance' },
+  { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
+];
+
+const runnerAssistantTabs: NavItem[] = [
+  { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
+  { id: 'dispatch', label: 'Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/dispatch' },
+  { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
+];
+
 const adminTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
   { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/orders' },
@@ -57,7 +69,9 @@ export function BottomNavigation() {
       case 'admin': return adminTabs;
       case 'manager': return managerTabs;
       case 'runner': return runnerTabs;
+      case 'runner_assistant': return runnerAssistantTabs;
       case 'driver': return driverTabs;
+      case 'finance_viewer': return financeViewerTabs;
       default: return salespersonTabs;
     }
   };

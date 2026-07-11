@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO, isToday, isThisWeek, isThisMonth } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { useOrders } from '@/hooks/useOrders';
+import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,13 +32,21 @@ import capybaraCommandCenter from '@/assets/capybara-command-center.png';
 import {
   AlertCircle, MessageSquare, Search, CalendarClock, RefreshCw,
   Play, ListChecks, XCircle, Calendar, AlertTriangle, Flame,
-  Phone, MapPin, User, ChevronRight, Clock,
+  Phone, MapPin, User, ChevronRight, ChevronLeft, Clock,
   ShieldAlert, Eye, PhoneCall, CalendarPlus,
   UserPlus, CheckCircle2, HelpCircle, Lightbulb,
-  Target, TrendingUp, Zap
+  Target, TrendingUp, Zap, Download
 } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { cn } from '@/lib/utils';
+import { exportOrderLines } from '@/lib/csv';
+import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 // ── Action source types & helpers ──
 type ActionRequiredSource = 'FAILED_DELIVERY' | 'RESCHEDULED' | 'RUNNER_FLAGGED' | 'MANUAL';
@@ -169,29 +178,32 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
 
   // Build server-side filters for action-required orders
   const orderFilters = useMemo(() => {
-    const filters: Parameters<typeof useOrders>[0] = { actionRequired: true };
+    const filters: Parameters<typeof usePaginatedOrders>[0] = { actionRequired: true };
 
     // For salesperson: explicitly filter server-side
     if (role === 'salesperson' && profile?.id) {
       filters.salespersonId = profile.id;
     } else if (role === 'manager' && profile?.id) {
       // Manager: use explicit salesperson filter based on view mode
-      // This avoids relying on RLS which may not return orders correctly
       if (viewMode === 'my') {
         filters.salespersonIds = [profile.id];
       } else if (selectedMember !== 'all') {
         filters.salespersonIds = [selectedMember];
       } else if (visibleOwnerIds && visibleOwnerIds.length > 0) {
-        // Team Data / All: use server-side visible owner IDs from RPC
         filters.salespersonIds = visibleOwnerIds;
       }
     }
     // Admin: no salesperson filter needed (sees all)
 
-    return filters;
-  }, [role, profile?.id, viewMode, selectedMember, visibleOwnerIds]);
+    // Pass search to server-side
+    if (searchQuery.trim()) {
+      filters.searchQuery = searchQuery.trim();
+    }
 
-  const { data: allOrders = [], isLoading, refetch } = useOrders(orderFilters);
+    return filters;
+  }, [role, profile?.id, viewMode, selectedMember, visibleOwnerIds, searchQuery]);
+
+  const { data: allOrders = [], isLoading, isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders(orderFilters, 50);
 
   const canViewAll = role === 'admin';
   const canViewGroup = role === 'manager';
@@ -203,7 +215,6 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     let filtered = allOrders.filter(order => needsSalespersonAction(order));
 
     // No client-side team filtering needed — server-side orderFilters already scope by team/member/my
-    // For salesperson: already filtered server-side by salesperson_id, no additional client filter needed
 
     if (salespersonFilter !== 'all') filtered = filtered.filter(o => o.salesperson_id === salespersonFilter);
     if (sourceFilter !== 'all') filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
@@ -219,21 +230,11 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
       });
     }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(o =>
-        o.order_code?.toLowerCase().includes(q) ||
-        o.customer_name?.toLowerCase().includes(q) ||
-        o.address?.toLowerCase().includes(q) ||
-        o.phone?.toLowerCase().includes(q)
-      );
-    }
-
     return filtered.sort((a, b) => {
       const pOrder = { high: 0, medium: 1, low: 2 };
       return pOrder[getOrderPriority(a)] - pOrder[getOrderPriority(b)];
     });
-  }, [allOrders, sourceFilter, salespersonFilter, searchQuery, timeFilter, priorityFilter]);
+  }, [allOrders, sourceFilter, salespersonFilter, timeFilter, priorityFilter]);
 
   // ── Salesperson filter data ──
   const salespersonIds = useMemo(() => [...new Set(allOrders.filter(o => needsSalespersonAction(o)).map(o => o.salesperson_id))], [allOrders]);
@@ -295,6 +296,26 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   const selectedOrders = useMemo(() => actionRequiredOrders.filter(o => selectedRows.has(o.id)), [actionRequiredOrders, selectedRows]);
   const handleBulkSuccess = () => { setSelectedRows(new Set()); refetch(); };
 
+  // Export handlers
+  const handleExportSelected = useCallback(() => {
+    if (selectedRows.size === 0) {
+      toast.error('No orders selected for export');
+      return;
+    }
+    const selected = actionRequiredOrders.filter(o => selectedRows.has(o.id));
+    exportOrderLines(selected, 'action_required_selected');
+    toast.success(`Exported ${selected.length} order(s)`);
+  }, [actionRequiredOrders, selectedRows]);
+
+  const handleExportAll = useCallback(() => {
+    if (actionRequiredOrders.length === 0) {
+      toast.error('No orders to export');
+      return;
+    }
+    exportOrderLines(actionRequiredOrders, 'action_required_all');
+    toast.success(`Exported ${actionRequiredOrders.length} order(s)`);
+  }, [actionRequiredOrders]);
+
   // ── Mission progress ──
   const resolvedToday = 0; // placeholder — would need resolved count from DB
   const failedProgress = stats.failed > 0 ? Math.round((resolvedToday / stats.failed) * 100) : 100;
@@ -329,7 +350,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     Operations Command Center
                   </h1>
                   <p className="text-sm md:text-base text-muted-foreground mt-0.5">
-                    {stats.total} order{stats.total !== 1 ? 's' : ''} requiring attention today
+                    {pagination.totalCount || stats.total} order{(pagination.totalCount || stats.total) !== 1 ? 's' : ''} requiring attention today
                   </p>
                 </div>
               </div>
@@ -342,6 +363,22 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                 selectedMember={selectedMember}
                 onMemberChange={setSelectedMember}
               />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Download className="h-4 w-4" />
+                    <span className="hidden md:inline">Export</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleExportSelected} disabled={selectedRows.size === 0}>
+                    Export Selected ({selectedRows.size})
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportAll}>
+                    Export All ({actionRequiredOrders.length})
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
                 <RefreshCw className="h-4 w-4" />
                 <span className="hidden md:inline">Refresh</span>
@@ -886,48 +923,36 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
         )}
 
         {/* ════════════════════════════════════════════
-            6. CONTEXTUAL HELP SECTION
+            6. PAGINATION CONTROLS
             ════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Card className="border-border/50 hover:border-primary/30 transition-colors cursor-pointer group" onClick={() => setShowGuide(true)}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-primary/10 group-hover:bg-primary/15 transition-colors">
-                <HelpCircle className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">How to resolve failed deliveries</p>
-                <p className="text-xs text-muted-foreground">Step-by-step guide for handling delivery issues</p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto group-hover:translate-x-0.5 transition-transform" />
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50 hover:border-primary/30 transition-colors cursor-pointer group" onClick={() => setShowGuide(true)}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-[hsl(var(--status-pending)/0.1)] group-hover:bg-[hsl(var(--status-pending)/0.15)] transition-colors">
-                <CalendarPlus className="h-5 w-5 text-[hsl(var(--status-pending))]" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">Rescheduling guide</p>
-                <p className="text-xs text-muted-foreground">How to update delivery dates and notify customers</p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto group-hover:translate-x-0.5 transition-transform" />
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50 hover:border-primary/30 transition-colors cursor-pointer group" onClick={() => setShowGuide(true)}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-destructive/10 group-hover:bg-destructive/15 transition-colors">
-                <UserPlus className="h-5 w-5 text-destructive" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">Runner assignment guide</p>
-                <p className="text-xs text-muted-foreground">Assign runners and manage delivery routes</p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto group-hover:translate-x-0.5 transition-transform" />
-            </CardContent>
-          </Card>
-        </div>
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between px-1">
+            <span className="text-sm text-muted-foreground tabular-nums">
+              {(pagination.page - 1) * pagination.pageSize + 1}–{Math.min(pagination.page * pagination.pageSize, pagination.totalCount)} of {pagination.totalCount}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(pagination.page - 1)}
+                disabled={pagination.page === 1 || isFetching}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm px-3 tabular-nums font-medium">
+                {pagination.page} / {pagination.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(pagination.page + 1)}
+                disabled={pagination.page === pagination.totalPages || isFetching}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Dialogs */}

@@ -39,7 +39,7 @@ export function useNotifications() {
       return data as Notification[];
     },
     enabled: !!user,
-    refetchInterval: 60000, // 60s safety net (realtime handles instant updates)
+    refetchInterval: 180000, // 60s safety net (realtime handles instant updates)
   });
 }
 
@@ -60,7 +60,7 @@ export function useUnreadCount() {
       return count || 0;
     },
     enabled: !!user,
-    refetchInterval: 60000,
+    refetchInterval: 180000,
   });
 }
 
@@ -169,7 +169,6 @@ export function useRealtimeNotifications() {
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          console.log('New notification received:', payload.new);
           const newNotification = payload.new as Notification;
           
           // Invalidate queries to refresh data

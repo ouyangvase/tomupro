@@ -33,10 +33,7 @@ export function useInviteCodes() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invite_codes')
-        .select(`
-          *,
-          creator:profiles!invite_codes_created_by_fkey(display_name)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

@@ -4,6 +4,9 @@
  * Central module for phone number handling across TOMUPRO.
  * RULE: Phone numbers are ALWAYS stored and displayed as exact user input.
  * Never convert to number, float, or allow scientific notation.
+ *
+ * International numbers are preserved exactly as imported.
+ * Only Brunei numbers (starting with +673, 673, 7x, 8x) may be optionally cleaned.
  */
 
 const BRUNEI_COUNTRY_CODE = '673';
@@ -18,6 +21,34 @@ export function isScientificNotation(value: string): boolean {
 }
 
 /**
+ * Determine if a phone number is a Brunei number.
+ *
+ * Brunei numbers match one of:
+ * - Starts with +673
+ * - Starts with 673 (and has >7 digits total)
+ * - Starts with 7 or 8 (local Brunei mobile, 7 digits)
+ *
+ * Everything else is treated as international.
+ */
+export function isBruneiPhone(phone: string): boolean {
+  if (!phone) return false;
+  const trimmed = phone.trim();
+  const digits = trimmed.replace(/\D/g, '');
+
+  // +673... or 673... with enough digits
+  if (trimmed.startsWith('+673')) return true;
+  if (digits.startsWith('673') && digits.length > 7) return true;
+
+  // Local Brunei: starts with 7 or 8, total digits = 7
+  // (without any country code prefix like + or 00)
+  if (!trimmed.startsWith('+') && !trimmed.startsWith('00')) {
+    if ((digits.startsWith('7') || digits.startsWith('8')) && digits.length === 7) return true;
+  }
+
+  return false;
+}
+
+/**
  * Validate a phone number string.
  * Returns an error message if invalid, or null if valid.
  *
@@ -26,6 +57,8 @@ export function isScientificNotation(value: string): boolean {
  * - Must not be empty
  * - Must contain at least 6 digits
  * - Allowed characters: digits, +, -, spaces, parentheses
+ *
+ * NOTE: Does NOT reject non-Brunei numbers.
  */
 export function validatePhone(phone: string): string | null {
   if (!phone || !phone.trim()) return 'Phone is required';
@@ -58,10 +91,10 @@ export function validatePhone(phone: string): string | null {
 
 /**
  * Sanitize a phone number for use in WhatsApp links.
- * Extracts digits only, handles country code.
+ * Returns digits with appropriate country code for wa.me link.
  *
- * - If phone starts with "+673" or "673", strip the country code prefix
- * - Returns local digits only (no country code)
+ * - Brunei numbers: strips formatting, ensures 673 prefix
+ * - International numbers: strips non-digits only (preserves country code)
  */
 export function sanitizePhoneForWhatsApp(phone: string): string {
   if (!phone) return '';
@@ -69,14 +102,24 @@ export function sanitizePhoneForWhatsApp(phone: string): string {
   // If the phone is scientific notation, it's corrupted — return empty
   if (isScientificNotation(phone.trim())) return '';
 
-  // Remove all non-digits
-  let digits = phone.replace(/\D/g, '');
+  const trimmed = phone.trim();
+  const digits = trimmed.replace(/\D/g, '');
 
-  // Strip 673 country code if present at start
-  if (digits.startsWith('673') && digits.length > 7) {
-    digits = digits.slice(3);
+  if (isBruneiPhone(trimmed)) {
+    // Brunei number: extract local digits and prepend 673
+    let local = digits;
+    if (local.startsWith('673') && local.length > 7) {
+      local = local.slice(3);
+    }
+    // Remove leading 0 if present
+    if (local.startsWith('0') && local.length > 1) {
+      local = local.slice(1);
+    }
+    return BRUNEI_COUNTRY_CODE + local;
   }
 
+  // International number: return digits as-is (should already include country code)
+  // If starts with 0, it might be a local number without country code — return as-is
   return digits;
 }
 
@@ -84,15 +127,14 @@ export function sanitizePhoneForWhatsApp(phone: string): string {
  * Generate a WhatsApp URL from a phone number.
  *
  * Rules:
- * - Always prepend +673 for the wa.me link (Brunei default)
+ * - Brunei numbers: prepend +673 for the wa.me link
+ * - International numbers: use the number's own country code
  * - Do NOT modify the stored phone value
- * - If phone starts with "+" it may already have a country code,
- *   but for this system all phones are Brunei local numbers
  */
 export function buildWhatsAppUrl(phone: string): string | null {
-  const local = sanitizePhoneForWhatsApp(phone);
-  if (!local) return null;
-  return `https://wa.me/${BRUNEI_COUNTRY_CODE}${local}`;
+  const sanitized = sanitizePhoneForWhatsApp(phone);
+  if (!sanitized) return null;
+  return `https://wa.me/${sanitized}`;
 }
 
 /**

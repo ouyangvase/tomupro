@@ -129,17 +129,17 @@ export function usePendingDeliveryCharges() {
 
 export function useCreateDeliveryCharge() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (data: { area: string; charge_amount: number }) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       const { data: result, error } = await supabase
         .from('delivery_charges')
         .insert({
-          runner_id: user.user.id,
-          proposed_by: user.user.id,
+          runner_id: user.id,
+          proposed_by: user.id,
           area: data.area.trim(),
           charge_amount: data.charge_amount,
           status: 'PENDING',
@@ -162,11 +162,11 @@ export function useCreateDeliveryCharge() {
 
 export function useApproveDeliveryCharge() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (chargeId: string) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Get the charge to approve
       const { data: charge } = await supabase
@@ -191,7 +191,7 @@ export function useApproveDeliveryCharge() {
         .from('delivery_charges')
         .update({
           status: 'APPROVED',
-          approved_by: user.user.id,
+          approved_by: user.id,
           approved_at: new Date().toISOString(),
         })
         .eq('id', chargeId)

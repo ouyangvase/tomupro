@@ -48,7 +48,7 @@ export const useDriverLatestLocations = (driverIds?: string[]) => {
       return data as LatestDriverLocation[];
     },
     enabled: isAllowed && !isFirebaseEnabled,
-    refetchInterval: 15000,
+    refetchInterval: 60000,
   });
 
   // Supabase realtime subscription (only when Firebase disabled)

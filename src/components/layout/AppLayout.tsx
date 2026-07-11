@@ -3,6 +3,7 @@ import { AppSidebar } from "./AppSidebar";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { PushNotificationPrompt } from "@/components/notifications/PushNotificationPrompt";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { AppName } from "@/components/brand/AppName";
 import { useRealtimeNotifications } from "@/hooks/useNotificationSystem";
 import { GlobalSearchBar } from "@/components/GlobalSearchBar";
 import { useIsEmbedded } from "@/contexts/EmbeddedContext";
@@ -31,7 +32,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <SidebarTrigger className="text-muted-foreground hover:text-foreground h-9 w-9 transition-colors" />
               <div className="hidden md:flex items-center gap-2">
                 <h1 className="text-base font-bold tracking-tight text-foreground">
-                  TOMU<span className="text-primary">PRO</span>
+                  <AppName highlight />
                 </h1>
                 
               </div>

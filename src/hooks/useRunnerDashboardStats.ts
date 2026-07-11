@@ -185,7 +185,7 @@ export function useRunnerDashboardStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 30000, // 30 seconds (realtime handles urgent updates)
-    staleTime: 15000,
+    refetchInterval: 120000, // 2 minutes (realtime handles urgent updates)
+    staleTime: 60000,
   });
 }

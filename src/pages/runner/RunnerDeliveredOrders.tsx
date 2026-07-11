@@ -150,10 +150,19 @@ function ClaimEligibilityBadge({ order, approvedChargeMap, canClaim }: { order: 
   }
 
   // Check area and charge rate
-  if (!order.area) {
+  if (!order.area || order.area.trim() === '') {
     return (
       <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
         Missing Area
+      </Badge>
+    );
+  }
+
+  // Check delivered_at
+  if (!order.delivered_at) {
+    return (
+      <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
+        No Delivery Time
       </Badge>
     );
   }
@@ -210,6 +219,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
   const isAdmin = role === 'admin';
   const isManager = role === 'manager';
   const isAdminOrManager = isAdmin || isManager;
+  const canExport = isAdmin || isManager || role === 'salesperson';
   
   // Filter states - declared before ordersFilter memo since salespersonFilter is used server-side
   const [searchQuery, setSearchQuery] = useState('');
@@ -292,7 +302,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
       salesperson_id: d.salesperson_id,
       runner_id: d.runner_id,
       driver_id: d.driver_id,
-      status: 'READY',
+      status: d.status || 'READY',
       salesperson: d.salesperson_name ? { id: d.salesperson_id, display_name: d.salesperson_name, email: null } : null,
       runner: d.runner_name ? { id: d.runner_id || '', display_name: d.runner_name, email: null } : null,
       driver: d.driver_name ? { id: d.driver_id || '', display_name: d.driver_name, email: null } : null,
@@ -454,7 +464,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
 
   // Check if an order has a valid approved delivery charge for its area
   const orderHasValidAreaRate = useCallback((order: Order): boolean => {
-    if (!order.area) return true;
+    if (!order.area || order.area.trim() === '') return false;
     const area = order.area.toLowerCase();
     return approvedChargeMap[area] !== undefined;
   }, [approvedChargeMap]);
@@ -475,19 +485,21 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
   const displaySummary = clientSummary;
   const displaySummaryLoading = rpcLoading;
 
-  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED + valid area rate) - uses FULL dataset for runners
+  // Orders eligible for claiming (DELIVERED + NOT_CLAIMED + delivered_at exists + valid area rate) - uses FULL dataset for runners
   const claimableOrders = useMemo(() => {
     if (!canClaim) return [];
     return allFilteredOrders.filter(o =>
-      o.reconciliation_status === 'NOT_CLAIMED' && orderHasValidAreaRate(o)
+      o.reconciliation_status === 'NOT_CLAIMED' &&
+      o.delivered_at &&
+      orderHasValidAreaRate(o)
     );
   }, [allFilteredOrders, canClaim, orderHasValidAreaRate]);
 
-  // Orders that are NOT_CLAIMED but have invalid area (for display purposes)
+  // Orders that are NOT_CLAIMED but have invalid area or missing delivered_at (for display purposes)
   const invalidAreaOrders = useMemo(() => {
     if (!canClaim) return [];
     return allFilteredOrders.filter(o =>
-      o.reconciliation_status === 'NOT_CLAIMED' && !orderHasValidAreaRate(o)
+      o.reconciliation_status === 'NOT_CLAIMED' && (!orderHasValidAreaRate(o) || !o.delivered_at)
     );
   }, [allFilteredOrders, canClaim, orderHasValidAreaRate]);
 
@@ -899,7 +911,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
           imageAlt="Runner capybara"
           actions={
             <div className="flex items-center gap-2 flex-wrap">
-              {(isAdminOrManager || role === 'runner') && (
+              {(canExport || role === 'runner') && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm">
@@ -1020,6 +1032,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
           <AutoClaimSuggestion
             claimableOrders={claimableOrders}
             invalidAreaOrders={invalidAreaOrders}
+            approvedChargeMap={approvedChargeMap}
             onClaimAll={() => {
               setSelectedIds(new Set(claimableOrders.map(o => o.id)));
               setBulkClaimOpen(true);
@@ -1263,7 +1276,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
               </div>
             ) : (
               paginatedOrders.map((order) => {
-                const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && orderHasValidAreaRate(order);
+                const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && order.delivered_at && orderHasValidAreaRate(order);
                 const isSelected = selectedIds.has(order.id);
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
                 const batchRef = orderToBatchRef.get(order.id);
@@ -1275,7 +1288,12 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                     key={order.id}
                     id={order.id}
                     orderRef={order.order_code}
-                    areaBadge={order.area ? <Badge variant="outline" className="text-xs">{order.area}</Badge> : undefined}
+                    areaBadge={
+                      <div className="flex items-center gap-1">
+                        {order.area && <Badge variant="outline" className="text-xs">{order.area}</Badge>}
+                        {order.status === 'CANCELLED' && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Cancelled</Badge>}
+                      </div>
+                    }
                     statusBadge={
                       <ClaimEligibilityBadge order={order} approvedChargeMap={approvedChargeMap} canClaim={canClaim} />
                     }
@@ -1360,7 +1378,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      {isAdminOrManager && (
+                      {canExport && (
                         <TableHead className="w-12">
                           <Checkbox
                             checked={exportSelectedIds.size === deliveredOrders.length && deliveredOrders.length > 0}
@@ -1401,13 +1419,13 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={16 + (isAdminOrManager ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8">
+                        <TableCell colSpan={16 + (canExport ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={16 + (isAdminOrManager ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={16 + (canExport ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8 text-muted-foreground">
                           <div className="flex flex-col items-center gap-2">
                             <span>No delivered orders found</span>
                             {hasActiveFilters && (
@@ -1424,8 +1442,8 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                       </TableRow>
                     ) : (
                       paginatedOrders.map((order) => {
-                        const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && orderHasValidAreaRate(order);
-                        const isInvalidArea = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && !orderHasValidAreaRate(order);
+                        const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && order.delivered_at && orderHasValidAreaRate(order);
+                        const isInvalidArea = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && (!orderHasValidAreaRate(order) || !order.delivered_at);
                         const isSelected = selectedIds.has(order.id);
                         const isExportSelected = exportSelectedIds.has(order.id);
                         const { displayText, fullText, hasError, errorMessage } = formatOrderItemsDisplay(order.order_items);
@@ -1437,7 +1455,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                             isSelected || isExportSelected ? 'bg-primary/5' : '',
                             highlightOrderId === order.id && 'ring-2 ring-yellow-400/60 bg-yellow-50/50 dark:bg-yellow-900/10 animate-pulse'
                           )}>
-                            {isAdminOrManager && (
+                            {canExport && (
                               <TableCell>
                                 <Checkbox
                                   checked={isExportSelected}
@@ -1472,7 +1490,12 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                               </TableCell>
                             )}
                             <TableCell>{format(new Date(order.created_at), 'MMM dd, HH:mm')}</TableCell>
-                            <TableCell><span className="font-mono text-sm">{order.order_code}</span></TableCell>
+                            <TableCell>
+                              <span className="font-mono text-sm">{order.order_code}</span>
+                              {order.status === 'CANCELLED' && (
+                                <Badge variant="destructive" className="ml-1.5 text-[10px] px-1.5 py-0">Cancelled</Badge>
+                              )}
+                            </TableCell>
                             <TableCell>{order.customer_name || '-'}</TableCell>
                             <TableCell><WhatsAppPhoneLink order={order} /></TableCell>
                             <TableCell><Badge variant="outline">{order.area || '-'}</Badge></TableCell>

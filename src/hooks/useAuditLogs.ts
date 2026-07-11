@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface AuditLogEntry {
@@ -50,5 +50,34 @@ export function logAudit(entry: AuditLogEntry) {
         after_json: entry.after_json as unknown as undefined,
         actor_id: user?.id,
       });
+  });
+}
+
+export interface AuditLogRow {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  actor_id: string | null;
+  before_json: Record<string, unknown> | null;
+  after_json: Record<string, unknown> | null;
+  created_at: string;
+  actor?: { display_name: string; role: string } | null;
+}
+
+export function useOrderAuditLogs(orderId?: string) {
+  return useQuery<AuditLogRow[]>({
+    queryKey: ['audit_logs', 'order', orderId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*, actor:profiles!actor_id(display_name, role)')
+        .eq('entity_type', 'order')
+        .eq('entity_id', orderId!)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as AuditLogRow[];
+    },
+    enabled: !!orderId,
   });
 }

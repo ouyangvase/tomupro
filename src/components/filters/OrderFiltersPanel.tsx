@@ -41,6 +41,7 @@ export interface OrderFilters {
   driverId?: string;
   paymentMethod?: string;
   deliveryReasonId?: string;
+  receiptStatus?: string;
 }
 
 interface FilterOption {
@@ -119,6 +120,12 @@ const paymentMethodOptions: FilterOption[] = [
   { label: 'Transfer', value: 'TRANSFER' },
 ];
 
+const receiptStatusOptions: FilterOption[] = [
+  { label: 'Receipt Pending', value: 'pending' },
+  { label: 'Receipt Confirmed', value: 'confirmed' },
+  { label: 'Receipt Rejected', value: 'rejected' },
+];
+
 export function OrderFiltersPanel({
   filters,
   onFiltersChange,
@@ -167,6 +174,7 @@ export function OrderFiltersPanel({
     if (filters.salespersonId) count++;
     if (filters.driverId) count++;
     if (filters.paymentMethod) count++;
+    if (filters.receiptStatus) count++;
     if (filters.deliveryReasonId) count++;
     return count;
   }, [filters]);
@@ -204,252 +212,104 @@ export function OrderFiltersPanel({
     return parts.length > 0 ? parts.join(', ') : null;
   }, [filters]);
 
-  // Shared filter content for both mobile sheet and desktop collapsible
-  const filterContent = (
+  // Individual filter select builder
+  const renderSelect = (label: string, value: string | undefined, onChange: (v: string) => void, options: FilterOption[], placeholder = 'All', disabled = false) => (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Select value={value || 'all'} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger className={cn("h-11 md:h-9", disabled && "opacity-50")}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">{placeholder}</SelectItem>
+          {options.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
+  // Mobile filter content (stacked 2-col grid)
+  const mobileFilterContent = (
     <div className="space-y-4">
-      {/* Date Filters Row */}
+      {/* Date Filters */}
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Calendar className="h-4 w-4" />
           Date Filters
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Year</Label>
-            <Select
-              value={filters.year || 'all'}
-              onValueChange={(v) => updateFilter('year', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All years" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All years</SelectItem>
-                {yearOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Month</Label>
-            <Select
-              value={filters.month || 'all'}
-              onValueChange={(v) => updateFilter('month', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All months" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All months</SelectItem>
-                {monthOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderSelect('Year', filters.year, (v) => updateFilter('year', v), yearOptions, 'All years')}
+          {renderSelect('Month', filters.month, (v) => updateFilter('month', v), monthOptions, 'All months')}
           <div className="col-span-2 flex items-center gap-3 pt-1">
-            <Switch
-              id="date-mode"
-              checked={filters.dateMode === 'delivered'}
-              onCheckedChange={(checked) =>
-                updateFilter('dateMode', checked ? 'delivered' : 'created')
-              }
-            />
-            <Label htmlFor="date-mode" className="text-xs">
-              Filter by Delivery Date
-            </Label>
+            <Switch id="date-mode-mobile" checked={filters.dateMode === 'delivered'} onCheckedChange={(checked) => updateFilter('dateMode', checked ? 'delivered' : 'created')} />
+            <Label htmlFor="date-mode-mobile" className="text-xs">Filter by Delivery Date</Label>
           </div>
         </div>
       </div>
 
-      {/* Status Filters Row */}
+      {/* Status Filters */}
       <div className="grid grid-cols-2 gap-3">
-        {showRunnerStatus && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Delivery Status</Label>
-            <Select
-              value={filters.runnerStatus || 'all'}
-              onValueChange={(v) => updateFilter('runnerStatus', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {runnerStatusOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {showDriverStatus && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Driver Status</Label>
-            <Select
-              value={filters.driverStatus || 'all'}
-              onValueChange={(v) => updateFilter('driverStatus', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {driverStatusOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {showOrderStatus && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Order Status</Label>
-            <Select
-              value={filters.orderStatus || 'all'}
-              onValueChange={(v) => updateFilter('orderStatus', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {orderStatusOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {showReconciliationStatus && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Reconciliation</Label>
-            <Select
-              value={filters.reconciliationStatus || 'all'}
-              onValueChange={(v) => updateFilter('reconciliationStatus', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {reconciliationStatusOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        <div className="space-y-1.5">
-          <Label className="text-xs">Payment</Label>
-          <Select
-            value={filters.paymentMethod || 'all'}
-            onValueChange={(v) => updateFilter('paymentMethod', v)}
-          >
-            <SelectTrigger className="h-11 md:h-9">
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              {paymentMethodOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Delivery Reason</Label>
-          <Select
-            value={filters.deliveryReasonId || 'all'}
-            onValueChange={(v) => updateFilter('deliveryReasonId', v)}
-            disabled={!isReasonFilterEnabled}
-          >
-            <SelectTrigger className={cn("h-11 md:h-9", !isReasonFilterEnabled && "opacity-50")}>
-              <SelectValue placeholder="All Reasons" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Reasons</SelectItem>
-              {reasonOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {showRunnerStatus && renderSelect('Delivery Status', filters.runnerStatus, (v) => updateFilter('runnerStatus', v), runnerStatusOptions)}
+        {showDriverStatus && renderSelect('Driver Status', filters.driverStatus, (v) => updateFilter('driverStatus', v), driverStatusOptions)}
+        {showOrderStatus && renderSelect('Order Status', filters.orderStatus, (v) => updateFilter('orderStatus', v), orderStatusOptions)}
+        {showReconciliationStatus && renderSelect('Reconciliation', filters.reconciliationStatus, (v) => updateFilter('reconciliationStatus', v), reconciliationStatusOptions)}
+        {renderSelect('Payment', filters.paymentMethod, (v) => updateFilter('paymentMethod', v), paymentMethodOptions)}
+        {renderSelect('Receipt Status', filters.receiptStatus, (v) => updateFilter('receiptStatus', v), receiptStatusOptions)}
+        {renderSelect('Delivery Reason', filters.deliveryReasonId, (v) => updateFilter('deliveryReasonId', v), reasonOptions, 'All Reasons', !isReasonFilterEnabled)}
       </div>
 
-      {/* Other Filters Row */}
+      {/* Other Filters */}
       <div className="grid grid-cols-2 gap-3">
-        {areaOptions.length > 0 && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Area</Label>
-            <Select
-              value={filters.area || 'all'}
-              onValueChange={(v) => updateFilter('area', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All areas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All areas</SelectItem>
-                {areaOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {showSalespersonFilter && salespersonOptions.length > 0 && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Salesperson</Label>
-            <Select
-              value={filters.salespersonId || 'all'}
-              onValueChange={(v) => updateFilter('salespersonId', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {salespersonOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {showDriverFilter && driverOptions.length > 0 && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Driver</Label>
-            <Select
-              value={filters.driverId || 'all'}
-              onValueChange={(v) => updateFilter('driverId', v)}
-            >
-              <SelectTrigger className="h-11 md:h-9">
-                <SelectValue placeholder="All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {driverOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        {areaOptions.length > 0 && renderSelect('Area', filters.area, (v) => updateFilter('area', v), areaOptions, 'All areas')}
+        {showSalespersonFilter && salespersonOptions.length > 0 && renderSelect('Salesperson', filters.salespersonId, (v) => updateFilter('salespersonId', v), salespersonOptions)}
+        {showDriverFilter && driverOptions.length > 0 && renderSelect('Driver', filters.driverId, (v) => updateFilter('driverId', v), driverOptions)}
       </div>
 
-      {/* Clear All button for mobile sheet */}
-      {isMobile && activeFilterCount > 0 && (
-        <Button 
-          variant="outline" 
-          className="w-full h-11 mt-4"
-          onClick={clearAllFilters}
-        >
+      {activeFilterCount > 0 && (
+        <Button variant="outline" className="w-full h-11 mt-4" onClick={clearAllFilters}>
           <X className="h-4 w-4 mr-2" />
           Clear all filters
         </Button>
       )}
+    </div>
+  );
+
+  // Desktop filter content (horizontal, full-width grid)
+  const desktopFilterContent = (
+    <div className="space-y-4">
+      {/* Row 1: Date filters in a single row */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground shrink-0 pb-1.5">
+          <Calendar className="h-4 w-4" />
+          Date
+        </div>
+        <div className="w-[130px]">
+          {renderSelect('Year', filters.year, (v) => updateFilter('year', v), yearOptions, 'All years')}
+        </div>
+        <div className="w-[140px]">
+          {renderSelect('Month', filters.month, (v) => updateFilter('month', v), monthOptions, 'All months')}
+        </div>
+        <div className="flex items-center gap-2 pb-1.5">
+          <Switch id="date-mode-desktop" checked={filters.dateMode === 'delivered'} onCheckedChange={(checked) => updateFilter('dateMode', checked ? 'delivered' : 'created')} />
+          <Label htmlFor="date-mode-desktop" className="text-xs whitespace-nowrap">Delivery Date</Label>
+        </div>
+      </div>
+
+      {/* Row 2: All status/type filters in a responsive grid */}
+      <div className="grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        {showRunnerStatus && renderSelect('Delivery Status', filters.runnerStatus, (v) => updateFilter('runnerStatus', v), runnerStatusOptions)}
+        {showDriverStatus && renderSelect('Driver Status', filters.driverStatus, (v) => updateFilter('driverStatus', v), driverStatusOptions)}
+        {showOrderStatus && renderSelect('Order Status', filters.orderStatus, (v) => updateFilter('orderStatus', v), orderStatusOptions)}
+        {showReconciliationStatus && renderSelect('Reconciliation', filters.reconciliationStatus, (v) => updateFilter('reconciliationStatus', v), reconciliationStatusOptions)}
+        {renderSelect('Payment', filters.paymentMethod, (v) => updateFilter('paymentMethod', v), paymentMethodOptions)}
+        {renderSelect('Receipt Status', filters.receiptStatus, (v) => updateFilter('receiptStatus', v), receiptStatusOptions)}
+        {renderSelect('Delivery Reason', filters.deliveryReasonId, (v) => updateFilter('deliveryReasonId', v), reasonOptions, 'All Reasons', !isReasonFilterEnabled)}
+        {areaOptions.length > 0 && renderSelect('Area', filters.area, (v) => updateFilter('area', v), areaOptions, 'All areas')}
+        {showSalespersonFilter && salespersonOptions.length > 0 && renderSelect('Salesperson', filters.salespersonId, (v) => updateFilter('salespersonId', v), salespersonOptions)}
+        {showDriverFilter && driverOptions.length > 0 && renderSelect('Driver', filters.driverId, (v) => updateFilter('driverId', v), driverOptions)}
+      </div>
     </div>
   );
 
@@ -482,7 +342,7 @@ export function OrderFiltersPanel({
               </SheetHeader>
               <ScrollArea className="h-[calc(100%-4rem)]">
                 <div className="pb-6">
-                  {filterContent}
+                  {mobileFilterContent}
                 </div>
               </ScrollArea>
             </SheetContent>
@@ -495,7 +355,7 @@ export function OrderFiltersPanel({
           )}
         </div>
       ) : (
-        // Desktop: Use Collapsible
+        // Desktop: Use Collapsible with full-width layout
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
           <div className="flex items-center gap-2">
             <CollapsibleTrigger asChild>
@@ -519,8 +379,8 @@ export function OrderFiltersPanel({
           </div>
 
           <CollapsibleContent>
-            <div className="mt-3 p-4 border rounded-lg bg-card">
-              {filterContent}
+            <div className="mt-3 p-4 border rounded-xl bg-card">
+              {desktopFilterContent}
             </div>
           </CollapsibleContent>
         </Collapsible>
