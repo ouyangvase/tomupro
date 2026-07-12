@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
@@ -89,6 +89,7 @@ export function usePaginatedOrders(
     staleTime: 15000,
     retry: 2,
     retryDelay: 1000,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       // Get visible owner IDs for team visibility
       // Skip for admin (sees everything) and when runnerId is set (runner views own assigned orders)

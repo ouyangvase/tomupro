@@ -206,28 +206,71 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   const canViewGroup = role === 'manager';
 
   // ── Server-side stats query (accurate totals across all pages) ──
+  // Uses head:true count queries — no row limit, no client-side iteration
   const { data: serverStats } = useQuery({
     queryKey: ['action-required-stats', orderFilters.salespersonId, orderFilters.salespersonIds],
     queryFn: async () => {
-      // Build base filter matching the server-side actionRequired filter
-      let baseQuery = supabase.from('orders').select('id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required, updated_at, created_at, status', { count: 'exact', head: false });
-      // Tightened: FAILED_DELIVERY only for READY orders; salesperson_action_required excludes DELIVERED
-      baseQuery = baseQuery.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
-      baseQuery = baseQuery.neq('status', 'CANCELLED');
-      if (orderFilters.salespersonId) baseQuery = baseQuery.eq('salesperson_id', orderFilters.salespersonId);
-      if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) baseQuery = baseQuery.in('salesperson_id', orderFilters.salespersonIds);
-      const { data, count } = await baseQuery;
-      if (!data) return { total: 0, failed: 0, rescheduled: 0, flagged: 0, highPriority: 0 };
-      let failed = 0, rescheduled = 0, flagged = 0, highPriority = 0;
-      for (const o of data) {
-        const rs = o.runner_status as string;
-        if (rs === 'FAILED_DELIVERY') { failed++; }
-        else if (o.next_delivery_date) { rescheduled++; }
-        else if (o.runner_failed_reason_id || o.runner_comment) { flagged++; }
-        const refDate = o.updated_at || o.created_at;
-        if (differenceInDays(new Date(), new Date(refDate)) >= 7) highPriority++;
-      }
-      return { total: count || data.length, failed, rescheduled, flagged, highPriority };
+      // Helper: build a base query with the action-required filter + salesperson scope
+      const buildBase = () => {
+        let q = supabase.from('orders').select('id', { count: 'exact', head: true });
+        q = q.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
+        q = q.neq('status', 'CANCELLED');
+        if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
+        if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
+        return q;
+      };
+
+      // Run all count queries in parallel
+      const [totalRes, failedRes, rescheduledRes, flaggedRes, highPriorityRes] = await Promise.all([
+        // Total action-required
+        buildBase().then(r => r.count || 0),
+        // Failed deliveries (runner_status=FAILED_DELIVERY AND status=READY)
+        (() => {
+          let q = supabase.from('orders').select('id', { count: 'exact', head: true });
+          q = q.eq('runner_status', 'FAILED_DELIVERY').eq('status', 'READY');
+          if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
+          if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
+          return q.then(r => r.count || 0);
+        })(),
+        // Rescheduled (has next_delivery_date, action required, not failed delivery)
+        (() => {
+          let q = supabase.from('orders').select('id', { count: 'exact', head: true });
+          q = q.eq('salesperson_action_required', true).neq('runner_status', 'DELIVERED').neq('runner_status', 'FAILED_DELIVERY');
+          q = q.neq('status', 'CANCELLED').not('next_delivery_date', 'is', null);
+          if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
+          if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
+          return q.then(r => r.count || 0);
+        })(),
+        // Runner flagged (has runner comment/reason, not failed delivery, not rescheduled)
+        (() => {
+          let q = supabase.from('orders').select('id', { count: 'exact', head: true });
+          q = q.eq('salesperson_action_required', true).neq('runner_status', 'DELIVERED').neq('runner_status', 'FAILED_DELIVERY');
+          q = q.neq('status', 'CANCELLED').is('next_delivery_date', null);
+          q = q.or('runner_failed_reason_id.not.is.null,runner_comment.not.is.null');
+          if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
+          if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
+          return q.then(r => r.count || 0);
+        })(),
+        // Over 7 days (updated_at >= 7 days ago)
+        (() => {
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          let q = supabase.from('orders').select('id', { count: 'exact', head: true });
+          q = q.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
+          q = q.neq('status', 'CANCELLED').lte('updated_at', sevenDaysAgo.toISOString());
+          if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
+          if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
+          return q.then(r => r.count || 0);
+        })(),
+      ]);
+
+      return {
+        total: totalRes as number,
+        failed: failedRes as number,
+        rescheduled: rescheduledRes as number,
+        flagged: flaggedRes as number,
+        highPriority: highPriorityRes as number,
+      };
     },
     staleTime: 30000,
   });
