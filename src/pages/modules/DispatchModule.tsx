@@ -6,16 +6,34 @@ import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import { SyncNowButton } from '@/components/google-sheet/SyncNowButton';
 import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 
-const RunnerInbox = lazy(() => import('@/pages/runner/RunnerInbox'));
-const AdminRunnerInbox = lazy(() => import('@/pages/admin/AdminRunnerInbox'));
-const RunnerInbound = lazy(() => import('@/pages/runner/RunnerInbound'));
-const DriverLocationsPage = lazy(() => import('@/pages/runner/DriverLocationsPage'));
-const RunnerDriverInbox = lazy(() => import('@/pages/runner/RunnerDriverInbox'));
-const DriverManagement = lazy(() => import('@/pages/runner/DriverManagement'));
-const RunnerFailedOrders = lazy(() => import('@/pages/runner/RunnerFailedOrders'));
-const RunnerDeliveredOrders = lazy(() => import('@/pages/runner/RunnerDeliveredOrders'));
-const RunnerPickupOrders = lazy(() => import('@/pages/runner/RunnerPickupOrders'));
-const SmartMergeTab = lazy(() => import('@/pages/runner/SmartMergeTab'));
+// Retry dynamic import once on chunk load failure (stale deployment cache)
+function lazyRetry<T extends { default: React.ComponentType<any> }>(
+  importFn: () => Promise<T>,
+) {
+  return lazy(() =>
+    importFn().catch(() => {
+      // Chunk missing after redeployment — reload page once
+      const key = 'chunk_reload';
+      const last = sessionStorage.getItem(key);
+      if (!last || Date.now() - Number(last) > 10_000) {
+        sessionStorage.setItem(key, String(Date.now()));
+        window.location.reload();
+      }
+      return importFn(); // rethrow if reload didn't help
+    }),
+  );
+}
+
+const RunnerInbox = lazyRetry(() => import('@/pages/runner/RunnerInbox'));
+const AdminRunnerInbox = lazyRetry(() => import('@/pages/admin/AdminRunnerInbox'));
+const RunnerInbound = lazyRetry(() => import('@/pages/runner/RunnerInbound'));
+const DriverLocationsPage = lazyRetry(() => import('@/pages/runner/DriverLocationsPage'));
+const RunnerDriverInbox = lazyRetry(() => import('@/pages/runner/RunnerDriverInbox'));
+const DriverManagement = lazyRetry(() => import('@/pages/runner/DriverManagement'));
+const RunnerFailedOrders = lazyRetry(() => import('@/pages/runner/RunnerFailedOrders'));
+const RunnerDeliveredOrders = lazyRetry(() => import('@/pages/runner/RunnerDeliveredOrders'));
+const RunnerPickupOrders = lazyRetry(() => import('@/pages/runner/RunnerPickupOrders'));
+const SmartMergeTab = lazyRetry(() => import('@/pages/runner/SmartMergeTab'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -28,15 +46,24 @@ class TabErrorBoundary extends Component<{ children: ReactNode }, { error: Error
   static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
     if (this.state.error) {
+      const isChunkError = this.state.error.message?.includes('dynamically imported module') ||
+        this.state.error.message?.includes('Loading chunk') ||
+        this.state.error.message?.includes('Failed to fetch');
       return (
         <div className="p-8 text-center space-y-3">
           <p className="text-destructive font-medium">Something went wrong loading this tab.</p>
           <p className="text-sm text-muted-foreground">{this.state.error.message}</p>
           <button
             className="text-sm text-primary underline"
-            onClick={() => this.setState({ error: null })}
+            onClick={() => {
+              if (isChunkError) {
+                window.location.reload();
+              } else {
+                this.setState({ error: null });
+              }
+            }}
           >
-            Try again
+            {isChunkError ? 'Reload page' : 'Try again'}
           </button>
         </div>
       );

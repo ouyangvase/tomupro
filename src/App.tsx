@@ -17,54 +17,71 @@ import { MaintenanceOverlay } from "@/components/MaintenanceOverlay";
 import { ResponsiveLayout } from "@/components/layout/ResponsiveLayout";
 import { lazy, Suspense } from "react";
 
+// Retry dynamic import once on chunk load failure (stale deployment cache)
+function lazyRetry<T extends { default: React.ComponentType<any> }>(
+  importFn: () => Promise<T>,
+) {
+  return lazy(() =>
+    importFn().catch(() => {
+      const key = 'chunk_reload';
+      const last = sessionStorage.getItem(key);
+      if (!last || Date.now() - Number(last) > 10_000) {
+        sessionStorage.setItem(key, String(Date.now()));
+        window.location.reload();
+      }
+      return importFn();
+    }),
+  );
+}
+
 // Pages
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 
 // Module pages
-const OrdersModule = lazy(() => import("./pages/modules/OrdersModule"));
-const DispatchModule = lazy(() => import("./pages/modules/DispatchModule"));
-const DeliveryModule = lazy(() => import("./pages/modules/DeliveryModule"));
-const PerformanceModule = lazy(() => import("./pages/modules/PerformanceModule"));
-const TeamModule = lazy(() => import("./pages/modules/TeamModule"));
-const FinanceModule = lazy(() => import("./pages/modules/FinanceModule"));
-const InventoryModule = lazy(() => import("./pages/modules/InventoryModule"));
-const SystemModule = lazy(() => import("./pages/modules/SystemModule"));
+const OrdersModule = lazyRetry(() => import("./pages/modules/OrdersModule"));
+const DispatchModule = lazyRetry(() => import("./pages/modules/DispatchModule"));
+const DeliveryModule = lazyRetry(() => import("./pages/modules/DeliveryModule"));
+const PerformanceModule = lazyRetry(() => import("./pages/modules/PerformanceModule"));
+const TeamModule = lazyRetry(() => import("./pages/modules/TeamModule"));
+const FinanceModule = lazyRetry(() => import("./pages/modules/FinanceModule"));
+const InventoryModule = lazyRetry(() => import("./pages/modules/InventoryModule"));
+const SystemModule = lazyRetry(() => import("./pages/modules/SystemModule"));
 
 // SEO landing pages
-const LogisticsServiceBrunei = lazy(() => import("./pages/seo/LogisticsServiceBrunei"));
-const LastMileDeliveryBrunei = lazy(() => import("./pages/seo/LastMileDeliveryBrunei"));
-const FulfillmentServiceBrunei = lazy(() => import("./pages/seo/FulfillmentServiceBrunei"));
-const DeliveryManagementSystem = lazy(() => import("./pages/seo/DeliveryManagementSystem"));
-const LogisticsCompanyBrunei = lazy(() => import("./pages/seo/LogisticsCompanyBrunei"));
-const CourierServiceBrunei = lazy(() => import("./pages/seo/CourierServiceBrunei"));
-const SameDayDeliveryBrunei = lazy(() => import("./pages/seo/SameDayDeliveryBrunei"));
-const EcommerceDeliveryBrunei = lazy(() => import("./pages/seo/EcommerceDeliveryBrunei"));
-const ParcelDeliveryBrunei = lazy(() => import("./pages/seo/ParcelDeliveryBrunei"));
-const DeliveryAppBrunei = lazy(() => import("./pages/seo/DeliveryAppBrunei"));
+const LogisticsServiceBrunei = lazyRetry(() => import("./pages/seo/LogisticsServiceBrunei"));
+const LastMileDeliveryBrunei = lazyRetry(() => import("./pages/seo/LastMileDeliveryBrunei"));
+const FulfillmentServiceBrunei = lazyRetry(() => import("./pages/seo/FulfillmentServiceBrunei"));
+const DeliveryManagementSystem = lazyRetry(() => import("./pages/seo/DeliveryManagementSystem"));
+const LogisticsCompanyBrunei = lazyRetry(() => import("./pages/seo/LogisticsCompanyBrunei"));
+const CourierServiceBrunei = lazyRetry(() => import("./pages/seo/CourierServiceBrunei"));
+const SameDayDeliveryBrunei = lazyRetry(() => import("./pages/seo/SameDayDeliveryBrunei"));
+const EcommerceDeliveryBrunei = lazyRetry(() => import("./pages/seo/EcommerceDeliveryBrunei"));
+const ParcelDeliveryBrunei = lazyRetry(() => import("./pages/seo/ParcelDeliveryBrunei"));
+const DeliveryAppBrunei = lazyRetry(() => import("./pages/seo/DeliveryAppBrunei"));
 
 // Blog pages
-const BlogIndex = lazy(() => import("./pages/blog/BlogIndex"));
-const BlogPost = lazy(() => import("./pages/blog/BlogPost"));
+const BlogIndex = lazyRetry(() => import("./pages/blog/BlogIndex"));
+const BlogPost = lazyRetry(() => import("./pages/blog/BlogPost"));
 
 // Auth pages
-const ResetPassword = lazy(() => import("./pages/auth/ResetPassword"));
+const ResetPassword = lazyRetry(() => import("./pages/auth/ResetPassword"));
 
 // Standalone pages (lazy-loaded — rarely visited)
-const ProfilePage = lazy(() => import("./pages/settings/ProfilePage"));
-const NotificationCenter = lazy(() => import("./pages/notifications/NotificationCenter"));
-const TelegramUserSettings = lazy(() => import("./pages/settings/TelegramUserSettings"));
-const TelegramLogsPage = lazy(() => import("./pages/settings/TelegramLogsPage"));
-const DriverOnboarding = lazy(() => import("./pages/driver/DriverOnboarding"));
-const EventCreate = lazy(() => import("./pages/admin/EventCreate"));
-const EventDetail = lazy(() => import("./pages/admin/EventDetail"));
-const UserEventsPage = lazy(() => import("./pages/events/UserEventsPage"));
-const GuideCenterPage = lazy(() => import("./pages/guide/GuideCenterPage"));
-const OrderNotFound = lazy(() => import("./pages/orders/OrderNotFound"));
-const EventPopupModal = lazy(() => import("./components/events/EventPopupModal").then(m => ({ default: m.EventPopupModal })));
-const OnboardingFlow = lazy(() => import("./components/guide/OnboardingFlow").then(m => ({ default: m.OnboardingFlow })));
-const FloatingHelpButton = lazy(() => import("./components/guide/FloatingHelpButton").then(m => ({ default: m.FloatingHelpButton })));
+const ProfilePage = lazyRetry(() => import("./pages/settings/ProfilePage"));
+const NotificationCenter = lazyRetry(() => import("./pages/notifications/NotificationCenter"));
+const TelegramUserSettings = lazyRetry(() => import("./pages/settings/TelegramUserSettings"));
+const TelegramLogsPage = lazyRetry(() => import("./pages/settings/TelegramLogsPage"));
+const DriverOnboarding = lazyRetry(() => import("./pages/driver/DriverOnboarding"));
+const EventCreate = lazyRetry(() => import("./pages/admin/EventCreate"));
+const EventDetail = lazyRetry(() => import("./pages/admin/EventDetail"));
+const UserEventsPage = lazyRetry(() => import("./pages/events/UserEventsPage"));
+const GuideCenterPage = lazyRetry(() => import("./pages/guide/GuideCenterPage"));
+const OrderNotFound = lazyRetry(() => import("./pages/orders/OrderNotFound"));
+const EventPopupModal = lazyRetry(() => import("./components/events/EventPopupModal").then(m => ({ default: m.EventPopupModal })));
+const OnboardingFlow = lazyRetry(() => import("./components/guide/OnboardingFlow").then(m => ({ default: m.OnboardingFlow })));
+const FloatingHelpButton = lazyRetry(() => import("./components/guide/FloatingHelpButton").then(m => ({ default: m.FloatingHelpButton })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
