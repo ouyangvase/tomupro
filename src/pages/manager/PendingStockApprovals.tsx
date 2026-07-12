@@ -26,28 +26,39 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { 
-  ClipboardCheck, 
-  Package, 
-  Check, 
-  X, 
-  ArrowRight, 
+import {
+  ClipboardCheck,
+  Package,
+  Check,
+  X,
+  ArrowRight,
   Loader2,
   AlertCircle,
-  Clock
+  Clock,
+  KeyRound
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { 
-  usePendingApprovals, 
-  useApproveTransfer, 
-  useRejectTransfer 
+import { format, formatDistanceToNow } from 'date-fns';
+import {
+  usePendingApprovals,
+  useApproveTransfer,
+  useRejectTransfer
 } from '@/hooks/useOffboarding';
+import {
+  usePasswordResetRequests,
+  useApprovePasswordReset,
+  useRejectPasswordReset,
+} from '@/hooks/usePasswordResetRequests';
 import type { StockTransfer } from '@/types/stock-visibility';
 
 export default function PendingStockApprovals() {
   const { data: pendingTransfers = [], isLoading } = usePendingApprovals();
   const approveTransfer = useApproveTransfer();
   const rejectTransfer = useRejectTransfer();
+
+  const { data: resetRequests = [], isLoading: resetLoading } = usePasswordResetRequests();
+  const approveReset = useApprovePasswordReset();
+  const rejectReset = useRejectPasswordReset();
+  const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
   
   const [selectedTransfer, setSelectedTransfer] = useState<StockTransfer | null>(null);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -101,6 +112,99 @@ export default function PendingStockApprovals() {
             </p>
           </div>
         </div>
+
+        {/* Password Reset Requests */}
+        {!resetLoading && resetRequests.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="flex items-center gap-2">
+                    <KeyRound className="h-5 w-5" />
+                    Password Reset Requests
+                  </CardTitle>
+                  <CardDescription>Users requesting password resets</CardDescription>
+                </div>
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
+                  {resetRequests.length} pending
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {resetRequests.map((req) => (
+                  <div key={req.id} className="flex items-center justify-between p-3 rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{req.display_name}</p>
+                      <p className="text-sm text-muted-foreground truncate">{req.email}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        <Clock className="h-3 w-3 inline mr-1" />
+                        {formatDistanceToNow(new Date(req.requested_at), { addSuffix: true })}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0 ml-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => rejectReset.mutate(req.id)}
+                        disabled={rejectReset.isPending}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Reject
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() => setConfirmResetId(req.id)}
+                        disabled={approveReset.isPending}
+                      >
+                        <Check className="h-4 w-4 mr-1" />
+                        Approve
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Approve Password Reset Confirmation Dialog */}
+        <Dialog open={!!confirmResetId} onOpenChange={(open) => !open && setConfirmResetId(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Password Reset</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to approve this password reset? This will:
+              </DialogDescription>
+            </DialogHeader>
+            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground py-2">
+              <li>Reset the user's password to <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-xs">12345678</code></li>
+              <li>Force the user to change their password on next login</li>
+            </ul>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmResetId(null)}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  if (confirmResetId) {
+                    approveReset.mutate(confirmResetId);
+                    setConfirmResetId(null);
+                  }
+                }}
+                disabled={approveReset.isPending}
+              >
+                {approveReset.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving...</>
+                ) : (
+                  'Approve Reset'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">

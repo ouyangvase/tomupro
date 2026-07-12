@@ -93,6 +93,9 @@ export default function NotificationCenter() {
     if (notification.type === 'INBOUND_PENDING') {
       return { label: 'View Inbound', action: () => navigate('/inbound/pending') };
     }
+    if (notification.entity_type === 'PASSWORD_RESET') {
+      return { label: 'Review Request', action: () => navigate('/team?tab=approvals') };
+    }
     if (notification.entity_type === 'ORDER' || notification.reference_type === 'order') {
       const refId = notification.reference_id;
       // Determine label based on status transition

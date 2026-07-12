@@ -16,7 +16,7 @@ export function useMaintenanceMode() {
       if (error) throw error;
       return data?.value_boolean ?? false;
     },
-    refetchInterval: 30000, // Poll every 30 seconds so users see changes quickly
+    refetchInterval: 30000, // Poll every 30s so users see changes quickly
   });
 
   const toggleMutation = useMutation({

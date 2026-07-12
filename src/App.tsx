@@ -88,20 +88,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, profileStatus, profileError, retryProfile, resetSession } = useAuth();
   const { needsOnboarding, checkingLink } = useDriverOnboarding();
   const { isMaintenanceMode, isLoading: maintenanceLoading } = useMaintenanceMode();
-  
-  if (loading || maintenanceLoading) {
+
+  // Show loading only for auth — don't block on maintenance check
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex items-center gap-2">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span>Loading...</span>
         </div>
       </div>
     );
   }
-  
+
   const isAdmin = profile?.role === "admin";
-  if (user && profileStatus === 'ready' && isMaintenanceMode && !isAdmin) {
+  if (user && profileStatus === 'ready' && !maintenanceLoading && isMaintenanceMode && !isAdmin) {
     return <MaintenanceOverlay />;
   }
 
@@ -154,11 +154,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function ProtectedModule({ children }: { children: React.ReactNode }) {
   return (
     <ProtectedRoute>
-      <ResponsiveLayout>
-        <Suspense fallback={<ModuleLoading />}>
-          {children}
-        </Suspense>
-      </ResponsiveLayout>
+      <RealtimeProvider>
+        <ResponsiveLayout>
+          <Suspense fallback={<ModuleLoading />}>
+            {children}
+          </Suspense>
+        </ResponsiveLayout>
+      </RealtimeProvider>
     </ProtectedRoute>
   );
 }
@@ -166,9 +168,11 @@ function ProtectedModule({ children }: { children: React.ReactNode }) {
 function ProtectedStandalone({ children }: { children: React.ReactNode }) {
   return (
     <ProtectedRoute>
-      <Suspense fallback={<ModuleLoading />}>
-        {children}
-      </Suspense>
+      <RealtimeProvider>
+        <Suspense fallback={<ModuleLoading />}>
+          {children}
+        </Suspense>
+      </RealtimeProvider>
     </ProtectedRoute>
   );
 }

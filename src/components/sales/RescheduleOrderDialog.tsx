@@ -28,6 +28,8 @@ import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useSetAutoReschedule } from '@/hooks/useAutoReschedule';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
+import { useBindings } from '@/hooks/useBindings';
+import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -58,9 +60,18 @@ export function RescheduleOrderDialog({
   const [infoExpanded, setInfoExpanded] = useState(false);
 
   const isMobile = useIsMobile();
+  const { profile } = useAuth();
+  const role = profile?.role;
   const setAutoReschedule = useSetAutoReschedule();
   const { data: users = [] } = useUserDirectory();
-  const runners = users.filter((u) => u.role === 'runner');
+  const { data: bindings = [] } = useBindings(
+    role === 'salesperson' ? { salespersonId: profile?.id, active: true } : undefined
+  );
+
+  // Salesperson: only show bound runners. Admin/manager: show all runners.
+  const runners = role === 'salesperson'
+    ? bindings.map(b => b.runner).filter(Boolean) as { id: string; display_name: string | null }[]
+    : users.filter((u) => u.role === 'runner');
 
   // Initialize runner when order changes
   useEffect(() => {

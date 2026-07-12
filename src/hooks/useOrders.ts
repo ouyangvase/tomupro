@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/types/database';
@@ -258,13 +259,13 @@ export function useRunnerUpdateArea() {
 export function useBulkUpdateOrders() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ ids, updates }: { ids: string[]; updates: Partial<Order> }) => {
       // Block runners from setting runner_status to DELIVERED via direct table update.
       // Deliveries must go through the process-delivery edge function which handles stock.
       if ((updates as any).runner_status === 'DELIVERED') {
-        const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: profile } = await supabase
             .from('user_directory')

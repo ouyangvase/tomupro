@@ -110,7 +110,7 @@ export default function DispatchModule() {
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
-            {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : <RunnerInbox />)}
+            {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : <TabErrorBoundary><RunnerInbox /></TabErrorBoundary>)}
             {activeTab === 'smart-merge' && <TabErrorBoundary><SmartMergeTab /></TabErrorBoundary>}
             {activeTab === 'pickup-orders' && role === 'runner' && <RunnerPickupOrders />}
             {activeTab === 'inbound' && <RunnerInbound />}

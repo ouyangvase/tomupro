@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 import { toUpperLatin } from '@/lib/uppercase';
 
 export type PickupOperationalStatus =
@@ -33,10 +34,10 @@ function generatePickupCode(): string {
 export function useCreatePickupOrder() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (params: CreatePickupOrderParams) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const orderCode = generatePickupCode();

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 import type { MovementType, ReferenceType } from '@/types/database';
 
 interface CreateMovementParams {
@@ -16,10 +17,10 @@ interface CreateMovementParams {
 export function useCreateStockMovement() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (movement: CreateMovementParams) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -46,10 +47,10 @@ export function useCreateStockMovement() {
 export function useCreateBulkStockMovements() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (movements: CreateMovementParams[]) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const movementsWithUser = movements.map(m => ({

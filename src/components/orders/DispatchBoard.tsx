@@ -24,6 +24,8 @@ interface DispatchBoardProps {
   // Cross-page selection: ALL matching IDs from the full filtered dataset
   allSelectableIds?: string[];
   highlightOrderId?: string | null;
+  showStockStatus?: boolean;
+  onStockBadgeClick?: (order: Order) => void;
 }
 
 export function DispatchBoard({
@@ -41,6 +43,8 @@ export function DispatchBoard({
   isFetching,
   allSelectableIds,
   highlightOrderId,
+  showStockStatus,
+  onStockBadgeClick,
 }: DispatchBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const allIdsCount = allSelectableIds ? allSelectableIds.length : orders.length;
@@ -123,6 +127,7 @@ export function DispatchBoard({
         <div className="w-[110px] shrink-0 text-right">Amount</div>
         <div className="w-[130px] shrink-0">Runner</div>
         <div className="w-[100px] shrink-0 text-right">Status</div>
+        {showStockStatus && <div className="w-[100px] shrink-0 text-right">Stock</div>}
         <div className="w-[80px] shrink-0 text-right hidden xl:block">Date</div>
       </div>
 
@@ -143,6 +148,8 @@ export function DispatchBoard({
               }
             }}
             onClick={() => onRowClick(order)}
+            showStockStatus={showStockStatus}
+            onStockBadgeClick={onStockBadgeClick}
           />
         ))}
       </div>

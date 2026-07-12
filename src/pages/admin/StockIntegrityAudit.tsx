@@ -1,23 +1,29 @@
 import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Database, CheckCircle, AlertCircle, RefreshCw, Package,
-  ArrowDownToLine, ArrowUpFromLine, Truck, Settings2
+  ArrowDownToLine, ArrowUpFromLine, Truck, Settings2,
+  Shield, Zap, Eye, Wrench, Search, Activity,
+  AlertTriangle, Filter, TrendingDown, ArrowUpDown
 } from 'lucide-react';
 import {
   useInboundSources, useDeliveredSources,
   useTransferSources, useAdjustmentSources,
 } from '@/hooks/useAuditSourceRecords';
-import { 
-  useFullStockIntegrityAudit, 
+import {
+  useFullStockIntegrityAudit,
   useStockIntegritySummary,
+  useQuickRepair,
+  useFullStockRebuild,
   computeIntegritySummary,
   FullStockIntegrityRow
 } from '@/hooks/useFullStockIntegrity';
@@ -26,41 +32,58 @@ import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
+/* ════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT — combined Stock Audit + Rebuild
+   ════════════════════════════════════════════════════════════════════ */
 export default function StockIntegrityAudit() {
   const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const { data: users = [] } = useUsers();
+
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'MISMATCH' | 'NEGATIVE' | 'OK'>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'negative' | 'mismatch' | 'problems'>('all');
   const [selectedRow, setSelectedRow] = useState<FullStockIntegrityRow | null>(null);
-  
-  const { data: summaryData } = useStockIntegritySummary();
-  const { data: auditData = [], isLoading, refetch } = useFullStockIntegrityAudit(
+
+  const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useStockIntegritySummary();
+  const { data: auditData = [], isLoading, refetch: refetchAudit } = useFullStockIntegrityAudit(
     ownerFilter === 'all' ? null : ownerFilter,
     statusFilter === 'all' ? null : statusFilter
   );
-  
-  // Filter options - only users with stock
+
+  const quickRepair = useQuickRepair();
+  const fullRebuild = useFullStockRebuild();
+
+  const handleRefresh = () => { refetchSummary(); refetchAudit(); };
+
+  // Filter options
   const ownerOptions = useMemo(() => {
     const ownerIds = new Set(auditData.map(r => r.owner_user_id));
     return users.filter(u => ownerIds.has(u.id) || u.role === 'salesperson' || u.role === 'manager');
   }, [users, auditData]);
-  
-  // Apply local search filter
+
+  // Apply local filters
   const filteredData = useMemo(() => {
-    if (!searchQuery.trim()) return auditData;
-    
-    const q = searchQuery.toLowerCase();
-    return auditData.filter(r => 
-      r.sku_code?.toLowerCase().includes(q) ||
-      r.sku_name?.toLowerCase().includes(q) ||
-      r.owner_name?.toLowerCase().includes(q)
-    );
-  }, [auditData, searchQuery]);
-  
+    let data = auditData;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      data = data.filter(r =>
+        r.sku_code?.toLowerCase().includes(q) ||
+        r.sku_name?.toLowerCase().includes(q) ||
+        r.owner_name?.toLowerCase().includes(q) ||
+        r.warehouse_name?.toLowerCase().includes(q)
+      );
+    }
+    if (quickFilter === 'negative') data = data.filter(r => r.computed_balance < 0);
+    else if (quickFilter === 'mismatch') data = data.filter(r => r.status === 'MISMATCH');
+    else if (quickFilter === 'problems') data = data.filter(r => r.status !== 'OK');
+    return data;
+  }, [auditData, searchQuery, quickFilter]);
+
   const localSummary = computeIntegritySummary(filteredData);
-  
-  // Restrict to admin and runner only
+
+  // Access control
   if (profile?.role !== 'admin' && profile?.role !== 'runner') {
     return (
       <AppLayout>
@@ -74,68 +97,190 @@ export default function StockIntegrityAudit() {
       </AppLayout>
     );
   }
-  
+
+  const healthScore = summaryData?.health_percentage ?? 100;
+  const healthColor = healthScore >= 90 ? 'text-[hsl(var(--status-success))]' : healthScore >= 70 ? 'text-[hsl(var(--status-warning))]' : 'text-destructive';
+
   return (
     <AppLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Database className="h-8 w-8 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Stock Integrity Audit</h1>
-            <p className="text-muted-foreground">
-              Reconcile inbound vs delivered quantities. Computed from stock_movements ledger.
-            </p>
+      <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-primary/10">
+              <Shield className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Stock Integrity</h1>
+              <p className="text-sm text-muted-foreground">Ledger-based audit, reconciliation, and repair</p>
+            </div>
           </div>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading || summaryLoading}>
+            <RefreshCw className={cn("h-4 w-4 mr-2", (isLoading || summaryLoading) && "animate-spin")} />
+            Refresh
+          </Button>
         </div>
-        
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Total SKUs</p>
-              <p className="text-2xl font-bold">{summaryData?.total_skus ?? filteredData.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Healthy</p>
-              <p className="text-2xl font-bold text-primary">{summaryData?.healthy_count ?? localSummary.healthyCount}</p>
-            </CardContent>
-          </Card>
-          <Card className={(summaryData?.mismatch_count ?? 0) > 0 ? 'border-warning/50' : ''}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Issues</p>
-              <p className="text-2xl font-bold text-warning">{summaryData?.mismatch_count ?? localSummary.mismatchCount}</p>
-            </CardContent>
-          </Card>
-          <Card className={(summaryData?.negative_count ?? 0) > 0 ? 'border-destructive/50' : ''}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Negative Balance</p>
-              <p className="text-2xl font-bold text-destructive">{summaryData?.negative_count ?? localSummary.negativeCount}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Health %</p>
-              <p className="text-2xl font-bold">{summaryData?.health_percentage ?? localSummary.healthPercentage}%</p>
-            </CardContent>
-          </Card>
-        </div>
-        
-        {/* Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-wrap gap-3 items-center">
-              <div className="flex-1 min-w-[200px]">
-                <Input
-                  placeholder="Search SKU code or name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-9"
+
+        {/* ── Section 1: Health Overview ── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <HealthCard
+            label="Healthy SKUs"
+            value={summaryData?.healthy_count}
+            total={summaryData?.total_skus}
+            loading={summaryLoading}
+            color="success"
+            icon={<CheckCircle className="h-5 w-5 text-[hsl(var(--status-success))]" />}
+          />
+          <HealthCard
+            label="Issues Found"
+            value={(summaryData?.mismatch_count ?? 0) + (summaryData?.negative_count ?? 0)}
+            loading={summaryLoading}
+            color="error"
+            icon={<AlertTriangle className="h-5 w-5 text-destructive" />}
+          />
+          <HealthCard
+            label="Mismatch"
+            value={summaryData?.mismatch_count}
+            loading={summaryLoading}
+            color="warning"
+            icon={<ArrowUpDown className="h-5 w-5 text-[hsl(var(--status-warning))]" />}
+          />
+          <Card className="relative overflow-hidden">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Health Score</p>
+                  {summaryLoading ? (
+                    <Skeleton className="h-10 w-20 mt-1" />
+                  ) : (
+                    <p className={cn("text-4xl font-bold tracking-tight", healthColor)}>{healthScore}%</p>
+                  )}
+                </div>
+                <Activity className={cn("h-8 w-8", healthColor)} />
+              </div>
+              <div className="mt-3 h-1.5 rounded-full bg-secondary overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all duration-500",
+                    healthScore >= 90 ? "bg-[hsl(var(--status-success))]" : healthScore >= 70 ? "bg-[hsl(var(--status-warning))]" : "bg-destructive"
+                  )}
+                  style={{ width: `${healthScore}%` }}
                 />
               </div>
-              
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── Section 2: Repair Actions (admin only) ── */}
+        {isAdmin && (
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Quick Repair */}
+            <Card className="border-primary/30">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-primary/10">
+                    <Zap className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Quick Repair</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">Fix missing stock deductions safely. Idempotent.</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="w-fit text-[10px] mt-2 border-primary/30 text-primary">Recommended</Badge>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => quickRepair.mutate(true)} disabled={quickRepair.isPending}>
+                    <Eye className="h-3.5 w-3.5 mr-1.5" />Preview Fix
+                  </Button>
+                  <Button size="sm" onClick={() => quickRepair.mutate(false, { onSuccess: handleRefresh })} disabled={quickRepair.isPending}>
+                    <Wrench className="h-3.5 w-3.5 mr-1.5" />Apply Repair
+                  </Button>
+                </div>
+                {quickRepair.data && (
+                  <RepairResultCard
+                    dryRun={quickRepair.data.dry_run}
+                    stats={[
+                      { label: 'Missing', value: quickRepair.data.missing_deductions, color: 'text-[hsl(var(--status-warning))]' },
+                      { label: 'Fixed', value: quickRepair.data.fixed_deductions, color: 'text-[hsl(var(--status-success))]' },
+                      { label: 'Queue Cleared', value: quickRepair.data.queue_cleared, color: 'text-primary' },
+                    ]}
+                    allClear={quickRepair.data.dry_run && quickRepair.data.missing_deductions === 0}
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Full Rebuild */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-secondary">
+                    <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Full System Rebuild</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">Recalculate all warehouse balances from ledger.</p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => fullRebuild.mutate(true)} disabled={fullRebuild.isPending}>
+                    <Search className="h-3.5 w-3.5 mr-1.5" />Preview Rebuild
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => fullRebuild.mutate(false, { onSuccess: handleRefresh })} disabled={fullRebuild.isPending}>
+                    <Wrench className="h-3.5 w-3.5 mr-1.5" />Run Full Rebuild
+                  </Button>
+                </div>
+                {fullRebuild.data && (
+                  <RepairResultCard
+                    dryRun={fullRebuild.data.dry_run}
+                    stats={[
+                      { label: 'Scanned', value: fullRebuild.data.total_skus_scanned, color: 'text-foreground' },
+                      { label: 'OK', value: fullRebuild.data.ok_count, color: 'text-[hsl(var(--status-success))]' },
+                      { label: 'Mismatch', value: fullRebuild.data.mismatch_count, color: 'text-[hsl(var(--status-warning))]' },
+                      { label: 'Negative', value: fullRebuild.data.negative_count, color: 'text-destructive' },
+                      { label: 'Fixed', value: fullRebuild.data.missing_deductions_fixed, color: 'text-primary' },
+                    ]}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Section 3: Detailed SKU Audit Table ── */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Detailed SKU Audit</CardTitle>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="text-[hsl(var(--status-success))] font-medium">{localSummary.healthyCount} OK</span>
+                <span>·</span>
+                <span className="text-[hsl(var(--status-warning))] font-medium">{localSummary.mismatchCount} Mismatch</span>
+                <span>·</span>
+                <span className="text-destructive font-medium">{localSummary.negativeCount} Negative</span>
+                <span>·</span>
+                <span>{filteredData.length} total</span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Filter Bar */}
+            <div className="flex flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search SKU code, name, owner..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-9"
+                />
+              </div>
               <Select value={ownerFilter} onValueChange={setOwnerFilter}>
                 <SelectTrigger className="w-[180px] h-9">
                   <SelectValue placeholder="All Owners" />
@@ -147,7 +292,6 @@ export default function StockIntegrityAudit() {
                   ))}
                 </SelectContent>
               </Select>
-              
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
                 <SelectTrigger className="w-[160px] h-9">
                   <SelectValue />
@@ -159,113 +303,192 @@ export default function StockIntegrityAudit() {
                   <SelectItem value="OK">OK Only</SelectItem>
                 </SelectContent>
               </Select>
-              
-              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
-                <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
-                Refresh
-              </Button>
             </div>
-          </CardContent>
-        </Card>
-        
-        {/* Results Table */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 border-b">
-                  <tr>
-                    <th className="p-3 text-left font-medium">Owner</th>
-                    <th className="p-3 text-left font-medium">Warehouse</th>
-                    <th className="p-3 text-left font-medium">SKU</th>
-                    <th className="p-3 text-right font-medium">Inbound</th>
-                    <th className="p-3 text-right font-medium">Adjust</th>
-                    <th className="p-3 text-right font-medium">Transfer In</th>
-                    <th className="p-3 text-right font-medium">Transfer Out</th>
-                    <th className="p-3 text-right font-medium">Delivered</th>
-                    <th className="p-3 text-right font-medium">Balance</th>
-                    <th className="p-3 text-center font-medium">Status</th>
-                    <th className="p-3 text-left font-medium">Issue</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredData.length === 0 && (
+
+            {/* Quick Filter Pills */}
+            <div className="flex gap-2">
+              {[
+                { key: 'all' as const, label: 'All SKUs', icon: Filter },
+                { key: 'problems' as const, label: 'Problems Only', icon: AlertTriangle },
+                { key: 'negative' as const, label: 'Negative Balance', icon: TrendingDown },
+                { key: 'mismatch' as const, label: 'Mismatch', icon: ArrowUpDown },
+              ].map(f => (
+                <Button
+                  key={f.key}
+                  variant={quickFilter === f.key ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setQuickFilter(f.key)}
+                >
+                  <f.icon className="h-3 w-3" />
+                  {f.label}
+                </Button>
+              ))}
+            </div>
+
+            {/* Results Table */}
+            <ScrollArea className="h-[520px] border rounded-lg">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 border-b sticky top-0 z-10">
                     <tr>
-                      <td colSpan={11} className="p-8 text-center text-muted-foreground">
-                        {isLoading ? 'Loading...' : 'No data found'}
-                      </td>
+                      <th className="p-3 text-left font-medium">Owner</th>
+                      <th className="p-3 text-left font-medium">Warehouse</th>
+                      <th className="p-3 text-left font-medium">SKU</th>
+                      <th className="p-3 text-right font-medium">Inbound</th>
+                      <th className="p-3 text-right font-medium">Adjust</th>
+                      <th className="p-3 text-right font-medium">Xfer In</th>
+                      <th className="p-3 text-right font-medium">Xfer Out</th>
+                      <th className="p-3 text-right font-medium">Delivered</th>
+                      <th className="p-3 text-right font-medium">Balance</th>
+                      <th className="p-3 text-center font-medium">Status</th>
                     </tr>
-                  )}
-                  {filteredData.map((row, idx) => (
-                    <tr 
-                      key={`${row.warehouse_id}-${row.product_id}-${idx}`}
-                      className={cn(
-                        "border-b hover:bg-muted/30 cursor-pointer transition-colors",
-                        row.computed_balance < 0 && "bg-destructive/5"
-                      )}
-                      onClick={() => setSelectedRow(row)}
-                    >
-                      <td className="p-3">
-                        <Badge variant="outline">{row.owner_name}</Badge>
-                      </td>
-                      <td className="p-3 text-muted-foreground">{row.warehouse_name}</td>
-                      <td className="p-3">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{row.sku_code || '-'}</span>
-                          <span className="text-xs text-muted-foreground">{row.sku_name}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-right font-mono text-primary">
-                        +{row.inbound_qty}
-                      </td>
-                      <td className="p-3 text-right font-mono text-muted-foreground">
-                        {row.adjustment_qty >= 0 ? '+' : ''}{row.adjustment_qty}
-                      </td>
-                      <td className="p-3 text-right font-mono text-primary">
-                        +{row.transfer_in_qty}
-                      </td>
-                      <td className="p-3 text-right font-mono text-warning">
-                        -{row.transfer_out_qty}
-                      </td>
-                      <td className="p-3 text-right font-mono text-destructive">
-                        -{row.delivered_qty}
-                      </td>
-                      <td className="p-3 text-right">
-                        <Badge variant={row.computed_balance < 0 ? 'destructive' : row.computed_balance === 0 ? 'secondary' : 'default'}>
-                          {row.computed_balance}
-                        </Badge>
-                      </td>
-                      <td className="p-3 text-center">
-                        {row.status === 'NEGATIVE' ? (
-                          <AlertCircle className="h-4 w-4 text-destructive inline" />
-                        ) : row.status === 'MISMATCH' ? (
-                          <AlertCircle className="h-4 w-4 text-warning inline" />
-                        ) : (
-                          <CheckCircle className="h-4 w-4 text-primary inline" />
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {row.issue_label && (
-                          <span className="text-xs text-warning">{row.issue_label}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {isLoading ? (
+                      Array.from({ length: 6 }).map((_, i) => (
+                        <tr key={i}>
+                          {Array.from({ length: 10 }).map((_, j) => (
+                            <td key={j} className="p-3"><Skeleton className="h-5 w-full" /></td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : filteredData.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="p-8 text-center text-muted-foreground">
+                          No data found
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredData.map((row, idx) => (
+                        <tr
+                          key={`${row.warehouse_id}-${row.product_id}-${idx}`}
+                          className={cn(
+                            "border-b hover:bg-muted/30 cursor-pointer transition-colors",
+                            row.computed_balance < 0 && "bg-destructive/5",
+                            row.status === 'MISMATCH' && "bg-[hsl(var(--status-warning)/0.03)]"
+                          )}
+                          onClick={() => setSelectedRow(row)}
+                        >
+                          <td className="p-3">
+                            <Badge variant="outline">{row.owner_name}</Badge>
+                          </td>
+                          <td className="p-3 text-muted-foreground text-xs">{row.warehouse_name}</td>
+                          <td className="p-3">
+                            <div className="flex flex-col">
+                              <span className="font-mono text-sm font-medium">{row.sku_code || '—'}</span>
+                              <span className="text-xs text-muted-foreground truncate max-w-[180px]">{row.sku_name}</span>
+                            </div>
+                          </td>
+                          <td className="p-3 text-right font-mono text-[hsl(var(--status-success))]">+{row.inbound_qty}</td>
+                          <td className="p-3 text-right font-mono text-muted-foreground">
+                            {row.adjustment_qty >= 0 ? '+' : ''}{row.adjustment_qty}
+                          </td>
+                          <td className="p-3 text-right font-mono text-primary">+{row.transfer_in_qty}</td>
+                          <td className="p-3 text-right font-mono text-[hsl(var(--status-warning))]">-{row.transfer_out_qty}</td>
+                          <td className="p-3 text-right font-mono text-destructive">-{row.delivered_qty}</td>
+                          <td className="p-3 text-right">
+                            <Badge variant={row.computed_balance < 0 ? 'destructive' : row.computed_balance === 0 ? 'secondary' : 'default'}>
+                              {row.computed_balance}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-center">
+                            {row.status === 'NEGATIVE' ? (
+                              <Badge variant="destructive" className="text-[10px]">Negative</Badge>
+                            ) : row.status === 'MISMATCH' ? (
+                              <Badge variant="outline" className="text-[10px] border-[hsl(var(--status-warning))] text-[hsl(var(--status-warning))]">Mismatch</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] border-[hsl(var(--status-success))] text-[hsl(var(--status-success))]">OK</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
-        
+
         {/* Drilldown Dialog */}
-        <DrilldownDialog 
-          row={selectedRow} 
-          onClose={() => setSelectedRow(null)} 
-        />
+        <DrilldownDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
       </div>
     </AppLayout>
   );
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   SUB-COMPONENTS
+   ════════════════════════════════════════════════════════════════════ */
+
+function HealthCard({ label, value, total, loading, color, icon }: {
+  label: string;
+  value?: number;
+  total?: number;
+  loading: boolean;
+  color: 'success' | 'error' | 'warning';
+  icon: React.ReactNode;
+}) {
+  const borderColor = {
+    success: 'border-[hsl(var(--status-success)/0.2)]',
+    error: 'border-destructive/20',
+    warning: 'border-[hsl(var(--status-warning)/0.2)]',
+  }[color];
+
+  return (
+    <Card className={cn(borderColor)}>
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+            {loading ? (
+              <Skeleton className="h-10 w-16 mt-1" />
+            ) : (
+              <div className="flex items-baseline gap-1.5 mt-1">
+                <span className="text-3xl font-bold tracking-tight">{value ?? 0}</span>
+                {total !== undefined && <span className="text-sm text-muted-foreground">/ {total}</span>}
+              </div>
+            )}
+          </div>
+          {icon}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RepairResultCard({ dryRun, stats, allClear }: {
+  dryRun: boolean;
+  stats: { label: string; value: number; color: string }[];
+  allClear?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+      <Badge variant={dryRun ? 'secondary' : 'default'} className="text-[10px]">
+        {dryRun ? 'Preview' : 'Applied'}
+      </Badge>
+      <div className="grid grid-cols-3 gap-2">
+        {stats.map(s => (
+          <div key={s.label} className="text-center">
+            <p className={cn("text-lg font-bold", s.color)}>{s.value}</p>
+            <p className="text-[10px] text-muted-foreground">{s.label}</p>
+          </div>
+        ))}
+      </div>
+      {allClear && (
+        <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--status-success))]">
+          <CheckCircle className="h-3.5 w-3.5" />
+          No missing deductions found
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   DRILLDOWN DIALOG — source record details
+   ════════════════════════════════════════════════════════════════════ */
 
 function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; onClose: () => void }) {
   const { data: inboundRecords = [], isLoading: loadingInbound } = useInboundSources(row?.warehouse_id, row?.product_id);
@@ -273,7 +496,6 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
   const { data: transferRecords = [], isLoading: loadingTransfers } = useTransferSources(row?.warehouse_id, row?.product_id);
   const { data: adjustmentRecords = [], isLoading: loadingAdjustments } = useAdjustmentSources(row?.warehouse_id, row?.product_id);
 
-  // Compute totals from source records
   const totals = useMemo(() => {
     const inbound = inboundRecords.reduce((s, r) => s + r.qty, 0);
     const delivered = deliveredRecords.reduce((s, r) => s + r.qty, 0);
@@ -348,7 +570,7 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
                   <div className="flex justify-between"><span className="text-muted-foreground">Positive Adjustment</span><span className="text-primary font-medium">+{totals.positiveAdj}</span></div>
                   <div className="border-t my-1" />
                   <div className="flex justify-between"><span className="text-muted-foreground">Delivered</span><span className="text-destructive font-medium">-{totals.delivered}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Transfer Out</span><span className="text-warning font-medium">-{totals.transferOut}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Transfer Out</span><span className="text-[hsl(var(--status-warning))] font-medium">-{totals.transferOut}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Negative Adjustment</span><span className="text-destructive font-medium">-{totals.negativeAdj}</span></div>
                   <div className="border-t border-foreground/30 my-1" />
                   <div className="flex justify-between font-bold">
@@ -487,7 +709,7 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
                         {r.direction === 'IN' ? 'Transfer In' : 'Transfer Out'}
                       </Badge>
                     </td>
-                    <td className={cn("p-2 text-right font-mono", r.direction === 'IN' ? "text-blue-600" : "text-warning")}>
+                    <td className={cn("p-2 text-right font-mono", r.direction === 'IN' ? "text-blue-600" : "text-[hsl(var(--status-warning))]")}>
                       {r.direction === 'IN' ? '+' : ''}{r.qty}
                     </td>
                     <td className="p-2 text-muted-foreground">{r.counterpart_name}</td>

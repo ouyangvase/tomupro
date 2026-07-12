@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 
 export interface SuggestedQuantity {
@@ -20,12 +21,12 @@ export interface SuggestedQuantity {
  * - delivery date = today (or overdue from previous days)
  */
 export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: string) {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['suggested-pickup-qty', driverId, pickupDate],
     queryFn: async () => {
       if (!driverId) return [];
-
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Fetch orders assigned to this driver for today or overdue

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface AuditLogEntry {
   entity_type: string;
@@ -11,11 +12,10 @@ export interface AuditLogEntry {
 
 export function useCreateAuditLog() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (entry: AuditLogEntry) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
       const { data, error } = await supabase
         .from('audit_logs')
         .insert({

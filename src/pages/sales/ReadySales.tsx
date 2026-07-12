@@ -54,6 +54,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { cn } from '@/lib/utils';
 import type { Order } from '@/types/database';
+import { CalculateStockButton } from '@/components/orders/CalculateStockButton';
+import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
+import { StockAllocationDetail } from '@/components/orders/StockAllocationDetail';
 
 export default function ReadySales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
@@ -69,6 +72,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   const [mobileSearch, setMobileSearch] = useState('');
   const [serverSearch, setServerSearch] = useState('');
+  const [stockDetailOrder, setStockDetailOrder] = useState<Order | null>(null);
 
   // Debounce mobile search → server search (300ms)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -151,21 +155,10 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     return userDirectory.filter(u => spIds.includes(u.id));
   }, [orders, userDirectory, role]);
   
-  const getBindingSalespersonId = () => {
-    if (role === 'salesperson') return profile?.id;
-    if (managerSelectedSalesperson) return managerSelectedSalesperson;
-    if (autoDetectedSalespersonId) return autoDetectedSalespersonId;
-    return undefined;
-  };
-  
-  const bindingSalespersonId = getBindingSalespersonId();
-
-  const bindingOwner = useMemo(() => {
-    if (!bindingSalespersonId) return undefined;
-    return userDirectory.find(u => u.id === bindingSalespersonId);
-  }, [bindingSalespersonId, userDirectory]);
-
-  const bindingOwnerIsManager = bindingOwner?.role === 'manager';
+  // For runner assignment: managers/salespersons only see their own bound runners
+  const useOwnBindings = role === 'manager' || role === 'salesperson';
+  const bindingSalespersonId = useOwnBindings ? profile?.id : (managerSelectedSalesperson || autoDetectedSalespersonId);
+  const bindingOwnerIsManager = role === 'manager';
 
   const { data: bindings = [], isLoading: bindingsLoading } = useBindings(
     bindingSalespersonId && !bindingOwnerIsManager
@@ -340,6 +333,10 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
               />
               {isEditable && (
                 <div className="flex gap-2">
+                  <CalculateStockButton
+                    selectedOrderIds={selectedRows}
+                    allOrderIds={allOrderIds}
+                  />
                   <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
                     <Plus className="h-4 w-4 mr-2" />
                     {isMobile ? 'New' : 'New Order'}
@@ -479,6 +476,10 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                     statusBadge={
                       <>
                         <StatusBadge status={order.runner_status} type="runner" />
+                        <StockStatusBadge
+                          status={order.stock_status}
+                          onClick={(e) => { e.stopPropagation(); setStockDetailOrder(order); }}
+                        />
                         {order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected' && (
                           <Badge variant="outline" className="text-[10px] font-semibold px-1.5 py-0 bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
                             Receipt Rejected
@@ -527,6 +528,8 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
             isFetching={isFetching}
             allSelectableIds={allOrderIds}
             highlightOrderId={highlightOrderId}
+            showStockStatus
+            onStockBadgeClick={(order) => setStockDetailOrder(order)}
           />
         )}
       </div>
@@ -570,7 +573,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
           </DialogHeader>
           
           <div className="py-4 space-y-4">
-            {(role === 'manager' || role === 'admin') && hasMixedSalespersons && (
+            {role === 'admin' && hasMixedSalespersons && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-destructive">
                   Selected orders belong to different salespersons. Please select a salesperson to filter runners:
@@ -592,12 +595,18 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                 </Select>
               </div>
             )}
-            
-            {(role === 'manager' || role === 'admin') && !hasMixedSalespersons && autoDetectedSalespersonId && (
+
+            {role === 'admin' && !hasMixedSalespersons && autoDetectedSalespersonId && (
               <div className="text-sm text-muted-foreground">
                 Showing runners bound to: <span className="font-medium text-foreground">
                   {userDirectory.find(u => u.id === autoDetectedSalespersonId)?.display_name || 'Unknown'}
                 </span>
+              </div>
+            )}
+
+            {(role === 'manager' || role === 'salesperson') && (
+              <div className="text-sm text-muted-foreground">
+                Showing your bound runners only.
               </div>
             )}
             
@@ -620,8 +629,8 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                   <div className="p-2 text-sm text-muted-foreground">
                     {role === 'salesperson'
                       ? 'No runners bound to your account. Contact admin to set up bindings.'
-                      : bindingOwnerIsManager
-                        ? 'No runners bound to this manager. Set up bindings in Settings > Bindings > My Runners.'
+                      : role === 'manager'
+                        ? 'No runners bound to your account. Set up bindings in Settings > Bindings > My Runners.'
                         : 'No runners bound to this salesperson. Set up bindings in Settings > Bindings.'}
                   </div>
                 ) : (
@@ -649,6 +658,13 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {stockDetailOrder && (
+        <StockAllocationDetail
+          order={stockDetailOrder}
+          open={!!stockDetailOrder}
+          onOpenChange={(open) => { if (!open) setStockDetailOrder(null); }}
+        />
+      )}
     </AppLayout>
   );
 }

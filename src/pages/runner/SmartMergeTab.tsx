@@ -218,11 +218,10 @@ export default function SmartMergeTab() {
     for (let i = 0; i < group.orders.length; i++) {
       setDeliverState({ cur: i + 1, total: group.orders.length, failed: [...failed] });
       try {
-        const { data: { user: u } } = await supabase.auth.getUser();
-        if (!u) throw new Error('Auth');
+        if (!user) throw new Error('Auth');
         const { data, error } = await supabase.rpc('mark_order_delivered_fast', {
           p_order_id: group.orders[i].id,
-          p_actor_id: u.id,
+          p_actor_id: user.id,
         });
         if (error) throw error;
         const r = data as any;

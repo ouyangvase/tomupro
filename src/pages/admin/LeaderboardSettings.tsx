@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Settings, Users, Eye, Trophy, Save, Search, UserCheck, UserX } from "lucide-react";
+import { Settings, Users, Eye, Trophy, Save, Search, UserCheck, UserX, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { 
   useLeaderboardSettings, 
@@ -56,6 +56,7 @@ export default function LeaderboardSettings() {
     primary_metric: 'net_sales' as PrimaryMetric,
     visibility_mode: 'all' as VisibilityMode,
     enabled_metrics: ['completed_orders', 'net_sales', 'delivered_orders'] as string[],
+    hide_performance_ui: false,
   });
   
   useEffect(() => {
@@ -65,6 +66,7 @@ export default function LeaderboardSettings() {
         primary_metric: settings.primary_metric,
         visibility_mode: settings.visibility_mode,
         enabled_metrics: settings.enabled_metrics,
+        hide_performance_ui: !!(settings.filters_default as any)?.hide_performance_ui,
       });
     }
   }, [settings]);
@@ -109,7 +111,11 @@ export default function LeaderboardSettings() {
     try {
       await updateSettings.mutateAsync({
         id: settings.id,
-        ...localSettings,
+        period_mode: localSettings.period_mode,
+        primary_metric: localSettings.primary_metric,
+        visibility_mode: localSettings.visibility_mode,
+        enabled_metrics: localSettings.enabled_metrics,
+        filters_default: { hide_performance_ui: localSettings.hide_performance_ui },
       });
       toast({
         title: "Settings saved",
@@ -281,10 +287,28 @@ export default function LeaderboardSettings() {
               </div>
               
               <Separator />
-              
+
               <div className="space-y-2 text-sm text-muted-foreground">
                 <p><strong>Manager:</strong> Sees bound salespeople only</p>
                 <p><strong>Admin:</strong> Sees all + filter options</p>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="flex items-center gap-2">
+                    <EyeOff className="h-4 w-4" />
+                    Hide Performance UI
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    When enabled, the leaderboard page is hidden from all non-admin users
+                  </p>
+                </div>
+                <Switch
+                  checked={localSettings.hide_performance_ui}
+                  onCheckedChange={(checked) => setLocalSettings(prev => ({ ...prev, hide_performance_ui: checked }))}
+                />
               </div>
             </CardContent>
           </Card>

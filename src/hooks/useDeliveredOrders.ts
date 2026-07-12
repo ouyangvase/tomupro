@@ -241,12 +241,12 @@ export function useDeliveredSummaryFiltered(params: DeliveredSummaryFilteredPara
 export function useMarkDeliveredFast() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (orderId: string) => {
       const startTime = performance.now();
-      
-      const { data: { user } } = await supabase.auth.getUser();
+
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase.rpc('mark_order_delivered_fast', {

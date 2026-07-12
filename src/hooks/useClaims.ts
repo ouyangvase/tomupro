@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Claim, ClaimMethod } from '@/types/database';
 
 interface ClaimFilters {
@@ -35,6 +36,7 @@ export function useClaims(filters?: ClaimFilters) {
 export function useCreateClaim() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (claim: {
@@ -44,7 +46,6 @@ export function useCreateClaim() {
       note?: string;
       proof_url?: string;
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -80,6 +81,7 @@ export function useCreateClaim() {
 export function useCreateClaimWithDeliveryFee() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (claim: {
@@ -91,7 +93,6 @@ export function useCreateClaimWithDeliveryFee() {
       note?: string;
       proof_url?: string;
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase

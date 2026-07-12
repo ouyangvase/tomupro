@@ -7,6 +7,7 @@ import type { Order } from '@/types/database';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
+import { StockStatusBadge } from './StockStatusBadge';
 
 interface DispatchBoardRowProps {
   order: Order;
@@ -15,6 +16,8 @@ interface DispatchBoardRowProps {
   selectable: boolean;
   onSelect: (checked: boolean) => void;
   onClick: () => void;
+  showStockStatus?: boolean;
+  onStockBadgeClick?: (order: Order) => void;
 }
 
 function RunnerAvatar({ name }: { name: string }) {
@@ -53,7 +56,7 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   );
 }
 
-export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick }: DispatchBoardRowProps) {
+export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick, showStockStatus, onStockBadgeClick }: DispatchBoardRowProps) {
   const { displayText } = formatOrderItemsDisplay(order.order_items);
   const isRejectedReceipt = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
 
@@ -148,6 +151,16 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
               </Badge>
             )}
           </div>
+
+          {/* Stock Status */}
+          {showStockStatus && (
+            <div className="w-[100px] shrink-0 text-right" onClick={e => e.stopPropagation()}>
+              <StockStatusBadge
+                status={order.stock_status}
+                onClick={onStockBadgeClick ? (e) => { e.stopPropagation(); onStockBadgeClick(order); } : undefined}
+              />
+            </div>
+          )}
 
           {/* Date */}
           <div className="w-[80px] shrink-0 text-right hidden xl:block">

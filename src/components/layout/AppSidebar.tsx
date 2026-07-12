@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useSidebarBadges } from "@/hooks/useSidebarBadges";
+import { useLeaderboardSettings } from "@/hooks/useLeaderboard";
 
 interface NavItem {
   title: string;
@@ -79,6 +80,8 @@ export function AppSidebar() {
   const isProfileError = profileStatus === "error" || profileStatus === "missing";
 
   const rawBadges = useSidebarBadges();
+  const { data: leaderboardSettings } = useLeaderboardSettings();
+  const hidePerformanceUI = !!(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
 
   // Remap badges to new module paths
   const badges = useMemo(() => {
@@ -92,8 +95,13 @@ export function AppSidebar() {
 
   const visibleItems = useMemo(() => {
     if (!userRole) return [];
-    return navItems.filter(item => item.roles.includes(userRole));
-  }, [userRole]);
+    return navItems.filter(item => {
+      if (!item.roles.includes(userRole)) return false;
+      // Hide Performance tab for non-admin roles when hide_performance_ui is enabled
+      if (item.url === '/performance' && hidePerformanceUI && userRole !== 'admin') return false;
+      return true;
+    });
+  }, [userRole, hidePerformanceUI]);
 
   const isActive = (url: string) => {
     if (url === "/") return location.pathname === "/";

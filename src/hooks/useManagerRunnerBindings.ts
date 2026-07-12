@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export interface ManagerRunnerBinding {
@@ -73,21 +74,21 @@ export function useManagerRunnerBindings(filters?: ManagerRunnerBindingFilters) 
 
 export function useCreateManagerRunnerBinding() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (binding: {
       manager_id: string;
       runner_id: string;
     }) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
+      if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('manager_runner_bindings')
         .insert({
           manager_id: binding.manager_id,
           runner_id: binding.runner_id,
-          created_by: user.user.id,
+          created_by: user.id,
         })
         .select()
         .single();
@@ -112,14 +113,14 @@ export function useCreateManagerRunnerBinding() {
 
 export function useCreateManagerRunnerBindings() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (bindings: {
       manager_id: string;
       runner_ids: string[];
     }) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
+      if (!user) throw new Error('Not authenticated');
 
       const results = [];
       for (const runner_id of bindings.runner_ids) {
@@ -128,7 +129,7 @@ export function useCreateManagerRunnerBindings() {
           .insert({
             manager_id: bindings.manager_id,
             runner_id: runner_id,
-            created_by: user.user.id,
+            created_by: user.id,
           })
           .select()
           .single();

@@ -158,6 +158,7 @@ export function useUpdateLeaderboardSettings() {
       if (settings.visibility_mode) updateData.visibility_mode = settings.visibility_mode;
       if (settings.enabled_metrics) updateData.enabled_metrics = settings.enabled_metrics;
       if (settings.tie_breakers) updateData.tie_breakers = settings.tie_breakers;
+      if (settings.filters_default !== undefined) updateData.filters_default = settings.filters_default;
 
       const { data, error } = await supabase.from('leaderboard_settings').update(updateData).eq('id', settings.id).select().single();
       if (error) throw error;
@@ -183,11 +184,12 @@ export function useLeaderboardParticipants() {
 
 export function useUpsertLeaderboardParticipant() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
     mutationFn: async (participant: { salesperson_id: string; is_included: boolean }) => {
       const { data, error } = await supabase.from('leaderboard_participants').upsert({
         salesperson_id: participant.salesperson_id, is_included: participant.is_included,
-        updated_by: (await supabase.auth.getUser()).data.user?.id
+        updated_by: user?.id
       }, { onConflict: 'salesperson_id' }).select().single();
       if (error) throw error;
       return data;

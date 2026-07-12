@@ -257,6 +257,10 @@ export interface Order {
   rescheduled_from_status: string | null;
   created_at: string;
   updated_at: string;
+  // Stock calculation fields
+  stock_status: string;
+  stock_calculated_at: string | null;
+  stock_calculated_by: string | null;
   // Joined fields
   salesperson?: Profile;
   runner?: Profile;

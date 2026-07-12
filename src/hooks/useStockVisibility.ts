@@ -108,11 +108,31 @@ export function useFilteredStockBalance() {
       if (!profile) return [];
       
       // Use the database function which handles visibility filtering
-      const { data, error } = await supabase.rpc('get_stock_balance');
-      
-      if (error) throw error;
-      
-      return (data || []) as StockBalance[];
+      // Fetch all rows — Supabase PostgREST defaults to 1000 row limit,
+      // so we paginate to get the complete result set.
+      const PAGE_SIZE = 1000;
+      let allData: StockBalance[] = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .rpc('get_stock_balance')
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (error) throw error;
+
+        const rows = (data || []) as StockBalance[];
+        allData = allData.concat(rows);
+
+        if (rows.length < PAGE_SIZE) {
+          hasMore = false;
+        } else {
+          offset += PAGE_SIZE;
+        }
+      }
+
+      return allData;
     },
     enabled: !!profile,
   });

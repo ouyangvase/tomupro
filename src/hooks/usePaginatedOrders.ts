@@ -37,6 +37,8 @@ export interface PaginatedOrderFilters {
   // Payment & receipt filters
   paymentMethod?: string;
   receiptStatus?: string;
+  // Stock status filter
+  stockStatusIn?: string[];
 }
 
 export interface PaginationState {
@@ -233,6 +235,11 @@ export function usePaginatedOrders(
         } else {
           query = query.eq('receipt_status', filters.receiptStatus);
         }
+      }
+
+      // Stock status filter
+      if (filters.stockStatusIn && filters.stockStatusIn.length > 0) {
+        query = query.in('stock_status', filters.stockStatusIn);
       }
 
       const { data: ordersData, error: ordersError, count } = await query;
@@ -432,6 +439,11 @@ export function useAllOrderIds(
           } else {
             query = query.eq('receipt_status', filters.receiptStatus);
           }
+        }
+
+        // Stock status filter
+        if (filters.stockStatusIn && filters.stockStatusIn.length > 0) {
+          query = query.in('stock_status', filters.stockStatusIn);
         }
 
         const { data, error: queryError } = await query;

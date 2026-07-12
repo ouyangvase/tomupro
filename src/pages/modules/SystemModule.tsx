@@ -1,17 +1,14 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
-const StockIntegrityAudit = lazy(() => import('@/pages/admin/StockIntegrityAudit'));
-const StockIntegrityScan = lazy(() => import('@/pages/admin/StockIntegrityScan'));
 const EventsAdmin = lazy(() => import('@/pages/admin/EventsAdmin'));
 const ProfilePage = lazy(() => import('@/pages/settings/ProfilePage'));
 const BindingsSettings = lazy(() => import('@/pages/settings/BindingsSettings'));
 const InviteCodesAdmin = lazy(() => import('@/pages/admin/InviteCodesAdmin'));
 const CommissionSettings = lazy(() => import('@/pages/admin/CommissionSettings'));
 const LeaderboardSettings = lazy(() => import('@/pages/admin/LeaderboardSettings'));
-const DataSharingAdmin = lazy(() => import('@/pages/admin/DataSharingAdmin'));
 const ReasonsSettings = lazy(() => import('@/pages/settings/ReasonsSettings'));
 const IntegrationSettings = lazy(() => import('@/pages/admin/IntegrationSettings'));
 const BrandingSettings = lazy(() => import('@/pages/admin/BrandingSettings'));
@@ -27,14 +24,11 @@ const Loading = () => (
 
 const tabs = [
   { id: 'branding', label: 'Branding' },
-  { id: 'stock-audit', label: 'Stock Audit' },
-  { id: 'stock-rebuild', label: 'Stock Rebuild' },
   { id: 'events', label: 'Events' },
   { id: 'bindings', label: 'Bindings' },
   { id: 'invite-codes', label: 'Invite Codes' },
   { id: 'commission', label: 'Commission' },
   { id: 'leaderboard', label: 'Leaderboard' },
-  { id: 'data-sharing', label: 'Data Sharing' },
   { id: 'reasons', label: 'Reasons' },
   { id: 'integrations', label: 'Integrations' },
   { id: 'google-sheet', label: 'Google Sheet' },
@@ -43,9 +37,21 @@ const tabs = [
   { id: 'profile', label: 'Profile' },
 ];
 
+// Tabs that moved from System to Inventory — redirect old URLs
+const REDIRECTED_TABS: Record<string, string> = {
+  'stock-audit': '/inventory?tab=stock-audit',
+  'stock-rebuild': '/inventory?tab=stock-rebuild',
+  'data-sharing': '/inventory?tab=data-sharing',
+};
+
 export default function SystemModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'branding';
+
+  // Redirect old inventory-related tab URLs to Inventory module
+  if (REDIRECTED_TABS[activeTab]) {
+    return <Navigate to={REDIRECTED_TABS[activeTab]} replace />;
+  }
 
   return (
     <div className="space-y-4">
@@ -62,14 +68,11 @@ export default function SystemModule() {
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
             {activeTab === 'branding' && <BrandingSettings />}
-            {activeTab === 'stock-audit' && <StockIntegrityAudit />}
-            {activeTab === 'stock-rebuild' && <StockIntegrityScan />}
             {activeTab === 'events' && <EventsAdmin />}
             {activeTab === 'bindings' && <BindingsSettings />}
             {activeTab === 'invite-codes' && <InviteCodesAdmin />}
             {activeTab === 'commission' && <CommissionSettings />}
             {activeTab === 'leaderboard' && <LeaderboardSettings />}
-            {activeTab === 'data-sharing' && <DataSharingAdmin />}
             {activeTab === 'reasons' && <ReasonsSettings />}
             {activeTab === 'integrations' && <IntegrationSettings />}
             {activeTab === 'google-sheet' && <GoogleSheetSettings />}

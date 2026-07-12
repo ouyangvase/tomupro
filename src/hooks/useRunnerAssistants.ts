@@ -91,6 +91,7 @@ export function useMyAssistantBinding() {
 export function useCreateRunnerAssistant() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (input: {
@@ -99,7 +100,6 @@ export function useCreateRunnerAssistant() {
       can_deliver: boolean;
       can_confirm_receipt: boolean;
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
 
       // Check if binding already exists (maybe inactive)
       const { data: existing } = await supabase

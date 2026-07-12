@@ -213,17 +213,17 @@ export function useApproveDeliveryCharge() {
 
 export function useRejectDeliveryCharge() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ chargeId, remark }: { chargeId: string; remark?: string }) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
+      if (!user) throw new Error('Not authenticated');
 
       const { data: result, error } = await supabase
         .from('delivery_charges')
         .update({
           status: 'REJECTED',
-          approved_by: user.user.id,
+          approved_by: user.id,
           rejection_remark: remark || null,
         })
         .eq('id', chargeId)

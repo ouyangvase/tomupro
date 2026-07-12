@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface RescheduleHistoryItem {
   id: string;
@@ -46,6 +47,7 @@ export function useRescheduleHistory(orderId: string | undefined) {
 
 export function useAddRescheduleHistory() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (data: {
@@ -57,8 +59,6 @@ export function useAddRescheduleHistory() {
       reason_id: string | null;
       comment: string | null;
     }) => {
-      const { data: user } = await supabase.auth.getUser();
-      
       const { data: result, error } = await supabase
         .from('reschedule_history')
         .insert({
@@ -69,7 +69,7 @@ export function useAddRescheduleHistory() {
           next_delivery_date: data.next_delivery_date,
           reason_id: data.reason_id,
           comment: data.comment,
-          rescheduled_by: user?.user?.id,
+          rescheduled_by: user?.id,
         })
         .select()
         .single();
@@ -85,11 +85,10 @@ export function useAddRescheduleHistory() {
 
 export function useManualReopenOrder() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (orderId: string) => {
-      const { data: user } = await supabase.auth.getUser();
-      
       // Fetch current order state
       const { data: order, error: fetchError } = await supabase
         .from('orders')
@@ -121,7 +120,7 @@ export function useManualReopenOrder() {
         to_status: 'NEW',
         next_delivery_date: order.next_delivery_date,
         comment: 'Manually reopened',
-        rescheduled_by: user?.user?.id,
+        rescheduled_by: user?.id,
       });
 
       return { success: true };

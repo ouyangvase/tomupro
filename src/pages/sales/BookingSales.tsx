@@ -35,6 +35,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import type { Order } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
+import { CalculateStockButton } from '@/components/orders/CalculateStockButton';
+import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
+import { StockAllocationDetail } from '@/components/orders/StockAllocationDetail';
 
 export default function BookingSales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
@@ -52,6 +55,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
   const [serverSearch, setServerSearch] = useState('');
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   const [datePreset, setDatePreset] = useState<string>('all');
+  const [stockDetailOrder, setStockDetailOrder] = useState<Order | null>(null);
 
   // Compute date range from preset
   const dateRange = useMemo(() => {
@@ -268,12 +272,17 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                 <p className="text-xs text-muted-foreground">{pagination.totalCount || orders.length} orders</p>
               </div>
             </div>
-            {isEditable && (
-              <div className="flex gap-1.5">
-                <Button size="sm" onClick={handleCreateNew} className="h-8 px-2.5 text-xs">
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  New
-                </Button>
+              {isEditable && (
+                <div className="flex gap-1.5">
+                  <CalculateStockButton
+                    selectedOrderIds={selectedRows}
+                    allOrderIds={allOrderIds}
+                    size="sm"
+                  />
+                  <Button size="sm" onClick={handleCreateNew} className="h-8 px-2.5 text-xs">
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    New
+                  </Button>
                 <Button size="sm" variant="outline" onClick={() => setImportDialogOpen(true)} className="h-8 px-2.5 text-xs">
                   <Upload className="h-3.5 w-3.5 mr-1" />
                   Import
@@ -409,6 +418,10 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                     statusBadge={
                       <>
                         <StatusBadge status={order.runner_status} type="runner" />
+                        <StockStatusBadge
+                          status={order.stock_status}
+                          onClick={(e) => { e.stopPropagation(); setStockDetailOrder(order); }}
+                        />
                         {order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected' && (
                           <Badge variant="outline" className="text-[10px] font-semibold px-1.5 py-0 bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
                             Receipt Rejected
@@ -467,6 +480,13 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
           onOpenChange={setRescheduleDialogOpen}
           order={rescheduleOrder}
         />
+        {stockDetailOrder && (
+          <StockAllocationDetail
+            order={stockDetailOrder}
+            open={!!stockDetailOrder}
+            onOpenChange={(open) => { if (!open) setStockDetailOrder(null); }}
+          />
+        )}
       </AppLayout>
     );
   }
@@ -492,6 +512,10 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
               />
               {isEditable && (
                 <div className="flex gap-2">
+                  <CalculateStockButton
+                    selectedOrderIds={selectedRows}
+                    allOrderIds={allOrderIds}
+                  />
                   <Button onClick={handleCreateNew}>
                     <Plus className="h-4 w-4 mr-2" />
                     New Order
@@ -645,6 +669,8 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
           isFetching={isFetching}
           allSelectableIds={allOrderIds}
           highlightOrderId={highlightOrderId}
+          showStockStatus
+          onStockBadgeClick={(order) => setStockDetailOrder(order)}
         />
       </div>
 
@@ -670,6 +696,13 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
         onOpenChange={setRescheduleDialogOpen}
         order={rescheduleOrder}
       />
+      {stockDetailOrder && (
+        <StockAllocationDetail
+          order={stockDetailOrder}
+          open={!!stockDetailOrder}
+          onOpenChange={(open) => { if (!open) setStockDetailOrder(null); }}
+        />
+      )}
     </AppLayout>
   );
 }

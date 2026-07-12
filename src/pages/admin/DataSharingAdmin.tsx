@@ -1,20 +1,22 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Edit2, Trash2, Eye, EyeOff, Package, ShoppingCart, Warehouse, ArrowDownToLine, Shield, History, Users, Truck, Receipt } from 'lucide-react';
+import { Plus, Edit2, Trash2, Eye, EyeOff, Package, ShoppingCart, Warehouse, ArrowDownToLine, Shield, History, Users, Truck, Receipt, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
 import { useDataShares, useCreateDataShare, useUpdateDataShare, useDeleteDataShare, useAccessAuditLogs } from '@/hooks/useDataSharing';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import type { UserDataShare } from '@/types/data-sharing';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 export default function DataSharingAdmin() {
   const { data: shares = [], isLoading } = useDataShares();
@@ -131,17 +133,91 @@ export default function DataSharingAdmin() {
   );
 }
 
-function SharesTable({ 
-  shares, 
-  isLoading, 
-  onEdit 
-}: { 
-  shares: UserDataShare[]; 
+// Group shares by viewer_user_id
+interface ViewerGroup {
+  viewerId: string;
+  viewerName: string;
+  viewerRole: string;
+  shares: UserDataShare[];
+}
+
+function ScopeBadges({ share }: { share: UserDataShare }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {share.scope_orders && (
+        <Badge variant="secondary" className="text-xs">
+          <ShoppingCart className="h-3 w-3 mr-1" />Orders
+        </Badge>
+      )}
+      {share.scope_products && (
+        <Badge variant="secondary" className="text-xs">
+          <Package className="h-3 w-3 mr-1" />Products
+        </Badge>
+      )}
+      {share.scope_stock_balance && (
+        <Badge variant="secondary" className="text-xs">
+          <Warehouse className="h-3 w-3 mr-1" />Stock
+        </Badge>
+      )}
+      {share.scope_inbound && (
+        <Badge variant="secondary" className="text-xs">
+          <ArrowDownToLine className="h-3 w-3 mr-1" />Inbound
+        </Badge>
+      )}
+      {share.scope_delivered_orders && (
+        <Badge variant="secondary" className="text-xs">
+          <Truck className="h-3 w-3 mr-1" />Delivered
+        </Badge>
+      )}
+      {share.scope_claims && (
+        <Badge variant="secondary" className="text-xs">
+          <Receipt className="h-3 w-3 mr-1" />Claims
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+function SharesTable({
+  shares,
+  isLoading,
+  onEdit
+}: {
+  shares: UserDataShare[];
   isLoading: boolean;
   onEdit: (share: UserDataShare) => void;
 }) {
   const updateShare = useUpdateDataShare();
   const deleteShare = useDeleteDataShare();
+  const [expandedViewers, setExpandedViewers] = useState<Set<string>>(new Set());
+
+  // Group shares by viewer
+  const viewerGroups = useMemo<ViewerGroup[]>(() => {
+    const map = new Map<string, ViewerGroup>();
+    for (const share of shares) {
+      const vid = share.viewer_user_id;
+      if (!map.has(vid)) {
+        map.set(vid, {
+          viewerId: vid,
+          viewerName: share.viewer?.display_name || 'Unknown',
+          viewerRole: share.viewer?.role || '',
+          shares: [],
+        });
+      }
+      map.get(vid)!.shares.push(share);
+    }
+    // Sort groups by viewer name
+    return Array.from(map.values()).sort((a, b) => a.viewerName.localeCompare(b.viewerName));
+  }, [shares]);
+
+  const toggleViewer = (viewerId: string) => {
+    setExpandedViewers(prev => {
+      const next = new Set(prev);
+      if (next.has(viewerId)) next.delete(viewerId);
+      else next.add(viewerId);
+      return next;
+    });
+  };
 
   if (isLoading) {
     return (
@@ -149,7 +225,7 @@ function SharesTable({
         <CardContent className="py-6">
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
-              <Skeleton key={i} className="h-12 w-full" />
+              <Skeleton key={i} className="h-16 w-full" />
             ))}
           </div>
         </CardContent>
@@ -172,145 +248,137 @@ function SharesTable({
   }
 
   return (
-    <Card>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Viewer</TableHead>
-            <TableHead>Subject</TableHead>
-            <TableHead>Scopes</TableHead>
-            <TableHead>Can Operate</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Created</TableHead>
-            <TableHead className="w-[100px]">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {shares.map((share) => (
-            <TableRow key={share.id}>
-              <TableCell>
-                <div>
-                  <div className="font-medium">{share.viewer?.display_name || 'Unknown'}</div>
-                  <div className="text-xs text-muted-foreground">{share.viewer?.role}</div>
+    <div className="space-y-3">
+      {viewerGroups.map((group) => {
+        const isExpanded = expandedViewers.has(group.viewerId);
+        const activeCount = group.shares.filter(s => s.active).length;
+        const operateCount = group.shares.filter(s => s.can_operate && s.active).length;
+
+        return (
+          <Card key={group.viewerId}>
+            {/* Viewer header — click to expand/collapse */}
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors rounded-t-lg"
+              onClick={() => toggleViewer(group.viewerId)}
+            >
+              <div className="flex items-center gap-3">
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                )}
+                <div className="text-left">
+                  <div className="font-semibold text-sm">{group.viewerName}</div>
+                  <div className="text-xs text-muted-foreground">{group.viewerRole}</div>
                 </div>
-              </TableCell>
-              <TableCell>
-                <div>
-                  <div className="font-medium">{share.subject?.display_name || 'Unknown'}</div>
-                  <div className="text-xs text-muted-foreground">{share.subject?.role}</div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-wrap gap-1">
-                  {share.scope_orders && (
-                    <Badge variant="secondary" className="text-xs">
-                      <ShoppingCart className="h-3 w-3 mr-1" />
-                      Orders
-                    </Badge>
-                  )}
-                  {share.scope_products && (
-                    <Badge variant="secondary" className="text-xs">
-                      <Package className="h-3 w-3 mr-1" />
-                      Products
-                    </Badge>
-                  )}
-                  {share.scope_stock_balance && (
-                    <Badge variant="secondary" className="text-xs">
-                      <Warehouse className="h-3 w-3 mr-1" />
-                      Stock
-                    </Badge>
-                  )}
-                  {share.scope_inbound && (
-                    <Badge variant="secondary" className="text-xs">
-                      <ArrowDownToLine className="h-3 w-3 mr-1" />
-                      Inbound
-                    </Badge>
-                  )}
-                  {share.scope_delivered_orders && (
-                    <Badge variant="secondary" className="text-xs">
-                      <Truck className="h-3 w-3 mr-1" />
-                      Delivered
-                    </Badge>
-                  )}
-                  {share.scope_claims && (
-                    <Badge variant="secondary" className="text-xs">
-                      <Receipt className="h-3 w-3 mr-1" />
-                      Claims
-                    </Badge>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {share.can_operate ? (
-                  <Badge variant="default" className="bg-green-600">
-                    <Shield className="h-3 w-3 mr-1" />
-                    Yes
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {group.shares.length} {group.shares.length === 1 ? 'subject' : 'subjects'}
+                </Badge>
+                {activeCount > 0 && (
+                  <Badge variant="default" className="text-xs">
+                    {activeCount} active
                   </Badge>
-                ) : (
-                  <Badge variant="outline">Read Only</Badge>
                 )}
-              </TableCell>
-              <TableCell>
-                {share.active ? (
-                  <Badge variant="default">Active</Badge>
-                ) : (
-                  <Badge variant="secondary">Inactive</Badge>
+                {operateCount > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    <Shield className="h-3 w-3 mr-1" />
+                    {operateCount} operate
+                  </Badge>
                 )}
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {format(new Date(share.created_at), 'dd MMM yyyy')}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onEdit(share)}
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => updateShare.mutate({ 
-                      id: share.id, 
-                      active: !share.active 
-                    })}
-                  >
-                    {share.active ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => {
-                      if (confirm('Delete this share?')) {
-                        deleteShare.mutate(share.id);
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Card>
+              </div>
+            </button>
+
+            {/* Expanded: show subjects table */}
+            {isExpanded && (
+              <div className="border-t">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pl-10">Subject</TableHead>
+                      <TableHead>Scopes</TableHead>
+                      <TableHead>Can Operate</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[100px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {group.shares.map((share) => (
+                      <TableRow key={share.id} className={cn(!share.active && 'opacity-50')}>
+                        <TableCell className="pl-10">
+                          <div>
+                            <div className="font-medium text-sm">{share.subject?.display_name || 'Unknown'}</div>
+                            <div className="text-xs text-muted-foreground">{share.subject?.role}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <ScopeBadges share={share} />
+                        </TableCell>
+                        <TableCell>
+                          {share.can_operate ? (
+                            <Badge variant="default" className="bg-green-600">
+                              <Shield className="h-3 w-3 mr-1" />Yes
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">Read Only</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {share.active ? (
+                            <Badge variant="default">Active</Badge>
+                          ) : (
+                            <Badge variant="secondary">Inactive</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => onEdit(share)}>
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => updateShare.mutate({ id: share.id, active: !share.active })}
+                            >
+                              {share.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => {
+                                if (confirm('Delete this share?')) {
+                                  deleteShare.mutate(share.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </Card>
+        );
+      })}
+    </div>
   );
 }
 
 function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { data: users = [] } = useUserDirectory();
+  const { data: existingShares = [] } = useDataShares();
   const createShare = useCreateDataShare();
-  
+
   const [viewerId, setViewerId] = useState('');
-  const [subjectId, setSubjectId] = useState('');
+  const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(new Set());
+  const [subjectSearch, setSubjectSearch] = useState('');
   const [scopeOrders, setScopeOrders] = useState(true);
   const [scopeProducts, setScopeProducts] = useState(true);
   const [scopeStock, setScopeStock] = useState(true);
@@ -318,10 +386,12 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [scopeDeliveredOrders, setScopeDeliveredOrders] = useState(false);
   const [scopeClaims, setScopeClaims] = useState(false);
   const [canOperate, setCanOperate] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const resetForm = () => {
     setViewerId('');
-    setSubjectId('');
+    setSelectedSubjects(new Set());
+    setSubjectSearch('');
     setScopeOrders(true);
     setScopeProducts(true);
     setScopeStock(true);
@@ -331,21 +401,44 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     setCanOperate(false);
   };
 
+  // Subjects already shared with this viewer
+  const existingSubjectIds = useMemo(() => {
+    if (!viewerId) return new Set<string>();
+    return new Set(existingShares.filter(s => s.viewer_user_id === viewerId).map(s => s.subject_user_id));
+  }, [viewerId, existingShares]);
+
   const handleCreate = async () => {
-    await createShare.mutateAsync({
-      viewer_user_id: viewerId,
-      subject_user_id: subjectId,
-      scope_orders: scopeOrders,
-      scope_products: scopeProducts,
-      scope_stock_balance: scopeStock,
-      scope_inbound: scopeInbound,
-      scope_delivered_orders: scopeDeliveredOrders,
-      scope_claims: scopeClaims,
-      can_operate: canOperate,
-      active: true,
+    if (!viewerId || selectedSubjects.size === 0) return;
+    setIsCreating(true);
+    try {
+      for (const subjectId of selectedSubjects) {
+        await createShare.mutateAsync({
+          viewer_user_id: viewerId,
+          subject_user_id: subjectId,
+          scope_orders: scopeOrders,
+          scope_products: scopeProducts,
+          scope_stock_balance: scopeStock,
+          scope_inbound: scopeInbound,
+          scope_delivered_orders: scopeDeliveredOrders,
+          scope_claims: scopeClaims,
+          can_operate: canOperate,
+          active: true,
+        });
+      }
+      resetForm();
+      onOpenChange(false);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const toggleSubject = (id: string) => {
+    setSelectedSubjects(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
-    resetForm();
-    onOpenChange(false);
   };
 
   const userOptions = users
@@ -355,37 +448,79 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       label: `${u.display_name} (${u.role})`,
     }));
 
+  // Available subjects: exclude the viewer and already-shared subjects
+  const availableSubjects = users
+    .filter(u => u.role !== 'admin' && u.id !== viewerId && !existingSubjectIds.has(u.id))
+    .filter(u => {
+      if (!subjectSearch) return true;
+      const q = subjectSearch.toLowerCase();
+      return u.display_name.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
+    });
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o); }}>
+      <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Create Data Share</DialogTitle>
           <DialogDescription>
-            Grant a user permission to view another user's data
+            Select a viewer and pick subjects whose data they can access
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+          {/* Step 1: Pick Viewer */}
           <div className="space-y-2">
             <Label>Viewer (who can see)</Label>
             <SearchableSelect
-              options={userOptions.filter(o => o.value !== subjectId)}
+              options={userOptions}
               value={viewerId}
-              onValueChange={setViewerId}
+              onValueChange={(v) => { setViewerId(v); setSelectedSubjects(new Set()); }}
               placeholder="Select viewer..."
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Subject (whose data is shared)</Label>
-            <SearchableSelect
-              options={userOptions.filter(o => o.value !== viewerId)}
-              value={subjectId}
-              onValueChange={setSubjectId}
-              placeholder="Select subject..."
-            />
-          </div>
+          {/* Step 2: Pick Subjects (multi-select with checkboxes) */}
+          {viewerId && (
+            <div className="space-y-2">
+              <Label>Subjects (whose data is shared)</Label>
+              <Input
+                placeholder="Search users..."
+                value={subjectSearch}
+                onChange={(e) => setSubjectSearch(e.target.value)}
+                className="h-8 text-sm"
+              />
+              <div className="border rounded-lg max-h-[160px] overflow-y-auto">
+                {availableSubjects.length === 0 ? (
+                  <div className="p-3 text-sm text-muted-foreground text-center">
+                    {existingSubjectIds.size > 0 ? 'All users already shared' : 'No users available'}
+                  </div>
+                ) : (
+                  availableSubjects.map((u) => (
+                    <label
+                      key={u.id}
+                      className="flex items-center gap-3 px-3 py-2 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
+                    >
+                      <Checkbox
+                        checked={selectedSubjects.has(u.id)}
+                        onCheckedChange={() => toggleSubject(u.id)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{u.display_name}</div>
+                        <div className="text-xs text-muted-foreground">{u.role}</div>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+              {selectedSubjects.size > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedSubjects.size} {selectedSubjects.size === 1 ? 'subject' : 'subjects'} selected
+                </p>
+              )}
+            </div>
+          )}
 
+          {/* Step 3: Scopes */}
           <div className="space-y-3">
             <Label>Scopes</Label>
             <div className="grid grid-cols-2 gap-3">
@@ -454,9 +589,9 @@ function CreateShareDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={!viewerId || !subjectId || createShare.isPending}
+            disabled={!viewerId || selectedSubjects.size === 0 || isCreating}
           >
-            {createShare.isPending ? 'Creating...' : 'Create Share'}
+            {isCreating ? 'Creating...' : `Create ${selectedSubjects.size > 1 ? `${selectedSubjects.size} Shares` : 'Share'}`}
           </Button>
         </DialogFooter>
       </DialogContent>

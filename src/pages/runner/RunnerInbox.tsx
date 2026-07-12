@@ -15,6 +15,7 @@ import { RunnerDeliverConfirmDialog } from '@/components/runner/RunnerDeliverCon
 import { ReceiptConfirmDialog } from '@/components/runner/ReceiptConfirmDialog';
 import { usePaginatedOrders } from '@/hooks/usePaginatedOrders';
 import { useRunnerInboxStats } from '@/hooks/useRunnerInboxStats';
+import { useStockBalance } from '@/hooks/useInventory';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { CreateClaimDialog } from '@/components/runner/CreateClaimDialog';
@@ -39,6 +40,7 @@ import { format, startOfDay, subDays, startOfWeek, endOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
+import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
 
 export default function RunnerInbox() {
   const { user, role } = useAuth();
@@ -46,11 +48,28 @@ export default function RunnerInbox() {
   const isMobile = useIsMobile();
   const { data: myDrivers = [] } = useMyDrivers();
   const { data: validAreas = [] } = useValidAreas();
+  const { data: stockBalances = [] } = useStockBalance();
+
+  // Build a map of product_id → balance_qty for the current runner's warehouse
+  const runnerStockMap = useMemo(() => {
+    if (!user?.id) return new Map<string, number>();
+    const map = new Map<string, number>();
+    stockBalances
+      .filter(b => b.owner_user_id === user.id)
+      .forEach(b => map.set(b.product_id, b.balance_qty));
+    return map;
+  }, [stockBalances, user?.id]);
 
   // Runner Assistant binding
   const isAssistant = role === 'runner_assistant';
   const { data: assistantBinding, isLoading: assistantLoading } = useMyAssistantBinding();
   const effectiveRunnerId = isAssistant ? assistantBinding?.runner_id : user?.id;
+
+  // Permission helpers for assistant (must be defined before useMemo that references them)
+  const canDeliver = !isAssistant || !!assistantBinding?.can_deliver;
+  const canConfirmReceipt = !isAssistant || !!assistantBinding?.can_confirm_receipt;
+  const hasNoDeliveryAccess = isAssistant && !assistantBinding?.can_deliver;
+  const isReceiptOnlyAssistant = isAssistant && !!assistantBinding?.can_confirm_receipt && !assistantBinding?.can_deliver;
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -302,13 +321,6 @@ export default function RunnerInbox() {
     );
   }
 
-  // Permission helpers for assistant
-  const canDeliver = !isAssistant || !!assistantBinding?.can_deliver;
-  const canConfirmReceipt = !isAssistant || !!assistantBinding?.can_confirm_receipt;
-  // Scenario flags for the 3 permission situations
-  const hasNoDeliveryAccess = isAssistant && !assistantBinding?.can_deliver;
-  const isReceiptOnlyAssistant = isAssistant && !!assistantBinding?.can_confirm_receipt && !assistantBinding?.can_deliver;
-
   return (
     <AppLayout>
       <div className="space-y-4 pb-24 md:pb-4">
@@ -478,6 +490,7 @@ export default function RunnerInbox() {
                 isMobile={isMobile}
                 canDeliver={canDeliver}
                 canConfirmReceipt={canConfirmReceipt}
+                stockMap={runnerStockMap}
               />
             ))}
           </div>
@@ -588,12 +601,25 @@ interface RunnerOrderCardProps {
   isMobile: boolean;
   canDeliver: boolean;
   canConfirmReceipt: boolean;
+  stockMap: Map<string, number>;
 }
 
-function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, onViewReceipt, isMobile, canDeliver, canConfirmReceipt }: RunnerOrderCardProps) {
+function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, onViewReceipt, isMobile, canDeliver, canConfirmReceipt, stockMap }: RunnerOrderCardProps) {
   const isReceiptBlocked = order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed';
 
   const isMobileRejected = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
+
+  // Check out-of-stock items
+  const outOfStockItems = useMemo(() => {
+    if (!order.order_items || stockMap.size === 0) return [];
+    return order.order_items.filter(item => {
+      if (!item.product_id) return false;
+      const stock = stockMap.get(item.product_id) ?? 0;
+      return stock <= 0;
+    });
+  }, [order.order_items, stockMap]);
+
+  const hasOutOfStock = outOfStockItems.length > 0;
 
   if (isMobile) {
     return (
@@ -612,7 +638,8 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
             {order.area && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0">{order.area}</Badge>
             )}
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-1.5">
+              <StockStatusBadge status={order.stock_status} />
               <StatusBadgeInline status={order.runner_status} />
             </div>
           </div>
@@ -648,6 +675,19 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
                 : '-'}
             </span>
           </div>
+
+          {/* Out of Stock indicator */}
+          {hasOutOfStock && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800 text-[10px] px-2 py-0.5 font-semibold">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                Out of Stock
+              </Badge>
+              <span className="text-[10px] text-orange-600 dark:text-orange-400 truncate">
+                {outOfStockItems.map(i => i.product?.sku_code || i.sku_label || 'Unknown').join(', ')}
+              </span>
+            </div>
+          )}
 
           {/* Row 4: Actions - full width */}
           <div className="flex gap-2 pt-1 flex-wrap">
@@ -739,6 +779,17 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.address || 'No address'}</p>
+          {hasOutOfStock && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800 text-[10px] px-1.5 py-0 font-semibold">
+                <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                Out of Stock
+              </Badge>
+              <span className="text-[10px] text-orange-600 dark:text-orange-400 truncate">
+                {outOfStockItems.map(i => i.product?.sku_code || i.sku_label || '?').join(', ')}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Amount */}

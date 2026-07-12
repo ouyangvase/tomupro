@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface SetAutoRescheduleParams {
   orderId: string;
@@ -15,11 +16,11 @@ interface SetAutoRescheduleParams {
 
 export function useSetAutoReschedule() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (params: SetAutoRescheduleParams) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
+      if (!user) throw new Error('Not authenticated');
 
       const newCycleNo = (params.currentCycleNo || 0) + 1;
 
@@ -51,7 +52,7 @@ export function useSetAutoReschedule() {
           to_status: 'BOOKING_AUTO_RESCHEDULE',
           next_delivery_date: params.nextDate,
           comment: params.comment || 'No comment',
-          rescheduled_by: user.user.id,
+          rescheduled_by: user.id,
         });
 
       if (historyError) {

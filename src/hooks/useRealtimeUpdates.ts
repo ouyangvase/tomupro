@@ -327,7 +327,7 @@ function playNotificationSound() {
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.3);
   } catch (e) {
-    console.log('Could not play notification sound:', e);
+    // Notification sound playback is non-critical
   }
 }
 

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 import type { MovementType, ReferenceType } from '@/types/database';
 
 interface RevertDeliveryParams {
@@ -15,10 +16,10 @@ interface RevertDeliveryParams {
  */
 export function useRevertDelivery() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ orderId, reason }: RevertDeliveryParams) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Check if user is admin

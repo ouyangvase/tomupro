@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { logAudit } from './useAuditLogs';
 
@@ -9,15 +10,15 @@ import { logAudit } from './useAuditLogs';
  */
 export function useForcePasswordReset() {
   const queryClient = useQueryClient();
+  const { user: adminUser } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ userId, email, displayName }: { 
-      userId: string; 
-      email: string; 
+    mutationFn: async ({ userId, email, displayName }: {
+      userId: string;
+      email: string;
       displayName: string;
     }) => {
       // Get current admin user
-      const { data: { user: adminUser } } = await supabase.auth.getUser();
       if (!adminUser) throw new Error('Not authenticated');
 
       // Set the force_password_reset flag on the user's profile

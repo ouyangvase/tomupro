@@ -375,6 +375,6 @@ export function useSalespersonDashboard() {
       } as SalespersonPerformanceStats;
     },
     enabled: !!user,
-    refetchInterval: 120000, // Refresh every 2 minutes
+    refetchInterval: 120000, // Refresh every 2 minutes (120s)
   });
 }

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
+import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
 
 const LeaderboardPage = lazy(() => import('@/pages/leaderboard/LeaderboardPage'));
 const ManagerRankingBoard = lazy(() => import('@/pages/manager/ManagerRankingBoard'));
@@ -21,18 +22,28 @@ export default function PerformanceModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const role = profile?.role;
+  const { data: leaderboardSettings } = useLeaderboardSettings();
+  const hidePerformanceUI = !!(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
 
   const getTabs = () => {
     if (role === 'driver') return [{ id: 'ranking', label: 'Ranking' }];
     if (role === 'runner') return [{ id: 'driver-ranking', label: 'Driver Ranking' }, { id: 'audit-log', label: 'Audit Trail' }];
     if (role === 'runner_assistant') return [{ id: 'audit-log', label: 'Audit Trail' }];
-    if (role === 'salesperson') return [{ id: 'leaderboard', label: 'Leaderboard' }];
-    return [
-      { id: 'leaderboard', label: 'Leaderboard' },
+
+    // Admin always sees leaderboard (for configuration); non-admin respects hide setting
+    const showLeaderboard = role === 'admin' || !hidePerformanceUI;
+
+    if (role === 'salesperson') {
+      return showLeaderboard ? [{ id: 'leaderboard', label: 'Leaderboard' }] : [];
+    }
+    const tabs = [];
+    if (showLeaderboard) tabs.push({ id: 'leaderboard', label: 'Leaderboard' });
+    tabs.push(
       { id: 'ranking', label: 'Ranking Board' },
       { id: 'impact', label: 'Impact Board' },
       { id: 'audit-log', label: 'Audit Trail' },
-    ];
+    );
+    return tabs;
   };
 
   const tabs = getTabs();

@@ -1,7 +1,8 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 const UsersSettings = lazy(() => import('@/pages/settings/UsersSettings'));
 const PendingStockApprovals = lazy(() => import('@/pages/manager/PendingStockApprovals'));
@@ -14,16 +15,20 @@ const Loading = () => (
   </div>
 );
 
-const tabs = [
-  { id: 'users', label: 'Users' },
-  { id: 'assistants', label: 'Assistants' },
-  { id: 'approvals', label: 'Pending Approvals' },
-  { id: 'oversight', label: 'Team Oversight' },
+const allTabs = [
+  { id: 'users', label: 'Users', roles: ['admin'] },
+  { id: 'assistants', label: 'Assistants', roles: ['admin'] },
+  { id: 'approvals', label: 'Pending Approvals', roles: ['admin'] },
+  { id: 'oversight', label: 'Team Oversight', roles: ['admin', 'manager'] },
 ];
 
 export default function TeamModule() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'users';
+  const { profile } = useAuth();
+  const role = profile?.role;
+
+  const tabs = useMemo(() => allTabs.filter(t => role && t.roles.includes(role)), [role]);
+  const activeTab = searchParams.get('tab') || (tabs[0]?.id ?? 'oversight');
 
   return (
     <div className="space-y-4">

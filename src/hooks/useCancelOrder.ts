@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CancelOrderParams {
   orderIds: string[];
@@ -13,10 +14,10 @@ interface CancelOrderParams {
 export function useCancelOrders() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ orderIds, cancelReason, cancelNotes }: CancelOrderParams) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Fetch orders before update for audit log

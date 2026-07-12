@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { startOfDay, addDays } from 'date-fns';
 
 export interface ReturnableItem {
@@ -31,10 +32,11 @@ export interface ReturnRequiredResult {
  * Failed deliveries do NOT reduce available qty - driver still has those items!
  */
 export function useDriverReturnRequired(driverId?: string) {
+  const { user } = useAuth();
+
   return useQuery({
     queryKey: ['driver-return-required', driverId],
     queryFn: async (): Promise<ReturnRequiredResult> => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const targetDriverId = driverId || user.id;

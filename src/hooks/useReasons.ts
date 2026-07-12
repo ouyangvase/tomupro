@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export type ReasonType = 'CANCEL' | 'FAILED_DELIVERY' | 'DISPUTE';
@@ -41,6 +42,7 @@ export function useReasons(type?: ReasonType, activeOnly = true) {
 
 export function useCreateReason() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (reason: {
@@ -48,8 +50,7 @@ export function useCreateReason() {
       label: string;
       sort_order?: number;
     }) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
+      if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('reasons')
@@ -57,7 +58,7 @@ export function useCreateReason() {
           reason_type: reason.reason_type,
           label: reason.label,
           sort_order: reason.sort_order ?? 0,
-          created_by: user.user.id,
+          created_by: user.id,
         })
         .select()
         .single();

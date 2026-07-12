@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ReviewParams {
   orderId: string;
@@ -19,11 +20,11 @@ interface ReviewParams {
 
 export function useRunnerReviewOrder() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (params: ReviewParams) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
+      if (!user) throw new Error('Not authenticated');
 
       // Build last_status_note summary
       let statusNote = '';
@@ -64,7 +65,7 @@ export function useRunnerReviewOrder() {
         runner_final_outcome: params.outcome,
         runner_comment: params.comment || null,
         runner_reviewed_at: new Date().toISOString(),
-        runner_reviewed_by: user.user.id,
+        runner_reviewed_by: user.id,
         last_status_note: statusNote.substring(0, 200),
         salesperson_action_required: params.salespersonActionRequired || false,
       };
@@ -119,7 +120,7 @@ export function useRunnerReviewOrder() {
           next_delivery_date: params.nextDeliveryDate,
           reason_id: params.reasonId || null,
           comment: params.comment || null,
-          rescheduled_by: user.user.id,
+          rescheduled_by: user.id,
         });
       }
     },

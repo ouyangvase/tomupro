@@ -1,6 +1,6 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
@@ -11,6 +11,7 @@ const StockAdjustment = lazy(() => import('@/pages/inventory/StockAdjustment'));
 const WarehouseManagement = lazy(() => import('@/pages/admin/WarehouseManagement'));
 const ProductsPage = lazy(() => import('@/pages/products/ProductsPage'));
 const StockIntegrityAudit = lazy(() => import('@/pages/admin/StockIntegrityAudit'));
+const DataSharingAdmin = lazy(() => import('@/pages/admin/DataSharingAdmin'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -30,10 +31,11 @@ export default function InventoryModule() {
     { id: 'stock-audit', label: 'Stock Audit', roles: ['admin', 'runner'] },
     { id: 'adjustments', label: 'Adjustments', roles: ['admin'] },
     { id: 'warehouses', label: 'Warehouses', roles: ['admin'] },
+    { id: 'data-sharing', label: 'Data Sharing', roles: ['admin'] },
     { id: 'products', label: 'Products', roles: ['admin', 'manager', 'salesperson'] },
   ];
 
-  const tabs = allTabs.filter(t => role && t.roles.includes(role));
+  const tabs = useMemo(() => allTabs.filter(t => role && t.roles.includes(role)), [role]);
   const activeTab = searchParams.get('tab') || 'balance';
 
   return (
@@ -56,6 +58,7 @@ export default function InventoryModule() {
             {activeTab === 'stock-audit' && <StockIntegrityAudit />}
             {activeTab === 'adjustments' && <StockAdjustment />}
             {activeTab === 'warehouses' && <WarehouseManagement />}
+            {activeTab === 'data-sharing' && <DataSharingAdmin />}
             {activeTab === 'products' && <ProductsPage />}
           </div>
         </Suspense>

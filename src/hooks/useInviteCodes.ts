@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export interface InviteCode {
@@ -44,6 +45,7 @@ export function useInviteCodes() {
 
 export function useCreateInviteCode() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (params: {
@@ -51,7 +53,6 @@ export function useCreateInviteCode() {
       max_uses?: number;
       expires_at?: string | null;
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Generate unique code with retries

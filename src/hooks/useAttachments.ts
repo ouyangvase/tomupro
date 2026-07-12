@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import type { AttachmentType } from '@/types/database';
 
 interface Attachment {
@@ -38,6 +39,7 @@ export function useAttachments(params: { orderId?: string; claimId?: string }) {
 export function useUploadAttachment() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (params: {
@@ -47,7 +49,6 @@ export function useUploadAttachment() {
       claimId?: string;
       type: AttachmentType;
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Upload file to storage

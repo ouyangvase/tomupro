@@ -109,7 +109,6 @@ export const useGeocoding = () => {
       return null;
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.log("[Geocoding] Request aborted for:", address.substring(0, 30));
         return null;
       }
       console.error("[Geocoding] Error for address:", address.substring(0, 30), error.message);
