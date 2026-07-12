@@ -129,6 +129,20 @@ export default {
         'glow': 'var(--shadow-glow)',
       },
       fontFamily: {
+        display: [
+          'Anton',
+          'Inter',
+          'ui-sans-serif',
+          'system-ui',
+          'sans-serif'
+        ],
+        accent: [
+          'Condiment',
+          'Inter',
+          'ui-sans-serif',
+          'system-ui',
+          'sans-serif'
+        ],
         sans: [
           'Inter',
           'Plus Jakarta Sans',

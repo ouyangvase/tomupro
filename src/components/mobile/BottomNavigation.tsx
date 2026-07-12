@@ -84,7 +84,7 @@ export function BottomNavigation() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border/30 safe-area-pb shadow-lg">
+    <nav className="liquid-glass fixed bottom-3 left-3 right-3 z-50 safe-area-pb rounded-3xl shadow-lg">
       <div className="flex items-center justify-around h-[68px] px-1">
         {tabs.map((tab) => {
           const active = isActive(tab.href);
@@ -95,14 +95,14 @@ export function BottomNavigation() {
               className={cn(
                 "flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all duration-200",
                 "min-w-[60px]",
-                active 
-                  ? "text-primary" 
+                active
+                  ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
               <div className={cn(
                 "p-1.5 rounded-xl transition-all duration-200",
-                active && "bg-primary/12 scale-110"
+                active && "bg-primary/15 scale-110 shadow-[0_0_18px_rgba(111,255,0,0.12)]"
               )}>
                 {tab.icon}
               </div>

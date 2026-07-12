@@ -19,7 +19,7 @@ export function MobileLayout({
   contentClassName,
 }: MobileLayoutProps) {
   return (
-    <div className={cn("min-h-dvh w-full max-w-full overflow-x-hidden bg-background flex flex-col", className)}>
+    <div className={cn("space-grid-bg min-h-dvh w-full max-w-full overflow-x-hidden bg-background text-foreground flex flex-col", className)}>
       {showHeader && <MobileHeader />}
       
       <main className={cn(

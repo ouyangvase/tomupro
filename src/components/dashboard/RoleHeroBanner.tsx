@@ -60,11 +60,11 @@ export function RoleHeroBanner({ className }: RoleHeroBannerProps) {
 
   return (
     <div className={cn(
-      "relative overflow-hidden rounded-xl border border-border bg-card p-6 md:p-8",
+      "liquid-glass relative overflow-hidden rounded-3xl p-6 md:p-8",
       className
     )}>
       {/* Subtle accent line */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-primary/60 to-transparent" />
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-primary via-accent to-transparent" />
       
       <div className="relative flex items-center justify-between gap-6">
         <div className="flex-1 min-w-0 space-y-3">
@@ -95,7 +95,7 @@ export function RoleHeroBanner({ className }: RoleHeroBannerProps) {
           <img
             src={config.image}
             alt={`${role} capybara`}
-            className="h-28 lg:h-32 w-28 lg:w-32 object-contain drop-shadow-md"
+            className="h-28 lg:h-32 w-28 lg:w-32 object-contain drop-shadow-[0_20px_40px_rgba(0,0,0,0.45)]"
           />
         </div>
       </div>

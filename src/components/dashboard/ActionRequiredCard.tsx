@@ -34,16 +34,16 @@ export function ActionRequiredCard({
   return (
     <Card 
       className={cn(
-        "cursor-pointer transition-all duration-200 hover:shadow-md group relative overflow-hidden",
+        "glass-card cursor-pointer transition-all duration-200 hover:shadow-md group relative overflow-hidden rounded-3xl",
         hasItems 
-          ? "border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.03)]" 
-          : "border-border"
+          ? "border-[hsl(var(--status-warning)/0.28)] bg-[hsl(var(--status-warning)/0.05)]" 
+          : "border-white/10"
       )}
       onClick={() => navigate(href)}
     >
       {/* Top accent */}
       {hasItems && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-[hsl(var(--status-warning))]" />
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-[hsl(var(--status-warning))] via-destructive to-transparent" />
       )}
       
       <CardHeader className="pb-3">
@@ -78,7 +78,7 @@ export function ActionRequiredCard({
             <p className="text-sm text-muted-foreground">{subtitle}</p>
             
             {hasItems && (
-              <div className="flex flex-wrap gap-1.5 pt-3 border-t border-border">
+              <div className="flex flex-wrap gap-1.5 pt-3 border-t border-white/10">
                 {failedDelivery > 0 && (
                   <Badge className="bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/15 text-xs gap-1">
                     <XCircle className="h-3 w-3" />

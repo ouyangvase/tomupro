@@ -61,7 +61,7 @@ export function AdminDashboard() {
           {primaryMetrics.map((stat) => (
             <Card 
               key={stat.label}
-              className="cursor-pointer hover:shadow-md transition-all group"
+              className="glass-card cursor-pointer hover:shadow-md transition-all group rounded-2xl"
               onClick={() => navigate(stat.href)}
             >
               <CardContent className="p-4">
@@ -89,7 +89,7 @@ export function AdminDashboard() {
         {secondaryMetrics.map((stat) => (
           <Card 
             key={stat.label}
-            className="cursor-pointer hover:shadow-sm transition-all"
+            className="glass-card cursor-pointer hover:shadow-sm transition-all rounded-2xl"
             onClick={() => navigate(stat.href)}
           >
             <CardContent className="p-3">
@@ -113,7 +113,7 @@ export function AdminDashboard() {
 
       {/* Quick Actions & Live Activity */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
+        <Card className="glass-card rounded-3xl">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <Zap className="h-4 w-4 text-primary" />
@@ -131,7 +131,7 @@ export function AdminDashboard() {
         </Card>
 
         {/* Live Activity Feed */}
-        <Card>
+        <Card className="glass-card rounded-3xl">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -152,7 +152,7 @@ export function AdminDashboard() {
             ) : activity && activity.length > 0 ? (
               <div className="space-y-1 max-h-[320px] overflow-y-auto pr-1">
                 {activity.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-2.5 rounded-lg hover:bg-secondary/50 transition-colors">
+                  <div key={item.id} className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-white/[0.06] transition-colors">
                     <div className="flex items-center gap-2">
                       <Badge 
                         variant={item.action.includes('create') || item.action.includes('insert') ? 'default' : item.action.includes('delete') ? 'destructive' : 'secondary'} 

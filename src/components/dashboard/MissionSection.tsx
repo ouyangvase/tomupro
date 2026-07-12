@@ -15,8 +15,10 @@ export function MissionSection({ icon: Icon, title, urgencyCount, children, clas
   return (
     <div className={cn("space-y-4", className)}>
       <div className="flex items-center gap-2.5">
-        <Icon className="h-5 w-5 text-primary" />
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 border border-primary/15">
+          <Icon className="h-4 w-4 text-primary" />
+        </span>
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">{title}</h2>
         {urgencyCount !== undefined && urgencyCount > 0 && (
           <Badge variant="destructive" className="text-xs animate-fade-in">
             {urgencyCount}

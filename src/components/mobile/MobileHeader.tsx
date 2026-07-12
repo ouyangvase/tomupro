@@ -53,7 +53,7 @@ export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHead
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border/30 px-4 py-3 safe-area-pt">
+    <header className="liquid-glass overflow-visible sticky top-0 z-50 mx-3 mt-3 px-4 py-3 safe-area-pt rounded-2xl">
       {searchOpen ? (
         /* Search mode — full-width search bar */
         <div className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHead
           </div>
           <button
             onClick={() => setSearchOpen(false)}
-            className="p-2.5 bg-card hover:bg-muted rounded-full transition-colors border border-border/50 shadow-sm shrink-0"
+            className="p-2.5 bg-white/[0.04] hover:bg-white/[0.07] rounded-full transition-colors border border-white/10 shadow-sm shrink-0"
           >
             <X className="h-5 w-5 text-foreground" />
           </button>
@@ -81,7 +81,7 @@ export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHead
                 />
               </div>
               <button
-                className="absolute -bottom-0.5 -right-0.5 h-5 w-5 bg-card rounded-full flex items-center justify-center border border-border shadow-sm"
+                className="absolute -bottom-0.5 -right-0.5 h-5 w-5 bg-[#050D30] rounded-full flex items-center justify-center border border-white/10 shadow-sm"
               >
                 <Settings className="h-3 w-3 text-muted-foreground" />
               </button>
@@ -98,13 +98,13 @@ export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHead
           <div className="flex items-center gap-2">
             <button
               onClick={() => setSearchOpen(true)}
-              className="relative p-2.5 bg-card hover:bg-muted rounded-full transition-colors border border-border/50 shadow-sm"
+              className="relative p-2.5 bg-white/[0.04] hover:bg-white/[0.07] rounded-full transition-colors border border-white/10 shadow-sm"
             >
               <Search className="h-5 w-5 text-foreground" />
             </button>
             <button
               onClick={handleNotificationClick}
-              className="relative p-2.5 bg-card hover:bg-muted rounded-full transition-colors border border-border/50 shadow-sm"
+              className="relative p-2.5 bg-white/[0.04] hover:bg-white/[0.07] rounded-full transition-colors border border-white/10 shadow-sm"
             >
               <Bell className="h-5 w-5 text-foreground" />
               {unreadCount > 0 && (

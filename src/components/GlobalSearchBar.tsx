@@ -114,7 +114,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                 placeholder="Search order, name, phone..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="pl-9 pr-8 h-9 bg-secondary/50 border-border/50"
+                className="pl-9 pr-8 h-9 rounded-xl bg-white/[0.04] border-white/10 text-foreground placeholder:text-muted-foreground"
                 autoFocus
               />
               {query && (
@@ -132,7 +132,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-9 w-9 rounded-xl hover:bg-white/[0.06]"
               onClick={() => {
                 setIsOpen(true);
                 setTimeout(() => inputRef.current?.focus(), 100);
@@ -145,7 +145,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
 
         {/* Dropdown results */}
         {showDropdown && isOpen && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+          <div className="liquid-glass absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-lg z-50 overflow-hidden">
             {isLoading ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -155,7 +155,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                 {results.map((order) => (
                   <button
                     key={order.id}
-                    className="w-full px-3 py-2 text-left hover:bg-muted/50 transition-colors flex items-center justify-between"
+                    className="w-full px-3 py-2 text-left hover:bg-white/[0.06] transition-colors flex items-center justify-between"
                     onClick={() => handleResultClick(order)}
                   >
                     <div>
@@ -203,7 +203,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
           placeholder="Search order, name, phone..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="pl-10 pr-10 h-12 bg-card border-border/50 rounded-xl"
+          className="pl-10 pr-10 h-12 bg-white/[0.04] border-white/10 rounded-xl text-foreground placeholder:text-muted-foreground"
         />
         {query ? (
           <Button

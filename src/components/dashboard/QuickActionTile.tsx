@@ -31,15 +31,15 @@ export function QuickActionTile({
     <button
       onClick={() => navigate(href)}
       className={cn(
-        "group w-full flex items-center gap-3 p-3.5 rounded-lg",
-        "bg-secondary/50 hover:bg-secondary",
-        "border border-transparent hover:border-border",
-        "transition-all duration-150",
+        "group w-full flex items-center gap-3 p-3.5 rounded-2xl",
+        "bg-white/[0.035] hover:bg-white/[0.07]",
+        "border border-white/10 hover:border-primary/25",
+        "transition-all duration-200",
         className
       )}
     >
       <div className={cn(
-        "flex items-center justify-center h-10 w-10 rounded-lg transition-colors shrink-0",
+        "flex items-center justify-center h-10 w-10 rounded-xl transition-colors shrink-0",
         iconBg
       )}>
         <Icon className={cn("h-4.5 w-4.5", iconColor)} />

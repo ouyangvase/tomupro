@@ -111,7 +111,7 @@ export function AppSidebar() {
   // Loading state
   if (isProfileLoading) {
     return (
-      <Sidebar className={cn("border-r border-border/30 bg-sidebar", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
+      <Sidebar className={cn("liquid-glass rounded-none border-r border-white/10 bg-transparent", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
         <SidebarHeader className="p-4 border-b border-border/30">
           <div className="flex items-center gap-3">
             <AppLogo size="sm" />
@@ -138,7 +138,7 @@ export function AppSidebar() {
   // Error state
   if (isProfileError || !userRole) {
     return (
-      <Sidebar className={cn("border-r border-border/30 bg-sidebar", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
+      <Sidebar className={cn("liquid-glass rounded-none border-r border-white/10 bg-transparent", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
         <SidebarHeader className="p-4 border-b border-border/30">
           <div className="flex items-center gap-3">
             <AppLogo size="sm" />
@@ -174,7 +174,7 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar className={cn("border-r border-border/30 bg-sidebar", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
+    <Sidebar className={cn("liquid-glass rounded-none border-r border-white/10 bg-transparent", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
       {/* Brand */}
       <SidebarHeader className="p-4 border-b border-border/30">
         <div className="flex items-center gap-3">
@@ -212,8 +212,8 @@ export function AppSidebar() {
                       className={cn(
                         "relative flex items-center justify-center w-10 h-10 mx-auto rounded-lg transition-all duration-150",
                         active
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                          ? "bg-primary/15 text-primary shadow-[0_0_24px_rgba(111,255,0,0.10)]"
+                          : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                       )}
                     >
                       <item.icon className="h-[18px] w-[18px]" />
@@ -240,8 +240,8 @@ export function AppSidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150",
                 active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                  ? "bg-primary/15 text-primary shadow-[0_0_24px_rgba(111,255,0,0.10)]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
               )}
             >
               <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -256,7 +256,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-3 border-t border-border/30">
         {/* User Card */}
         {!collapsed && (
-          <div className="flex items-center gap-3 mb-3 p-2.5 rounded-2xl bg-secondary/40 border border-border/20">
+          <div className="flex items-center gap-3 mb-3 p-2.5 rounded-2xl bg-white/[0.04] border border-white/10">
             <div className="relative shrink-0">
               <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C99D4E] to-[#A67C3D] flex items-center justify-center shadow-sm">
                 <span className="text-xs font-bold text-white">
@@ -285,23 +285,23 @@ export function AppSidebar() {
               to="/settings/telegram"
               className={({ isActive }) => cn(
                 "relative flex items-center gap-3 px-3 py-3 rounded-[18px] transition-all duration-200 overflow-hidden border",
-                "bg-gradient-to-r from-[#FFF9F0] to-[#F6E7C8] dark:from-[#2A2216] dark:to-[#1E1A12]",
-                "border-[rgba(201,157,78,0.15)] dark:border-[rgba(201,157,78,0.25)]",
-                "shadow-[0_2px_8px_rgba(201,157,78,0.08)] hover:shadow-[0_4px_16px_rgba(201,157,78,0.15)]",
+                "bg-white/[0.04] hover:bg-white/[0.07]",
+                "border-white/10",
+                "shadow-[0_2px_16px_rgba(0,0,0,0.18)] hover:shadow-[0_8px_28px_rgba(111,255,0,0.08)]",
                 "active:scale-[0.98]",
                 isActive && "ring-1 ring-[#C99D4E]/30 shadow-[0_4px_16px_rgba(201,157,78,0.15)]"
               )}
             >
               {/* Telegram icon badge */}
-              <div className="h-10 w-10 rounded-xl bg-white dark:bg-[#333] flex items-center justify-center shadow-[0_1px_4px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_4px_rgba(0,0,0,0.2)] shrink-0 transition-shadow duration-200 group-hover/tg:shadow-[0_2px_8px_rgba(201,157,78,0.15)]">
-                <Send className="h-[18px] w-[18px] text-[#C99D4E]" />
+              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shadow-[0_1px_4px_rgba(0,0,0,0.2)] shrink-0 transition-shadow duration-200 group-hover/tg:shadow-[0_2px_8px_rgba(111,255,0,0.15)]">
+                <Send className="h-[18px] w-[18px] text-primary" />
               </div>
               {/* Text */}
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-[#5C4A28] dark:text-[#E8D5B0] leading-tight">
+                <p className="text-[13px] font-bold text-foreground leading-tight">
                   Telegram Settings
                 </p>
-                <p className="text-[10px] text-[#9C8660] dark:text-[#8B7A5E] leading-tight mt-0.5">
+                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
                   Manage notifications
                 </p>
               </div>
@@ -318,9 +318,9 @@ export function AppSidebar() {
                   to="/settings/telegram"
                   className={({ isActive }) => cn(
                     "relative flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition-all duration-200 mb-2 group/tgc",
-                    "bg-gradient-to-br from-[#FFF9F0] to-[#F6E7C8] dark:from-[#2A2216] dark:to-[#1E1A12]",
-                    "border border-[rgba(201,157,78,0.15)] dark:border-[rgba(201,157,78,0.25)]",
-                    "shadow-[0_1px_4px_rgba(201,157,78,0.08)] hover:shadow-[0_2px_8px_rgba(201,157,78,0.15)]",
+                    "bg-white/[0.04] hover:bg-white/[0.07]",
+                    "border border-white/10",
+                    "shadow-[0_1px_4px_rgba(0,0,0,0.18)] hover:shadow-[0_2px_8px_rgba(111,255,0,0.15)]",
                     "active:scale-95",
                     isActive && "ring-1 ring-[#C99D4E]/30"
                   )}
@@ -330,7 +330,7 @@ export function AppSidebar() {
                     alt=""
                     className="absolute -top-5 -right-1.5 h-7 w-7 object-contain pointer-events-none opacity-90 group-hover/tgc:opacity-100 transition-all duration-200 group-hover/tgc:-translate-y-0.5"
                   />
-                  <Send className="h-4 w-4 text-[#C99D4E]" />
+                  <Send className="h-4 w-4 text-primary" />
                 </NavLink>
               </TooltipTrigger>
               <TooltipContent side="right" className="font-medium">Telegram Settings</TooltipContent>
@@ -348,7 +348,7 @@ export function AppSidebar() {
             "w-full gap-2 rounded-2xl text-sm font-medium transition-all duration-200",
             collapsed
               ? "h-10 w-10 mx-auto"
-              : "h-9 bg-white dark:bg-[#1A1A1A] border border-border/30 dark:border-[#333] hover:bg-[#FFF9F0] dark:hover:bg-[#262626] hover:border-[rgba(201,157,78,0.2)] text-muted-foreground hover:text-foreground shadow-none"
+              : "h-9 bg-white/[0.04] border border-white/10 hover:bg-white/[0.07] hover:border-primary/30 text-muted-foreground hover:text-foreground shadow-none"
           )}
         >
           {signingOut ? (
