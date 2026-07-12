@@ -299,7 +299,7 @@ BEGIN
       COALESCE(p.sku_name, oi.sku_label, 'Unknown') AS sku_name,
       SUM(oi.qty) AS total_qty,
       COUNT(DISTINCT o.id) AS total_orders,
-      SUM(oi.qty * oi.price) AS total_amount
+      SUM(oi.price) AS total_amount
     FROM orders o
     JOIN order_items oi ON oi.order_id = o.id
     LEFT JOIN products p ON p.id = oi.product_id

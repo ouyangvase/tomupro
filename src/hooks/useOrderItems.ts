@@ -91,7 +91,8 @@ export function useDeleteOrderItem() {
 }
 
 // Calculate totals from order items
-// price = unit price per item, line_total = qty × price. total_amount = SUM(line_total)
+// price = final sales amount per SKU (NOT unit price × qty). line_total = price. total_amount = SUM(price).
+// qty is only used for stock/inventory purposes.
 export function calculateOrderTotals(items: OrderItem[]) {
   const total_qty = items.reduce((sum, item) => sum + (item.qty || 0), 0);
   const total_amount = items.reduce((sum, item) => sum + Number(item.line_total || item.price || 0), 0);

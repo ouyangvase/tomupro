@@ -731,7 +731,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
     const newItems = [...items];
     (newItems[index] as any)[field] = value;
     if (field === 'price' || field === 'qty') {
-      newItems[index].line_total = newItems[index].qty * newItems[index].price;
+      newItems[index].line_total = newItems[index].price; // price IS the final sales amount, qty is for stock only
     }
     if (field === 'product_id' && value) {
       const product = products.find(p => p.id === value);

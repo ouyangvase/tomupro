@@ -361,7 +361,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           let totalAmount = 0;
           for (const item of group.items) {
             totalQty += item.qty;
-            totalAmount += item.price * item.qty;
+            totalAmount += item.price; // price IS the final sales amount per SKU
           }
 
           const { data: order, error: orderError } = await supabase
@@ -398,7 +398,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               sku_label: item.sku_name_or_code,
               qty: item.qty,
               price: item.price,
-              line_total: item.price * item.qty,
+              line_total: item.price, // price IS the final sales amount, not multiplied by qty
             });
           }
           created++;

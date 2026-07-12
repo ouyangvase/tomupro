@@ -157,7 +157,7 @@ export default function DriverInbox() {
         skuName,
         displayLabel: `${skuCode}/${skuName}`,
         qty: item.qty,
-        price: item.line_total || item.price * item.qty,
+        price: item.line_total || item.price, // price IS the final sales amount
       };
     });
   };
