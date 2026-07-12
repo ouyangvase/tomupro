@@ -202,7 +202,7 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           id: order.id,
           status: 'READY',
           salesperson_action_required: false,
-          salesperson_action_type: 'CONVERT_TO_READY',
+          salesperson_action_type: null,
           last_status_note: 'Moved to Ready Orders for dispatch',
           runner_status: 'UNASSIGNED',
           runner_id: null,
