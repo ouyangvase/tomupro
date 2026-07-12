@@ -53,7 +53,7 @@ export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHead
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border/30 px-4 py-3 safe-area-top">
+    <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border/30 px-4 py-3 safe-area-pt">
       {searchOpen ? (
         /* Search mode — full-width search bar */
         <div className="flex items-center gap-2">

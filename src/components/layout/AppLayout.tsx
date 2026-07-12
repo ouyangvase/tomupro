@@ -1,12 +1,13 @@
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { PushNotificationPrompt } from "@/components/notifications/PushNotificationPrompt";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
-import { AppName } from "@/components/brand/AppName";
 import { useRealtimeNotifications } from "@/hooks/useNotificationSystem";
 import { GlobalSearchBar } from "@/components/GlobalSearchBar";
 import { useIsEmbedded } from "@/contexts/EmbeddedContext";
+import { MobileLayout } from "@/components/mobile/MobileLayout";
+import { useDevice } from "@/hooks/use-device";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -14,11 +15,16 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const isEmbedded = useIsEmbedded();
+  const { isDesktop } = useDevice();
   useRealtimeNotifications();
 
   // When embedded inside a module page, skip the shell
   if (isEmbedded) {
     return <>{children}</>;
+  }
+
+  if (!isDesktop) {
+    return <MobileLayout>{children}</MobileLayout>;
   }
 
   return (
@@ -28,15 +34,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         <div className="flex-1 flex flex-col min-w-0">
           {/* Clean top header */}
           <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 md:px-6 shrink-0 sticky top-0 z-40">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger className="text-muted-foreground hover:text-foreground h-9 w-9 transition-colors" />
-              <div className="hidden md:flex items-center gap-2">
-                <h1 className="text-base font-bold tracking-tight text-foreground">
-                  <AppName highlight />
-                </h1>
-                
-              </div>
-              <GlobalSearchBar variant="desktop" className="hidden md:block ml-4" />
+            <div className="flex min-w-0 flex-1 items-center">
+              <GlobalSearchBar variant="desktop" className="hidden md:block" />
             </div>
             <div className="flex items-center gap-1">
               <ThemeToggle />

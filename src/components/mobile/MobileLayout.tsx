@@ -19,11 +19,11 @@ export function MobileLayout({
   contentClassName,
 }: MobileLayoutProps) {
   return (
-    <div className={cn("min-h-screen bg-background flex flex-col", className)}>
+    <div className={cn("min-h-dvh w-full max-w-full overflow-x-hidden bg-background flex flex-col", className)}>
       {showHeader && <MobileHeader />}
       
       <main className={cn(
-        "flex-1 overflow-y-auto",
+        "flex-1 min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto",
         showBottomNav && "pb-20", // Space for bottom nav
         contentClassName
       )}>
