@@ -81,7 +81,6 @@ const GuideCenterPage = lazyRetry(() => import("./pages/guide/GuideCenterPage"))
 const OrderNotFound = lazyRetry(() => import("./pages/orders/OrderNotFound"));
 const EventPopupModal = lazyRetry(() => import("./components/events/EventPopupModal").then(m => ({ default: m.EventPopupModal })));
 const OnboardingFlow = lazyRetry(() => import("./components/guide/OnboardingFlow").then(m => ({ default: m.OnboardingFlow })));
-const FloatingHelpButton = lazyRetry(() => import("./components/guide/FloatingHelpButton").then(m => ({ default: m.FloatingHelpButton })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -320,7 +319,6 @@ const App = () => (
               <Suspense fallback={null}>
                 <EventPopupModal />
                 <OnboardingFlow />
-                <FloatingHelpButton />
               </Suspense>
             </BrowserRouter>
           </TooltipProvider>

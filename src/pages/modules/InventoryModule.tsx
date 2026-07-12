@@ -9,7 +9,6 @@ const InboundPending = lazy(() => import('@/pages/inbound/InboundPending'));
 const InboundHistory = lazy(() => import('@/pages/inbound/InboundHistory'));
 const StockAdjustment = lazy(() => import('@/pages/inventory/StockAdjustment'));
 const WarehouseManagement = lazy(() => import('@/pages/admin/WarehouseManagement'));
-const ProductsPage = lazy(() => import('@/pages/products/ProductsPage'));
 const StockIntegrityAudit = lazy(() => import('@/pages/admin/StockIntegrityAudit'));
 const DataSharingAdmin = lazy(() => import('@/pages/admin/DataSharingAdmin'));
 
@@ -32,7 +31,6 @@ export default function InventoryModule() {
     { id: 'adjustments', label: 'Adjustments', roles: ['admin'] },
     { id: 'warehouses', label: 'Warehouses', roles: ['admin'] },
     { id: 'data-sharing', label: 'Data Sharing', roles: ['admin'] },
-    { id: 'products', label: 'Products', roles: ['admin', 'manager', 'salesperson'] },
   ];
 
   const tabs = useMemo(() => allTabs.filter(t => role && t.roles.includes(role)), [role]);
@@ -59,7 +57,6 @@ export default function InventoryModule() {
             {activeTab === 'adjustments' && <StockAdjustment />}
             {activeTab === 'warehouses' && <WarehouseManagement />}
             {activeTab === 'data-sharing' && <DataSharingAdmin />}
-            {activeTab === 'products' && <ProductsPage />}
           </div>
         </Suspense>
       </EmbeddedProvider>
