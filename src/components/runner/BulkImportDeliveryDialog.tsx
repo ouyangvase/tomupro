@@ -280,7 +280,6 @@ export function BulkImportDeliveryDialog({ open, onOpenChange }: BulkImportDeliv
 
       setValidatedRows(validated);
     } catch (err) {
-      console.error('Validation error:', err);
       setParseErrors(['Failed to validate orders against database.']);
       setStep('upload');
     } finally {

@@ -88,7 +88,6 @@ export default function ResetPassword() {
       await supabase.auth.signOut();
       setTimeout(() => navigate('/auth'), 2500);
     } catch (error: any) {
-      console.error('[ResetPassword] error:', error);
       toast.error('Failed to update password', { description: error.message });
     } finally {
       setLoading(false);

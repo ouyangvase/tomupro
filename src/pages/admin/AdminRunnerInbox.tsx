@@ -110,7 +110,6 @@ export default function AdminRunnerInbox() {
     } catch (err) {
       const detail = err instanceof ExportError ? err.detail : (err instanceof Error ? err.message : 'Unknown error');
       toast({ variant: 'destructive', title: 'Export failed', description: detail });
-      console.error('Export error:', err);
     } finally {
       setExporting(false);
     }

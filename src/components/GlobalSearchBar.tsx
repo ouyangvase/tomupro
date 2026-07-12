@@ -73,7 +73,6 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
         setResults(data || []);
         setShowDropdown(true);
       } catch (error) {
-        console.error('Search error:', error);
         setResults([]);
       } finally {
         setIsLoading(false);

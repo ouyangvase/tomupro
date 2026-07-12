@@ -130,7 +130,6 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
     Promise.race([geocodingPromise, timeoutPromise])
       .then((result) => {
         if (result === 'timeout') {
-          console.warn("[Route] Route calculation timed out after", ROUTE_TIMEOUT_MS, "ms");
           setHasTimedOut(true);
           setError("Route calculation timed out");
         }
@@ -269,7 +268,6 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
       Promise.race([geocodingPromise, timeoutPromise])
         .then((result) => {
           if (result === 'timeout') {
-            console.warn("[Route] Refresh timed out");
             setHasTimedOut(true);
             setError("Route calculation timed out");
           }

@@ -197,6 +197,7 @@ export function useCommissionDashboard(salespersonId?: string) {
     queryFn: async () => {
       if (!targetId) throw new Error('No salesperson ID');
 
+
       const [
         settingsRes,
         targetRes,

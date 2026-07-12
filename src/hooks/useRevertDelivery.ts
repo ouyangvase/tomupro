@@ -61,12 +61,10 @@ export function useRevertDelivery() {
           .rpc('get_stock_owner_warehouse', { p_order_id: orderId });
 
         if (warehouseError) {
-          console.error('[REVERT] Failed to get active warehouse:', warehouseError);
           throw new Error('Failed to determine active warehouse for stock restoration');
         }
 
         if (!activeWarehouseId) {
-          console.error('[REVERT] No active warehouse found for order:', orderId);
           throw new Error('No active warehouse found for stock restoration. The salesperson may not have an active warehouse.');
         }
 
@@ -100,7 +98,6 @@ export function useRevertDelivery() {
             });
           
           if (insertError) {
-            console.error('[REVERT] Stock return failed:', insertError);
             throw new Error(`Failed to restore stock for product ${item.product_id}: ${insertError.message}`);
           }
 

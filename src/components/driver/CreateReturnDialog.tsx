@@ -85,7 +85,6 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
       if (error) {
         // Not fatal for submitting returns; just limits manual selection
-        console.warn('Failed to load products for manual returns', error);
         return;
       }
 

@@ -50,7 +50,6 @@ export default function BlogIndex() {
       }
       setError(null);
     } catch (e: any) {
-      console.error("[BlogIndex] fetch error:", e);
       setError(e.message || "Failed to load articles");
     }
   }, []);

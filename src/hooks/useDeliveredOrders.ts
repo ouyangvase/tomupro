@@ -83,8 +83,6 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
   return useQuery({
     queryKey: ['delivered-orders-fast', runnerId, salespersonId, salespersonIds, limit, offset],
     queryFn: async () => {
-      const startTime = performance.now();
-
       const { data, error } = await supabase.rpc('get_delivered_orders_fast', {
         p_runner_id: runnerId || null,
         p_salesperson_id: salespersonId || null,
@@ -92,16 +90,6 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
         p_limit: limit,
         p_offset: offset,
       });
-
-      const duration = performance.now() - startTime;
-      if (duration > 2000) {
-        console.warn(`[PERF] get_delivered_orders_fast took ${duration.toFixed(0)}ms`, {
-          runnerId,
-          salespersonId,
-          salespersonIds,
-          rowCount: data?.length,
-        });
-      }
 
       if (error) throw error;
       return (data || []) as DeliveredOrder[];
@@ -165,18 +153,11 @@ export function useDeliveredSummary(params: Omit<UseDeliveredOrdersParams, 'limi
   return useQuery({
     queryKey: ['delivered-summary', runnerId, salespersonId, salespersonIds],
     queryFn: async () => {
-      const startTime = performance.now();
-      
       const { data, error } = await supabase.rpc('get_delivered_summary', {
         p_runner_id: runnerId || null,
         p_salesperson_id: salespersonId || null,
         p_salesperson_ids: salespersonIds || null,
       });
-
-      const duration = performance.now() - startTime;
-      if (duration > 2000) {
-        console.warn(`[PERF] get_delivered_summary took ${duration.toFixed(0)}ms`);
-      }
 
       if (error) throw error;
       
@@ -245,19 +226,12 @@ export function useMarkDeliveredFast() {
 
   return useMutation({
     mutationFn: async (orderId: string) => {
-      const startTime = performance.now();
-
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase.rpc('mark_order_delivered_fast', {
         p_order_id: orderId,
         p_actor_id: user.id,
       });
-
-      const duration = performance.now() - startTime;
-      if (duration > 300) {
-        console.warn(`[PERF] mark_order_delivered_fast took ${duration.toFixed(0)}ms`);
-      }
 
       if (error) throw error;
       

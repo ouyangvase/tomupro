@@ -1,16 +1,4 @@
-import { useLocation } from "react-router-dom";
-import { useEffect } from "react";
-
 const NotFound = () => {
-  const location = useLocation();
-
-  useEffect(() => {
-    // Log 404 error without exposing internal paths in production
-    if (import.meta.env.DEV) {
-      console.warn("404: Route not found:", location.pathname);
-    }
-  }, [location.pathname]);
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted">
       <div className="text-center">

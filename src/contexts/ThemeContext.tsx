@@ -77,7 +77,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .update({ theme_preference: newTheme })
         .eq('id', user.id);
     } catch (error) {
-      console.error('Failed to save theme preference:', error);
+      // Theme save is non-critical; silently ignored
     }
   };
 

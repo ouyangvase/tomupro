@@ -1497,7 +1497,6 @@ function LoginModal({
     const { error } = await signIn(loginEmail, loginPassword);
     setLoading(false);
     if (error) {
-      console.error('[Login] error:', error);
       toast({ variant: 'destructive', title: 'Login Failed', description: friendlyError(error.message) });
     } else { onClose(); navigate('/'); }
   };
@@ -1517,7 +1516,6 @@ function LoginModal({
     const { error } = await signUp(signupEmail, signupPassword, displayName, assignedRole);
     setLoading(false);
     if (error) {
-      console.error('[Signup] error:', error);
       toast({ variant: 'destructive', title: 'Signup Failed', description: friendlyError(error.message) });
     } else { toast({ title: 'Account Created', description: 'Welcome to TOMUPRO!' }); onClose(); navigate('/'); }
   };
@@ -1534,7 +1532,6 @@ function LoginModal({
     });
     setLoading(false);
     if (error) {
-      console.error('[ForgotPassword] error:', error);
       toast({ variant: 'destructive', title: 'Error', description: friendlyError(error.message) });
     } else {
       setForgotSent(true);

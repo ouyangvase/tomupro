@@ -41,9 +41,8 @@ if (isFirebaseEnabled) {
   try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
-    console.log('[Firebase] Initialized successfully');
   } catch (err) {
-    console.warn('[Firebase] Failed to initialize:', err);
+    // Firebase initialization is optional; failure is non-fatal
   }
 }
 

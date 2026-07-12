@@ -361,7 +361,6 @@ export default function CancelledSales({ highlightOrderId }: { highlightOrderId?
     } catch (err) {
       const detail = err instanceof ExportError ? err.detail : (err instanceof Error ? err.message : 'Unknown error');
       toast({ title: 'Export failed', description: detail, variant: 'destructive' });
-      console.error('Export error:', err);
     } finally {
       setExporting(false);
     }

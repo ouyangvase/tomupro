@@ -32,7 +32,6 @@ export function useRunnerBoundUsers() {
         .order('name', { ascending: true });
 
       if (error) {
-        console.error('[useRunnerBoundUsers] Error fetching from view:', error);
         throw error;
       }
 

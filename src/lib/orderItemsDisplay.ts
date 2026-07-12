@@ -58,18 +58,10 @@ export function formatOrderItemsDisplay(orderItems: OrderItem[] | undefined): {
     };
   }
 
-  // Check for missing product data and log errors
+  // Check for missing product data
   const itemsWithMissingData = orderItems.filter(
     item => !item.product?.sku_code || !item.product?.sku_name
   );
-  
-  if (itemsWithMissingData.length > 0) {
-    console.warn('Order items missing product data:', itemsWithMissingData.map(i => ({
-      id: i.id,
-      product_id: i.product_id,
-      sku_label: i.sku_label,
-    })));
-  }
 
   // Format all items in a single line, comma-separated
   const formattedItems = orderItems.map(item => formatSingleItem(item));

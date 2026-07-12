@@ -83,7 +83,6 @@ export default function ForcePasswordChange({ onComplete }: ForcePasswordChangeP
 
       onComplete();
     } catch (error: any) {
-      console.error('Password change error:', error);
       toast.error('Failed to change password', {
         description: error.message,
       });

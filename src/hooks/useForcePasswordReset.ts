@@ -57,7 +57,6 @@ export function useForcePasswordReset() {
       });
     },
     onError: (error) => {
-      console.error('Force password reset error:', error);
       toast.error('Failed to force password reset', {
         description: error.message,
       });

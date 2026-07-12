@@ -845,7 +845,6 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
             const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
             await (supabase as any).from('orders').update({ receipt_url: publicUrl, receipt_status: 'pending' }).eq('id', orderId);
           } catch (uploadErr: any) {
-            console.error('[OrderEditor] Receipt upload error:', uploadErr);
             toast({ variant: 'destructive', title: 'Receipt upload failed', description: uploadErr.message || 'Please re-upload the receipt from the order edit screen.' });
           } finally {
             setReceiptUploading(false);

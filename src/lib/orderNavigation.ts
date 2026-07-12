@@ -35,7 +35,6 @@ export async function navigateToOrder(
       .maybeSingle();
 
     if (error) {
-      console.error('[navigateToOrder] lookup error:', error.message);
       navigate(`/orders/not-found?ref=${encodeURIComponent(orderId)}`);
       return false;
     }
@@ -49,7 +48,6 @@ export async function navigateToOrder(
     navigate(route);
     return true;
   } catch (err) {
-    console.error('[navigateToOrder] unexpected error:', err);
     navigate(`/orders/not-found?ref=${encodeURIComponent(orderId)}`);
     return false;
   }

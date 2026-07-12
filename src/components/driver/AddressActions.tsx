@@ -18,7 +18,6 @@ export const AddressActions: React.FC<AddressActionsProps> = ({ address, area })
       await navigator.clipboard.writeText(fullAddress);
       toast.success("Address copied");
     } catch (error) {
-      console.error("Failed to copy address:", error);
       toast.error("Failed to copy address");
     }
   };

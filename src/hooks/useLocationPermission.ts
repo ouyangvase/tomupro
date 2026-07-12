@@ -47,21 +47,32 @@ export const useLocationPermission = () => {
     }
 
     if ("permissions" in navigator) {
+      let permissionStatus: PermissionStatus | null = null;
+      const onChange = () => {
+        if (permissionStatus) {
+          setState(prev => ({
+            ...prev,
+            permissionState: permissionStatus!.state as LocationPermissionState,
+          }));
+        }
+      };
+
       navigator.permissions.query({ name: "geolocation" }).then((result) => {
+        permissionStatus = result;
         setState(prev => ({
           ...prev,
           permissionState: result.state as LocationPermissionState,
         }));
-        
-        result.addEventListener("change", () => {
-          setState(prev => ({
-            ...prev,
-            permissionState: result.state as LocationPermissionState,
-          }));
-        });
+        result.addEventListener("change", onChange);
       }).catch(() => {
         setState(prev => ({ ...prev, permissionState: "prompt" }));
       });
+
+      return () => {
+        if (permissionStatus) {
+          permissionStatus.removeEventListener("change", onChange);
+        }
+      };
     }
   }, [isDriver]);
 

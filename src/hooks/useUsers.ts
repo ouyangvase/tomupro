@@ -76,6 +76,7 @@ export function useUpdateUser() {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['team-members'] });
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses-admin'] });
       toast.success('User updated');
     },
     onError: (error) => {

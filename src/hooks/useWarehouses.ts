@@ -9,7 +9,7 @@ export interface WarehouseWithOwner extends Warehouse {
 
 export function useWarehouses() {
   return useQuery({
-    queryKey: ['warehouses'],
+    queryKey: ['warehouses-admin'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('warehouses')
@@ -130,6 +130,7 @@ export function useCreateWarehouse() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses-admin'] });
       queryClient.invalidateQueries({ queryKey: ['warehouse-stats'] });
       toast.success('Warehouse created');
     },
@@ -181,6 +182,7 @@ export function useUpdateWarehouse() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses-admin'] });
       queryClient.invalidateQueries({ queryKey: ['warehouse-stats'] });
       toast.success('Warehouse updated');
     },
@@ -288,6 +290,7 @@ export function useBackfillWarehouses() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses-admin'] });
       queryClient.invalidateQueries({ queryKey: ['warehouse-stats'] });
       toast.success(`Created ${data.created} missing warehouses`);
     },
