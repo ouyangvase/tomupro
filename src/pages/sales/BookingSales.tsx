@@ -38,6 +38,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CalculateStockButton } from '@/components/orders/CalculateStockButton';
 import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
 import { StockAllocationDetail } from '@/components/orders/StockAllocationDetail';
+import type { OrderStockResult } from '@/hooks/useStockCalculation';
 
 export default function BookingSales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
@@ -56,6 +57,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   const [datePreset, setDatePreset] = useState<string>('all');
   const [stockDetailOrder, setStockDetailOrder] = useState<Order | null>(null);
+  const [stockResults, setStockResults] = useState<Map<string, OrderStockResult>>(new Map());
 
   // Compute date range from preset
   const dateRange = useMemo(() => {
@@ -273,9 +275,14 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
               {isEditable && (
                 <div className="flex gap-1.5">
                   <CalculateStockButton
+                    orders={orders}
                     selectedOrderIds={selectedRows}
-                    allOrderIds={allOrderIds}
                     size="sm"
+                    onResults={(results) => setStockResults(prev => {
+                      const merged = new Map(prev);
+                      results.forEach((v, k) => merged.set(k, v));
+                      return merged;
+                    })}
                   />
                   <Button size="sm" onClick={handleCreateNew} className="h-8 px-2.5 text-xs">
                     <Plus className="h-3.5 w-3.5 mr-1" />
@@ -417,7 +424,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                       <>
                         <StatusBadge status={order.runner_status} type="runner" />
                         <StockStatusBadge
-                          status={order.stock_status}
+                          status={stockResults.get(order.id)?.stock_status || 'NOT_CALCULATED'}
                           onClick={(e) => { e.stopPropagation(); setStockDetailOrder(order); }}
                         />
                         {order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected' && (
@@ -480,7 +487,8 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
         />
         {stockDetailOrder && (
           <StockAllocationDetail
-            order={stockDetailOrder}
+            orderCode={stockDetailOrder.order_code}
+            stockResult={stockResults.get(stockDetailOrder.id) || null}
             open={!!stockDetailOrder}
             onOpenChange={(open) => { if (!open) setStockDetailOrder(null); }}
           />
@@ -511,8 +519,13 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
               {isEditable && (
                 <div className="flex gap-2">
                   <CalculateStockButton
+                    orders={orders}
                     selectedOrderIds={selectedRows}
-                    allOrderIds={allOrderIds}
+                    onResults={(results) => setStockResults(prev => {
+                      const merged = new Map(prev);
+                      results.forEach((v, k) => merged.set(k, v));
+                      return merged;
+                    })}
                   />
                   <Button onClick={handleCreateNew}>
                     <Plus className="h-4 w-4 mr-2" />
@@ -668,6 +681,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
           allSelectableIds={allOrderIds}
           highlightOrderId={highlightOrderId}
           showStockStatus
+          stockResults={stockResults}
           onStockBadgeClick={(order) => setStockDetailOrder(order)}
         />
       </div>
@@ -696,7 +710,8 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
       />
       {stockDetailOrder && (
         <StockAllocationDetail
-          order={stockDetailOrder}
+          orderCode={stockDetailOrder.order_code}
+          stockResult={stockResults.get(stockDetailOrder.id) || null}
           open={!!stockDetailOrder}
           onOpenChange={(open) => { if (!open) setStockDetailOrder(null); }}
         />

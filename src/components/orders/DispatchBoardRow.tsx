@@ -17,6 +17,7 @@ interface DispatchBoardRowProps {
   onSelect: (checked: boolean) => void;
   onClick: () => void;
   showStockStatus?: boolean;
+  stockStatus?: string;
   onStockBadgeClick?: (order: Order) => void;
 }
 
@@ -56,7 +57,7 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   );
 }
 
-export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick, showStockStatus, onStockBadgeClick }: DispatchBoardRowProps) {
+export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick, showStockStatus, stockStatus, onStockBadgeClick }: DispatchBoardRowProps) {
   const { displayText } = formatOrderItemsDisplay(order.order_items);
   const isRejectedReceipt = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
 
@@ -156,7 +157,7 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
           {showStockStatus && (
             <div className="w-[100px] shrink-0 text-right" onClick={e => e.stopPropagation()}>
               <StockStatusBadge
-                status={order.stock_status}
+                status={stockStatus || 'NOT_CALCULATED'}
                 onClick={onStockBadgeClick ? (e) => { e.stopPropagation(); onStockBadgeClick(order); } : undefined}
               />
             </div>

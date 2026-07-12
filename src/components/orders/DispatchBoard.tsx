@@ -7,6 +7,7 @@ import { DispatchBoardRow } from './DispatchBoardRow';
 import capybaraEmpty from '@/assets/capybara-empty.png';
 import capybaraLoading from '@/assets/capybara-loading.png';
 import type { Order } from '@/types/database';
+import type { OrderStockResult } from '@/hooks/useStockCalculation';
 
 interface DispatchBoardProps {
   orders: Order[];
@@ -25,6 +26,7 @@ interface DispatchBoardProps {
   allSelectableIds?: string[];
   highlightOrderId?: string | null;
   showStockStatus?: boolean;
+  stockResults?: Map<string, OrderStockResult>;
   onStockBadgeClick?: (order: Order) => void;
 }
 
@@ -44,6 +46,7 @@ export function DispatchBoard({
   allSelectableIds,
   highlightOrderId,
   showStockStatus,
+  stockResults,
   onStockBadgeClick,
 }: DispatchBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -149,6 +152,7 @@ export function DispatchBoard({
             }}
             onClick={() => onRowClick(order)}
             showStockStatus={showStockStatus}
+            stockStatus={stockResults?.get(order.id)?.stock_status}
             onStockBadgeClick={onStockBadgeClick}
           />
         ))}

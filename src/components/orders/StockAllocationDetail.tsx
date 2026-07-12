@@ -1,26 +1,22 @@
-import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useOrderStockAllocations } from '@/hooks/useStockCalculation';
 import { StockStatusBadge } from './StockStatusBadge';
 import { cn } from '@/lib/utils';
-import type { Order } from '@/types/database';
+import type { ClientStockAllocation, OrderStockResult } from '@/hooks/useStockCalculation';
 
 interface StockAllocationDetailProps {
-  order: Order;
+  orderCode: string;
+  stockResult: OrderStockResult | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function StockAllocationDetail({ order, open, onOpenChange }: StockAllocationDetailProps) {
-  const { data: allocations = [], isLoading } = useOrderStockAllocations(open ? order.id : undefined);
-
+export function StockAllocationDetail({ orderCode, stockResult, open, onOpenChange }: StockAllocationDetailProps) {
+  const allocations = stockResult?.allocations ?? [];
   const totalRequired = allocations.reduce((s, a) => s + a.qty_required, 0);
   const totalAllocated = allocations.reduce((s, a) => s + a.qty_allocated, 0);
   const totalShortage = allocations.reduce((s, a) => s + a.qty_shortage, 0);
@@ -30,18 +26,12 @@ export function StockAllocationDetail({ order, open, onOpenChange }: StockAlloca
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Stock Allocation — {order.order_code}
-            <StockStatusBadge status={order.stock_status} />
+            Stock Allocation — {orderCode}
+            {stockResult && <StockStatusBadge status={stockResult.stock_status} />}
           </DialogTitle>
         </DialogHeader>
 
-        {isLoading ? (
-          <div className="space-y-2 py-4">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        ) : allocations.length === 0 ? (
+        {!stockResult || allocations.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
             No allocations found. Run stock calculation first.
           </div>
@@ -60,11 +50,11 @@ export function StockAllocationDetail({ order, open, onOpenChange }: StockAlloca
                 </thead>
                 <tbody>
                   {allocations.map((alloc) => (
-                    <tr key={alloc.id} className="border-t">
+                    <tr key={alloc.order_item_id} className="border-t">
                       <td className="px-3 py-2">
-                        <div className="font-medium">{alloc.product?.sku_code || '—'}</div>
+                        <div className="font-medium">{alloc.sku_code || '—'}</div>
                         <div className="text-xs text-muted-foreground truncate max-w-[200px]">
-                          {alloc.product?.sku_name || '—'}
+                          {alloc.sku_name}
                         </div>
                       </td>
                       <td className="text-right px-3 py-2 tabular-nums">{alloc.qty_required}</td>
@@ -103,13 +93,6 @@ export function StockAllocationDetail({ order, open, onOpenChange }: StockAlloca
                 </tfoot>
               </table>
             </div>
-
-            {/* Calculated info */}
-            {order.stock_calculated_at && (
-              <p className="text-xs text-muted-foreground text-right">
-                Calculated: {new Date(order.stock_calculated_at).toLocaleString()}
-              </p>
-            )}
           </div>
         )}
       </DialogContent>

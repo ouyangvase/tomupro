@@ -638,7 +638,16 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
               <Badge variant="outline" className="text-[9px] px-1.5 py-0">{order.area}</Badge>
             )}
             <div className="ml-auto flex items-center gap-1.5">
-              <StockStatusBadge status={order.stock_status} />
+              {stockMap.size > 0 && (
+                <StockStatusBadge
+                  status={
+                    !order.order_items?.length ? 'NOT_CALCULATED'
+                    : hasOutOfStock && outOfStockItems.length === order.order_items.filter(i => i.product_id).length ? 'OUT_OF_STOCK'
+                    : hasOutOfStock ? 'PARTIAL_STOCK'
+                    : 'STOCK_READY'
+                  }
+                />
+              )}
               <StatusBadgeInline status={order.runner_status} />
             </div>
           </div>

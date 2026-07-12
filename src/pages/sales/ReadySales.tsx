@@ -57,6 +57,7 @@ import type { Order } from '@/types/database';
 import { CalculateStockButton } from '@/components/orders/CalculateStockButton';
 import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
 import { StockAllocationDetail } from '@/components/orders/StockAllocationDetail';
+import type { OrderStockResult } from '@/hooks/useStockCalculation';
 
 export default function ReadySales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
@@ -73,6 +74,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
   const [mobileSearch, setMobileSearch] = useState('');
   const [serverSearch, setServerSearch] = useState('');
   const [stockDetailOrder, setStockDetailOrder] = useState<Order | null>(null);
+  const [stockResults, setStockResults] = useState<Map<string, OrderStockResult>>(new Map());
 
   // Debounce mobile search → server search (300ms)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -332,8 +334,13 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
               {isEditable && (
                 <div className="flex gap-2">
                   <CalculateStockButton
+                    orders={orders}
                     selectedOrderIds={selectedRows}
-                    allOrderIds={allOrderIds}
+                    onResults={(results) => setStockResults(prev => {
+                      const merged = new Map(prev);
+                      results.forEach((v, k) => merged.set(k, v));
+                      return merged;
+                    })}
                   />
                   <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
                     <Plus className="h-4 w-4 mr-2" />
@@ -475,7 +482,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                       <>
                         <StatusBadge status={order.runner_status} type="runner" />
                         <StockStatusBadge
-                          status={order.stock_status}
+                          status={stockResults.get(order.id)?.stock_status || 'NOT_CALCULATED'}
                           onClick={(e) => { e.stopPropagation(); setStockDetailOrder(order); }}
                         />
                         {order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected' && (
@@ -527,6 +534,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
             allSelectableIds={allOrderIds}
             highlightOrderId={highlightOrderId}
             showStockStatus
+            stockResults={stockResults}
             onStockBadgeClick={(order) => setStockDetailOrder(order)}
           />
         )}
@@ -658,7 +666,8 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
       </Dialog>
       {stockDetailOrder && (
         <StockAllocationDetail
-          order={stockDetailOrder}
+          orderCode={stockDetailOrder.order_code}
+          stockResult={stockResults.get(stockDetailOrder.id) || null}
           open={!!stockDetailOrder}
           onOpenChange={(open) => { if (!open) setStockDetailOrder(null); }}
         />

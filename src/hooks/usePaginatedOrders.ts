@@ -237,11 +237,6 @@ export function usePaginatedOrders(
         }
       }
 
-      // Stock status filter
-      if (filters.stockStatusIn && filters.stockStatusIn.length > 0) {
-        query = query.in('stock_status', filters.stockStatusIn);
-      }
-
       const { data: ordersData, error: ordersError, count } = await query;
       if (ordersError) throw ordersError;
 
@@ -439,11 +434,6 @@ export function useAllOrderIds(
           } else {
             query = query.eq('receipt_status', filters.receiptStatus);
           }
-        }
-
-        // Stock status filter
-        if (filters.stockStatusIn && filters.stockStatusIn.length > 0) {
-          query = query.in('stock_status', filters.stockStatusIn);
         }
 
         const { data, error: queryError } = await query;

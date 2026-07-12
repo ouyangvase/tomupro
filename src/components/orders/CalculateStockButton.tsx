@@ -1,31 +1,43 @@
 import { Button } from '@/components/ui/button';
 import { Calculator, Loader2 } from 'lucide-react';
 import { useCalculateStock } from '@/hooks/useStockCalculation';
+import type { Order } from '@/types/database';
+import type { OrderStockResult } from '@/hooks/useStockCalculation';
 
 interface CalculateStockButtonProps {
+  /** All orders currently loaded on the page (with order_items populated) */
+  orders: Order[];
   selectedOrderIds: string[];
-  allOrderIds: string[];
   disabled?: boolean;
   size?: 'sm' | 'default';
   variant?: 'default' | 'outline' | 'secondary';
+  /** Callback when calculation completes — parent stores the results */
+  onResults?: (results: Map<string, OrderStockResult>) => void;
 }
 
 export function CalculateStockButton({
+  orders,
   selectedOrderIds,
-  allOrderIds,
   disabled,
   size = 'sm',
   variant = 'outline',
+  onResults,
 }: CalculateStockButtonProps) {
   const calculateStock = useCalculateStock();
 
   const hasSelection = selectedOrderIds.length > 0;
-  const idsToCalculate = hasSelection ? selectedOrderIds : allOrderIds;
-  const count = idsToCalculate.length;
+  const ordersToCalculate = hasSelection
+    ? orders.filter(o => selectedOrderIds.includes(o.id))
+    : orders;
+  const count = ordersToCalculate.length;
 
   const handleClick = () => {
     if (count === 0) return;
-    calculateStock.mutate(idsToCalculate);
+    calculateStock.mutate(ordersToCalculate, {
+      onSuccess: (results) => {
+        onResults?.(results);
+      },
+    });
   };
 
   return (
