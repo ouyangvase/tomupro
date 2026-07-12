@@ -186,9 +186,13 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
         filters.salespersonIds = [profile.id];
       } else if (selectedMember !== 'all') {
         filters.salespersonIds = [selectedMember];
+      } else if (salespersonFilter !== 'all') {
+        filters.salespersonIds = [salespersonFilter];
       } else if (visibleOwnerIds && visibleOwnerIds.length > 0) {
         filters.salespersonIds = visibleOwnerIds;
       }
+    } else if (role === 'admin' && salespersonFilter !== 'all') {
+      filters.salespersonId = salespersonFilter;
     }
     // Admin: no salesperson filter needed (sees all)
 
@@ -198,7 +202,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     }
 
     return filters;
-  }, [role, profile?.id, viewMode, selectedMember, visibleOwnerIds, searchQuery]);
+  }, [role, profile?.id, viewMode, selectedMember, salespersonFilter, visibleOwnerIds, searchQuery]);
 
   const { data: allOrders = [], isLoading, isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders(orderFilters, 50);
 
@@ -281,7 +285,6 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   const actionRequiredOrders = useMemo(() => {
     let filtered = [...allOrders];
 
-    if (salespersonFilter !== 'all') filtered = filtered.filter(o => o.salesperson_id === salespersonFilter);
     if (sourceFilter !== 'all') filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
     if (priorityFilter !== 'all') filtered = filtered.filter(o => getOrderPriority(o) === priorityFilter);
 
@@ -299,20 +302,61 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
       const pOrder = { high: 0, medium: 1, low: 2 };
       return pOrder[getOrderPriority(a)] - pOrder[getOrderPriority(b)];
     });
-  }, [allOrders, sourceFilter, salespersonFilter, timeFilter, priorityFilter]);
+  }, [allOrders, sourceFilter, timeFilter, priorityFilter]);
 
   // ── Salesperson filter data ──
-  const salespersonIds = useMemo(() => [...new Set(allOrders.map(o => o.salesperson_id))], [allOrders]);
   const { data: salespersons = [] } = useQuery({
-    queryKey: ['salespersons-for-filter', salespersonIds],
+    queryKey: ['salespersons-for-action-filter', role, profile?.id, viewMode, selectedMember, visibleOwnerIds],
     queryFn: async () => {
-      if (salespersonIds.length === 0) return [];
-      const { data, error } = await supabase.from('user_directory').select('id, display_name').in('id', salespersonIds);
+      let query = supabase
+        .from('orders')
+        .select('salesperson_id')
+        .or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)')
+        .neq('status', 'CANCELLED')
+        .not('salesperson_id', 'is', null)
+        .limit(10000);
+
+      if (role === 'salesperson' && profile?.id) {
+        query = query.eq('salesperson_id', profile.id);
+      } else if (role === 'manager' && profile?.id) {
+        if (viewMode === 'my') {
+          query = query.eq('salesperson_id', profile.id);
+        } else if (selectedMember !== 'all') {
+          query = query.eq('salesperson_id', selectedMember);
+        } else if (visibleOwnerIds && visibleOwnerIds.length > 0) {
+          query = query.in('salesperson_id', visibleOwnerIds);
+        }
+      }
+
+      const { data: orderOwners, error: ownersError } = await query;
+      if (ownersError || !orderOwners?.length) return [];
+
+      const counts = orderOwners.reduce<Record<string, number>>((acc, order) => {
+        if (order.salesperson_id) {
+          acc[order.salesperson_id] = (acc[order.salesperson_id] || 0) + 1;
+        }
+        return acc;
+      }, {});
+      const ids = Object.keys(counts);
+      if (ids.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('user_directory')
+        .select('id, display_name')
+        .in('id', ids);
       if (error) return [];
-      return data;
+
+      return data
+        .map(user => ({ ...user, action_count: counts[user.id] || 0 }))
+        .sort((a, b) => a.display_name.localeCompare(b.display_name));
     },
-    enabled: (role === 'admin' || role === 'manager') && salespersonIds.length > 0,
+    enabled: role === 'admin' || role === 'manager',
+    staleTime: 30000,
   });
+  const salespersonFilterTotal = useMemo(
+    () => salespersons.reduce((total, user) => total + user.action_count, 0),
+    [salespersons]
+  );
 
   // ── Reasons ──
   const reasonIds = useMemo(() => [...new Set(actionRequiredOrders.map(o => o.runner_failed_reason_id).filter(Boolean))], [actionRequiredOrders]);
@@ -713,9 +757,11 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
                       <SelectTrigger className="w-full md:w-[160px] h-9"><SelectValue placeholder="All Users" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Users</SelectItem>
+                        <SelectItem value="all">All Users ({salespersonFilterTotal})</SelectItem>
                         {salespersons.map(sp => (
-                          <SelectItem key={sp.id} value={sp.id}>{sp.display_name}</SelectItem>
+                          <SelectItem key={sp.id} value={sp.id}>
+                            {sp.display_name} ({sp.action_count})
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
