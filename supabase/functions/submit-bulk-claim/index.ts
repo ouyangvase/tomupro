@@ -47,14 +47,14 @@ serve(async (req) => {
     // Auth
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return json({ success: false, error: 'No authorization header' }, 401);
+      return json({ success: false, error: 'No authorization header' });
     }
 
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      return json({ success: false, error: 'Invalid authentication' }, 401);
+      return json({ success: false, error: 'Invalid authentication' });
     }
 
     const { orderIds, note, exchangeRate } = await req.json();

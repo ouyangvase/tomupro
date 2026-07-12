@@ -606,6 +606,9 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
             const ctx = (response.error as any)?.context;
             if (ctx && typeof ctx.json === 'function') {
               data = await ctx.json();
+            } else if (ctx && typeof ctx.text === 'function') {
+              const text = await ctx.text();
+              try { data = JSON.parse(text); } catch { /* not JSON */ }
             }
           } catch {
             // Fall through to generic error
