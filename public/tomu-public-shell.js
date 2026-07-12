@@ -3,6 +3,7 @@
   var SUPABASE_URL = "https://" + PROJECT_REF + ".supabase.co";
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0Y2NoZHVyb253c3l1bnlha3hqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2Mjc1NzEsImV4cCI6MjA4NTIwMzU3MX0.O7OyK07BNfvY3bz32IQlqdEW_vPuTxiFPCRKcVT9Q_M";
   var STORAGE_KEY = "sb-" + PROJECT_REF + "-auth-token";
+  var PUBLIC_TITLE = "TOMUPRO | Brunei Delivery, COD & Logistics Company";
 
   function hasSession() {
     try {
@@ -18,6 +19,15 @@
   function shouldShowShell() {
     var path = window.location.pathname.replace(/\/+$/, "") || "/";
     return !hasSession() && (path === "/" || path === "/auth");
+  }
+
+  function applyPublicTitle() {
+    document.title = PUBLIC_TITLE;
+    [50, 250, 1000, 2500].forEach(function (delay) {
+      setTimeout(function () {
+        if (shouldShowShell()) document.title = PUBLIC_TITLE;
+      }, delay);
+    });
   }
 
   function getAuthConfig() {
@@ -400,6 +410,7 @@
     var existing = document.getElementById("tomu-public-shell");
     if (shouldShowShell()) {
       document.body.classList.add("tomu-public-active");
+      applyPublicTitle();
       if (!existing) {
         buildShell();
       }
