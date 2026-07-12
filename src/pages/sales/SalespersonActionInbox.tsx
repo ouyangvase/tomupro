@@ -210,8 +210,9 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     queryKey: ['action-required-stats', orderFilters.salespersonId, orderFilters.salespersonIds],
     queryFn: async () => {
       // Build base filter matching the server-side actionRequired filter
-      let baseQuery = supabase.from('orders').select('id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required, updated_at, created_at', { count: 'exact', head: false });
-      baseQuery = baseQuery.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+      let baseQuery = supabase.from('orders').select('id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required, updated_at, created_at, status', { count: 'exact', head: false });
+      // Tightened: FAILED_DELIVERY only for READY orders; salesperson_action_required excludes DELIVERED
+      baseQuery = baseQuery.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
       baseQuery = baseQuery.neq('status', 'CANCELLED');
       if (orderFilters.salespersonId) baseQuery = baseQuery.eq('salesperson_id', orderFilters.salespersonId);
       if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) baseQuery = baseQuery.in('salesperson_id', orderFilters.salespersonIds);
@@ -698,10 +699,9 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     <SelectTrigger className="w-full md:w-[160px] h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Orders</SelectItem>
-                      <SelectItem value="high">🔴 Over 7 days</SelectItem>
-                      <SelectItem value="medium">🟠 Over 3 days</SelectItem>
-                      <SelectItem value="low">🔵 Under 3 days</SelectItem>
-                      <SelectItem value="low">🔵 Low</SelectItem>
+                      <SelectItem value="high">Over 7 days</SelectItem>
+                      <SelectItem value="medium">Over 3 days</SelectItem>
+                      <SelectItem value="low">Under 3 days</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

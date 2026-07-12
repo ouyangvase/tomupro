@@ -28,7 +28,10 @@ BEGIN
     ),
     'actionRequired', COUNT(*) FILTER (
       WHERE status != 'CANCELLED'
-      AND (salesperson_action_required = true OR runner_status = 'FAILED_DELIVERY')
+      AND (
+        (salesperson_action_required = true AND runner_status != 'DELIVERED')
+        OR (runner_status = 'FAILED_DELIVERY' AND status = 'READY')
+      )
     ),
     'deliveredOrders', COUNT(*) FILTER (WHERE runner_status = 'DELIVERED'),
     'cancelledOrders', COUNT(*) FILTER (WHERE status = 'CANCELLED')
@@ -137,7 +140,10 @@ BEGIN
     'cancelledOrders', COUNT(*) FILTER (WHERE status = 'CANCELLED'),
     'actionRequired', COUNT(*) FILTER (
       WHERE status != 'CANCELLED'
-      AND (salesperson_action_required = true OR runner_status = 'FAILED_DELIVERY')
+      AND (
+        (salesperson_action_required = true AND runner_status != 'DELIVERED')
+        OR (runner_status = 'FAILED_DELIVERY' AND status = 'READY')
+      )
     ),
     'teamRealizedGmv', COALESCE(SUM(total_amount) FILTER (WHERE runner_status = 'DELIVERED'), 0),
     'teamPipelineGmv', COALESCE(SUM(total_amount) FILTER (WHERE status IN ('BOOKING', 'READY')), 0),
@@ -180,7 +186,10 @@ BEGIN
     'deliveredOrders', COUNT(*) FILTER (WHERE runner_status = 'DELIVERED'),
     'actionRequired', COUNT(*) FILTER (
       WHERE status != 'CANCELLED'
-      AND (salesperson_action_required = true OR runner_status = 'FAILED_DELIVERY')
+      AND (
+        (salesperson_action_required = true AND runner_status != 'DELIVERED')
+        OR (runner_status = 'FAILED_DELIVERY' AND status = 'READY')
+      )
     ),
     'pendingClaimBatches', (SELECT COUNT(*) FROM claim_batches WHERE status = 'ADMIN_ACK_PENDING')
   ) INTO order_stats
@@ -225,28 +234,39 @@ DECLARE
   runner_inbox_count BIGINT := 0;
 BEGIN
   -- Action count (role-dependent)
+  -- Tightened: FAILED_DELIVERY only for READY orders; salesperson_action_required excludes DELIVERED
   IF p_role = 'admin' THEN
     SELECT COUNT(*) INTO action_count
     FROM orders
     WHERE status != 'CANCELLED'
-    AND (salesperson_action_required = true OR runner_status = 'FAILED_DELIVERY');
+    AND (
+      (salesperson_action_required = true AND runner_status != 'DELIVERED')
+      OR (runner_status = 'FAILED_DELIVERY' AND status = 'READY')
+    );
   ELSIF p_role = 'salesperson' THEN
     SELECT COUNT(*) INTO action_count
     FROM orders
     WHERE salesperson_id = p_user_id
     AND status != 'CANCELLED'
-    AND (salesperson_action_required = true OR runner_status = 'FAILED_DELIVERY');
+    AND (
+      (salesperson_action_required = true AND runner_status != 'DELIVERED')
+      OR (runner_status = 'FAILED_DELIVERY' AND status = 'READY')
+    );
   ELSIF p_role = 'runner' THEN
     SELECT COUNT(*) INTO action_count
     FROM orders
     WHERE runner_id = p_user_id
-    AND runner_status = 'FAILED_DELIVERY';
+    AND runner_status = 'FAILED_DELIVERY'
+    AND status = 'READY';
   ELSIF p_role = 'manager' AND p_visible_ids IS NOT NULL THEN
     SELECT COUNT(*) INTO action_count
     FROM orders
     WHERE salesperson_id = ANY(p_visible_ids)
     AND status != 'CANCELLED'
-    AND (salesperson_action_required = true OR runner_status = 'FAILED_DELIVERY');
+    AND (
+      (salesperson_action_required = true AND runner_status != 'DELIVERED')
+      OR (runner_status = 'FAILED_DELIVERY' AND status = 'READY')
+    );
   END IF;
 
   -- Claim batch count (admin only)

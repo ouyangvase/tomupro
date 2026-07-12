@@ -156,9 +156,11 @@ export function usePaginatedOrders(
         query = query.eq('salesperson_action_required', true);
       }
 
-      // Action-required: salesperson_action_required=true OR runner_status=FAILED_DELIVERY (non-cancelled)
+      // Action-required: tightened filter to exclude stale/resolved orders
+      // - FAILED_DELIVERY only for READY orders (not stale BOOKING ones)
+      // - salesperson_action_required excludes already-DELIVERED orders
       if (filters.actionRequired) {
-        query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+        query = query.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
         query = query.neq('status', 'CANCELLED');
       }
 
@@ -370,7 +372,7 @@ export function useAllOrderIds(
           query = query.eq('salesperson_action_required', true);
         }
         if (filters.actionRequired) {
-          query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+          query = query.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
           query = query.neq('status', 'CANCELLED');
         }
 
