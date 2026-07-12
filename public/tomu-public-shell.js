@@ -187,6 +187,40 @@
     }
   }
 
+  async function handleInterestSubmit(event) {
+    event.preventDefault();
+    var form = event.currentTarget;
+    var button = form.querySelector("button[type=submit]");
+    setMessage(form, "", "");
+    button.disabled = true;
+    button.textContent = "Sending...";
+    var payload = {
+      full_name: form.full_name.value.trim(),
+      company_name: form.company_name.value.trim(),
+      phone: form.phone.value.trim(),
+      email: form.email.value.trim(),
+      business_type: "website_homepage",
+      message: form.message.value.trim()
+    };
+    try {
+      var res = await fetch(SUPABASE_URL + "/functions/v1/submit-interest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Request failed.");
+      form.reset();
+      setMessage(form, "Your message has been sent. TOMUPRO will contact you soon.", "success");
+    } catch (err) {
+      setMessage(form, "We could not send this message. Please contact TOMUPRO on Instagram or email.", "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Send Message";
+    }
+  }
+
   function buildShell() {
     var shell = document.createElement("div");
     shell.id = "tomu-public-shell";
@@ -213,15 +247,16 @@
     return [
       '<section class="phero" id="home"><div class="phero-inner">',
       '  <div class="phero-text">',
-      '    <h1>Brunei Delivery &amp;<br>Logistics,<br><em>Made Simple</em></h1>',
-      '    <p class="phero-sub">Same-day parcel delivery, COD collection, fulfillment, and business logistics across Brunei.</p>',
-      '    <div class="phero-cta"><button class="pbtn pbtn-dark" data-open-auth="signup">Start Shipping <span>&rarr;</span></button><a href="#track" class="pbtn pbtn-outline-dark">Track Parcel</a></div>',
-      '    <div class="phero-trust"><span class="trust-dot"></span> Trusted across Brunei <span class="trust-sep">&bull;</span> Bandar Seri Begawan <span class="trust-sep">&bull;</span> Kuala Belait <span class="trust-sep">&bull;</span> Tutong <span class="trust-sep">&bull;</span> Muara</div>',
+      '    <div class="p-eyebrow"><span></span> Brunei Delivery Logistics Company</div>',
+      '    <h1>Delivery, COD<br>and Fulfillment<br><em>Across Brunei</em></h1>',
+      '    <p class="phero-sub">TOMUPRO helps Brunei businesses send parcels, manage warehouse fulfillment, collect cash on delivery, and track every order from pickup to doorstep.</p>',
+      '    <div class="phero-cta"><button class="pbtn pbtn-dark" data-open-auth="signup">Open Business Account <span>&rarr;</span></button><a href="#track" class="pbtn pbtn-outline-dark">Track Parcel</a></div>',
+      '    <div class="phero-trust"><span class="trust-dot"></span> Serving all Brunei districts <span class="trust-sep">&bull;</span> Brunei-Muara <span class="trust-sep">&bull;</span> Belait <span class="trust-sep">&bull;</span> Tutong <span class="trust-sep">&bull;</span> Temburong</div>',
       '  </div>',
       '  <div class="phero-visual">',
       '    <img src="/landing/truck-last-mile.jpg" alt="TOMUPRO delivery van in Brunei" class="phero-img" width="640" height="480">',
-      '    <div class="float-card fc-live"><div class="fc-dot-live"></div><div class="fc-body"><div class="fc-label">Live Tracking</div><div class="fc-title">Out for Delivery</div><div class="fc-meta">Order ORD-78456 &bull; Estimated 10:30 AM</div></div></div>',
-      '    <div class="float-card fc-done"><div class="fc-icon-done">&#10003;</div><div class="fc-body"><div class="fc-title-done">Delivered</div><div class="fc-meta">Order ORD-78455</div><div class="fc-meta">Delivered to customer</div></div><div class="fc-time">08:41 AM<br><small>Today</small></div></div>',
+      '    <div class="float-card fc-live"><div class="fc-dot-live"></div><div class="fc-body"><div class="fc-label">Live Dispatch</div><div class="fc-title">Out for Delivery</div><div class="fc-meta">BSB route 12 parcels active</div></div></div>',
+      '    <div class="float-card fc-done"><div class="fc-icon-done">&#10003;</div><div class="fc-body"><div class="fc-title-done">COD Collected</div><div class="fc-meta">Order ORD-78455</div><div class="fc-meta">Ready for payout report</div></div><div class="fc-time">08:41 AM<br><small>Today</small></div></div>',
       '  </div>',
       '</div></section>'
     ].join("");
@@ -239,19 +274,19 @@
 
   function buildServices() {
     return [
-      '<section id="services"><div class="wrap split"><div class="txt"><div class="eyebrow">Last-Mile Delivery</div><h2>From Small Parcels<br>to Bulky Loads</h2><p>An economical delivery service for small, large, heavy and irregular-sized parcels delivered by car, van or pick-up, up to 500 kg, from just BND 2.</p><div class="svc-tags"><span class="svc-tag">Last-Mile Delivery</span><span class="svc-tag">Warehousing</span><span class="svc-tag">COD Management</span></div><a href="#contact" class="btn btn-line">Learn More</a></div><div class="media photo-card"><img src="/landing/truck-last-mile.jpg" alt="TOMUPRO last-mile delivery truck" width="560" height="400"><div class="photo-overlay"><div class="photo-tag">Last-Mile &mdash; Brunei-wide</div></div></div></div></section>'
+      '<section id="services"><div class="wrap split"><div class="txt"><div class="eyebrow">Last-Mile Delivery</div><h2>From Small Parcels<br>to Bulky Loads</h2><p>An economical delivery service for small, large, heavy and irregular-sized parcels delivered by car, van or pick-up across Brunei.</p><div class="svc-tags"><span class="svc-tag">Same-day Delivery</span><span class="svc-tag">Warehousing</span><span class="svc-tag">COD Management</span></div><a href="#contact" class="btn btn-line">Talk to TOMUPRO</a></div><div class="media photo-card"><img src="/landing/truck-last-mile.jpg" alt="TOMUPRO last-mile delivery truck" width="560" height="400"><div class="photo-overlay"><div class="photo-tag">Last-mile delivery in Brunei</div></div></div></div></section>'
     ].join("");
   }
 
   function buildDashboard() {
     return [
-      '<section id="dashboard" class="section-alt"><div class="wrap split rev"><div class="screen screen-lg"><div class="screen-bar"><span></span><span></span><span></span></div><img src="/landing/dashboard-merchant.jpg" alt="TOMUPRO merchant dashboard" width="560" height="380"></div><div class="txt"><div class="eyebrow">Merchant Cloud System</div><h2>Track Every Delivery<br>in One Place</h2><p>One-stop solution for merchants to manage orders, routes, pickups and drop-offs. See every shipment live from one dashboard.</p><div class="check-list"><div class="check-item"><span class="check-mark">&#10003;</span> Real-time parcel tracking</div><div class="check-item"><span class="check-mark">&#10003;</span> AI route optimization</div><div class="check-item"><span class="check-mark">&#10003;</span> Driver and fleet management</div></div><button class="btn btn-line" data-open-auth="login">Merchant Login</button></div></div></section>'
+      '<section id="dashboard" class="section-alt"><div class="wrap split rev"><div class="screen screen-lg"><div class="screen-bar"><span></span><span></span><span></span></div><img src="/landing/dashboard-merchant.jpg" alt="TOMUPRO merchant dashboard for Brunei delivery orders" width="560" height="380"></div><div class="txt"><div class="eyebrow">Merchant Operations System</div><h2>Track Every Delivery<br>in One Place</h2><p>One system for Brunei merchants to manage orders, routes, pickups, drop-offs, runner assignment, and customer delivery status.</p><div class="check-list"><div class="check-item"><span class="check-mark">&#10003;</span> Real-time parcel tracking</div><div class="check-item"><span class="check-mark">&#10003;</span> AI route optimization</div><div class="check-item"><span class="check-mark">&#10003;</span> Runner, driver and team management</div></div><button class="btn btn-line" data-open-auth="login">Merchant Login</button></div></div></section>'
     ].join("");
   }
 
   function buildCod() {
     return [
-      '<section id="cod"><div class="wrap split"><div class="txt"><div class="eyebrow">COD Payout &amp; Finance</div><h2>Cash on Delivery,<br>Settled Weekly</h2><p>Collect cash on delivery and get paid straight to your bank account every week. Track collections, reconciliation and payouts with no manual matching.</p><div class="check-list"><div class="check-item"><span class="check-mark">&#10003;</span> Automated reconciliation</div><div class="check-item"><span class="check-mark">&#10003;</span> Weekly bank transfers</div><div class="check-item"><span class="check-mark">&#10003;</span> Full payment reports</div></div></div><div class="screen screen-lg"><div class="screen-bar"><span></span><span></span><span></span></div><img src="/landing/dashboard-cod.jpg" alt="TOMUPRO COD payout dashboard" width="560" height="380"></div></div></section>'
+      '<section id="cod"><div class="wrap split"><div class="txt"><div class="eyebrow">COD Payout &amp; Finance</div><h2>Cash on Delivery,<br>Settled Clearly</h2><p>Collect cash on delivery in Brunei and keep finance visible. Track collection status, runner handover, reconciliation, and payout reports without manual matching.</p><div class="check-list"><div class="check-item"><span class="check-mark">&#10003;</span> Automated reconciliation</div><div class="check-item"><span class="check-mark">&#10003;</span> COD collection visibility</div><div class="check-item"><span class="check-mark">&#10003;</span> Full payment reports</div></div></div><div class="screen screen-lg"><div class="screen-bar"><span></span><span></span><span></span></div><img src="/landing/dashboard-cod.jpg" alt="TOMUPRO COD payout dashboard for Brunei delivery businesses" width="560" height="380"></div></div></section>'
     ].join("");
   }
 
@@ -279,7 +314,7 @@
 
   function buildTrack() {
     return [
-      '<section class="full" id="track"><div class="full-bg"></div><div class="full-overlay"></div><div class="full-inner wrap"><div class="eyebrow" style="color:#D4AF37;text-align:center">Fulfillment Center</div><h2>Warehouse, Pick &amp; Pack,<br>Last-Mile Delivery</h2><p>Get warehouse space in Brunei. We handle storage, picking, packing and final delivery.</p></div><div class="track-wrap"><h3>Track Your Parcel</h3><div class="track-row"><input type="text" data-track-input placeholder="Enter tracking number..."><button class="btn btn-primary" data-track-button>Track</button></div><div class="track-eg">Example: 310724636</div><div class="track-result" data-track-result></div></div></section>'
+      '<section class="full" id="track"><div class="full-bg"></div><div class="full-overlay"></div><div class="full-inner wrap"><div class="eyebrow" style="color:#D4AF37;text-align:center">Fulfillment Center</div><h2>Warehouse, Pick &amp; Pack,<br>Last-Mile Delivery</h2><p>Get warehouse space in Brunei. We handle storage, picking, packing and final delivery for online shops and local businesses.</p></div><div class="track-wrap"><h3>Track Your Parcel</h3><div class="track-row"><input type="text" data-track-input placeholder="Enter tracking number..."><button class="btn btn-primary" data-track-button>Track</button></div><div class="track-eg">Example: 310724636</div><div class="track-result" data-track-result></div></div></section>'
     ].join("");
   }
 
@@ -297,21 +332,21 @@
 
   function buildContact() {
     return [
-      '<section id="contact"><div class="wrap contact-grid"><div class="contact-head"><div class="eyebrow">Get In Touch</div><h2>Contact Us</h2><div class="cinfo"><div class="lbl">Phone</div><a href="tel:+6738136587">+673 813 6587</a></div><div class="cinfo"><div class="lbl">Instagram</div><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer">@tomupro</a></div><div class="cinfo"><div class="lbl">Email</div><a href="mailto:info@tomupro.com">info@tomupro.com</a></div><div class="cinfo"><div class="lbl">Address</div><div class="addr">Sengkurong Commercial Center,<br>Mukim Sengkurong, Bandar Seri Begawan,<br>Brunei-Muara</div></div></div><div class="form"><div class="field"><label>Your Name</label><input type="text"></div><div class="field"><label>Your Email</label><input type="email"></div><div class="field"><label>Your Message</label><textarea rows="5"></textarea></div><button class="btn btn-primary" type="button">Send Message</button></div></div></section>'
+      '<section id="contact"><div class="wrap contact-grid"><div class="contact-head"><div class="eyebrow">Get In Touch</div><h2>Start Delivery With TOMUPRO</h2><div class="cinfo"><div class="lbl">Phone</div><a href="tel:+6738136587">+673 813 6587</a></div><div class="cinfo"><div class="lbl">Instagram</div><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer">@tomupro</a></div><div class="cinfo"><div class="lbl">Email</div><a href="mailto:hello@tomu.my">hello@tomu.my</a></div><div class="cinfo"><div class="lbl">Address</div><div class="addr">Sengkurong Commercial Center,<br>Mukim Sengkurong, Bandar Seri Begawan,<br>Brunei-Muara</div></div></div><form class="form" data-interest-form><div class="field"><label>Your Name</label><input name="full_name" type="text" required placeholder="Your full name"></div><div class="field"><label>Company</label><input name="company_name" type="text" placeholder="Business or shop name"></div><div class="field"><label>Phone</label><input name="phone" type="tel" placeholder="+673 xxx xxxx"></div><div class="field"><label>Your Email</label><input name="email" type="email" required placeholder="you@company.com"></div><div class="field"><label>What do you need?</label><textarea name="message" rows="5" placeholder="Delivery, COD, warehouse fulfillment, or business logistics..."></textarea></div><div data-form-message class="public-form-message"></div><button class="btn btn-primary" type="submit">Send Message</button></form></div></section>'
     ].join("");
   }
 
   function buildFooter() {
     return [
-      '<footer><div class="wrap foot"><div class="fbrand"><div class="fbrand-top"><img class="fgriffin" src="/landing/logo-griffin.png" alt="TOMUPRO" width="32" height="32"><b>TOMU<span>PRO</span></b></div><p>A one-stop solution for Brunei delivery operations.</p></div><div><h5>Quick Links</h5><div class="frow2"><a href="#services">Services</a></div><div class="frow2"><a href="#features">Features</a></div><div class="frow2"><a href="#track">Track Parcel</a></div><div class="frow2"><a href="/blog">Blog</a></div></div><div><h5>Contact</h5><div class="frow2"><a href="mailto:info@tomupro.com">info@tomupro.com</a></div><div class="frow2"><a href="tel:+6738136587">+673 813 6587</a></div><div class="frow2"><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer">Instagram @tomupro</a></div></div></div><div class="foot-bottom">2026 TOMUPRO Brunei. All rights reserved.</div></footer>'
+      '<footer><div class="wrap foot"><div class="fbrand"><div class="fbrand-top"><img class="fgriffin" src="/landing/logo-griffin.png" alt="TOMUPRO" width="32" height="32"><b>TOMU<span>PRO</span></b></div><p>A one-stop solution for Brunei delivery operations.</p></div><div><h5>Quick Links</h5><div class="frow2"><a href="#services">Services</a></div><div class="frow2"><a href="#features">Features</a></div><div class="frow2"><a href="#track">Track Parcel</a></div><div class="frow2"><a href="/blog">Blog</a></div></div><div><h5>Contact</h5><div class="frow2"><a href="mailto:hello@tomu.my">hello@tomu.my</a></div><div class="frow2"><a href="tel:+6738136587">+673 813 6587</a></div><div class="frow2"><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer">Instagram @tomupro</a></div></div></div><div class="foot-bottom">2026 TOMUPRO Brunei. All rights reserved.</div></footer>'
     ].join("");
   }
 
   function buildAuthModal() {
     return [
-      '<div class="public-auth-modal" data-public-auth-modal aria-hidden="true"><div class="public-auth-backdrop" data-close-auth></div><div class="public-auth-card"><button class="public-auth-close" data-close-auth aria-label="Close">&times;</button><div class="public-auth-layout"><div class="public-auth-visual"><img src="/landing/auth-premium-visual.png" alt="TOMUPRO access"><div class="public-auth-visual-shade"></div><div class="public-auth-proof"><span>TOMUPRO Access</span><strong>Welcome <em>Back</em></strong><p>Sign in to continue managing your deliveries, tracking orders and growing your business.</p></div></div><div class="public-auth-panel"><div class="public-auth-tabs"><button data-auth-tab="login" class="active">Log In</button><button data-auth-tab="signup">Get Started</button></div>',
+      '<div class="public-auth-modal" data-public-auth-modal aria-hidden="true"><div class="public-auth-backdrop" data-close-auth></div><div class="public-auth-card"><button class="public-auth-close" data-close-auth aria-label="Close">&times;</button><div class="public-auth-layout"><div class="public-auth-visual"><img src="/landing/auth-premium-visual.png" alt="TOMUPRO logistics access for Brunei delivery businesses"><div class="public-auth-visual-shade"></div><div class="public-auth-proof"><span>Brunei Logistics Access</span><strong>Run Delivery <em>Better</em></strong><p>Sign in to manage parcels, runners, COD collection, fulfillment inventory, and delivery performance across Brunei.</p></div></div><div class="public-auth-panel"><div class="public-auth-tabs"><button data-auth-tab="login" class="active">Log In</button><button data-auth-tab="signup">Get Started</button></div>',
       '<form data-auth-panel="login" data-login-form><label>Email<input name="email" type="email" required placeholder="Enter your email address"></label><label>Password<input name="password" type="password" required placeholder="Enter your password"></label><div class="public-auth-forgot"><a href="#" data-forgot-password>Forgot Password?</a></div><div data-form-message class="public-form-message"></div><button type="submit" class="public-auth-submit">Sign In &rarr;</button></form>',
-      '<form data-auth-panel="signup" data-signup-form hidden><label>Display Name<input name="display_name" type="text" required placeholder="John Doe"></label><label>Email<input name="email" type="email" required placeholder="Enter your email address"></label><label>Password<input name="password" type="password" required minlength="8" placeholder="Minimum 8 characters"></label><label>Admin Code <span>Optional</span><input name="invite_code" type="text" placeholder="TOMU-SP-XXXX"></label><div data-form-message class="public-form-message"></div><button type="submit" class="public-auth-submit">Create Account &rarr;</button></form>',
+      '<form data-auth-panel="signup" data-signup-form hidden><label>Display Name<input name="display_name" type="text" required placeholder="Your name"></label><label>Email<input name="email" type="email" required placeholder="Enter your email address"></label><label>Password<input name="password" type="password" required minlength="8" placeholder="Minimum 8 characters"></label><label>Admin Code <span>Optional</span><input name="invite_code" type="text" placeholder="TOMU-SP-XXXX"></label><div data-form-message class="public-form-message"></div><button type="submit" class="public-auth-submit">Create Account &rarr;</button></form>',
       '</div></div></div></div>'
     ].join("");
   }
@@ -334,9 +369,11 @@
     var login = document.querySelector("[data-login-form]");
     var signup = document.querySelector("[data-signup-form]");
     var track = document.querySelector("[data-track-button]");
+    var interest = document.querySelector("[data-interest-form]");
     if (login) login.addEventListener("submit", handleLogin);
     if (signup) signup.addEventListener("submit", handleSignup);
     if (track) track.addEventListener("click", trackParcel);
+    if (interest) interest.addEventListener("submit", handleInterestSubmit);
     var forgotLink = document.querySelector("[data-forgot-password]");
     if (forgotLink) forgotLink.addEventListener("click", handleForgotPassword);
     var mobileToggle = document.querySelector("#tomu-public-shell .pmobile-toggle");
