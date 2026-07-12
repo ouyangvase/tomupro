@@ -46,6 +46,7 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
   // Auto Reschedule fields
   const [autoRescheduleRemark, setAutoRescheduleRemark] = useState('');
   const [autoRescheduleDate, setAutoRescheduleDate] = useState<Date | undefined>(undefined);
+  const [autoRescheduleRunnerId, setAutoRescheduleRunnerId] = useState<string>('');
 
   // Convert to Booking fields
   const [newDate, setNewDate] = useState<Date | undefined>(undefined);
@@ -75,6 +76,7 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
     setResolutionType(null);
     setAutoRescheduleRemark('');
     setAutoRescheduleDate(undefined);
+    setAutoRescheduleRunnerId('');
     setNewDate(undefined);
     setBookingRemark('');
     setCancelReasonId('');
@@ -106,6 +108,12 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           return;
         }
 
+        // Determine runner assignment
+        const selectedRunnerId = (autoRescheduleRunnerId && autoRescheduleRunnerId !== '__none__') ? autoRescheduleRunnerId : null;
+        const selectedRunnerName = selectedRunnerId
+          ? boundRunners.find(r => r.id === selectedRunnerId)?.display_name || 'Unknown'
+          : null;
+
         // Record the salesperson decision in reschedule history
         await supabase.from('reschedule_history').insert({
           order_id: order.id,
@@ -113,7 +121,7 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           from_status: order.operational_status || order.status,
           to_status: 'BOOKING_AUTO_RESCHEDULE',
           next_delivery_date: rescheduleDate,
-          comment: `${hasRunnerDate ? 'Confirmed' : 'Set'} auto-reschedule to ${rescheduleDate}: ${autoRescheduleRemark || 'No comment'}`,
+          comment: `${hasRunnerDate ? 'Confirmed' : 'Set'} auto-reschedule to ${rescheduleDate}${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || 'No comment'}`,
           rescheduled_by: profile.id,
         });
 
@@ -125,9 +133,9 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           next_delivery_date: rescheduleDate,
           salesperson_action_required: false,
           salesperson_action_type: 'RESCHEDULE_DELIVERY',
-          last_status_note: `Auto-reschedule confirmed for ${rescheduleDate}: ${autoRescheduleRemark || ''}`,
-          runner_status: 'UNASSIGNED',
-          runner_id: null,
+          last_status_note: `Auto-reschedule confirmed for ${rescheduleDate}${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || ''}`,
+          runner_status: selectedRunnerId ? 'ASSIGNED' : 'UNASSIGNED',
+          runner_id: selectedRunnerId,
           driver_id: null,
           driver_status: null,
           reschedule_flag: true,
@@ -473,9 +481,27 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
                 </PopoverContent>
               </Popover>
             </div>
-            <p className="text-sm text-muted-foreground">
-              The order will move to Booking and auto-assign to a runner on the selected date.
-            </p>
+            <div className="space-y-2">
+              <Label>Assign Runner (Optional)</Label>
+              <Select value={autoRescheduleRunnerId} onValueChange={setAutoRescheduleRunnerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Auto-assign on scheduled date" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Auto-assign on scheduled date</SelectItem>
+                  {boundRunners.map((runner) => (
+                    <SelectItem key={runner.id} value={runner.id}>
+                      {runner.display_name || runner.email || 'Unknown Runner'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {autoRescheduleRunnerId && autoRescheduleRunnerId !== '__none__'
+                  ? 'Runner will be pre-assigned when the order converts to Ready.'
+                  : 'Runner will be auto-assigned from bindings when the order converts to Ready on the scheduled date.'}
+              </p>
+            </div>
             <div className="space-y-2">
               <Label>Note (Optional)</Label>
               <Textarea

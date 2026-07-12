@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCancelReasons } from '@/hooks/useCancelReasons';
+import { useBindings } from '@/hooks/useBindings';
 import { useUpdateOrder } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -57,6 +58,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
   // Auto Reschedule fields
   const [autoRescheduleRemark, setAutoRescheduleRemark] = useState('');
   const [bulkRescheduleDate, setBulkRescheduleDate] = useState<Date | undefined>(undefined);
+  const [bulkRescheduleRunnerId, setBulkRescheduleRunnerId] = useState<string>('');
 
   // Convert to Booking fields
   const [newDate, setNewDate] = useState<Date | undefined>(undefined);
@@ -69,6 +71,13 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
 
   // Fetch cancel reasons from cancel_reasons table
   const { data: cancelReasons = [] } = useCancelReasons(true);
+
+  // Fetch bound runners for this salesperson
+  const { data: bindings = [] } = useBindings({ salespersonId: profile?.id, active: true });
+
+  const boundRunners = useMemo(() => {
+    return bindings.map(b => b.runner).filter(Boolean);
+  }, [bindings]);
 
   // Auto-select Auto Reschedule when dialog opens and orders have reschedule dates
   useEffect(() => {
@@ -101,6 +110,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
     setResolutionType(null);
     setAutoRescheduleRemark('');
     setBulkRescheduleDate(undefined);
+    setBulkRescheduleRunnerId('');
     setNewDate(undefined);
     setBookingRemark('');
     setCancelReasonId('');
@@ -124,6 +134,12 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
       const now = new Date().toISOString();
 
       if (resolutionType === 'AUTO_RESCHEDULE') {
+        // Determine runner assignment for all orders
+        const selectedRunnerId = (bulkRescheduleRunnerId && bulkRescheduleRunnerId !== '__none__') ? bulkRescheduleRunnerId : null;
+        const selectedRunnerName = selectedRunnerId
+          ? boundRunners.find(r => r.id === selectedRunnerId)?.display_name || 'Unknown'
+          : null;
+
         for (const order of orders) {
           // Use user-selected date, or fall back to runner's suggested date
           const rescheduleDate = bulkRescheduleDate
@@ -148,7 +164,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               from_status: order.operational_status || order.status,
               to_status: 'BOOKING_AUTO_RESCHEDULE',
               next_delivery_date: rescheduleDate,
-              comment: `Auto-reschedule confirmed: ${autoRescheduleRemark || 'Bulk action'}`,
+              comment: `Auto-reschedule confirmed${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || 'Bulk action'}`,
               rescheduled_by: profile.id,
             });
 
@@ -159,9 +175,9 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
               next_delivery_date: rescheduleDate,
               salesperson_action_required: false,
               salesperson_action_type: 'RESCHEDULE_DELIVERY',
-              last_status_note: `Auto-reschedule confirmed for ${rescheduleDate}`,
-              runner_status: 'UNASSIGNED',
-              runner_id: null,
+              last_status_note: `Auto-reschedule confirmed for ${rescheduleDate}${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}`,
+              runner_status: selectedRunnerId ? 'ASSIGNED' : 'UNASSIGNED',
+              runner_id: selectedRunnerId,
               driver_id: null,
               driver_status: null,
               reschedule_flag: true,
@@ -581,6 +597,27 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
                 All {ordersWithRescheduleDate.length} order(s) have runner-suggested dates and will be auto-rescheduled.
               </p>
             )}
+            <div className="space-y-2">
+              <Label>Assign Runner (Optional)</Label>
+              <Select value={bulkRescheduleRunnerId} onValueChange={setBulkRescheduleRunnerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Auto-assign on scheduled date" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Auto-assign on scheduled date</SelectItem>
+                  {boundRunners.map((runner) => (
+                    <SelectItem key={runner.id} value={runner.id}>
+                      {runner.display_name || runner.email || 'Unknown Runner'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {bulkRescheduleRunnerId && bulkRescheduleRunnerId !== '__none__'
+                  ? 'Runner will be pre-assigned to all orders when they convert to Ready.'
+                  : 'Runners will be auto-assigned from bindings when orders convert to Ready on the scheduled date.'}
+              </p>
+            </div>
             <div className="space-y-2">
               <Label>Note (Optional)</Label>
               <Textarea
