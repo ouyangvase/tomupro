@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { format, parseISO, isToday, isThisWeek, isThisMonth } from 'date-fns';
+import { format, parseISO, isToday, isThisWeek, isThisMonth, differenceInDays } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -81,20 +81,18 @@ function needsSalespersonAction(order: Order): boolean {
 }
 
 function getOrderPriority(order: Order): 'high' | 'medium' | 'low' {
-  const source = getActionSource(order);
-  if (source === 'FAILED_DELIVERY') return 'high';
-  if (source === 'RESCHEDULED' && order.next_delivery_date) {
-    const nextDate = parseISO(order.next_delivery_date);
-    if (isToday(nextDate) || nextDate < new Date()) return 'high';
-    return 'medium';
-  }
+  // Priority based on how many days the order has been pending action
+  const refDate = order.updated_at || order.created_at;
+  const daysPending = differenceInDays(new Date(), new Date(refDate));
+  if (daysPending >= 7) return 'high';
+  if (daysPending >= 3) return 'medium';
   return 'low';
 }
 
 const priorityConfig = {
-  high: { label: 'High', color: 'bg-destructive/10 text-destructive border-destructive/30', dot: 'bg-destructive' },
-  medium: { label: 'Medium', color: 'bg-[hsl(var(--status-warning)/0.1)] text-[hsl(var(--status-warning))] border-[hsl(var(--status-warning)/0.3)]', dot: 'bg-[hsl(var(--status-warning))]' },
-  low: { label: 'Low', color: 'bg-primary/10 text-primary border-primary/30', dot: 'bg-primary' },
+  high: { label: 'Over 7 days', color: 'bg-destructive/10 text-destructive border-destructive/30', dot: 'bg-destructive' },
+  medium: { label: 'Over 3 days', color: 'bg-[hsl(var(--status-warning)/0.1)] text-[hsl(var(--status-warning))] border-[hsl(var(--status-warning)/0.3)]', dot: 'bg-[hsl(var(--status-warning))]' },
+  low: { label: 'Under 3 days', color: 'bg-primary/10 text-primary border-primary/30', dot: 'bg-primary' },
 };
 
 type TimeFilter = 'all' | 'today' | 'week' | 'month';
@@ -207,13 +205,37 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   const canViewAll = role === 'admin';
   const canViewGroup = role === 'manager';
 
-  // ── Filter orders ──
-  // Server-side now handles: actionRequired=true + salesperson visibility (via salespersonIds)
-  // Client-side applies: needsSalespersonAction check, source/priority/time/search filters
-  const actionRequiredOrders = useMemo(() => {
-    let filtered = allOrders.filter(order => needsSalespersonAction(order));
+  // ── Server-side stats query (accurate totals across all pages) ──
+  const { data: serverStats } = useQuery({
+    queryKey: ['action-required-stats', orderFilters.salespersonId, orderFilters.salespersonIds],
+    queryFn: async () => {
+      // Build base filter matching the server-side actionRequired filter
+      let baseQuery = supabase.from('orders').select('id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required, updated_at, created_at', { count: 'exact', head: false });
+      baseQuery = baseQuery.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+      baseQuery = baseQuery.neq('status', 'CANCELLED');
+      if (orderFilters.salespersonId) baseQuery = baseQuery.eq('salesperson_id', orderFilters.salespersonId);
+      if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) baseQuery = baseQuery.in('salesperson_id', orderFilters.salespersonIds);
+      const { data, count } = await baseQuery;
+      if (!data) return { total: 0, failed: 0, rescheduled: 0, flagged: 0, highPriority: 0 };
+      let failed = 0, rescheduled = 0, flagged = 0, highPriority = 0;
+      for (const o of data) {
+        const rs = o.runner_status as string;
+        if (rs === 'FAILED_DELIVERY') { failed++; }
+        else if (o.next_delivery_date) { rescheduled++; }
+        else if (o.runner_failed_reason_id || o.runner_comment) { flagged++; }
+        const refDate = o.updated_at || o.created_at;
+        if (differenceInDays(new Date(), new Date(refDate)) >= 7) highPriority++;
+      }
+      return { total: count || data.length, failed, rescheduled, flagged, highPriority };
+    },
+    staleTime: 30000,
+  });
 
-    // No client-side team filtering needed — server-side orderFilters already scope by team/member/my
+  const stats = serverStats || { total: pagination.totalCount || 0, failed: 0, rescheduled: 0, flagged: 0, highPriority: 0 };
+
+  // ── Filter orders (page-level filters only, no redundant re-filtering) ──
+  const actionRequiredOrders = useMemo(() => {
+    let filtered = [...allOrders];
 
     if (salespersonFilter !== 'all') filtered = filtered.filter(o => o.salesperson_id === salespersonFilter);
     if (sourceFilter !== 'all') filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
@@ -236,7 +258,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   }, [allOrders, sourceFilter, salespersonFilter, timeFilter, priorityFilter]);
 
   // ── Salesperson filter data ──
-  const salespersonIds = useMemo(() => [...new Set(allOrders.filter(o => needsSalespersonAction(o)).map(o => o.salesperson_id))], [allOrders]);
+  const salespersonIds = useMemo(() => [...new Set(allOrders.map(o => o.salesperson_id))], [allOrders]);
   const { data: salespersons = [] } = useQuery({
     queryKey: ['salespersons-for-filter', salespersonIds],
     queryFn: async () => {
@@ -266,16 +288,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     return map;
   }, [reasons]);
 
-  // ── Stats ──
-  const stats = useMemo(() => ({
-    total: actionRequiredOrders.length,
-    failed: actionRequiredOrders.filter(o => getActionSource(o) === 'FAILED_DELIVERY').length,
-    rescheduled: actionRequiredOrders.filter(o => getActionSource(o) === 'RESCHEDULED').length,
-    flagged: actionRequiredOrders.filter(o => getActionSource(o) === 'RUNNER_FLAGGED' || getActionSource(o) === 'MANUAL').length,
-    highPriority: actionRequiredOrders.filter(o => getOrderPriority(o) === 'high').length,
-  }), [actionRequiredOrders]);
-
-  const priorityQueue = useMemo(() => actionRequiredOrders.filter(o => getOrderPriority(o) === 'high').slice(0, 6), [actionRequiredOrders]);
+  const priorityQueue = useMemo(() => allOrders.filter(o => getOrderPriority(o) === 'high').slice(0, 6), [allOrders]);
 
   // ── Selection handlers ──
   const handleActionClick = (order: Order) => { setSelectedOrder(order); setActionDialogOpen(true); };
@@ -349,7 +362,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     Operations Command Center
                   </h1>
                   <p className="text-sm md:text-base text-muted-foreground mt-0.5">
-                    {pagination.totalCount || stats.total} order{(pagination.totalCount || stats.total) !== 1 ? 's' : ''} requiring attention today
+                    {stats.total} order{stats.total !== 1 ? 's' : ''} requiring attention
                   </p>
                 </div>
               </div>
@@ -487,7 +500,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                 </div>
                 <div>
                   <AnimatedCounter value={stats.highPriority} className="text-2xl font-bold text-destructive" />
-                  <p className="text-xs text-muted-foreground">High Priority</p>
+                  <p className="text-xs text-muted-foreground">Over 7 Days</p>
                 </div>
               </div>
               <p className="text-[10px] text-muted-foreground">Needs immediate attention</p>
@@ -520,10 +533,10 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Flame className="h-4 w-4 text-destructive" />
-                  Priority Queue
+                  Overdue Orders
                   <Badge variant="destructive" className="ml-1 text-xs">{priorityQueue.length}</Badge>
                 </CardTitle>
-                <p className="text-xs text-muted-foreground">Urgent orders needing immediate action</p>
+                <p className="text-xs text-muted-foreground">Orders pending over 7 days — needs immediate action</p>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
@@ -680,13 +693,14 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                 </div>
 
                 <div className="flex-1 md:flex-none">
-                  <Label className="text-xs text-muted-foreground">Priority</Label>
+                  <Label className="text-xs text-muted-foreground">Overdue</Label>
                   <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                    <SelectTrigger className="w-full md:w-[140px] h-9"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full md:w-[160px] h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Priority</SelectItem>
-                      <SelectItem value="high">🔴 High</SelectItem>
-                      <SelectItem value="medium">🟠 Medium</SelectItem>
+                      <SelectItem value="all">All Orders</SelectItem>
+                      <SelectItem value="high">🔴 Over 7 days</SelectItem>
+                      <SelectItem value="medium">🟠 Over 3 days</SelectItem>
+                      <SelectItem value="low">🔵 Under 3 days</SelectItem>
                       <SelectItem value="low">🔵 Low</SelectItem>
                     </SelectContent>
                   </Select>
