@@ -324,15 +324,16 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
           image={capybaraSales}
           imageAlt="Capybara dispatcher"
           actions={
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center md:w-auto">
               <TeamViewToggle
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 selectedMember={selectedMember}
                 onMemberChange={setSelectedMember}
+                className="w-full md:w-auto"
               />
               {isEditable && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <CalculateStockButton
                     orders={orders}
                     selectedOrderIds={selectedRows}

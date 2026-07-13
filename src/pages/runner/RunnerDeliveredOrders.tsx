@@ -913,7 +913,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
           image={capybaraRunner}
           imageAlt="Runner capybara"
           actions={
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex w-full min-w-0 flex-col gap-3 md:w-auto md:flex-row md:flex-wrap md:items-center md:gap-2">
               {(canExport || role === 'runner') && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -938,6 +938,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                 onViewModeChange={setViewMode}
                 selectedMember={selectedMember}
                 onMemberChange={setSelectedMember}
+                className="w-full md:w-auto"
               />
               <DataScopeSelector value={dataSharingView} onChange={setDataSharingView} scope="delivered_orders" />
             </div>
