@@ -47,7 +47,19 @@ export const useAuth = () => {
   return context;
 };
 
-const PROJECT_ID = 'dtcchduronwsyunyakxj';
+const getSupabaseProjectRef = () => {
+  try {
+    return new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split('.')[0] || 'dtcchduronwsyunyakxj';
+  } catch {
+    return 'dtcchduronwsyunyakxj';
+  }
+};
+
+const SUPABASE_PROJECT_REF = getSupabaseProjectRef();
+const PROFILE_FETCH_TIMEOUT_MS = 15000;
+const PROFILE_FETCH_MAX_RETRIES = 2;
+const PROFILE_FETCH_BASE_DELAY_MS = 700;
+const AUTH_LOADING_TIMEOUT_MS = 15000;
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -72,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Clear stale tokens function - used when session refresh fails
   const clearAuthState = useCallback(() => {
-    localStorage.removeItem(`sb-${PROJECT_ID}-auth-token`);
+    localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     sessionStorage.clear();
     setUser(null);
@@ -94,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Sign out error during account disable:', error);
     }
 
-    localStorage.removeItem(`sb-${PROJECT_ID}-auth-token`);
+    localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     sessionStorage.clear();
 
@@ -106,117 +118,116 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Stable fetchProfile — does NOT depend on any changing state (uses refs instead)
-  const fetchProfile = useCallback(async (userId: string, retryCount = 0): Promise<void> => {
-    const maxRetries = 1;
-    const baseDelay = 500;
-    const fetchTimeout = 3000;
+  const fetchProfile = useCallback(async (userId: string, options?: { force?: boolean }): Promise<void> => {
+    if (!userId) return;
 
-    // Prevent duplicate concurrent fetches
-    if (retryCount === 0 && isFetchingRef.current) {
-      return;
-    }
-    if (retryCount === 0) {
-      isFetchingRef.current = true;
-    }
-
-    if (retryCount === 0) {
-      setProfileStatus('loading');
-      setProfileError(null);
-    }
-
-    const fetchWithTimeout = async (): Promise<{ data: ExtendedProfile | null; error: any }> => {
-      const timeoutPromise = new Promise<{ data: null; error: { message: string } }>((resolve) => {
-        setTimeout(() => resolve({ data: null, error: { message: 'Request timed out' } }), fetchTimeout);
-      });
-
-      const fetchPromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
-        .then(({ data, error }) => ({ data: data as ExtendedProfile | null, error }));
-
-      return Promise.race([fetchPromise, timeoutPromise]);
-    };
-
-    const { data, error } = await fetchWithTimeout();
-
-    // Retry on transient errors
-    if (error && retryCount < maxRetries) {
-      const delay = baseDelay * Math.pow(2, retryCount);
-      console.warn(`[Auth] Profile fetch failed (attempt ${retryCount + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return fetchProfile(userId, retryCount + 1);
-    }
-
-    if (error) {
-      console.error('[Auth] Profile fetch failed after all retries:', error);
-      isFetchingRef.current = false;
-      // If we get an auth error, clear the session
-      if (error.message?.includes('JWT') || error.code === 'PGRST301') {
-        clearAuthState();
-        setLoading(false);
-        return;
-      }
-      setProfileStatus('error');
-      setProfileError(error.message || 'Failed to load profile after multiple attempts');
+    // Prevent duplicate concurrent fetches, unless the user explicitly retries.
+    if (!options?.force && isFetchingRef.current) {
       return;
     }
 
-    if (!data) {
-      console.warn('[Auth] No profile row found for user:', userId);
-      isFetchingRef.current = false;
-      setProfileStatus('missing');
-      setProfileError('No profile found for your account');
-      return;
-    }
-
-    const newProfile = data as ExtendedProfile;
-
-    // Check if account is disabled or resigned
-    if (newProfile.status && newProfile.status !== 'active') {
-      isFetchingRef.current = false;
-      await handleAccountDisabled(
-        newProfile.status === 'resigned'
-          ? 'Your account has been marked as resigned. Please contact admin.'
-          : 'Your account has been disabled. Please contact admin.'
-      );
-      return;
-    }
-
-    // Check if password reset is required
-    if (newProfile.force_password_reset) {
-      isFetchingRef.current = false;
-      previousRoleRef.current = newProfile.role;
-      setProfile(newProfile);
-      setProfileStatus('password_reset_required');
-      setProfileError(null);
-      return;
-    }
-
-    // Check if role changed while session is active (use ref, not state)
-    if (previousRoleRef.current && previousRoleRef.current !== newProfile.role) {
-      setRoleChanged(true);
-    }
-
-    isFetchingRef.current = false;
-    previousRoleRef.current = newProfile.role;
-    setProfile(newProfile);
-    setProfileStatus('ready');
+    isFetchingRef.current = true;
+    setProfileStatus('loading');
     setProfileError(null);
+
+    try {
+      let lastError: any = null;
+
+      for (let attempt = 0; attempt <= PROFILE_FETCH_MAX_RETRIES; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS);
+
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle()
+            .abortSignal(controller.signal);
+
+          window.clearTimeout(timeoutId);
+
+          if (!error) {
+            if (!data) {
+              console.warn('[Auth] No profile row found for user:', userId);
+              setProfileStatus('missing');
+              setProfileError('No profile found for your account');
+              return;
+            }
+
+            const newProfile = data as ExtendedProfile;
+
+            // Check if account is disabled or resigned
+            if (newProfile.status && newProfile.status !== 'active') {
+              await handleAccountDisabled(
+                newProfile.status === 'resigned'
+                  ? 'Your account has been marked as resigned. Please contact admin.'
+                  : 'Your account has been disabled. Please contact admin.'
+              );
+              return;
+            }
+
+            // Check if password reset is required
+            if (newProfile.force_password_reset) {
+              previousRoleRef.current = newProfile.role;
+              setProfile(newProfile);
+              setProfileStatus('password_reset_required');
+              setProfileError(null);
+              return;
+            }
+
+            // Check if role changed while session is active (use ref, not state)
+            if (previousRoleRef.current && previousRoleRef.current !== newProfile.role) {
+              setRoleChanged(true);
+            }
+
+            previousRoleRef.current = newProfile.role;
+            setProfile(newProfile);
+            setProfileStatus('ready');
+            setProfileError(null);
+            return;
+          }
+
+          lastError = error;
+        } catch (error: any) {
+          window.clearTimeout(timeoutId);
+          lastError = error?.name === 'AbortError'
+            ? { message: 'Profile request timed out. Please try again.' }
+            : error;
+        }
+
+        const isAuthError = lastError?.message?.includes('JWT') || lastError?.code === 'PGRST301';
+        if (isAuthError) {
+          console.error('[Auth] Profile fetch failed because the session is invalid:', lastError);
+          clearAuthState();
+          setLoading(false);
+          return;
+        }
+
+        if (attempt < PROFILE_FETCH_MAX_RETRIES) {
+          const delay = PROFILE_FETCH_BASE_DELAY_MS * Math.pow(2, attempt);
+          console.warn(`[Auth] Profile fetch failed (attempt ${attempt + 1}/${PROFILE_FETCH_MAX_RETRIES + 1}), retrying in ${delay}ms...`, lastError?.message);
+          await new Promise(resolve => window.setTimeout(resolve, delay));
+        }
+      }
+
+      console.error('[Auth] Profile fetch failed after all retries:', lastError);
+      setProfileStatus('error');
+      setProfileError(lastError?.message || 'Failed to load profile after multiple attempts');
+    } finally {
+      isFetchingRef.current = false;
+    }
   }, [handleAccountDisabled, clearAuthState]); // Stable deps — no previousRole state
 
   const refreshProfile = useCallback(async () => {
     if (user?.id) {
-      await fetchProfile(user.id);
+      await fetchProfile(user.id, { force: true });
     }
   }, [user?.id, fetchProfile]);
 
   const retryProfile = useCallback(async () => {
     if (user?.id) {
-      setProfileStatus('loading');
-      setProfileError(null);
-      await fetchProfile(user.id);
+      await fetchProfile(user.id, { force: true });
     }
   }, [user?.id, fetchProfile]);
 
@@ -239,11 +250,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (loading) {
-        console.warn('[Auth] Loading timeout (3s) - forcing completion');
+        console.warn('[Auth] Loading timeout - forcing completion');
         isFetchingRef.current = false;
         setLoading(false);
       }
-    }, 3000);
+    }, AUTH_LOADING_TIMEOUT_MS);
 
     return () => clearTimeout(timeout);
   }, [loading]);
@@ -390,7 +401,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Sign out error:', error);
     }
 
-    localStorage.removeItem(`sb-${PROJECT_ID}-auth-token`);
+    localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     sessionStorage.clear();
 
