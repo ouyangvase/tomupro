@@ -28,6 +28,7 @@ const managerTabs: NavItem[] = [
 const runnerTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
   { id: 'dispatch', label: 'Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/dispatch' },
+  { id: 'stock', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory' },
   { id: 'finance', label: 'Finance', icon: <Boxes className="h-5 w-5" />, href: '/finance' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile' },
 ];
