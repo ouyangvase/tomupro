@@ -431,13 +431,13 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-destructive/60 to-primary/30" />
           <div className="absolute -top-20 -right-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
 
-          <div className="relative flex items-start justify-between gap-6">
+          <div className="relative flex flex-col gap-5 md:flex-row md:items-start md:justify-between md:gap-6">
             <div className="flex-1 min-w-0 space-y-2">
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3">
                 <div className="p-3 rounded-2xl bg-gradient-to-br from-destructive/15 to-destructive/5 border border-destructive/20">
                   <ShieldAlert className="h-7 w-7 text-destructive" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-foreground">
                     Operations Command Center
                   </h1>
@@ -448,37 +448,40 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
               </div>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex w-full flex-col gap-3 md:w-auto md:shrink-0 md:flex-row md:items-center">
               <TeamViewToggle
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 selectedMember={selectedMember}
                 onMemberChange={setSelectedMember}
+                className="w-full md:w-auto"
               />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Download className="h-4 w-4" />
-                    <span className="hidden md:inline">Export</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleExportSelected} disabled={selectedRows.size === 0}>
-                    Export Selected ({selectedRows.size})
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportAll}>
-                    Export All ({actionRequiredOrders.length})
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
-                <RefreshCw className="h-4 w-4" />
-                <span className="hidden md:inline">Refresh</span>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowGuide(!showGuide)} className="gap-1.5">
-                <HelpCircle className="h-4 w-4" />
-                <span className="hidden md:inline">Guide</span>
-              </Button>
+              <div className="flex items-center gap-2 md:gap-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <Download className="h-4 w-4" />
+                      <span className="hidden md:inline">Export</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleExportSelected} disabled={selectedRows.size === 0}>
+                      Export Selected ({selectedRows.size})
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportAll}>
+                      Export All ({actionRequiredOrders.length})
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  <span className="hidden md:inline">Refresh</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setShowGuide(!showGuide)} className="gap-1.5">
+                  <HelpCircle className="h-4 w-4" />
+                  <span className="hidden md:inline">Guide</span>
+                </Button>
+              </div>
               <div className="hidden lg:block">
                 <img
                   src={capybaraCommandCenter}

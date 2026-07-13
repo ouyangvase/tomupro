@@ -41,15 +41,15 @@ export function TeamViewToggle({
   const hasAnyMembers = teamMembers.length > 0;
   
   return (
-    <div className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 ${className}`}>
+    <div className={`flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 ${className}`}>
       {/* View Mode Toggle */}
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <Label className="text-xs font-medium text-foreground/70 whitespace-nowrap">View:</Label>
         <ToggleGroup
           type="single"
           value={viewMode}
           onValueChange={(value) => value && onViewModeChange(value as ViewMode)}
-          className="bg-muted/50 rounded-lg p-1"
+          className="min-w-0 bg-muted/50 rounded-lg p-1"
         >
           <ToggleGroupItem
             value="my"
@@ -75,10 +75,10 @@ export function TeamViewToggle({
         teamLoading ? (
           <span className="text-xs text-muted-foreground">Loading team…</span>
         ) : hasAnyMembers ? (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Label className="text-xs font-medium text-foreground/70 whitespace-nowrap">Salesperson:</Label>
             <Select value={selectedMember} onValueChange={onMemberChange}>
-              <SelectTrigger className="w-[200px] h-8 text-xs">
+              <SelectTrigger className="h-8 min-w-0 flex-1 text-xs sm:w-[200px] sm:flex-none">
                 <SelectValue placeholder="All Team" />
               </SelectTrigger>
               <SelectContent>
