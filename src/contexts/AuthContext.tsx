@@ -297,8 +297,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      console.error('[Auth] Profile fetch failed after all retries:', lastError);
-      if (!isBackgroundRefresh) {
+      if (isBackgroundRefresh) {
+        console.warn('[Auth] Background profile refresh failed:', lastError?.message || lastError);
+      } else {
+        console.error('[Auth] Profile fetch failed after all retries:', lastError);
         setProfileStatus('error');
         setProfileError(lastError?.message || 'Failed to load profile after multiple attempts');
       }
