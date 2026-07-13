@@ -66,6 +66,7 @@ export function usePaginatedOrders(
   const { user, role } = useAuth();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(initialPageSize);
+  const [showInitialLoader, setShowInitialLoader] = useState(true);
 
   // Reset to page 1 when filters change
   const filterKey = JSON.stringify(filters);
@@ -74,6 +75,7 @@ export function usePaginatedOrders(
     if (prevFilterKey.current !== filterKey) {
       prevFilterKey.current = filterKey;
       setPage(1);
+      setShowInitialLoader(true);
     }
   }, [filterKey]);
 
@@ -278,6 +280,19 @@ export function usePaginatedOrders(
     enabled: !!user?.id,
   });
 
+  useEffect(() => {
+    if (!isLoading) {
+      setShowInitialLoader(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setShowInitialLoader(false);
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [isLoading, filterKey, page, pageSize]);
+
   const totalCount = queryResult?.count || 0;
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
 
@@ -290,7 +305,7 @@ export function usePaginatedOrders(
 
   return {
     data: queryResult?.orders || [],
-    isLoading,
+    isLoading: isLoading && showInitialLoader,
     isFetching,
     error: error as Error | null,
     pagination: {
