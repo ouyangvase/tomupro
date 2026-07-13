@@ -56,10 +56,11 @@ const getSupabaseProjectRef = () => {
 };
 
 const SUPABASE_PROJECT_REF = getSupabaseProjectRef();
-const PROFILE_FETCH_TIMEOUT_MS = 15000;
-const PROFILE_FETCH_MAX_RETRIES = 2;
+const PROFILE_FETCH_TIMEOUT_MS = 8000;
+const PROFILE_FETCH_MAX_RETRIES = 1;
 const PROFILE_FETCH_BASE_DELAY_MS = 700;
-const AUTH_LOADING_TIMEOUT_MS = 15000;
+const AUTH_LOADING_TIMEOUT_MS = 10000;
+const PROFILE_LOADING_TIMEOUT_MS = 12000;
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -74,6 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Refs to avoid closure issues and prevent duplicate/looping work
   const profileUserIdRef = useRef<string | null>(null);
   const isFetchingRef = useRef<boolean>(false);
+  const profileRequestSeqRef = useRef(0);
   const previousRoleRef = useRef<AppRole | null>(null);
   const initDoneRef = useRef(false);
 
@@ -127,6 +129,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     isFetchingRef.current = true;
+    const requestSeq = profileRequestSeqRef.current + 1;
+    profileRequestSeqRef.current = requestSeq;
     setProfileStatus('loading');
     setProfileError(null);
 
@@ -135,17 +139,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       for (let attempt = 0; attempt <= PROFILE_FETCH_MAX_RETRIES; attempt += 1) {
         const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS);
+        let timeoutId: ReturnType<typeof window.setTimeout> | null = null;
 
         try {
-          const { data, error } = await supabase
+          const profileQuery = supabase
             .from('profiles')
             .select('*')
             .eq('id', userId)
             .maybeSingle()
             .abortSignal(controller.signal);
 
-          window.clearTimeout(timeoutId);
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+              controller.abort();
+              reject(new Error('Profile request timed out. Please try again.'));
+            }, PROFILE_FETCH_TIMEOUT_MS);
+          });
+
+          const { data, error } = await Promise.race([profileQuery, timeoutPromise]);
+
+          if (timeoutId) window.clearTimeout(timeoutId);
+
+          if (profileRequestSeqRef.current !== requestSeq) {
+            return;
+          }
 
           if (!error) {
             if (!data) {
@@ -190,10 +207,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           lastError = error;
         } catch (error: any) {
-          window.clearTimeout(timeoutId);
-          lastError = error?.name === 'AbortError'
+          if (timeoutId) window.clearTimeout(timeoutId);
+          lastError = error?.name === 'AbortError' || error?.message?.includes('timed out')
             ? { message: 'Profile request timed out. Please try again.' }
             : error;
+        }
+
+        if (profileRequestSeqRef.current !== requestSeq) {
+          return;
         }
 
         const isAuthError = lastError?.message?.includes('JWT') || lastError?.code === 'PGRST301';
@@ -215,7 +236,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfileStatus('error');
       setProfileError(lastError?.message || 'Failed to load profile after multiple attempts');
     } finally {
-      isFetchingRef.current = false;
+      if (profileRequestSeqRef.current === requestSeq) {
+        isFetchingRef.current = false;
+      }
     }
   }, [handleAccountDisabled, clearAuthState]); // Stable deps — no previousRole state
 
@@ -258,6 +281,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => clearTimeout(timeout);
   }, [loading]);
+
+  useEffect(() => {
+    if (profileStatus !== 'loading') return;
+
+    const timeout = window.setTimeout(() => {
+      console.warn('[Auth] Profile loading watchdog timeout');
+      profileRequestSeqRef.current += 1;
+      isFetchingRef.current = false;
+      setProfileStatus('error');
+      setProfileError('Profile request timed out. Please try again.');
+      setLoading(false);
+    }, PROFILE_LOADING_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [profileStatus]);
 
   // ─── Single auth initialization via onAuthStateChange ───────────────
   // This effect has STABLE dependencies (no state that changes after profile loads)
