@@ -1,4 +1,4 @@
-import { Moon, Sun } from 'lucide-react';
+import { Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/tooltip';
 
 export function ThemeToggle() {
-  const { theme, toggleTheme } = useTheme();
+  const { toggleTheme } = useTheme();
 
   return (
     <Tooltip>
@@ -19,16 +19,12 @@ export function ThemeToggle() {
           onClick={toggleTheme}
           className="h-10 w-10 rounded-full"
         >
-          {theme === 'dark' ? (
-            <Sun className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors" />
-          ) : (
-            <Moon className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors" />
-          )}
-          <span className="sr-only">Toggle theme</span>
+          <Sun className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors" />
+          <span className="sr-only">Light theme active</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        <p>Switch to {theme === 'dark' ? 'light' : 'dark'} mode</p>
+        <p>Light theme active</p>
       </TooltipContent>
     </Tooltip>
   );

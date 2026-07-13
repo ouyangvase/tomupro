@@ -1,19 +1,12 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
-import { lazy, Suspense, useEffect } from 'react';
+import { useEffect } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import BookingSales from '@/pages/sales/BookingSales';
 import ReadySales from '@/pages/sales/ReadySales';
 import SalespersonActionInbox from '@/pages/sales/SalespersonActionInbox';
-
-const RunnerDeliveredOrders = lazy(() => import('@/pages/runner/RunnerDeliveredOrders'));
-const CancelledSales = lazy(() => import('@/pages/sales/CancelledSales'));
-
-const Loading = () => (
-  <div className="flex items-center justify-center py-16">
-    <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-  </div>
-);
+import RunnerDeliveredOrders from '@/pages/runner/RunnerDeliveredOrders';
+import CancelledSales from '@/pages/sales/CancelledSales';
 
 const tabs = [
   { id: 'booking', label: 'Booking' },
@@ -52,15 +45,13 @@ export default function OrdersModule() {
         </div>
       </Tabs>
       <EmbeddedProvider>
-        <Suspense fallback={<Loading />}>
-          <div className="mt-4">
-            {activeTab === 'booking' && <BookingSales highlightOrderId={highlightOrderId} />}
-            {activeTab === 'ready' && <ReadySales highlightOrderId={highlightOrderId} />}
-            {activeTab === 'delivered' && <RunnerDeliveredOrders highlightOrderId={highlightOrderId} />}
-            {activeTab === 'cancelled' && <CancelledSales highlightOrderId={highlightOrderId} />}
-            {activeTab === 'action-required' && <SalespersonActionInbox highlightOrderId={highlightOrderId} />}
-          </div>
-        </Suspense>
+        <div className="mt-4">
+          {activeTab === 'booking' && <BookingSales highlightOrderId={highlightOrderId} />}
+          {activeTab === 'ready' && <ReadySales highlightOrderId={highlightOrderId} />}
+          {activeTab === 'delivered' && <RunnerDeliveredOrders highlightOrderId={highlightOrderId} />}
+          {activeTab === 'cancelled' && <CancelledSales highlightOrderId={highlightOrderId} />}
+          {activeTab === 'action-required' && <SalespersonActionInbox highlightOrderId={highlightOrderId} />}
+        </div>
       </EmbeddedProvider>
     </div>
   );

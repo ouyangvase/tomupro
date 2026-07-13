@@ -1,6 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './AuthContext';
 
 type Theme = 'dark' | 'light';
 const THEME_PREFERENCE_KEY = 'theme-preference';
@@ -27,89 +25,56 @@ export const useTheme = () => {
 const getInitialTheme = (): Theme => {
   // Check localStorage for cached preference (faster than waiting for DB)
   if (typeof window !== 'undefined') {
-    if (localStorage.getItem(LIGHT_THEME_RESET_KEY) !== 'done') {
+    try {
       localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
       localStorage.setItem(LIGHT_THEME_RESET_KEY, 'done');
       localStorage.removeItem(THEME_USER_CHOICE_KEY);
-      return 'light';
-    }
-
-    const cached = localStorage.getItem(THEME_PREFERENCE_KEY);
-    if (cached === 'light' || cached === 'dark') {
-      return cached;
+    } catch {
+      // Theme cache is non-critical.
     }
   }
   return 'light'; // Default
 };
 
-// Apply dark class immediately to prevent flash
+// Force the production app back to the original light shell before React hydrates.
 if (typeof document !== 'undefined') {
-  const initialTheme = getInitialTheme();
-  if (initialTheme === 'dark') {
-    document.documentElement.classList.add('dark');
-  } else {
-    document.documentElement.classList.remove('dark');
-  }
+  getInitialTheme();
+  document.documentElement.classList.remove('dark');
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
-  const { user, profile } = useAuth();
+  const [theme, setThemeState] = useState<Theme>('light');
 
-  // Sync with profile preference when it loads
+  // Keep the app in the previous light theme even if an old profile/browser value says dark.
   useEffect(() => {
-    if (profile?.theme_preference) {
-      const savedTheme = profile.theme_preference as Theme;
-      const hasUserChoice = localStorage.getItem(THEME_USER_CHOICE_KEY) === 'true';
-      if (savedTheme === 'dark' && !hasUserChoice) {
-        setThemeState('light');
-        applyTheme('light');
-        localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
-        return;
-      }
-
-      setThemeState(savedTheme);
-      applyTheme(savedTheme);
-      // Cache for faster load next time
-      localStorage.setItem(THEME_PREFERENCE_KEY, savedTheme);
-    }
-  }, [profile?.theme_preference]);
-
-  // Apply theme to document
-  const applyTheme = (newTheme: Theme) => {
-    const root = document.documentElement;
-    if (newTheme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-  };
-
-  // Save theme to backend
-  const saveThemeToBackend = async (newTheme: Theme) => {
-    if (!user) return;
-
+    applyTheme('light');
     try {
-      await supabase
-        .from('profiles')
-        .update({ theme_preference: newTheme })
-        .eq('id', user.id);
-    } catch (error) {
-      // Theme save is non-critical; silently ignored
+      localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
+      localStorage.setItem(LIGHT_THEME_RESET_KEY, 'done');
+      localStorage.removeItem(THEME_USER_CHOICE_KEY);
+    } catch {
+      // Theme cache is non-critical.
     }
+  }, []);
+
+  // Apply theme to document. Dark is intentionally disabled for this production shell.
+  const applyTheme = (_newTheme: Theme) => {
+    document.documentElement.classList.remove('dark');
   };
 
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
-    applyTheme(newTheme);
-    localStorage.setItem(THEME_PREFERENCE_KEY, newTheme);
-    localStorage.setItem(THEME_USER_CHOICE_KEY, 'true');
-    saveThemeToBackend(newTheme);
+  const setTheme = (_newTheme: Theme) => {
+    setThemeState('light');
+    applyTheme('light');
+    try {
+      localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
+      localStorage.removeItem(THEME_USER_CHOICE_KEY);
+    } catch {
+      // Theme cache is non-critical.
+    }
   };
 
   const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
+    setTheme('light');
   };
 
   return (

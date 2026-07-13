@@ -61,6 +61,41 @@ const PROFILE_FETCH_MAX_RETRIES = 0;
 const PROFILE_FETCH_BASE_DELAY_MS = 300;
 const AUTH_LOADING_TIMEOUT_MS = 1500;
 const PROFILE_LOADING_TIMEOUT_MS = 1500;
+const PROFILE_CACHE_PREFIX = `tomupro-profile-cache:${SUPABASE_PROJECT_REF}:`;
+
+const getProfileCacheKey = (userId: string) => `${PROFILE_CACHE_PREFIX}${userId}`;
+
+const readCachedProfile = (userId: string): ExtendedProfile | null => {
+  try {
+    const raw = localStorage.getItem(getProfileCacheKey(userId));
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as ExtendedProfile;
+    if (cached?.id !== userId || !cached?.role) return null;
+    if (cached.status && cached.status !== 'active') return null;
+    if (cached.force_password_reset) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedProfile = (profile: ExtendedProfile) => {
+  try {
+    localStorage.setItem(getProfileCacheKey(profile.id), JSON.stringify(profile));
+  } catch {
+    // Profile cache is an optimization only.
+  }
+};
+
+const clearProfileCache = () => {
+  try {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith(PROFILE_CACHE_PREFIX))
+      .forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Profile cache is an optimization only.
+  }
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -88,6 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearAuthState = useCallback(() => {
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
+    clearProfileCache();
     sessionStorage.clear();
     setUser(null);
     setSession(null);
@@ -110,6 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
+    clearProfileCache();
     sessionStorage.clear();
 
     setUser(null);
@@ -120,7 +157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Stable fetchProfile — does NOT depend on any changing state (uses refs instead)
-  const fetchProfile = useCallback(async (userId: string, options?: { force?: boolean }): Promise<void> => {
+  const fetchProfile = useCallback(async (userId: string, options?: { force?: boolean; background?: boolean }): Promise<void> => {
     if (!userId) return;
 
     // Prevent duplicate concurrent fetches, unless the user explicitly retries.
@@ -130,9 +167,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     isFetchingRef.current = true;
     const requestSeq = profileRequestSeqRef.current + 1;
+    const isBackgroundRefresh = Boolean(options?.background && profileUserIdRef.current === userId);
     profileRequestSeqRef.current = requestSeq;
-    setProfileStatus('loading');
-    setProfileError(null);
+    if (!isBackgroundRefresh) {
+      setProfileStatus('loading');
+      setProfileError(null);
+    }
 
     try {
       let lastError: any = null;
@@ -200,6 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             previousRoleRef.current = newProfile.role;
             setProfile(newProfile);
+            writeCachedProfile(newProfile);
             setProfileStatus('ready');
             setProfileError(null);
             return;
@@ -233,8 +274,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.error('[Auth] Profile fetch failed after all retries:', lastError);
-      setProfileStatus('error');
-      setProfileError(lastError?.message || 'Failed to load profile after multiple attempts');
+      if (!isBackgroundRefresh) {
+        setProfileStatus('error');
+        setProfileError(lastError?.message || 'Failed to load profile after multiple attempts');
+      }
     } finally {
       if (profileRequestSeqRef.current === requestSeq) {
         isFetchingRef.current = false;
@@ -337,7 +380,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // Fetch profile only if we don't already have it for this user
           if (profileUserIdRef.current !== newSession.user.id) {
-            await fetchProfile(newSession.user.id);
+            const cachedProfile = readCachedProfile(newSession.user.id);
+            if (cachedProfile) {
+              previousRoleRef.current = cachedProfile.role;
+              setProfile(cachedProfile);
+              setProfileStatus('ready');
+              setProfileError(null);
+              setLoading(false);
+              void fetchProfile(newSession.user.id, { force: true, background: true });
+            } else {
+              await fetchProfile(newSession.user.id);
+            }
           }
         } else if (event === 'INITIAL_SESSION' && !newSession) {
           // No stored session — user needs to log in
@@ -390,6 +443,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           setProfile(newProfile);
+          writeCachedProfile(newProfile);
           previousRoleRef.current = newProfile.role;
         }
       )
@@ -441,6 +495,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
+    clearProfileCache();
     sessionStorage.clear();
 
     setUser(null);
