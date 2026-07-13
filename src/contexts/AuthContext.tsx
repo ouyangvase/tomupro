@@ -63,6 +63,7 @@ const AUTH_LOADING_TIMEOUT_MS = 1500;
 const PROFILE_LOADING_TIMEOUT_MS = 6000;
 const PROFILE_CACHE_PREFIX = `tomupro-profile-cache:${SUPABASE_PROJECT_REF}:`;
 const VALID_ROLES: AppRole[] = ['admin', 'manager', 'salesperson', 'runner', 'driver', 'runner_assistant', 'finance_viewer'];
+const ENABLE_PROFILE_REALTIME = import.meta.env.VITE_ENABLE_SUPABASE_REALTIME === 'true';
 
 const getProfileCacheKey = (userId: string) => `${PROFILE_CACHE_PREFIX}${userId}`;
 
@@ -451,6 +452,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => { profileRef.current = profile; }, [profile]);
 
   useEffect(() => {
+    if (!ENABLE_PROFILE_REALTIME) return;
     if (!user?.id) return;
 
     const channel = supabase

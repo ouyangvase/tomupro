@@ -88,8 +88,8 @@ const queryClient = new QueryClient({
       staleTime: 5 * 60 * 1000,          // 5 minutes — prevents excessive refetches
       gcTime: 10 * 60 * 1000,            // 10 minutes garbage collection
       refetchOnWindowFocus: false,        // Disable — was causing cascade refetches on every tab switch
-      retry: 2,                           // Reduce retries from default 3
-      refetchOnReconnect: 'always',       // Still refetch when network reconnects
+      retry: 1,                           // Keep retries bounded during Supabase degradation
+      refetchOnReconnect: false,          // Avoid cascade refetches when Supabase reconnects
     },
   },
 });

@@ -20,6 +20,9 @@ export interface ActionRequiredBySalesperson {
   runnerFlagged: number;
 }
 
+const ACTION_REQUIRED_SELECT = 'id, status, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required';
+const ACTION_REQUIRED_OR = 'and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)';
+
 // For salesperson: Get their own action required stats
 export function useSalespersonActionRequiredStats() {
   const { user } = useAuth();
@@ -29,20 +32,17 @@ export function useSalespersonActionRequiredStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // Fetch orders that require action: either flagged OR runner_status = FAILED_DELIVERY
+      // Fetch only orders that require action.
       const { data: orders, error } = await supabase
         .from('orders')
-        .select('id, status, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required')
+        .select(ACTION_REQUIRED_SELECT)
         .eq('salesperson_id', user.id)
-        .neq('status', 'CANCELLED');
+        .neq('status', 'CANCELLED')
+        .or(ACTION_REQUIRED_OR);
 
       if (error) throw error;
 
-      // Filter: salesperson_action_required = true OR runner_status = FAILED_DELIVERY
-      const actionRequired = orders?.filter(order => 
-        order.salesperson_action_required === true || 
-        (order.runner_status as string) === 'FAILED_DELIVERY'
-      ) || [];
+      const actionRequired = orders || [];
 
       // Calculate stats for display breakdown
       let failedDelivery = 0;
@@ -72,7 +72,7 @@ export function useSalespersonActionRequiredStats() {
       } as ActionRequiredStats;
     },
     enabled: !!user,
-    refetchInterval: 120000,
+    staleTime: 120000,
   });
 }
 
@@ -88,7 +88,8 @@ export function useRunnerActionRequiredStats() {
       const { data: orders, error } = await supabase
         .from('orders')
         .select('id, status, runner_status')
-        .eq('runner_id', user.id);
+        .eq('runner_id', user.id)
+        .or('runner_status.eq.FAILED_DELIVERY,status.eq.CANCELLED');
 
       if (error) throw error;
 
@@ -111,7 +112,7 @@ export function useRunnerActionRequiredStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 120000,
+    staleTime: 120000,
   });
 }
 
@@ -133,20 +134,17 @@ export function useManagerActionRequiredStats() {
         ? visibleIds
         : [user.id]; // Fallback to own ID only
 
-      // Fetch orders for manager + team (either flagged OR failed delivery)
+      // Fetch only action-required orders for manager + team.
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, status, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required')
+        .select(ACTION_REQUIRED_SELECT)
         .in('salesperson_id', allMemberIds)
-        .neq('status', 'CANCELLED');
+        .neq('status', 'CANCELLED')
+        .or(ACTION_REQUIRED_OR);
 
       if (ordersError) throw ordersError;
 
-      // Filter: salesperson_action_required = true OR runner_status = FAILED_DELIVERY
-      const actionRequired = orders?.filter(order => 
-        order.salesperson_action_required === true || 
-        (order.runner_status as string) === 'FAILED_DELIVERY'
-      ) || [];
+      const actionRequired = orders || [];
 
       // Fetch salesperson info
       const { data: salespersons, error: usersError } = await supabase
@@ -212,7 +210,7 @@ export function useManagerActionRequiredStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 120000,
+    staleTime: 120000,
   });
 }
 
@@ -225,19 +223,16 @@ export function useAdminActionRequiredStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      // Fetch orders (either flagged OR failed delivery)
+      // Fetch only action-required orders.
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, status, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required')
-        .neq('status', 'CANCELLED');
+        .select(ACTION_REQUIRED_SELECT)
+        .neq('status', 'CANCELLED')
+        .or(ACTION_REQUIRED_OR);
 
       if (ordersError) throw ordersError;
 
-      // Filter: salesperson_action_required = true OR runner_status = FAILED_DELIVERY
-      const actionRequired = orders?.filter(order => 
-        order.salesperson_action_required === true || 
-        (order.runner_status as string) === 'FAILED_DELIVERY'
-      ) || [];
+      const actionRequired = orders || [];
 
       // Fetch salesperson directory
       const { data: salespersons, error: usersError } = await supabase
@@ -304,6 +299,6 @@ export function useAdminActionRequiredStats() {
       };
     },
     enabled: !!user,
-    refetchInterval: 120000,
+    staleTime: 120000,
   });
 }

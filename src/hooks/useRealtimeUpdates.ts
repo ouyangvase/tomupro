@@ -63,7 +63,7 @@ function invalidateDeliveryRelated(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
 }
 
-export function useRealtimeOrderUpdates() {
+export function useRealtimeOrderUpdates(enabled = true) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { profile } = useAuth();
@@ -158,6 +158,7 @@ export function useRealtimeOrderUpdates() {
   }, [profile, queryClient, toast]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!profile?.id) return;
 
     const timeoutId = setTimeout(() => {
@@ -186,15 +187,16 @@ export function useRealtimeOrderUpdates() {
         channelRef.current = null;
       }
     };
-  }, [profile?.id, handleOrderChange]);
+  }, [enabled, profile?.id, handleOrderChange]);
 }
 
-export function useRealtimePickupUpdates() {
+export function useRealtimePickupUpdates(enabled = true) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { profile } = useAuth();
 
   useEffect(() => {
+    if (!enabled) return;
     if (!profile) return;
 
     const channel = supabase
@@ -245,15 +247,16 @@ export function useRealtimePickupUpdates() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile, queryClient, toast]);
+  }, [enabled, profile, queryClient, toast]);
 }
 
-export function useRealtimeReturnUpdates() {
+export function useRealtimeReturnUpdates(enabled = true) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { profile } = useAuth();
 
   useEffect(() => {
+    if (!enabled) return;
     if (!profile) return;
 
     const channel = supabase
@@ -305,7 +308,7 @@ export function useRealtimeReturnUpdates() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile, queryClient, toast]);
+  }, [enabled, profile, queryClient, toast]);
 }
 
 // Notification sound helper
@@ -332,8 +335,8 @@ function playNotificationSound() {
 }
 
 // Combined hook for all realtime updates
-export function useRealtimeUpdates() {
-  useRealtimeOrderUpdates();
-  useRealtimePickupUpdates();
-  useRealtimeReturnUpdates();
+export function useRealtimeUpdates(enabled = true) {
+  useRealtimeOrderUpdates(enabled);
+  useRealtimePickupUpdates(enabled);
+  useRealtimeReturnUpdates(enabled);
 }
