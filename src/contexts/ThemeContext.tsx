@@ -3,6 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
 
 type Theme = 'dark' | 'light';
+const THEME_PREFERENCE_KEY = 'theme-preference';
+const THEME_USER_CHOICE_KEY = 'theme-user-choice';
+const LIGHT_THEME_RESET_KEY = 'tomupro-light-theme-reset-20260713';
 
 interface ThemeContextType {
   theme: Theme;
@@ -24,12 +27,19 @@ export const useTheme = () => {
 const getInitialTheme = (): Theme => {
   // Check localStorage for cached preference (faster than waiting for DB)
   if (typeof window !== 'undefined') {
-    const cached = localStorage.getItem('theme-preference');
+    if (localStorage.getItem(LIGHT_THEME_RESET_KEY) !== 'done') {
+      localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
+      localStorage.setItem(LIGHT_THEME_RESET_KEY, 'done');
+      localStorage.removeItem(THEME_USER_CHOICE_KEY);
+      return 'light';
+    }
+
+    const cached = localStorage.getItem(THEME_PREFERENCE_KEY);
     if (cached === 'light' || cached === 'dark') {
       return cached;
     }
   }
-  return 'dark'; // Default
+  return 'light'; // Default
 };
 
 // Apply dark class immediately to prevent flash
@@ -50,10 +60,18 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     if (profile?.theme_preference) {
       const savedTheme = profile.theme_preference as Theme;
+      const hasUserChoice = localStorage.getItem(THEME_USER_CHOICE_KEY) === 'true';
+      if (savedTheme === 'dark' && !hasUserChoice) {
+        setThemeState('light');
+        applyTheme('light');
+        localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
+        return;
+      }
+
       setThemeState(savedTheme);
       applyTheme(savedTheme);
       // Cache for faster load next time
-      localStorage.setItem('theme-preference', savedTheme);
+      localStorage.setItem(THEME_PREFERENCE_KEY, savedTheme);
     }
   }, [profile?.theme_preference]);
 
@@ -84,7 +102,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
     applyTheme(newTheme);
-    localStorage.setItem('theme-preference', newTheme);
+    localStorage.setItem(THEME_PREFERENCE_KEY, newTheme);
+    localStorage.setItem(THEME_USER_CHOICE_KEY, 'true');
     saveThemeToBackend(newTheme);
   };
 

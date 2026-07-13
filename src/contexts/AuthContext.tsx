@@ -56,11 +56,11 @@ const getSupabaseProjectRef = () => {
 };
 
 const SUPABASE_PROJECT_REF = getSupabaseProjectRef();
-const PROFILE_FETCH_TIMEOUT_MS = 8000;
-const PROFILE_FETCH_MAX_RETRIES = 1;
-const PROFILE_FETCH_BASE_DELAY_MS = 700;
-const AUTH_LOADING_TIMEOUT_MS = 10000;
-const PROFILE_LOADING_TIMEOUT_MS = 12000;
+const PROFILE_FETCH_TIMEOUT_MS = 1000;
+const PROFILE_FETCH_MAX_RETRIES = 0;
+const PROFILE_FETCH_BASE_DELAY_MS = 300;
+const AUTH_LOADING_TIMEOUT_MS = 1500;
+const PROFILE_LOADING_TIMEOUT_MS = 1500;
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);

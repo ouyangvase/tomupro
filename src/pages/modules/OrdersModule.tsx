@@ -1,13 +1,13 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
+import BookingSales from '@/pages/sales/BookingSales';
+import ReadySales from '@/pages/sales/ReadySales';
+import SalespersonActionInbox from '@/pages/sales/SalespersonActionInbox';
 
-const BookingSales = lazy(() => import('@/pages/sales/BookingSales'));
-const ReadySales = lazy(() => import('@/pages/sales/ReadySales'));
 const RunnerDeliveredOrders = lazy(() => import('@/pages/runner/RunnerDeliveredOrders'));
 const CancelledSales = lazy(() => import('@/pages/sales/CancelledSales'));
-const SalespersonActionInbox = lazy(() => import('@/pages/sales/SalespersonActionInbox'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
