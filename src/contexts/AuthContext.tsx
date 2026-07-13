@@ -56,12 +56,13 @@ const getSupabaseProjectRef = () => {
 };
 
 const SUPABASE_PROJECT_REF = getSupabaseProjectRef();
-const PROFILE_FETCH_TIMEOUT_MS = 1000;
+const PROFILE_FETCH_TIMEOUT_MS = 5000;
 const PROFILE_FETCH_MAX_RETRIES = 0;
 const PROFILE_FETCH_BASE_DELAY_MS = 300;
 const AUTH_LOADING_TIMEOUT_MS = 1500;
-const PROFILE_LOADING_TIMEOUT_MS = 1500;
+const PROFILE_LOADING_TIMEOUT_MS = 6000;
 const PROFILE_CACHE_PREFIX = `tomupro-profile-cache:${SUPABASE_PROJECT_REF}:`;
+const VALID_ROLES: AppRole[] = ['admin', 'manager', 'salesperson', 'runner', 'driver', 'runner_assistant', 'finance_viewer'];
 
 const getProfileCacheKey = (userId: string) => `${PROFILE_CACHE_PREFIX}${userId}`;
 
@@ -95,6 +96,29 @@ const clearProfileCache = () => {
   } catch {
     // Profile cache is an optimization only.
   }
+};
+
+const buildProfileFromSession = (session: Session): ExtendedProfile | null => {
+  const metadata = session.user.user_metadata || {};
+  const metadataRole = metadata.role as AppRole | undefined;
+  const role = VALID_ROLES.includes(metadataRole as AppRole) ? metadataRole : null;
+
+  if (!role) return null;
+
+  const now = new Date().toISOString();
+  return {
+    id: session.user.id,
+    role,
+    display_name: metadata.display_name || metadata.full_name || session.user.email?.split('@')[0] || 'User',
+    email: session.user.email || '',
+    is_active: true,
+    avatar_url: metadata.avatar_url || null,
+    theme_preference: 'light',
+    created_at: session.user.created_at || now,
+    updated_at: now,
+    manager_id: null,
+    status: 'active',
+  };
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -167,7 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     isFetchingRef.current = true;
     const requestSeq = profileRequestSeqRef.current + 1;
-    const isBackgroundRefresh = Boolean(options?.background && profileUserIdRef.current === userId);
+    const isBackgroundRefresh = Boolean(options?.background);
     profileRequestSeqRef.current = requestSeq;
     if (!isBackgroundRefresh) {
       setProfileStatus('loading');
@@ -389,7 +413,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setLoading(false);
               void fetchProfile(newSession.user.id, { force: true, background: true });
             } else {
-              await fetchProfile(newSession.user.id);
+              const sessionProfile = buildProfileFromSession(newSession);
+              if (sessionProfile) {
+                previousRoleRef.current = sessionProfile.role;
+                profileUserIdRef.current = sessionProfile.id;
+                setProfile(sessionProfile);
+                setProfileStatus('ready');
+                setProfileError(null);
+                setLoading(false);
+                void fetchProfile(newSession.user.id, { force: true, background: true });
+              } else {
+                await fetchProfile(newSession.user.id);
+              }
             }
           }
         } else if (event === 'INITIAL_SESSION' && !newSession) {
