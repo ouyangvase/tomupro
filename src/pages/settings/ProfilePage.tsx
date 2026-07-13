@@ -10,8 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Camera, Save, KeyRound, UserX, Loader2, Shield, Mail, User } from 'lucide-react';
+import { Camera, Save, KeyRound, LogOut, Loader2, Shield, Mail, User } from 'lucide-react';
 import RunnerCodeCard from '@/components/runner/RunnerCodeCard';
 import DriverLinkCard from '@/components/driver/DriverLinkCard';
 import { cn } from '@/lib/utils';
@@ -19,7 +18,7 @@ import { AppLogo } from '@/components/brand/AppLogo';
 import { useBranding } from '@/contexts/BrandingContext';
 
 const ProfilePage = () => {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, signingOut } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { branding } = useBranding();
@@ -116,18 +115,6 @@ const ProfilePage = () => {
       setConfirmPassword('');
     } catch (error: any) {
       toast({ title: 'Failed to update password', description: error.message, variant: 'destructive' });
-    }
-  };
-
-  const handleDeactivateAccount = async () => {
-    if (!user) return;
-    try {
-      const { error } = await supabase.from('profiles').update({ is_active: false }).eq('id', user.id);
-      if (error) throw error;
-      toast({ title: 'Account deactivated' });
-      await signOut();
-    } catch (error: any) {
-      toast({ title: 'Failed to deactivate account', description: error.message, variant: 'destructive' });
     }
   };
 
@@ -280,39 +267,26 @@ const ProfilePage = () => {
           </CardContent>
         </Card>
 
-        {/* Danger Zone */}
-        {profile.role !== 'salesperson' && profile.role !== 'manager' && (
-          <Card className="border-destructive/30">
-            <CardHeader>
-              <CardTitle className="text-destructive">Danger Zone</CardTitle>
-              <CardDescription>Irreversible actions for your account</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive">
-                    <UserX className="h-4 w-4 mr-2" />
-                    Deactivate Account
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will deactivate your account. You will be signed out immediately and will no longer be able to access the application. Contact an administrator to reactivate your account.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeactivateAccount} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                      Deactivate
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </CardContent>
-          </Card>
-        )}
+        {/* Account Access */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LogOut className="h-5 w-5 text-primary" />
+              Account Access
+            </CardTitle>
+            <CardDescription>Sign out of this device</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={signOut} disabled={signingOut}>
+              {signingOut ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4 mr-2" />
+              )}
+              {signingOut ? 'Signing out...' : 'Sign Out'}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );
