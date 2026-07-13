@@ -204,7 +204,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     return filters;
   }, [role, profile?.id, viewMode, selectedMember, salespersonFilter, visibleOwnerIds, searchQuery]);
 
-  const { data: allOrders = [], isLoading, isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders(orderFilters, 50);
+  const { data: allOrders = [], isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders(orderFilters, 50);
 
   const canViewAll = role === 'admin';
   const canViewGroup = role === 'manager';
@@ -419,14 +419,6 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   // ── Mission progress ──
   const resolvedToday = 0; // placeholder — would need resolved count from DB
   const failedProgress = stats.failed > 0 ? Math.round((resolvedToday / stats.failed) * 100) : 100;
-
-  if (isLoading) {
-    return (
-      <AppLayout>
-        <CapybaraState type="loading" title="Loading operations..." description="Scanning for orders that need your attention" />
-      </AppLayout>
-    );
-  }
 
   return (
     <AppLayout>
