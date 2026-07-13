@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DispatchBoardRow } from './DispatchBoardRow';
 import capybaraEmpty from '@/assets/capybara-empty.png';
-import capybaraLoading from '@/assets/capybara-loading.png';
 import type { Order } from '@/types/database';
 import type { OrderStockResult } from '@/hooks/useStockCalculation';
 
@@ -81,18 +80,6 @@ export function DispatchBoard({
       return () => clearTimeout(timer);
     }
   }, [highlightOrderId, loading, orders]);
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <img src={capybaraLoading} alt="Loading" className="h-20 w-20 object-contain opacity-50 animate-pulse" />
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span className="text-sm text-muted-foreground font-medium">Loading dispatch board...</span>
-        </div>
-      </div>
-    );
-  }
 
   if (orders.length === 0) {
     return (
