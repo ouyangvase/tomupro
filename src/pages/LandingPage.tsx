@@ -227,7 +227,7 @@ function HeroSection({ onLogin, onSignup }: { onLogin: () => void; onSignup: () 
             </div>
 
             {/* Headline — 2 lines, one gold keyword */}
-            <h1 className="mb-7 text-[3.35rem] font-black leading-none tracking-normal text-[#071226] sm:text-[4.2rem] lg:text-[5.4rem] xl:text-[6.15rem]">
+            <h1 className="mb-7 text-[3.35rem] font-black leading-none tracking-normal text-[#071226] sm:text-[4.2rem] lg:text-[5.15rem] xl:text-[5.5rem]">
               Brunei Delivery &amp;
               <br />
               Logistics,
