@@ -8,8 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { validateInviteCode } from '@/hooks/useInviteCodes';
-import capybaraHero from '@/assets/capybara-hero.png';
-import { useBranding } from '@/contexts/BrandingContext';
+import tomuAuthHero from '@/assets/tomupro-auth-hero.png';
 import { AppLogo } from '@/components/brand/AppLogo';
 import { AppName } from '@/components/brand/AppName';
 import {
@@ -36,10 +35,10 @@ const signupSchema = z.object({
 });
 
 const NAV_ITEMS = [
-  { label: 'Features', href: '#features' },
-  { label: 'Solutions', href: '#solutions' },
-  { label: 'About', href: '#about' },
-  { label: 'Testimonials', href: '#testimonials' },
+  { label: 'Services', href: '#features' },
+  { label: 'Delivery Areas', href: '#coverage' },
+  { label: 'Tracking', href: '#solutions' },
+  { label: 'Pricing', href: '#faq' },
   { label: 'Contact', href: '#contact' },
 ];
 
@@ -82,14 +81,20 @@ export default function LandingPage() {
   const { signIn, signUp, user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [loginOpen, setLoginOpen] = useState(false);
+  const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => { if (user && !authLoading) navigate('/'); }, [user, authLoading, navigate]);
 
+  const openAuth = (tab: 'login' | 'signup') => {
+    setAuthTab(tab);
+    setLoginOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-[#FAFAF9] text-[#0F172A] overflow-x-hidden antialiased">
-      <Navbar onLogin={() => setLoginOpen(true)} mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
-      <HeroSection onLogin={() => setLoginOpen(true)} />
+      <Navbar onLogin={() => openAuth('login')} onSignup={() => openAuth('signup')} mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+      <HeroSection onLogin={() => openAuth('login')} onSignup={() => openAuth('signup')} />
       <TrustStats />
       <WhatWeDoSection />
       <FeaturesSection />
@@ -98,12 +103,12 @@ export default function LandingPage() {
       <SolutionsSection />
       <ProductPreview />
       <TestimonialsSection />
-      <CTASection onLogin={() => setLoginOpen(true)} />
+      <CTASection onLogin={() => openAuth('signup')} />
       <FAQSection />
       <SEOLogisticsSection />
       <ContactSection />
       <Footer />
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} signIn={signIn} signUp={signUp} navigate={navigate} toast={toast} />
+      <LoginModal open={loginOpen} initialTab={authTab} onClose={() => setLoginOpen(false)} signIn={signIn} signUp={signUp} navigate={navigate} toast={toast} />
     </div>
   );
 }
@@ -112,7 +117,17 @@ export default function LandingPage() {
 /*  NAVBAR                                                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 /* PLACEHOLDER: Navbar */
-function Navbar({ onLogin, mobileMenuOpen, setMobileMenuOpen }: { onLogin: () => void; mobileMenuOpen: boolean; setMobileMenuOpen: (v: boolean) => void }) {
+function Navbar({
+  onLogin,
+  onSignup,
+  mobileMenuOpen,
+  setMobileMenuOpen,
+}: {
+  onLogin: () => void;
+  onSignup: () => void;
+  mobileMenuOpen: boolean;
+  setMobileMenuOpen: (v: boolean) => void;
+}) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 20);
@@ -129,9 +144,12 @@ function Navbar({ onLogin, mobileMenuOpen, setMobileMenuOpen }: { onLogin: () =>
     )}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 lg:h-[72px]">
-          <a href="#hero" className="flex items-center gap-2.5 group">
-            <AppLogo size="sm" className="h-8 w-8 transition-transform group-hover:scale-105" />
-            <AppName highlight className="text-lg font-bold tracking-tight" accentClass="text-[#B8860B]" />
+          <a href="#hero" className="flex items-center gap-3 group">
+            <AppLogo size="sm" className="h-10 w-10 transition-transform group-hover:scale-105" />
+            <span className="leading-tight">
+              <AppName highlight className="block text-xl font-extrabold tracking-tight" accentClass="text-[#B8860B]" />
+              <span className="hidden sm:block text-[11px] font-medium text-[#64748B] tracking-[0.02em]">Brunei Logistics Operating System</span>
+            </span>
           </a>
           <div className="hidden lg:flex items-center gap-1">
             {NAV_ITEMS.map((item) => (
@@ -148,7 +166,7 @@ function Navbar({ onLogin, mobileMenuOpen, setMobileMenuOpen }: { onLogin: () =>
             <Button variant="ghost" onClick={onLogin} className="text-[13px] font-medium text-[#64748B] hover:text-[#0F172A] h-9 px-4">
               Log in
             </Button>
-            <Button onClick={onLogin} className="rounded-full bg-[#0F172A] hover:bg-[#1E293B] text-white h-9 px-5 text-[13px] font-medium shadow-sm">
+            <Button onClick={onSignup} className="rounded-full bg-[#0F172A] hover:bg-[#1E293B] text-white h-11 px-6 text-sm font-semibold shadow-sm">
               Get Started <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
             </Button>
           </div>
@@ -169,7 +187,7 @@ function Navbar({ onLogin, mobileMenuOpen, setMobileMenuOpen }: { onLogin: () =>
               </a>
             ))}
             <div className="pt-3 border-t border-[#e5e2db]">
-              <Button onClick={() => { setMobileMenuOpen(false); onLogin(); }} className="w-full rounded-full bg-[#0F172A] text-white h-10">
+              <Button onClick={() => { setMobileMenuOpen(false); onSignup(); }} className="w-full rounded-full bg-[#0F172A] text-white h-10">
                 Get Started
               </Button>
             </div>
@@ -183,70 +201,119 @@ function Navbar({ onLogin, mobileMenuOpen, setMobileMenuOpen }: { onLogin: () =>
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  HERO                                                              */
 /* ═══════════════════════════════════════════════════════════════════ */
-function HeroSection({ onLogin }: { onLogin: () => void }) {
+function HeroSection({ onLogin, onSignup }: { onLogin: () => void; onSignup: () => void }) {
   return (
-    <section id="hero" className="relative pt-32 lg:pt-40 pb-24 lg:pb-36 overflow-hidden">
+    <section id="hero" className="relative pt-24 lg:pt-28 pb-14 lg:pb-20 overflow-hidden bg-[#F8F7F2]">
       {/* ── Background ── */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/4 w-[900px] h-[500px] bg-gradient-radial from-[#B8860B]/[0.04] via-transparent to-transparent rounded-full" />
-        <div className="absolute inset-0 opacity-[0.018]" style={{ backgroundImage: 'radial-gradient(circle, #0F172A 1px, transparent 1px)', backgroundSize: '56px 56px' }} />
+        <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white to-transparent" />
+        <div className="absolute left-[8%] top-[22%] h-[420px] w-[420px] rounded-full border border-[#B8860B]/10" />
+        <div className="absolute left-[16%] top-[17%] h-[210px] w-[210px] rounded-full border border-dashed border-[#B8860B]/15" />
+        <div className="absolute inset-0 opacity-[0.035]" style={{ backgroundImage: 'linear-gradient(#0F172A 1px, transparent 1px), linear-gradient(90deg, #0F172A 1px, transparent 1px)', backgroundSize: '80px 80px' }} />
       </div>
 
-      <div className="max-w-[1280px] mx-auto px-6 sm:px-8 lg:px-12 relative z-10">
-        <div className="flex flex-col lg:flex-row items-center lg:items-start gap-12 lg:gap-24">
+      <div className="relative z-10 mx-auto max-w-[1480px] px-5 sm:px-8 lg:px-12">
+        <div className="grid min-h-[650px] items-center gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:gap-8">
 
           {/* ── LEFT: Content (~45%) ── */}
-          <div className="w-full lg:w-[45%] lg:shrink-0 text-center lg:text-left pt-0 lg:pt-6 lp-fade-up">
+          <div className="max-w-2xl lp-fade-up">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#B8860B]/[0.06] border border-[#B8860B]/[0.12] text-[#96710A] text-[11px] font-semibold tracking-wide uppercase mb-10">
+            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#D9C190] bg-white/85 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#96710A] shadow-sm">
               <span className="flex h-1.5 w-1.5 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#B8860B] opacity-40" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#B8860B]" />
               </span>
-              AI-Powered Operations
+              Trusted across Brunei
             </div>
 
             {/* Headline — 2 lines, one gold keyword */}
-            <h1 className="text-[2.75rem] sm:text-[3.25rem] lg:text-[3.75rem] xl:text-[4.25rem] font-extrabold tracking-[-0.035em] leading-[1.05] mb-7 text-[#0F172A]">
-              AI Logistics Platform &amp;
+            <h1 className="mb-7 text-[3.35rem] font-black leading-[0.98] tracking-[-0.055em] text-[#071226] sm:text-[4.2rem] lg:text-[5.4rem] xl:text-[6.15rem]">
+              Brunei Delivery &amp;
               <br />
-              <span className="lp-gradient-text">Last-Mile Delivery</span> in Brunei
+              Logistics,
+              <br />
+              <span className="text-[#B8860B]">Made Simple</span>
             </h1>
 
             {/* SEO paragraph — natural keyword integration */}
-            <p className="text-[17px] lg:text-lg text-[#64748B] leading-[1.7] mb-10 max-w-[420px] mx-auto lg:mx-0">
-              TOMUPRO is an AI-powered logistics platform in Brunei that provides last-mile delivery, fulfillment, courier services, and delivery management systems for businesses.
+            <p className="mb-8 max-w-xl text-lg leading-8 text-[#566173] lg:text-xl">
+              Same-day parcel delivery, COD collection, warehouse fulfillment, courier service, and delivery management for Brunei businesses.
             </p>
 
             {/* CTA buttons — side by side */}
-            <div className="flex items-center justify-center lg:justify-start gap-4 mb-10">
+            <div className="mb-8 flex flex-col gap-3 sm:flex-row">
               <Button
-                onClick={onLogin}
-                className="rounded-full bg-[#0F172A] hover:bg-[#1E293B] text-white h-[52px] px-9 text-[15px] font-semibold shadow-xl shadow-[#0F172A]/10 hover:shadow-2xl hover:-translate-y-0.5 transition-all"
+                onClick={onSignup}
+                className="h-14 rounded-2xl bg-[#071226] px-8 text-base font-bold text-white shadow-xl shadow-[#071226]/15 transition-all hover:-translate-y-0.5 hover:bg-[#13213A]"
               >
-                Start Free <ArrowRight className="ml-2 h-4 w-4" />
+                Start Shipping <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
-              <a
-                href="https://www.instagram.com/tomupro/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-full border border-[#D4D4D8] text-[#475569] hover:bg-[#F8FAFC] h-[52px] px-9 text-[15px] font-semibold transition-all inline-flex items-center gap-2 hover:-translate-y-0.5"
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onLogin}
+                className="h-14 rounded-2xl border-[#B7BECC] bg-white/80 px-8 text-base font-bold text-[#071226] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white"
               >
-                <Play className="h-4 w-4" /> Watch Demo
-              </a>
+                <Package className="mr-2 h-5 w-5" /> Track Parcel
+              </Button>
             </div>
 
             {/* Trust text row */}
-            <div className="flex items-center justify-center lg:justify-start gap-7 text-[13px] text-[#94A3B8] font-medium">
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-[#B8860B]" /> No credit card</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-[#B8860B]" /> Free forever</span>
-              <span className="flex items-center gap-1.5 hidden sm:flex"><CheckCircle2 className="h-3.5 w-3.5 text-[#B8860B]" /> 5 min setup</span>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm font-semibold text-[#071226]">
+              {['Bandar Seri Begawan', 'Kuala Belait', 'Tutong', 'Muara'].map((area) => (
+                <span key={area} className="inline-flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-[#B8860B]" />
+                  {area}
+                </span>
+              ))}
             </div>
           </div>
 
           {/* ── RIGHT: Dashboard Visual (~55%) ── */}
-          <div className="w-full lg:w-[55%] relative lp-perspective">
-            <div className="relative lp-float">
+          <div className="relative min-h-[520px] lg:min-h-[680px]">
+            <div className="absolute -right-8 top-0 hidden h-full w-[74%] rounded-[3rem] bg-white/70 shadow-[0_30px_90px_rgba(15,23,42,0.08)] lg:block" />
+            <div className="relative overflow-hidden rounded-[2.25rem] border border-white bg-white shadow-[0_32px_90px_rgba(15,23,42,0.18)]">
+              <img
+                src={tomuAuthHero}
+                alt="TOMUPRO courier loading parcels into a delivery van at a Brunei warehouse"
+                className="h-[520px] w-full object-cover object-center lg:h-[680px]"
+                loading="eager"
+                fetchPriority="high"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-white/40 via-white/5 to-transparent" />
+              <div className="absolute left-5 top-5 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-xl backdrop-blur-md sm:left-8 sm:top-8">
+                <div className="mb-2 flex items-center gap-2 text-sm font-bold text-[#15803D]">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#22C55E]" />
+                  Live Tracking
+                </div>
+                <p className="text-lg font-extrabold text-[#071226]">Out for Delivery</p>
+                <p className="text-sm text-[#64748B]">Order ORD-78456</p>
+                <p className="mt-1 text-xs font-semibold text-[#94A3B8]">Estimated 10:30 AM</p>
+              </div>
+              <div className="absolute bottom-6 left-6 right-6 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-xl backdrop-blur-md sm:left-auto sm:right-8 sm:w-[430px]">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#22C55E] text-white">
+                    <CheckCircle2 className="h-7 w-7" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-extrabold text-[#15803D]">Delivered</p>
+                    <p className="truncate text-sm text-[#64748B]">Order ORD-78455 delivered to customer</p>
+                  </div>
+                  <div className="hidden text-right text-xs font-semibold text-[#64748B] sm:block">
+                    <p>09:41 AM</p>
+                    <p>Today</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="absolute -right-2 top-1/2 hidden -translate-y-1/2 rounded-2xl border border-[#E8D9B7] bg-white p-4 shadow-2xl lg:block">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#F8F0DF] text-[#B8860B]">
+                <Route className="h-6 w-6" />
+              </div>
+              <p className="text-3xl font-black text-[#B8860B]">4</p>
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#64748B]">Districts</p>
+            </div>
+            <div className="hidden" aria-hidden="true">
 
               {/* Main dashboard card with browser chrome */}
               <div className="relative rounded-2xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(15,23,42,0.12)] border border-[#E2E8F0]/80">
@@ -365,9 +432,9 @@ function TrustStats() {
   const deliveries = useCounter(500, 2200, inView);
 
   return (
-    <section ref={ref} className="py-16 lg:py-20 bg-[#0B1120] relative overflow-hidden">
+    <section id="coverage" ref={ref} className="relative bg-[#F8F7F2] pb-16 lg:pb-24">
       {/* Speed lines background */}
-      <div className="absolute inset-0 pointer-events-none">
+      <div className="hidden">
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#B8860B]/20 to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#B8860B]/20 to-transparent" />
         {/* Diagonal speed lines */}
@@ -385,20 +452,21 @@ function TrustStats() {
           />
         ))}
       </div>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
+      <div className="relative z-10 mx-auto max-w-[1480px] px-5 sm:px-8 lg:px-12">
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {[
-            { value: `${orders.toLocaleString()}+`, label: 'Orders Processed', icon: Package },
-            { value: `${teams}+`, label: 'Active Teams', icon: Users },
-            { value: `${uptime}.9%`, label: 'System Uptime', icon: Activity },
-            { value: `${deliveries}k+`, label: 'Deliveries Tracked', icon: Truck },
+            { value: 'Last-mile Delivery', label: 'Fast same-day and next-day delivery across Brunei.', metric: `${deliveries}k+ tracked`, icon: Truck },
+            { value: 'Fulfillment', label: 'Pick, pack, store, and dispatch from secure centers.', metric: `${orders.toLocaleString()}+ orders`, icon: Warehouse },
+            { value: 'COD Payouts', label: 'Cash on Delivery collection with clear weekly reporting.', metric: `${uptime}.9% uptime`, icon: Banknote },
+            { value: 'Team Operations', label: 'Admin, manager, runner, and salesperson workflows in one system.', metric: `${teams}+ active teams`, icon: Users },
           ].map((s) => (
-            <div key={s.label} className="text-center group">
-              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-[#B8860B]/10 mb-3 group-hover:bg-[#B8860B]/20 transition-colors">
-                <s.icon className="h-5 w-5 text-[#D4A843]" />
+            <div key={s.value} className="group rounded-[1.35rem] border border-[#E8E1D2] bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.05)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+              <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#F4EBDC] text-[#071226] transition-colors group-hover:bg-[#E6CF9D]">
+                <s.icon className="h-7 w-7" />
               </div>
-              <p className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white tracking-tight">{s.value}</p>
-              <p className="text-xs sm:text-sm text-[#64748B] mt-1 font-medium">{s.label}</p>
+              <p className="text-xl font-extrabold tracking-[-0.02em] text-[#071226]">{s.value}</p>
+              <p className="mt-2 min-h-[48px] text-sm leading-6 text-[#64748B]">{s.label}</p>
+              <p className="mt-5 inline-flex rounded-full bg-[#F8F0DF] px-3 py-1 text-xs font-bold text-[#96710A]">{s.metric}</p>
             </div>
           ))}
         </div>
@@ -1459,14 +1527,15 @@ function Footer() {
 /*  LOGIN MODAL                                                       */
 /* ═══════════════════════════════════════════════════════════════════ */
 function LoginModal({
-  open, onClose, signIn, signUp, navigate, toast,
+  open, initialTab, onClose, signIn, signUp, navigate, toast,
 }: {
-  open: boolean; onClose: () => void;
+  open: boolean; initialTab: 'login' | 'signup'; onClose: () => void;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, displayName: string, role: string) => Promise<{ error: any }>;
   navigate: (path: string) => void; toast: (opts: any) => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -1477,6 +1546,14 @@ function LoginModal({
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab(initialTab);
+      setForgotMode(false);
+      setForgotSent(false);
+    }
+  }, [initialTab, open]);
 
   const friendlyError = (msg: string) => {
     const lower = msg.toLowerCase();
@@ -1540,25 +1617,44 @@ function LoginModal({
 
   if (!open) return null;
 
-  const inputCls = 'h-11 bg-[#FAFAF9] border-[#E2E8F0] focus:border-[#B8860B] focus:ring-[#B8860B]/20 rounded-xl text-sm';
+  const inputCls = 'h-12 bg-[#FAFAF9] border-[#E2E8F0] focus:border-[#B8860B] focus:ring-[#B8860B]/20 rounded-xl text-sm';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-[#0F172A]/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl border border-[#E2E8F0] animate-in zoom-in-95 fade-in duration-200 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[#071226]/55 backdrop-blur-md" onClick={onClose} />
+      <div className="relative grid w-full max-w-6xl overflow-hidden rounded-[2rem] border border-white bg-white shadow-2xl animate-in zoom-in-95 fade-in duration-200 md:grid-cols-[0.95fr_1fr]">
         <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-[#F8FAFC] text-[#94A3B8] hover:text-[#0F172A] transition-colors z-10">
           <X className="h-5 w-5" />
         </button>
-        <div className="text-center pt-8 pb-2 px-6">
-          <AppLogo size="md" className="h-12 w-12 mx-auto mb-3" />
-          <h2 className="text-xl font-bold text-[#0F172A]"><AppName highlight accentClass="text-[#B8860B]" /></h2>
-          <p className="text-xs text-[#94A3B8] mt-1">Operations Management Platform</p>
+        <div className="relative hidden min-h-[620px] overflow-hidden bg-[#071226] md:block">
+          <img src={tomuAuthHero} alt="Brunei delivery van and warehouse" className="h-full w-full object-cover opacity-80" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#071226] via-[#071226]/45 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-10 text-white">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-[#E6CF9D] backdrop-blur">
+              TOMUPRO Access
+            </div>
+            <h2 className="max-w-md text-5xl font-black leading-[0.96] tracking-[-0.045em]">
+              Run delivery operations with clarity.
+            </h2>
+            <p className="mt-5 max-w-md text-base leading-7 text-white/80">
+              Sign in to manage orders, runners, inventory, COD payouts, and customer deliveries across Brunei.
+            </p>
+          </div>
         </div>
-        <div className="px-6 pb-8 pt-4">
-          <Tabs defaultValue="login" className="w-full">
+        <div className="max-h-[92vh] overflow-y-auto px-6 pb-8 pt-8 sm:px-10 sm:pt-10">
+          <div className="pb-5">
+            <div className="mb-4 flex items-center gap-3">
+              <AppLogo size="md" className="h-12 w-12" />
+              <div>
+                <h2 className="text-2xl font-black tracking-[-0.03em] text-[#071226]"><AppName highlight accentClass="text-[#B8860B]" /></h2>
+                <p className="text-sm font-medium text-[#64748B]">Brunei Logistics Operating System</p>
+              </div>
+            </div>
+          </div>
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'login' | 'signup')} className="w-full">
             <TabsList className="grid w-full grid-cols-2 p-1 bg-[#F8FAFC] rounded-xl mb-6 border border-[#F1F5F9]">
-              <TabsTrigger value="login" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#0F172A] text-[#94A3B8] text-sm font-medium">Login</TabsTrigger>
-              <TabsTrigger value="signup" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#0F172A] text-[#94A3B8] text-sm font-medium">Sign Up</TabsTrigger>
+              <TabsTrigger value="login" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#0F172A] text-[#94A3B8] text-sm font-bold">Log In</TabsTrigger>
+              <TabsTrigger value="signup" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#0F172A] text-[#94A3B8] text-sm font-bold">Get Started</TabsTrigger>
             </TabsList>
             <TabsContent value="login">
               {forgotMode ? (
