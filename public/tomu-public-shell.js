@@ -258,7 +258,7 @@
       '<section class="phero" id="home"><div class="phero-inner">',
       '  <div class="phero-text">',
       '    <div class="p-eyebrow"><span></span> Trusted Brunei logistics company</div>',
-      '    <h1>Brunei Delivery &amp;<br>Logistics,<br><em>Made Simple</em></h1>',
+      '    <h1><span>Brunei Delivery &amp;</span><span>Logistics,</span><em>Made Simple</em></h1>',
       '    <p class="phero-sub">Same-day parcel delivery, COD collection, warehouse fulfillment, courier service, and delivery management for Brunei businesses.</p>',
       '    <div class="phero-cta"><button class="pbtn pbtn-dark" data-open-auth="signup">Start Shipping <span>&rarr;</span></button><button class="pbtn pbtn-outline-dark" data-open-auth="login">Track Parcel</button></div>',
       '    <div class="phero-trust"><span class="trust-dot"></span> Trusted across Brunei <span class="trust-sep">&bull;</span> Bandar Seri Begawan <span class="trust-sep">&bull;</span> Kuala Belait <span class="trust-sep">&bull;</span> Tutong <span class="trust-sep">&bull;</span> Muara</div>',
