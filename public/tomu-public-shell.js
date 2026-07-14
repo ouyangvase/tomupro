@@ -245,7 +245,7 @@
       '  <div class="pnav-inner">',
       '    <a href="#home" class="pbrand"><img src="/landing/logo-griffin.png" alt="TOMUPRO" width="38" height="38"><div class="pbrand-text"><b>TOMU<span>PRO</span></b><small>Brunei Logistics Operating System</small></div></a>',
       '    <nav class="plinks"><a href="#services">Services</a><a href="#areas">Delivery Areas</a><a href="#track">Tracking</a><a href="#contact">Contact</a></nav>',
-      '    <div class="pnav-cta"><button class="pbtn-login" data-open-auth="login">Login</button><button class="pbtn-cta-gold" data-open-auth="signup">Get Started</button></div>',
+      '    <div class="pnav-cta"><button class="pbtn-login" data-open-auth="login">Login</button><button class="pbtn-cta-gold" data-open-auth="signup">Get Started &rarr;</button></div>',
       '    <button class="pmobile-toggle" aria-label="Menu">&#9776;</button>',
       '  </div>',
       '  <nav class="pmobile-nav"><a href="#services">Services</a><a href="#areas">Delivery Areas</a><a href="#track">Tracking</a><a href="#contact">Contact</a><button class="pbtn-login" data-open-auth="login">Login</button><button class="pbtn-cta-gold" data-open-auth="signup">Get Started</button></nav>',
@@ -257,16 +257,16 @@
     return [
       '<section class="phero" id="home"><div class="phero-inner">',
       '  <div class="phero-text">',
-      '    <div class="p-eyebrow"><span></span> Brunei Delivery Logistics Company</div>',
-      '    <h1>Delivery, COD<br>and Fulfillment<br><em>Across Brunei</em></h1>',
-      '    <p class="phero-sub">TOMUPRO helps Brunei businesses send parcels, manage warehouse fulfillment, collect cash on delivery, and track every order from pickup to doorstep.</p>',
-      '    <div class="phero-cta"><button class="pbtn pbtn-dark" data-open-auth="signup">Open Business Account <span>&rarr;</span></button><a href="#track" class="pbtn pbtn-outline-dark">Track Parcel</a></div>',
-      '    <div class="phero-trust"><span class="trust-dot"></span> Serving all Brunei districts <span class="trust-sep">&bull;</span> Brunei-Muara <span class="trust-sep">&bull;</span> Belait <span class="trust-sep">&bull;</span> Tutong <span class="trust-sep">&bull;</span> Temburong</div>',
+      '    <div class="p-eyebrow"><span></span> Trusted Brunei logistics company</div>',
+      '    <h1>Brunei Delivery &amp;<br>Logistics,<br><em>Made Simple</em></h1>',
+      '    <p class="phero-sub">Same-day parcel delivery, COD collection, warehouse fulfillment, courier service, and delivery management for Brunei businesses.</p>',
+      '    <div class="phero-cta"><button class="pbtn pbtn-dark" data-open-auth="signup">Start Shipping <span>&rarr;</span></button><button class="pbtn pbtn-outline-dark" data-open-auth="login">Track Parcel</button></div>',
+      '    <div class="phero-trust"><span class="trust-dot"></span> Trusted across Brunei <span class="trust-sep">&bull;</span> Bandar Seri Begawan <span class="trust-sep">&bull;</span> Kuala Belait <span class="trust-sep">&bull;</span> Tutong <span class="trust-sep">&bull;</span> Muara</div>',
       '  </div>',
       '  <div class="phero-visual">',
-      '    <img src="/landing/truck-last-mile.jpg" alt="TOMUPRO delivery van in Brunei" class="phero-img" width="640" height="480">',
-      '    <div class="float-card fc-live"><div class="fc-dot-live"></div><div class="fc-body"><div class="fc-label">Live Dispatch</div><div class="fc-title">Out for Delivery</div><div class="fc-meta">BSB route 12 parcels active</div></div></div>',
-      '    <div class="float-card fc-done"><div class="fc-icon-done">&#10003;</div><div class="fc-body"><div class="fc-title-done">COD Collected</div><div class="fc-meta">Order ORD-78455</div><div class="fc-meta">Ready for payout report</div></div><div class="fc-time">08:41 AM<br><small>Today</small></div></div>',
+      '    <img src="/landing/tomupro-auth-hero.png" alt="TOMUPRO courier loading parcels into a delivery van at a Brunei warehouse" class="phero-img" width="1821" height="864">',
+      '    <div class="float-card fc-live"><div class="fc-dot-live"></div><div class="fc-body"><div class="fc-label">Live Tracking</div><div class="fc-title">Out for Delivery</div><div class="fc-meta">Order ORD-78456 estimated 10:30 AM</div></div></div>',
+      '    <div class="float-card fc-done"><div class="fc-icon-done">&#10003;</div><div class="fc-body"><div class="fc-title-done">Delivered</div><div class="fc-meta">Order ORD-78455 delivered to customer</div></div><div class="fc-time">09:41 AM<br><small>Today</small></div></div>',
       '  </div>',
       '</div></section>'
     ].join("");
@@ -354,7 +354,7 @@
 
   function buildAuthModal() {
     return [
-      '<div class="public-auth-modal" data-public-auth-modal aria-hidden="true"><div class="public-auth-backdrop" data-close-auth></div><div class="public-auth-card"><button class="public-auth-close" data-close-auth aria-label="Close">&times;</button><div class="public-auth-layout"><div class="public-auth-visual"><img src="/landing/auth-premium-visual.png" alt="TOMUPRO logistics access for Brunei delivery businesses"><div class="public-auth-visual-shade"></div><div class="public-auth-proof"><span>Brunei Logistics Access</span><strong>Run Delivery <em>Better</em></strong><p>Sign in to manage parcels, runners, COD collection, fulfillment inventory, and delivery performance across Brunei.</p></div></div><div class="public-auth-panel"><div class="public-auth-tabs"><button data-auth-tab="login" class="active">Log In</button><button data-auth-tab="signup">Get Started</button></div>',
+      '<div class="public-auth-modal" data-public-auth-modal aria-hidden="true"><div class="public-auth-backdrop" data-close-auth></div><div class="public-auth-card"><button class="public-auth-close" data-close-auth aria-label="Close">&times;</button><div class="public-auth-layout"><div class="public-auth-visual"><img src="/landing/tomupro-auth-hero.png" alt="TOMUPRO logistics access for Brunei delivery businesses"><div class="public-auth-visual-shade"></div><div class="public-auth-proof"><span>TOMUPRO Access</span><strong>Run delivery operations with <em>clarity</em>.</strong><p>Sign in to manage parcels, runners, COD collection, fulfillment inventory, and delivery performance across Brunei.</p></div></div><div class="public-auth-panel"><div class="public-auth-tabs"><button data-auth-tab="login" class="active">Log In</button><button data-auth-tab="signup">Get Started</button></div>',
       '<form data-auth-panel="login" data-login-form><label>Email<input name="email" type="email" required placeholder="Enter your email address"></label><label>Password<input name="password" type="password" required placeholder="Enter your password"></label><div class="public-auth-forgot"><a href="#" data-forgot-password>Forgot Password?</a></div><div data-form-message class="public-form-message"></div><button type="submit" class="public-auth-submit">Sign In &rarr;</button></form>',
       '<form data-auth-panel="signup" data-signup-form hidden><label>Display Name<input name="display_name" type="text" required placeholder="Your name"></label><label>Email<input name="email" type="email" required placeholder="Enter your email address"></label><label>Password<input name="password" type="password" required minlength="8" placeholder="Minimum 8 characters"></label><label>Admin Code <span>Optional</span><input name="invite_code" type="text" placeholder="TOMU-SP-XXXX"></label><div data-form-message class="public-form-message"></div><button type="submit" class="public-auth-submit">Create Account &rarr;</button></form>',
       '</div></div></div></div>'
