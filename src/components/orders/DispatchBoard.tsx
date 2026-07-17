@@ -7,6 +7,7 @@ import { DispatchBoardRow } from './DispatchBoardRow';
 import capybaraEmpty from '@/assets/capybara-empty.png';
 import type { Order } from '@/types/database';
 import type { OrderStockResult } from '@/hooks/useStockCalculation';
+import type { ReactNode } from 'react';
 
 interface DispatchBoardProps {
   orders: Order[];
@@ -27,6 +28,7 @@ interface DispatchBoardProps {
   showStockStatus?: boolean;
   stockResults?: Map<string, OrderStockResult>;
   onStockBadgeClick?: (order: Order) => void;
+  renderKitaniAction?: (order: Order) => ReactNode;
 }
 
 export function DispatchBoard({
@@ -47,6 +49,7 @@ export function DispatchBoard({
   showStockStatus,
   stockResults,
   onStockBadgeClick,
+  renderKitaniAction,
 }: DispatchBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const allIdsCount = allSelectableIds ? allSelectableIds.length : orders.length;
@@ -118,6 +121,7 @@ export function DispatchBoard({
         <div className="w-[130px] shrink-0">Runner</div>
         <div className="w-[100px] shrink-0 text-right">Status</div>
         {showStockStatus && <div className="w-[100px] shrink-0 text-right">Stock</div>}
+        {renderKitaniAction && <div className="w-[120px] shrink-0 text-right">KITANI</div>}
         <div className="w-[80px] shrink-0 text-right hidden xl:block">Date</div>
       </div>
 
@@ -141,6 +145,7 @@ export function DispatchBoard({
             showStockStatus={showStockStatus}
             stockStatus={stockResults?.get(order.id)?.stock_status}
             onStockBadgeClick={onStockBadgeClick}
+            kitaniAction={renderKitaniAction?.(order)}
           />
         ))}
       </div>

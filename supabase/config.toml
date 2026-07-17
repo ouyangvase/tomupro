@@ -38,3 +38,12 @@ verify_jwt = false
 
 [functions.submit-interest]
 verify_jwt = false
+
+[functions.create-kitani-invitation]
+verify_jwt = false
+
+[functions.kitani-events]
+verify_jwt = false
+
+[functions.send-kitani-delivered]
+verify_jwt = false

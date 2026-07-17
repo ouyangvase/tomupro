@@ -356,6 +356,20 @@ Deno.serve(async (req) => {
       console.error('Webhook trigger error (non-blocking):', webhookErr);
     }
 
+    // Fire KITANI delivered event only for orders that used a KITANI link (non-blocking).
+    try {
+      fetch(`${supabaseUrl}/functions/v1/send-kitani-delivered`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ orderId, deliveredAt: deliveryTimestamp }),
+      }).catch((err) => console.error('KITANI delivered fire-and-forget error:', err));
+    } catch (kitaniErr) {
+      console.error('KITANI delivered trigger error (non-blocking):', kitaniErr);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 

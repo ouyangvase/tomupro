@@ -58,6 +58,8 @@ import { CalculateStockButton } from '@/components/orders/CalculateStockButton';
 import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
 import { StockAllocationDetail } from '@/components/orders/StockAllocationDetail';
 import type { OrderStockResult } from '@/hooks/useStockCalculation';
+import { KitaniInvitationButton } from '@/components/orders/KitaniInvitationButton';
+import { useKitaniOrderLinks } from '@/hooks/useKitaniOrderLinks';
 
 export default function ReadySales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
@@ -98,6 +100,8 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
   }), [isManager, salespersonIds, role, profile?.id, serverSearch]);
 
   const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders(orderFilters, 50);
+  const visibleOrderIds = useMemo(() => orders.map(order => order.id), [orders]);
+  const { data: kitaniLinks = new Map() } = useKitaniOrderLinks(visibleOrderIds);
 
   // Fetch ALL matching IDs for cross-page "Select All"
   const { data: allOrderIds = [] } = useAllOrderIds(orderFilters);
@@ -537,6 +541,9 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
             showStockStatus
             stockResults={stockResults}
             onStockBadgeClick={(order) => setStockDetailOrder(order)}
+            renderKitaniAction={(order) => (
+              <KitaniInvitationButton order={order} link={kitaniLinks.get(order.id)} />
+            )}
           />
         )}
       </div>

@@ -8,6 +8,7 @@ import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import { StockStatusBadge } from './StockStatusBadge';
+import type { ReactNode } from 'react';
 
 interface DispatchBoardRowProps {
   order: Order;
@@ -19,6 +20,7 @@ interface DispatchBoardRowProps {
   showStockStatus?: boolean;
   stockStatus?: string;
   onStockBadgeClick?: (order: Order) => void;
+  kitaniAction?: ReactNode;
 }
 
 function RunnerAvatar({ name }: { name: string }) {
@@ -57,7 +59,7 @@ function DeliveryStatusBadge({ status }: { status: string }) {
   );
 }
 
-export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick, showStockStatus, stockStatus, onStockBadgeClick }: DispatchBoardRowProps) {
+export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick, showStockStatus, stockStatus, onStockBadgeClick, kitaniAction }: DispatchBoardRowProps) {
   const { displayText } = formatOrderItemsDisplay(order.order_items);
   const isRejectedReceipt = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
 
@@ -160,6 +162,12 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
                 status={stockStatus || 'NOT_CALCULATED'}
                 onClick={onStockBadgeClick ? (e) => { e.stopPropagation(); onStockBadgeClick(order); } : undefined}
               />
+            </div>
+          )}
+
+          {kitaniAction && (
+            <div className="w-[120px] shrink-0 text-right">
+              {kitaniAction}
             </div>
           )}
 
