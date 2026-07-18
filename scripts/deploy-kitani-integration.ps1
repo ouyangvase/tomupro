@@ -7,7 +7,8 @@ param(
   [string]$KitaniCustomerUrl = "https://www.kitani.my",
   [string]$KitaniClientId = $env:KITANI_CLIENT_ID,
   [string]$KitaniApiSecret = $env:KITANI_API_SECRET,
-  [string]$InvitationTemplate = $env:KITANI_INVITATION_TEMPLATE
+  [string]$InvitationTemplate = $env:KITANI_INVITATION_TEMPLATE,
+  [string]$KitaniRepoPath = $env:KITANI_REPO_PATH
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +23,12 @@ if (-not $KitaniClientId) {
 
 if (-not $KitaniApiSecret) {
   $bytes = New-Object byte[] 32
-  [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $rng.GetBytes($bytes)
+  } finally {
+    $rng.Dispose()
+  }
   $KitaniApiSecret = [Convert]::ToBase64String($bytes)
 }
 
@@ -66,11 +72,29 @@ npx supabase functions deploy kitani-events --project-ref $ProjectRef
 npx supabase functions deploy send-kitani-delivered --project-ref $ProjectRef
 npx supabase functions deploy process-delivery --project-ref $ProjectRef
 
-Write-Host "Redeploying KITANI backend so new Railway variables are active..."
-npx @railway/cli up -y --detach `
-  --project $RailwayProjectId `
-  --environment $RailwayEnvironmentId `
-  --service $RailwayServiceId `
-  --message "Activate TOMUPRO integration credentials"
+if ($KitaniRepoPath) {
+  if (-not (Test-Path $KitaniRepoPath)) {
+    throw "KITANI_REPO_PATH does not exist: $KitaniRepoPath"
+  }
+
+  Write-Host "Redeploying KITANI backend from KITANI_REPO_PATH so new Railway variables are active..."
+  Push-Location $KitaniRepoPath
+  try {
+    npx @railway/cli link `
+      --project $RailwayProjectId `
+      --environment $RailwayEnvironmentId `
+      --service $RailwayServiceId | Out-Null
+
+    npx @railway/cli up -y --detach `
+      --project $RailwayProjectId `
+      --environment $RailwayEnvironmentId `
+      --service $RailwayServiceId `
+      --message "Activate TOMUPRO integration credentials"
+  } finally {
+    Pop-Location
+  }
+} else {
+  Write-Host "Skipping KITANI backend redeploy. Set KITANI_REPO_PATH to the KITANI repository path and rerun, or redeploy the Railway kitani-backend service from the KITANI repository."
+}
 
 Write-Host "KITANI to TOMUPRO integration deployment commands completed."
