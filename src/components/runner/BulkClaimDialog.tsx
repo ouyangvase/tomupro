@@ -60,9 +60,10 @@ export function BulkClaimDialog({
   // Get invalid orders (those with missing area charges)
   const invalidOrders = useMemo(() => {
     if (!hasMissingCharges) return [];
+    const missingAreaSet = new Set(preview.missingAreas.map(a => a.toLowerCase()));
     return preview.orderBreakdown.filter(ob => {
       const area = ob.area?.toLowerCase() || '';
-      return ob.area && preview.missingAreas.map(a => a.toLowerCase()).includes(area);
+      return !ob.area || missingAreaSet.has(area);
     });
   }, [preview, hasMissingCharges]);
 

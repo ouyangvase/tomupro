@@ -3,6 +3,9 @@ project_id = "dtcchduronwsyunyakxj"
 [functions.process-delivery]
 verify_jwt = false
 
+[functions.approve-password-reset]
+verify_jwt = false
+
 [functions.submit-bulk-claim]
 verify_jwt = false
 
@@ -46,4 +49,19 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-kitani-delivered]
+verify_jwt = false
+
+[functions.send-snipers-delivered]
+verify_jwt = false
+
+[functions.snipers-delivered-orders]
+verify_jwt = false
+
+[functions.snipers-test-connection]
+verify_jwt = false
+
+[functions.snipers-backfill-delivered]
+verify_jwt = false
+
+[functions.send-telegram-event]
 verify_jwt = false

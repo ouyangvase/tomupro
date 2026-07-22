@@ -29,17 +29,18 @@ import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/Mobile
 import { useIsMobile } from '@/hooks/use-mobile';
 import capybaraCommandCenter from '@/assets/capybara-command-center.png';
 import {
-  AlertCircle, MessageSquare, Search, CalendarClock, RefreshCw,
+  AlertCircle, MessageSquare, Search, CalendarClock,
   Play, ListChecks, XCircle, Calendar, AlertTriangle, Flame,
   Phone, MapPin, User, ChevronRight, ChevronLeft, Clock,
   ShieldAlert, Eye, PhoneCall, CalendarPlus,
-  UserPlus, CheckCircle2, HelpCircle, Lightbulb,
+  UserPlus, CheckCircle2, HelpCircle, Lightbulb, Image as ImageIcon,
   Target, TrendingUp, Zap, Download
 } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { cn } from '@/lib/utils';
 import { exportOrderLines } from '@/lib/csv';
 import { toast } from 'sonner';
+import { getSignedStorageUrl } from '@/lib/storageUrls';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -98,6 +99,65 @@ const priorityConfig = {
 type TimeFilter = 'all' | 'today' | 'week' | 'month';
 
 // ── Workflow step component ──
+interface DeliveryProof {
+  id: string;
+  order_id: string | null;
+  signedUrl: string;
+  uploaded_at: string;
+}
+
+function DeliveryProofPreview({ proofs, compact = false }: { proofs: DeliveryProof[]; compact?: boolean }) {
+  if (proofs.length === 0) {
+    return <span className="text-xs text-muted-foreground">-</span>;
+  }
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {proofs.slice(0, 2).map((proof) => (
+          <a
+            key={proof.id}
+            href={proof.signedUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block h-10 w-10 overflow-hidden rounded-lg border bg-muted"
+            onClick={(event) => event.stopPropagation()}
+            title="Open delivery proof"
+          >
+            <img src={proof.signedUrl} alt="Delivery proof" className="h-full w-full object-cover" />
+          </a>
+        ))}
+        {proofs.length > 2 && (
+          <span className="text-xs font-medium text-muted-foreground">+{proofs.length - 2}</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <ImageIcon className="h-3.5 w-3.5" />
+        Driver proof
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {proofs.slice(0, 3).map((proof) => (
+          <a
+            key={proof.id}
+            href={proof.signedUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block aspect-square overflow-hidden rounded-xl border bg-muted"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <img src={proof.signedUrl} alt="Delivery proof" className="h-full w-full object-cover" />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorkflowStep({ step, icon, title, desc, active }: { step: number; icon: React.ReactNode; title: string; desc: string; active?: boolean }) {
   return (
     <div className={cn(
@@ -305,6 +365,45 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   }, [allOrders, sourceFilter, timeFilter, priorityFilter]);
 
   // ── Salesperson filter data ──
+  const actionOrderIds = useMemo(
+    () => actionRequiredOrders.map((order) => order.id).sort(),
+    [actionRequiredOrders]
+  );
+
+  const { data: deliveryProofs = [] } = useQuery({
+    queryKey: ['action-required-delivery-proofs', actionOrderIds],
+    queryFn: async () => {
+      if (actionOrderIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('attachments')
+        .select('id, order_id, url, uploaded_at')
+        .in('order_id', actionOrderIds)
+        .eq('type', 'delivery_photo')
+        .order('uploaded_at', { ascending: false });
+
+      if (error) throw error;
+
+      return Promise.all((data || []).map(async (proof) => ({
+        id: proof.id,
+        order_id: proof.order_id,
+        uploaded_at: proof.uploaded_at,
+        signedUrl: await getSignedStorageUrl(proof.url, 'delivery-photos'),
+      })));
+    },
+    enabled: actionOrderIds.length > 0,
+    staleTime: 30000,
+  });
+
+  const deliveryProofsByOrder = useMemo(() => {
+    return deliveryProofs.reduce<Record<string, DeliveryProof[]>>((acc, proof) => {
+      if (!proof.order_id) return acc;
+      if (!acc[proof.order_id]) acc[proof.order_id] = [];
+      acc[proof.order_id].push(proof);
+      return acc;
+    }, {});
+  }, [deliveryProofs]);
+
   const { data: salespersons = [] } = useQuery({
     queryKey: ['salespersons-for-action-filter', role, profile?.id, viewMode, selectedMember, visibleOwnerIds],
     queryFn: async () => {
@@ -431,35 +530,35 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-destructive/60 to-primary/30" />
           <div className="absolute -top-20 -right-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
 
-          <div className="relative flex flex-col gap-5 md:flex-row md:items-start md:justify-between md:gap-6">
+          <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between xl:gap-6">
             <div className="flex-1 min-w-0 space-y-2">
               <div className="flex items-start gap-3">
                 <div className="p-3 rounded-2xl bg-gradient-to-br from-destructive/15 to-destructive/5 border border-destructive/20">
                   <ShieldAlert className="h-7 w-7 text-destructive" />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-foreground">
+                  <h1 className="text-2xl md:text-3xl font-extrabold leading-tight tracking-tight text-foreground text-balance">
                     Operations Command Center
                   </h1>
-                  <p className="text-sm md:text-base text-muted-foreground mt-0.5">
+                  <p className="text-sm md:text-base text-muted-foreground mt-0.5 max-w-[56ch]">
                     {stats.total} order{stats.total !== 1 ? 's' : ''} requiring attention
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex w-full flex-col gap-3 md:w-auto md:shrink-0 md:flex-row md:items-center">
+            <div className="grid w-full min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center xl:w-auto xl:max-w-[min(760px,62vw)] xl:shrink-0">
               <TeamViewToggle
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 selectedMember={selectedMember}
                 onMemberChange={setSelectedMember}
-                className="w-full md:w-auto"
+                className="w-full"
               />
-              <div className="flex items-center gap-2 md:gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
+                    <Button variant="outline" size="sm" className="shrink-0 gap-2">
                       <Download className="h-4 w-4" />
                       <span className="hidden md:inline">Export</span>
                     </Button>
@@ -473,16 +572,12 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  <span className="hidden md:inline">Refresh</span>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setShowGuide(!showGuide)} className="gap-1.5">
+                <Button variant="ghost" size="sm" onClick={() => setShowGuide(!showGuide)} className="shrink-0 gap-1.5">
                   <HelpCircle className="h-4 w-4" />
                   <span className="hidden md:inline">Guide</span>
                 </Button>
               </div>
-              <div className="hidden lg:block">
+              <div className="hidden 2xl:block">
                 <img
                   src={capybaraCommandCenter}
                   alt="Operations Capybara"
@@ -814,6 +909,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
               const source = getActionSource(order);
               const priority = getOrderPriority(order);
               const isSelected = selectedRows.has(order.id);
+              const proofs = deliveryProofsByOrder[order.id] || [];
               return (
                 <MobileOrderCard
                   key={order.id}
@@ -840,6 +936,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     { label: 'Address', value: order.address || '-', fullWidth: true },
                     ...(order.failed_reason ? [{ label: 'Reason', value: order.failed_reason }] : []),
                     ...(order.failed_remark || order.runner_comment ? [{ label: 'Runner Comment', value: order.failed_remark || order.runner_comment || '-', fullWidth: true }] : []),
+                    ...(proofs.length > 0 ? [{ label: 'Proof', value: <DeliveryProofPreview proofs={proofs} />, fullWidth: true }] : []),
                     { label: 'Order Status', value: order.status },
                     { label: 'Runner Status', value: order.runner_status || '-' },
                   ]}
@@ -886,6 +983,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     <TableHead className="w-[100px]">Next Date</TableHead>
                     <TableHead className="w-[130px]">Reason</TableHead>
                     <TableHead className="w-[160px]">Runner Comment</TableHead>
+                    <TableHead className="w-[110px]">Proof</TableHead>
                     <TableHead className="w-[100px]">Status</TableHead>
                     <TableHead className="text-right w-[180px]">Actions</TableHead>
                   </TableRow>
@@ -894,6 +992,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                   {actionRequiredOrders.map(order => {
                     const source = getActionSource(order);
                     const priority = getOrderPriority(order);
+                    const proofs = deliveryProofsByOrder[order.id] || [];
                     return (
                       <TableRow
                         key={order.id}
@@ -977,6 +1076,9 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                               </TooltipContent>
                             </Tooltip>
                           ) : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <DeliveryProofPreview proofs={proofs} compact />
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">

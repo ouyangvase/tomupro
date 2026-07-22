@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import type { Order } from '@/types/database';
-import { XCircle, RefreshCw, Calendar, Search } from 'lucide-react';
+import { XCircle, Calendar, Search } from 'lucide-react';
 import capybaraEmpty from '@/assets/capybara-empty.png';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { OrderFiltersPanel, type OrderFilters } from '@/components/filters/OrderFiltersPanel';
@@ -27,7 +27,7 @@ export default function RunnerFailedOrders() {
   const areaOptions = useMemo(() => validAreas.map(a => ({ label: a, value: a })), [validAreas]);
   const driverOptions = useMemo(() => myDrivers.map(d => ({ label: d.driver?.display_name || 'Unknown', value: d.driver_id })), [myDrivers]);
 
-  const { data: orders, isLoading, isFetching, pagination, setPage, refetch } = usePaginatedOrders({
+  const { data: orders, isLoading, isFetching, pagination, setPage } = usePaginatedOrders({
     runnerId: user?.id,
     runnerStatusIn: ['FAILED_DELIVERY'] as any[],
     searchQuery: serverSearch || undefined,
@@ -57,12 +57,6 @@ export default function RunnerFailedOrders() {
           subtitle="Orders that need attention or have been cancelled"
           image={capybaraEmpty}
           imageAlt="Failed Orders Capybara"
-          actions={
-            <Button variant="outline" size="sm" onClick={() => refetch()} className="rounded-full gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-          }
         />
 
         {/* Status Summary Cards */}

@@ -54,7 +54,7 @@ export function QuickActionsGrid({
 
       {/* Grid */}
       <div className={cn(
-        "grid gap-3",
+        "grid gap-2.5",
         columns === 4 ? "grid-cols-4" : "grid-cols-3"
       )}>
         {visibleActions.map((action) => (
@@ -62,10 +62,10 @@ export function QuickActionsGrid({
             key={action.id}
             onClick={() => navigate(action.href)}
             className={cn(
-              "relative flex flex-col items-center gap-2.5 p-4 rounded-2xl",
-              "bg-card border border-border/40",
-              "transition-all duration-200 active:scale-95",
-              "shadow-sm hover:shadow-md"
+              "group relative flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-[1.35rem] p-2.5",
+              "border border-[#e4d9ca] bg-[#fffdf8]",
+              "shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_10px_26px_rgba(113,78,31,0.07)]",
+              "mobile-motion transition-all duration-500 active:scale-[0.96]"
             )}
           >
             {/* Badge */}
@@ -80,12 +80,12 @@ export function QuickActionsGrid({
             )}
 
             {/* Icon */}
-            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+            <div className="mobile-motion flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f4eadb] text-[#b97823] transition-transform duration-500 group-active:scale-95">
               {action.icon}
             </div>
 
             {/* Label */}
-            <span className="text-xs font-semibold text-center text-foreground leading-tight line-clamp-2">
+            <span className="line-clamp-2 text-center text-[11px] font-bold leading-tight text-[#25221e]">
               {action.label}
             </span>
           </button>

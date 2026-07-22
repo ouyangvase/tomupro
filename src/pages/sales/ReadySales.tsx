@@ -61,6 +61,14 @@ import type { OrderStockResult } from '@/hooks/useStockCalculation';
 import { KitaniInvitationButton } from '@/components/orders/KitaniInvitationButton';
 import { useKitaniOrderLinks } from '@/hooks/useKitaniOrderLinks';
 
+type RunnerBindingOptionSource = {
+  runner_id: string;
+  runner?: {
+    display_name?: string | null;
+    email?: string | null;
+  } | null;
+};
+
 export default function ReadySales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
@@ -179,9 +187,9 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
   );
 
   const runnerOptions = useMemo(() => {
-    const source = bindingOwnerIsManager ? managerRunnerBindings : bindings;
-    return source.map((b: any) => ({
-      id: b.runner_id as string,
+    const source: RunnerBindingOptionSource[] = bindingOwnerIsManager ? managerRunnerBindings : bindings;
+    return source.map((b) => ({
+      id: b.runner_id,
       label: b.runner?.display_name || b.runner?.email || 'Unknown Runner',
     }));
   }, [bindingOwnerIsManager, managerRunnerBindings, bindings]);
@@ -328,16 +336,16 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
           image={capybaraSales}
           imageAlt="Capybara dispatcher"
           actions={
-            <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center md:w-auto">
+            <div className="grid w-full min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center xl:w-auto">
               <TeamViewToggle
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 selectedMember={selectedMember}
                 onMemberChange={setSelectedMember}
-                className="w-full md:w-auto"
+                className="w-full"
               />
               {isEditable && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
                   <CalculateStockButton
                     orders={orders}
                     selectedOrderIds={selectedRows}
@@ -347,11 +355,11 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                       return merged;
                     })}
                   />
-                  <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"}>
+                  <Button onClick={handleCreateNew} size={isMobile ? "sm" : "default"} className="shrink-0">
                     <Plus className="h-4 w-4 mr-2" />
                     {isMobile ? 'New' : 'New Order'}
                   </Button>
-                  <Button onClick={handleExport} variant="outline" size={isMobile ? "sm" : "default"} disabled={exporting}>
+                  <Button onClick={handleExport} variant="outline" size={isMobile ? "sm" : "default"} disabled={exporting} className="shrink-0">
                     {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     {isMobile ? '' : 'Export'}
                   </Button>
@@ -441,24 +449,6 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
         {/* Orders Board */}
         {isMobile ? (
           <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search order, customer, phone, area..."
-                value={mobileSearch}
-                onChange={(e) => setMobileSearch(e.target.value)}
-                className="pl-9 pr-9"
-              />
-              {mobileSearch && (
-                <button
-                  onClick={() => setMobileSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-
             {isEditable && filteredOrders.length > 0 && (
               <MobileSelectAllCard
                 isAllSelected={isAllSelected}
@@ -517,6 +507,13 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                       ...(order.runner_comment ? [{ label: 'Runner Note', value: order.runner_comment, fullWidth: true }] : []),
                       ...(order.next_delivery_date ? [{ label: 'Next Delivery', value: format(new Date(order.next_delivery_date), 'dd MMM yyyy') }] : []),
                     ]}
+                    primaryAction={
+                      <KitaniInvitationButton
+                        order={order}
+                        link={kitaniLinks.get(order.id)}
+                        mode="mobile"
+                      />
+                    }
                   />
                 );
               })

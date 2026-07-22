@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebugTeamVisibility } from '@/hooks/useTeamVisibility';
-import { Bug, RefreshCw, Users, Package, FileText } from 'lucide-react';
+import { Bug, Users, Package, FileText } from 'lucide-react';
 import { useState } from 'react';
 
 /**
@@ -12,7 +12,7 @@ import { useState } from 'react';
  */
 export function VisibilityDebugPanel() {
   const { role } = useAuth();
-  const { data: debug, isLoading, refetch } = useDebugTeamVisibility();
+  const { data: debug, isLoading } = useDebugTeamVisibility();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Only show for admins
@@ -28,14 +28,6 @@ export function VisibilityDebugPanel() {
             <Badge variant="outline" className="text-xs">Admin Only</Badge>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => refetch()}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
             <Button
               variant="ghost"
               size="sm"

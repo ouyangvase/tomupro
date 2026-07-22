@@ -19,12 +19,17 @@ export function MobileLayout({
   contentClassName,
 }: MobileLayoutProps) {
   return (
-    <div className={cn("space-grid-bg min-h-dvh w-full max-w-full overflow-x-hidden bg-background text-foreground flex flex-col", className)}>
+    <div
+      className={cn(
+        "mobile-shell min-h-dvh w-full max-w-full overflow-x-hidden bg-[#f7f2ea] text-foreground flex flex-col",
+        className
+      )}
+    >
       {showHeader && <MobileHeader />}
       
       <main className={cn(
-        "flex-1 min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto",
-        showBottomNav && "pb-20", // Space for bottom nav
+        "mobile-content flex-1 min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto",
+        showBottomNav && "pb-32",
         contentClassName
       )}>
         {children}

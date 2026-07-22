@@ -123,7 +123,9 @@ serve(async (req) => {
 
     // ── Per-order validation ──
     const failedOrders: FailedOrder[] = [];
+    const skippedOrders: FailedOrder[] = [];
     const validOrders: ValidOrder[] = [];
+    const submittedStatuses = new Set(['ADMIN_ACK_PENDING', 'SP_ACK_PENDING', 'CLAIMED', 'SETTLED']);
 
     for (const orderId of orderIds) {
       const order = orderMap.get(orderId);
@@ -160,7 +162,12 @@ serve(async (req) => {
 
       // Check reconciliation status
       if (order.reconciliation_status !== 'NOT_CLAIMED') {
-        failedOrders.push({ ...base, reason: `Already claimed or submitted (status: ${order.reconciliation_status})` });
+        const reason = `Already claimed or submitted (status: ${order.reconciliation_status})`;
+        if (submittedStatuses.has(order.reconciliation_status || '')) {
+          skippedOrders.push({ ...base, reason });
+        } else {
+          failedOrders.push({ ...base, reason });
+        }
         continue;
       }
 
@@ -171,7 +178,7 @@ serve(async (req) => {
         const submittedDate = batchInfo?.submitted_at
           ? new Date(batchInfo.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
           : '?';
-        failedOrders.push({
+        skippedOrders.push({
           ...base,
           reason: `Already in batch ${batchRef} (submitted ${submittedDate})`,
           existing_batch_code: batchInfo?.batch_code,
@@ -206,25 +213,33 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[submit-bulk-claim] validation: ${validOrders.length} valid, ${failedOrders.length} failed`);
+    console.log(`[submit-bulk-claim] validation: ${validOrders.length} valid, ${failedOrders.length} failed, ${skippedOrders.length} skipped`);
     if (failedOrders.length > 0) {
       console.log(`[submit-bulk-claim] failed_orders: ${JSON.stringify(failedOrders)}`);
+    }
+    if (skippedOrders.length > 0) {
+      console.log(`[submit-bulk-claim] skipped_orders: ${JSON.stringify(skippedOrders)}`);
     }
 
     // ── All failed → return error with details ──
     if (validOrders.length === 0) {
+      const onlySkipped = skippedOrders.length > 0 && failedOrders.length === 0;
       return json({
-        success: false,
-        error: `All ${failedOrders.length} order(s) failed validation`,
-        message: `All ${failedOrders.length} order(s) failed validation. See failed_orders for details.`,
+        success: onlySkipped,
+        error: onlySkipped ? undefined : `All ${failedOrders.length} order(s) failed validation`,
+        message: onlySkipped
+          ? `${skippedOrders.length} order(s) were already submitted, so no new claim batch was needed.`
+          : `All ${failedOrders.length} order(s) failed validation. See failed_orders for details.`,
         success_count: 0,
+        skipped_count: skippedOrders.length,
+        skipped_orders: skippedOrders,
         failed_count: failedOrders.length,
         failed_orders: failedOrders,
       });
     }
 
     // ── Proceed with valid orders ──
-    const isPartial = failedOrders.length > 0;
+    const isPartial = failedOrders.length > 0 || skippedOrders.length > 0;
     const validOrderIds = validOrders.map(o => o.id);
 
     const totalGrossAmount = validOrders.reduce((sum, o) => sum + o.total_amount, 0);
@@ -377,6 +392,8 @@ serve(async (req) => {
         exchange_rate: rate,
         net_amount_rm: totalNetRM,
         partial: isPartial,
+        skipped_count: skippedOrders.length,
+        skipped_reasons: skippedOrders.map(f => ({ order_id: f.order_id, order_code: f.order_code, reason: f.reason })),
         failed_count: failedOrders.length,
         failed_reasons: failedOrders.map(f => ({ order_id: f.order_id, order_code: f.order_code, reason: f.reason })),
       },
@@ -397,7 +414,7 @@ serve(async (req) => {
           action: 'submitted_claim',
           entityType: 'claim_batch',
           entityId: batch.id,
-          description: `Submitted claim batch: ${validOrders.length} orders, BND ${totalNetBND.toFixed(2)} net${isPartial ? ` (${failedOrders.length} skipped)` : ''}`,
+          description: `Submitted claim batch: ${validOrders.length} orders, BND ${totalNetBND.toFixed(2)} net${isPartial ? ` (${failedOrders.length + skippedOrders.length} skipped/failed)` : ''}`,
         }),
       }).catch((err) => console.error('[sync-to-firebase] error:', err));
     } catch (_syncErr) {
@@ -412,6 +429,8 @@ serve(async (req) => {
       batchCode: batch.batch_code,
       orderCount: validOrders.length,
       success_count: validOrders.length,
+      skipped_count: skippedOrders.length,
+      skipped_orders: skippedOrders,
       failed_count: failedOrders.length,
       failed_orders: failedOrders,
       grossAmount: totalGrossAmount,

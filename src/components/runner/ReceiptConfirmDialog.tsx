@@ -111,13 +111,19 @@ export function ReceiptConfirmDialog({
 
   if (!order) return null;
 
+  const receiptNeedsReview =
+    order.payment_method === 'TRANSFER' &&
+    order.receipt_status !== 'confirmed' &&
+    order.receipt_status !== 'rejected';
+
   const statusBadge = () => {
     const s = order.receipt_status;
-    if (s === 'pending') return <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Pending Review</Badge>;
+    if (receiptNeedsReview) return <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Pending Review</Badge>;
     if (s === 'confirmed') return <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">Confirmed</Badge>;
     if (s === 'rejected') return <Badge variant="outline" className="text-xs bg-red-500/10 text-red-600 border-red-500/20">Rejected</Badge>;
     return <Badge variant="outline" className="text-xs">No Receipt</Badge>;
   };
+  const canActOnReceipt = receiptNeedsReview;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -155,7 +161,12 @@ export function ReceiptConfirmDialog({
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground border rounded-lg border-dashed">
             <ImageIcon className="h-10 w-10 mb-2 opacity-40" />
-            <p className="text-sm">No receipt uploaded</p>
+            <p className="text-sm">{receiptNeedsReview ? 'Receipt is pending review' : 'No receipt uploaded'}</p>
+            {receiptNeedsReview && (
+              <p className="text-xs mt-1 text-center max-w-xs">
+                The receipt image is not available in this view, but this transfer receipt can still be accepted or rejected.
+              </p>
+            )}
           </div>
         )}
 
@@ -179,16 +190,16 @@ export function ReceiptConfirmDialog({
             <>
               <Button
                 onClick={handleConfirm}
-                disabled={loading || !order.receipt_url}
+                disabled={loading || !canActOnReceipt}
                 className="w-full bg-green-600 hover:bg-green-700 text-white"
               >
                 {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
-                Confirm Payment Received
+                Accept Receipt
               </Button>
               <Button
                 variant="outline"
                 onClick={() => setRejecting(true)}
-                disabled={loading || !order.receipt_url}
+                disabled={loading || !canActOnReceipt}
                 className="w-full border-destructive/40 text-destructive hover:bg-destructive/10"
               >
                 <XCircle className="h-4 w-4 mr-1" /> Reject Receipt

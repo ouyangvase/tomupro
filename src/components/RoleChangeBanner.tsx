@@ -1,4 +1,4 @@
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -14,7 +14,7 @@ export function RoleChangeBanner() {
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span className="text-sm font-medium">
             Your role has been updated to <strong className="uppercase">{profile?.role}</strong>. 
-            Please refresh to apply new permissions.
+            Apply the update to use your latest permissions.
           </span>
         </div>
         <Button 
@@ -23,8 +23,8 @@ export function RoleChangeBanner() {
           onClick={dismissRoleChange}
           className="gap-2 shrink-0"
         >
-          <RefreshCw className="h-4 w-4" />
-          Refresh Now
+          <CheckCircle2 className="h-4 w-4" />
+          Apply Now
         </Button>
       </div>
     </div>

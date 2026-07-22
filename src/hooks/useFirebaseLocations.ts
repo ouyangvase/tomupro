@@ -41,15 +41,15 @@ const UPDATE_INTERVAL_MS = 30_000; // 30 seconds, same as existing
 
 /**
  * Driver: Writes own GPS location to Firebase every 30s.
- * Only active for driver role when Firebase is enabled.
+ * Only active after the driver explicitly enables location sharing.
  */
-export function useFirebaseLocationWriter() {
+export function useFirebaseLocationWriter(enabled = false) {
   const { user, profile } = useAuth();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const watchRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!isFirebaseEnabled || !firebaseDb || !user?.id || profile?.role !== 'driver') return;
+    if (!enabled || !isFirebaseEnabled || !firebaseDb || !user?.id || profile?.role !== 'driver') return;
 
     const locRef = doc(firebaseDb, 'locations', user.id);
 
@@ -67,14 +67,14 @@ export function useFirebaseLocationWriter() {
       });
     };
 
-    // Use watchPosition for continuous updates
+      // Poll only while location sharing is enabled.
     if ('geolocation' in navigator) {
       const onSuccess = (pos: GeolocationPosition) => writeLocation(pos);
       const onError = (err: GeolocationPositionError) => {
         console.warn('[Firebase] Geolocation error:', err.message);
       };
 
-      // Write immediately on mount
+      // Write immediately after the user has explicitly enabled location sharing.
       navigator.geolocation.getCurrentPosition(onSuccess, onError, {
         enableHighAccuracy: true,
         timeout: 10000,
@@ -94,7 +94,7 @@ export function useFirebaseLocationWriter() {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current);
     };
-  }, [user?.id, profile?.role, profile?.display_name]);
+  }, [enabled, user?.id, profile?.role, profile?.display_name]);
 }
 
 /**

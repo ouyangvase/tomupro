@@ -29,7 +29,7 @@ const MAX_ORDERS_FOR_ROUTE = 20;
 const ROUTE_TIMEOUT_MS = 5000;
 
 export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
-  const { trackingState, lastUpdateTime } = useLocationContext();
+  const { trackingState, lastLocation, isSharing } = useLocationContext();
   const { geocodeOrders, geocodedOrders, isGeocoding, clearCache: clearGeoCache } = useGeocoding();
   const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -42,48 +42,37 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
   const lastLocationRef = useRef<string>("");
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Get current driver position with timeout
-  const updateDriverLocation = useCallback(() => {
-    if (!("geolocation" in navigator)) {
-      return;
+  const useSharedDriverLocation = useCallback(() => {
+    if (!isSharing || trackingState !== "active" || !lastLocation) {
+      setDriverLocation(null);
+      return false;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setDriverLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setHasTimedOut(false);
-        setError(null);
-      },
-      (error) => {
-        console.warn("[Route] Failed to get driver location:", error.message);
-        setDriverLocation(null);
-        setError("Location unavailable");
-      },
-      { 
-        enableHighAccuracy: true, 
-        timeout: 10000, 
-        maximumAge: 300000 // Cache for 5 minutes
-      }
-    );
-  }, []);
+    setDriverLocation({
+      lat: lastLocation.coords.latitude,
+      lng: lastLocation.coords.longitude,
+    });
+    setHasTimedOut(false);
+    setError(null);
+    return true;
+  }, [isSharing, lastLocation, trackingState]);
 
-  // Update driver location when tracking state changes
+  // Update route origin from the already-approved location sharing state.
   useEffect(() => {
-    if (trackingState === "active") {
-      updateDriverLocation();
+    if (!useSharedDriverLocation()) {
+      suggestionCache.clear();
+      lastLocationRef.current = "";
     }
-  }, [trackingState, lastUpdateTime, updateDriverLocation]);
-
-  // Initial location fetch
-  useEffect(() => {
-    updateDriverLocation();
-  }, [updateDriverLocation]);
+  }, [useSharedDriverLocation]);
 
   // Geocode orders when they change (with deduplication and limits)
   useEffect(() => {
+    if (!isSharing || !driverLocation) {
+      setIsCalculating(false);
+      setHasTimedOut(false);
+      return;
+    }
+
     // Create a stable key for orders
     const orderIds = orders.map(o => o.id).sort().join(",");
     
@@ -143,7 +132,7 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
         setIsCalculating(false);
       });
 
-  }, [orders, geocodeOrders]);
+  }, [orders, geocodeOrders, isSharing, driverLocation]);
 
   // Calculate suggestions based on distance (with caching)
   const suggestions = useMemo<Map<string, SuggestionResult>>(() => {
@@ -237,6 +226,12 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
 
   // Manual refresh with cache clear
   const refreshRoute = useCallback(() => {
+    if (!useSharedDriverLocation()) {
+      setHasTimedOut(false);
+      setError("Enable location for routes");
+      return;
+    }
+
     // Clear caches
     suggestionCache.clear();
     lastOrderIdsRef.current = "";
@@ -248,9 +243,6 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
     // Reset state
     setHasTimedOut(false);
     setError(null);
-    
-    // Refresh location first, then orders will re-geocode
-    updateDriverLocation();
     
     // Force re-geocode by triggering effect
     if (orders.length > 0) {
@@ -280,7 +272,7 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
           setIsCalculating(false);
         });
     }
-  }, [updateDriverLocation, clearGeoCache, geocodeOrders, orders]);
+  }, [useSharedDriverLocation, clearGeoCache, geocodeOrders, orders]);
 
   // Check if suggestions are available
   const hasSuggestions = driverLocation !== null && suggestions.size > 0;

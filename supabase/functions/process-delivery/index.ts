@@ -370,6 +370,21 @@ Deno.serve(async (req) => {
       console.error('KITANI delivered trigger error (non-blocking):', kitaniErr);
     }
 
+    // Queue/send SNIPERS Confirm Profit event (non-blocking).
+    // The database trigger is the durable source; this call only attempts immediate delivery.
+    try {
+      fetch(`${supabaseUrl}/functions/v1/send-snipers-delivered`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ orderId, eventType: 'tomupro.order.delivered' }),
+      }).catch((err) => console.error('SNIPERS delivered fire-and-forget error:', err));
+    } catch (snipersErr) {
+      console.error('SNIPERS delivered trigger error (non-blocking):', snipersErr);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 

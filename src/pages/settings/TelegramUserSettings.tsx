@@ -11,12 +11,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import {
   Loader2, Send, Save, CheckCircle, XCircle, MessageSquare, Bell,
-  Info, ExternalLink, Wifi, WifiOff, Clock, ArrowRight,
+  ExternalLink, Wifi, WifiOff, Clock, ArrowRight,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   useMyTelegramSettings, useUpsertMyTelegramSettings,
-  useMyTelegramPermission, useMyLatestTelegramLog,
+  useMyLatestTelegramLog,
   sendTelegramTest,
 } from '@/hooks/useTelegram';
 
@@ -26,7 +26,6 @@ export default function TelegramUserSettings() {
   const role = profile?.role;
 
   const { data: settings, isLoading } = useMyTelegramSettings(userId);
-  const { data: permission } = useMyTelegramPermission(userId);
   const { data: latestLog } = useMyLatestTelegramLog(userId);
   const upsertSettings = useUpsertMyTelegramSettings();
 
@@ -38,6 +37,7 @@ export default function TelegramUserSettings() {
   const [hideZeroStock, setHideZeroStock] = useState(false);
   const [receiveReceiptEvents, setReceiveReceiptEvents] = useState(true);
   const [receiveDeliveryEvents, setReceiveDeliveryEvents] = useState(true);
+  const [receiveTeamDeliveryEvents, setReceiveTeamDeliveryEvents] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -52,6 +52,11 @@ export default function TelegramUserSettings() {
       setHideZeroStock(settings.hide_zero_stock_sku);
       setReceiveReceiptEvents((settings as any).receive_receipt_events ?? true);
       setReceiveDeliveryEvents((settings as any).receive_delivery_events ?? true);
+      setReceiveTeamDeliveryEvents(
+        (settings as any).receive_team_order_updates
+        ?? (settings as any).receive_team_delivery_events
+        ?? false
+      );
     }
   }, [settings]);
 
@@ -66,9 +71,12 @@ export default function TelegramUserSettings() {
         receive_stock_balance: receiveStock,
         receive_delivered_not_claimed: receiveDelivered,
         receive_failed_delivery: receiveFailedDelivery,
+        receive_delivered_order: receiveDelivered,
         hide_zero_stock_sku: hideZeroStock,
         receive_receipt_events: receiveReceiptEvents,
         receive_delivery_events: receiveDeliveryEvents,
+        receive_team_delivery_events: receiveTeamDeliveryEvents,
+        receive_team_order_updates: receiveTeamDeliveryEvents,
       } as any);
       toast.success('Settings saved successfully');
     } catch (e: any) {
@@ -82,7 +90,7 @@ export default function TelegramUserSettings() {
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await sendTelegramTest(chatId.trim(), '✅ TomuPro Telegram connection test successful!\n\nYou will receive daily notifications here.');
+      const result = await sendTelegramTest(chatId.trim(), 'TomuPro Telegram connection test successful!\n\nYou will receive daily notifications here.');
       setTestResult({ ok: true, message: 'Message sent! Check your Telegram.' });
       toast.success('Test message sent! Check your Telegram.');
     } catch (e: any) {
@@ -94,9 +102,8 @@ export default function TelegramUserSettings() {
   };
 
   const isConnected = !!chatId.trim();
-  const adminEnabled = permission?.admin_enabled ?? false;
-  const canStock = permission?.can_receive_stock_balance ?? false;
-  const canDelivered = permission?.can_receive_delivered_not_claimed ?? false;
+  const canStock = true;
+  const canDelivered = true;
 
   if (isLoading) {
     return (
@@ -215,16 +222,6 @@ export default function TelegramUserSettings() {
           </div>
         </Card>
 
-        {/* Admin Permission Warning — hidden for runner_assistant (auto-enabled via DB trigger) */}
-        {!adminEnabled && role !== 'runner_assistant' && (
-          <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
-            <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-            <p className="text-xs text-amber-700 dark:text-amber-300">
-              Your Telegram notifications have not been enabled by Admin. Contact your admin to activate notifications.
-            </p>
-          </div>
-        )}
-
         {/* Notification Preferences */}
         <Card className="rounded-2xl border-border/50">
           <div className="px-5 py-3.5 border-b border-border/30">
@@ -241,7 +238,7 @@ export default function TelegramUserSettings() {
               <div className="space-y-0.5">
                 <Label className="font-medium text-sm">Stock Balance Report</Label>
                 <p className="text-[11px] text-muted-foreground">
-                  {canStock ? 'Daily stock balance summary' : 'Disabled by admin'}
+                  Daily stock balance summary
                 </p>
               </div>
               <Switch
@@ -256,7 +253,7 @@ export default function TelegramUserSettings() {
               <div className="space-y-0.5">
                 <Label className="font-medium text-sm">Delivery Report</Label>
                 <p className="text-[11px] text-muted-foreground">
-                  {canDelivered ? 'Daily unclaimed delivery amount summary' : 'Disabled by admin'}
+                  Daily unclaimed delivery amount summary
                 </p>
               </div>
               <Switch
@@ -271,7 +268,7 @@ export default function TelegramUserSettings() {
               <div className="space-y-0.5">
                 <Label className="font-medium text-sm">Failed Delivery Report</Label>
                 <p className="text-[11px] text-muted-foreground">
-                  {canDelivered ? 'Daily failed delivery summary report' : 'Disabled by admin'}
+                  Daily failed delivery summary report
                 </p>
               </div>
               <Switch
@@ -286,7 +283,7 @@ export default function TelegramUserSettings() {
               <div className="space-y-0.5">
                 <Label className="font-medium text-sm">Hide Zero-Stock SKUs</Label>
                 <p className="text-[11px] text-muted-foreground">
-                  {canStock ? 'Exclude SKUs with 0 balance from stock report' : 'Requires stock permission'}
+                  Exclude SKUs with 0 balance from stock report
                 </p>
               </div>
               <Switch
@@ -296,12 +293,6 @@ export default function TelegramUserSettings() {
               />
             </div>
 
-            <div className="flex items-start gap-2 pt-1">
-              <Info className="h-3.5 w-3.5 text-blue-500 mt-0.5 shrink-0" />
-              <p className="text-[11px] text-blue-600 dark:text-blue-400">
-                You will only receive data approved by your admin.
-              </p>
-            </div>
           </div>
         </Card>
 
@@ -335,6 +326,32 @@ export default function TelegramUserSettings() {
                   </p>
                 </div>
                 <Switch checked={receiveDeliveryEvents} onCheckedChange={setReceiveDeliveryEvents} />
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {role === 'manager' && (
+          <Card className="rounded-2xl border-border/50">
+            <div className="px-5 py-3.5 border-b border-border/30">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-semibold">Team Driver Updates</h2>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Receive Driver delivered and failed delivery messages for orders owned by your team.
+              </p>
+            </div>
+
+            <div className="p-5">
+              <div className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-secondary/20">
+                <div className="space-y-0.5">
+                  <Label className="font-medium text-sm">Receive Team Order Updates</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Sends the Driver proof photos, status, time, amount and failed-delivery remark to your Telegram.
+                  </p>
+                </div>
+                <Switch checked={receiveTeamDeliveryEvents} onCheckedChange={setReceiveTeamDeliveryEvents} />
               </div>
             </div>
           </Card>

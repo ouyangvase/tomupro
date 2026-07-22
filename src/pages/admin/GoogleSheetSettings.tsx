@@ -308,9 +308,6 @@ export default function GoogleSheetSettings() {
               <CardTitle className="text-lg">Sync Logs</CardTitle>
               <CardDescription>Recent Google Sheet sync events</CardDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={fetchData}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
           </div>
         </CardHeader>
         <CardContent>

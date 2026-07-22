@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { formatBND } from '@/lib/currency';
 import { CreditCard, Banknote, Loader2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
 
 interface DeliveryPaymentDialogProps {
   open: boolean;
@@ -25,6 +26,11 @@ interface DeliveryPaymentDialogProps {
   } | null;
   onConfirm: (orderId: string, paymentMethod: 'CASH' | 'TRANSFER') => Promise<void>;
   isPending: boolean;
+  proofPreview?: string | null;
+  proofPreviews?: string[];
+  onProofFileChange?: (file: File | null) => void;
+  onProofFilesChange?: (files: File[]) => void;
+  onRemoveProofFile?: (index: number) => void;
 }
 
 export function DeliveryPaymentDialog({
@@ -33,6 +39,11 @@ export function DeliveryPaymentDialog({
   order,
   onConfirm,
   isPending,
+  proofPreview,
+  proofPreviews,
+  onProofFileChange,
+  onProofFilesChange,
+  onRemoveProofFile,
 }: DeliveryPaymentDialogProps) {
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'TRANSFER' | ''>('');
 
@@ -135,6 +146,21 @@ export function DeliveryPaymentDialog({
                 This cash will be recorded and must be handed to your runner.
               </p>
             </div>
+          )}
+
+          {(onProofFileChange || onProofFilesChange) && (
+            <ProofPhotoPicker
+              label="Delivery Proof Photos"
+              preview={proofPreview ?? null}
+              previews={proofPreviews}
+              onFileChange={onProofFileChange}
+              onFilesChange={onProofFilesChange}
+              onRemoveFile={onRemoveProofFile}
+              multiple={!!onProofFilesChange}
+              disabled={isPending}
+              emptyTitle="Take photos or choose from album"
+              helperText="Multiple images are allowed and visible to authorized users in Action Required."
+            />
           )}
         </div>
 

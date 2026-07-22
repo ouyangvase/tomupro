@@ -4,6 +4,7 @@ import { useLocationPermission, LocationPermissionState, LocationTrackingState, 
 interface LocationContextType {
   permissionState: LocationPermissionState;
   trackingState: LocationTrackingState;
+  lastLocation: GeolocationPosition | null;
   lastUpdateTime: Date | null;
   error: string | null;
   isSharing: boolean;

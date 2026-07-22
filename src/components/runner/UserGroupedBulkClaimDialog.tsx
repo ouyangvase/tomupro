@@ -44,6 +44,15 @@ export interface ClaimGroupSubmission {
 export interface ClaimBatchResult {
   success_count: number;
   failed_count: number;
+  skipped_count?: number;
+  skipped_orders?: {
+    order_id: string;
+    order_code: string;
+    customer_name: string;
+    area: string | null;
+    reason: string;
+    existing_batch_code?: string;
+  }[];
   failed_orders: {
     order_id: string;
     order_code: string;
@@ -95,9 +104,10 @@ export function UserGroupedBulkClaimDialog({
 
   const invalidOrders = useMemo(() => {
     if (!hasMissingCharges) return [];
+    const missingAreaSet = new Set(preview.missingAreas.map(a => a.toLowerCase()));
     return preview.orderBreakdown.filter(ob => {
       const area = ob.area?.toLowerCase() || '';
-      return ob.area && preview.missingAreas.map(a => a.toLowerCase()).includes(area);
+      return !ob.area || missingAreaSet.has(area);
     });
   }, [preview, hasMissingCharges]);
 
@@ -196,9 +206,11 @@ export function UserGroupedBulkClaimDialog({
       }
 
       const result = await onSubmitBatches(submissions);
+      const skippedCount = result.skipped_count || 0;
 
-      // If full success with no failures, close immediately
-      if (result.success_count > 0 && result.failed_count === 0 && !result.error) {
+      // If everything was handled cleanly, close immediately. Already-submitted orders
+      // are treated as skipped, not failed, so a duplicate tap does not show a red error.
+      if ((result.success_count > 0 || skippedCount > 0) && result.failed_count === 0 && !result.error) {
         handleClose();
         return;
       }
@@ -214,6 +226,7 @@ export function UserGroupedBulkClaimDialog({
 
   // ── RESULTS VIEW ──
   if (results) {
+    const skippedCount = results.skipped_count || 0;
     return (
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
@@ -222,6 +235,8 @@ export function UserGroupedBulkClaimDialog({
             <DialogDescription>
               {results.success_count > 0 && results.failed_count > 0
                 ? 'Some orders were submitted, but others failed.'
+                : skippedCount > 0 && results.failed_count === 0
+                ? 'No new claim was needed. Some orders were already submitted.'
                 : results.success_count > 0
                 ? 'All orders submitted successfully.'
                 : 'Claim submission failed.'}
@@ -247,6 +262,20 @@ export function UserGroupedBulkClaimDialog({
                   </p>
                   <p className="text-xs text-green-600/80 dark:text-green-500/80">
                     Claim batch created and awaiting admin approval.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {skippedCount > 0 && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800">
+                <Info className="h-5 w-5 text-blue-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-blue-700 dark:text-blue-400">
+                    {skippedCount} order(s) already submitted
+                  </p>
+                  <p className="text-xs text-blue-600/80 dark:text-blue-500/80">
+                    These orders are already pending admin approval, so they were skipped.
                   </p>
                 </div>
               </div>

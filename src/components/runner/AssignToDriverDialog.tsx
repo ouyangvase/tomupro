@@ -115,7 +115,7 @@ export function AssignToDriverDialog({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold">{selectedDriverProfile.display_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      Current load: {driverOrderCount ?? '...'} active orders
+                      Current load: {driverOrderCount ?? '...'} open orders
                     </p>
                   </div>
                   <Badge variant="outline" className="shrink-0">

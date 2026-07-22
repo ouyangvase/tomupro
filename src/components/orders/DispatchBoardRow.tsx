@@ -78,7 +78,7 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
       {/* Main row - two lines for better info density */}
       <div className="px-4 py-3">
         {/* Line 1: Order ref, customer, amount, status */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {selectable && (
             <div className="shrink-0" onClick={e => e.stopPropagation()}>
               <Checkbox
@@ -157,22 +157,23 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
 
           {/* Stock Status */}
           {showStockStatus && (
-            <div className="w-[100px] shrink-0 text-right" onClick={e => e.stopPropagation()}>
+            <div className="w-[132px] shrink-0 text-right" onClick={e => e.stopPropagation()}>
               <StockStatusBadge
                 status={stockStatus || 'NOT_CALCULATED'}
+                className="min-w-[112px] justify-center"
                 onClick={onStockBadgeClick ? (e) => { e.stopPropagation(); onStockBadgeClick(order); } : undefined}
               />
             </div>
           )}
 
           {kitaniAction && (
-            <div className="w-[120px] shrink-0 text-right">
+            <div className="w-[160px] shrink-0 text-right">
               {kitaniAction}
             </div>
           )}
 
           {/* Date */}
-          <div className="w-[80px] shrink-0 text-right hidden xl:block">
+          <div className="w-[72px] shrink-0 text-right hidden xl:block">
             <span className="text-xs text-muted-foreground">
               {format(new Date(order.created_at), 'MMM dd')}
             </span>

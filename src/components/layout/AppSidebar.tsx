@@ -108,6 +108,10 @@ export function AppSidebar() {
     return location.pathname.startsWith(url);
   };
 
+  const openProfileSettings = () => {
+    navigate("/settings/profile");
+  };
+
   // Loading state
   if (isProfileLoading) {
     return (
@@ -256,7 +260,12 @@ export function AppSidebar() {
       <SidebarFooter className="p-3 border-t border-border/30">
         {/* User Card */}
         {!collapsed && (
-          <div className="flex items-center gap-3 mb-3 p-2.5 rounded-2xl bg-white/[0.04] border border-white/10">
+          <button
+            type="button"
+            onClick={openProfileSettings}
+            className="flex w-full items-center gap-3 mb-3 p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-left transition-all duration-200 hover:bg-white/[0.07] hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            aria-label="Open profile settings"
+          >
             <div className="relative shrink-0">
               <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C99D4E] to-[#A67C3D] flex items-center justify-center shadow-sm">
                 <span className="text-xs font-bold text-white">
@@ -269,7 +278,7 @@ export function AppSidebar() {
               <p className="text-sm font-semibold truncate">{profile?.display_name}</p>
               <p className="text-[10px] text-muted-foreground truncate">{profile?.email}</p>
             </div>
-          </div>
+          </button>
         )}
 
         {/* Telegram Premium Card */}

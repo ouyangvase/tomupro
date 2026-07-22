@@ -50,6 +50,8 @@ import {
 } from '@/hooks/usePasswordResetRequests';
 import type { StockTransfer } from '@/types/stock-visibility';
 
+const TEMPORARY_PASSWORD = 'Tomu@12345678';
+
 export default function PendingStockApprovals() {
   const { data: pendingTransfers = [], isLoading } = usePendingApprovals();
   const approveTransfer = useApproveTransfer();
@@ -179,7 +181,7 @@ export default function PendingStockApprovals() {
               </DialogDescription>
             </DialogHeader>
             <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground py-2">
-              <li>Reset the user's password to <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-xs">12345678</code></li>
+              <li>Reset the user's password to <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-xs">{TEMPORARY_PASSWORD}</code></li>
               <li>Force the user to change their password on next login</li>
             </ul>
             <DialogFooter>

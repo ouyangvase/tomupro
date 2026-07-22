@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2, AlertTriangle, Shield, DollarSign, FileCheck, Banknote } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, Package, Users, Phone, Download, Undo2, AlertTriangle, DollarSign, FileCheck, Banknote } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DateRangePresets, useDateRangeState, type DateRange } from '@/components/filters/DateRangePresets';
 import { PageHero } from '@/components/dashboard/PageHero';
@@ -59,6 +59,38 @@ function getPageNumbers(current: number, total: number): (number | '...')[] {
   }
   
   return [1, '...', current - 1, current, current + 1, '...', total];
+}
+
+function getClaimErrorMessage(
+  error: unknown,
+  fallback = 'Claim batch submission failed. Please try again or contact admin.',
+): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    for (const key of ['message', 'error_description', 'error', 'details', 'hint']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) return value;
+    }
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+interface FreshClaimOrder {
+  id: string;
+  order_code: string | null;
+  customer_name: string | null;
+  area: string | null;
+  runner_status: string | null;
+  reconciliation_status: string | null;
+  runner_id: string | null;
+  delivered_at: string | null;
 }
 import { exportDeliveredOrderLines } from '@/lib/csv';
 import { useActiveDeliveryCharges } from '@/hooks/useDeliveryCharges';
@@ -232,7 +264,6 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
   const [exportSelectedIds, setExportSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [integrityPanelOpen, setIntegrityPanelOpen] = useState(false);
   const { dateRange, setDateRange } = useDateRangeState();
   
   // ---------- Unified RPC path for ALL roles (bypasses RLS via SECURITY DEFINER) ----------
@@ -469,6 +500,16 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
     return approvedChargeMap[area] !== undefined;
   }, [approvedChargeMap]);
 
+  const isOrderClaimable = useCallback((order: Order): boolean => {
+    return Boolean(
+      canClaim &&
+      order.runner_status === 'DELIVERED' &&
+      order.reconciliation_status === 'NOT_CLAIMED' &&
+      order.delivered_at &&
+      orderHasValidAreaRate(order)
+    );
+  }, [canClaim, orderHasValidAreaRate]);
+
   // Full filtered dataset (all pages) — SKU filter already applied in filteredOrders
   const allFilteredOrders = filteredOrders;
 
@@ -488,18 +529,16 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
   // Orders eligible for claiming (DELIVERED + NOT_CLAIMED + delivered_at exists + valid area rate) - uses FULL dataset for runners
   const claimableOrders = useMemo(() => {
     if (!canClaim) return [];
-    return allFilteredOrders.filter(o =>
-      o.reconciliation_status === 'NOT_CLAIMED' &&
-      o.delivered_at &&
-      orderHasValidAreaRate(o)
-    );
-  }, [allFilteredOrders, canClaim, orderHasValidAreaRate]);
+    return allFilteredOrders.filter(isOrderClaimable);
+  }, [allFilteredOrders, canClaim, isOrderClaimable]);
 
   // Orders that are NOT_CLAIMED but have invalid area or missing delivered_at (for display purposes)
   const invalidAreaOrders = useMemo(() => {
     if (!canClaim) return [];
     return allFilteredOrders.filter(o =>
-      o.reconciliation_status === 'NOT_CLAIMED' && (!orderHasValidAreaRate(o) || !o.delivered_at)
+      o.runner_status === 'DELIVERED' &&
+      o.reconciliation_status === 'NOT_CLAIMED' &&
+      (!orderHasValidAreaRate(o) || !o.delivered_at)
     );
   }, [allFilteredOrders, canClaim, orderHasValidAreaRate]);
 
@@ -523,12 +562,12 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
 
   // Select all claimable orders
   const toggleSelectAll = useCallback(() => {
-    if (selectedIds.size === claimableOrders.length) {
+    if (claimableOrders.length > 0 && selectedClaimableOrders.length === claimableOrders.length) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(claimableOrders.map(o => o.id)));
     }
-  }, [claimableOrders, selectedIds.size]);
+  }, [claimableOrders, selectedClaimableOrders.length]);
 
   // Export selection handlers (for admin/manager)
   const toggleExportSelection = useCallback((orderId: string) => {
@@ -586,10 +625,120 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
         orderLookup.set(o.id, { order_code: o.order_code, customer_name: o.customer_name || '?', area: o.area || null });
       }
 
-      let totalSuccess = 0;
-      const allFailedOrders: ClaimBatchResult['failed_orders'] = [];
+      const requestedOrderIds = Array.from(new Set(groups.flatMap(group => group.orderIds)));
+      const freshOrders: FreshClaimOrder[] = [];
+      const FRESH_ORDER_QUERY_CHUNK = 200;
+      for (let i = 0; i < requestedOrderIds.length; i += FRESH_ORDER_QUERY_CHUNK) {
+        const chunk = requestedOrderIds.slice(i, i + FRESH_ORDER_QUERY_CHUNK);
+        if (chunk.length === 0) continue;
+        const { data: chunkOrders, error: freshOrdersError } = await supabase
+          .from('orders')
+          .select('id, order_code, customer_name, area, runner_status, reconciliation_status, runner_id, delivered_at')
+          .in('id', chunk);
 
-      for (const group of groups) {
+        if (freshOrdersError) throw freshOrdersError;
+        if (chunkOrders) freshOrders.push(...chunkOrders);
+      }
+
+      const freshOrderMap = new Map(freshOrders.map(order => [order.id, order]));
+      const eligibleOrderIds = new Set<string>();
+      const allSkippedOrders: ClaimBatchResult['skipped_orders'] = [];
+      const precheckFailedOrders: ClaimBatchResult['failed_orders'] = [];
+      const submittedStatuses = new Set(['ADMIN_ACK_PENDING', 'SP_ACK_PENDING', 'CLAIMED', 'SETTLED']);
+
+      for (const orderId of requestedOrderIds) {
+        const local = orderLookup.get(orderId);
+        const fresh = freshOrderMap.get(orderId);
+        const base = {
+          order_id: orderId,
+          order_code: fresh?.order_code || local?.order_code || '?',
+          customer_name: fresh?.customer_name || local?.customer_name || '?',
+          area: fresh?.area || local?.area || null,
+        };
+
+        if (!fresh) {
+          precheckFailedOrders.push({ ...base, reason: 'Order not found' });
+          continue;
+        }
+
+        if (fresh.runner_id !== user?.id) {
+          precheckFailedOrders.push({ ...base, reason: 'Not authorized - runner mismatch' });
+          continue;
+        }
+
+        if (fresh.reconciliation_status !== 'NOT_CLAIMED') {
+          const reason = `Already claimed or submitted (status: ${fresh.reconciliation_status})`;
+          if (submittedStatuses.has(fresh.reconciliation_status || '')) {
+            allSkippedOrders.push({ ...base, reason });
+          } else {
+            precheckFailedOrders.push({ ...base, reason });
+          }
+          continue;
+        }
+
+        if (fresh.runner_status !== 'DELIVERED') {
+          precheckFailedOrders.push({ ...base, reason: `Status is not DELIVERED (current: ${fresh.runner_status || 'unknown'})` });
+          continue;
+        }
+
+        if (!fresh.delivered_at) {
+          precheckFailedOrders.push({ ...base, reason: 'Order has no delivery timestamp - delivery not confirmed' });
+          continue;
+        }
+
+        const areaKey = fresh.area?.trim().toLowerCase();
+        if (!areaKey || approvedChargeMap[areaKey] === undefined) {
+          precheckFailedOrders.push({
+            ...base,
+            reason: fresh.area
+              ? `No approved delivery charge for area: ${fresh.area}`
+              : 'Order has no delivery area set - contact admin to assign an area',
+          });
+          continue;
+        }
+
+        eligibleOrderIds.add(orderId);
+      }
+
+      const sanitizedGroups = groups
+        .map(group => ({
+          ...group,
+          orderIds: group.orderIds.filter(orderId => eligibleOrderIds.has(orderId)),
+        }))
+        .filter(group => group.orderIds.length > 0);
+
+      const isAlreadySubmittedFailure = (failure: ClaimBatchResult['failed_orders'][number]) =>
+        /Already claimed or submitted|Already in batch/i.test(failure.reason || '');
+
+      let totalSuccess = 0;
+      const allFailedOrders: ClaimBatchResult['failed_orders'] = [...precheckFailedOrders];
+
+      if (sanitizedGroups.length === 0) {
+        queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+        queryClient.invalidateQueries({ queryKey: ['delivered-orders-fast-all'] });
+        queryClient.invalidateQueries({ queryKey: ['delivered-summary'] });
+        queryClient.invalidateQueries({ queryKey: ['delivered-summary-filtered'] });
+        queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
+
+        if (allSkippedOrders.length > 0 && allFailedOrders.length === 0) {
+          setSelectedIds(new Set());
+          toast.info(`${allSkippedOrders.length} order(s) already submitted and were removed from the claim selection`);
+        } else if (allFailedOrders.length > 0) {
+          toast.error('No selected orders are currently claimable');
+        }
+
+        return {
+          success_count: 0,
+          skipped_count: allSkippedOrders.length,
+          skipped_orders: allSkippedOrders,
+          failed_count: allFailedOrders.length,
+          failed_orders: allFailedOrders,
+          error: allFailedOrders.length > 0 && allSkippedOrders.length === 0 ? 'No selected orders are currently claimable' : undefined,
+        };
+      }
+
+      for (const group of sanitizedGroups) {
         const response = await supabase.functions.invoke('submit-bulk-claim', {
           body: {
             orderIds: group.orderIds,
@@ -619,11 +768,16 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
           totalSuccess += data.success_count || data.orderCount || 0;
         }
         if (data?.failed_orders?.length > 0) {
-          allFailedOrders.push(...data.failed_orders);
+          const responseFailures = data.failed_orders as ClaimBatchResult['failed_orders'];
+          allSkippedOrders.push(...responseFailures.filter(isAlreadySubmittedFailure));
+          allFailedOrders.push(...responseFailures.filter(failure => !isAlreadySubmittedFailure(failure)));
+        }
+        if (data?.skipped_orders?.length > 0) {
+          allSkippedOrders.push(...(data.skipped_orders as ClaimBatchResult['skipped_orders']));
         }
         // If we got an error but no structured data at all
         if (!data?.success && !data?.failed_orders && (response.error || data?.error)) {
-          const errorMsg = data?.error || response.error?.message || 'Failed to submit batch';
+          const errorMsg = data?.error || getClaimErrorMessage(response.error, 'Failed to submit batch');
           // Enrich with local order data instead of showing "?"
           for (const oid of group.orderIds) {
             const local = orderLookup.get(oid);
@@ -650,13 +804,18 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
       if (totalSuccess > 0) {
         toast.success(`${totalSuccess} order(s) claimed successfully`);
       }
-      if (totalSuccess > 0 && allFailedOrders.length === 0) {
+      if (allSkippedOrders.length > 0) {
+        toast.info(`${allSkippedOrders.length} already-submitted order(s) were skipped`);
+      }
+      if ((totalSuccess > 0 || allSkippedOrders.length > 0) && allFailedOrders.length === 0) {
         // Full success — clear selection and close dialog
         setSelectedIds(new Set());
       }
 
       return {
         success_count: totalSuccess,
+        skipped_count: allSkippedOrders.length,
+        skipped_orders: allSkippedOrders,
         failed_count: allFailedOrders.length,
         failed_orders: allFailedOrders,
       };
@@ -666,7 +825,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
         success_count: 0,
         failed_count: 0,
         failed_orders: [],
-        error: error instanceof Error ? error.message : 'Claim batch submission failed. Please try again or contact admin.',
+        error: getClaimErrorMessage(error),
       };
     } finally {
       setIsSubmitting(false);
@@ -844,7 +1003,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
     };
   }, [skuFilter, allFilteredOrders, skuCodeMap, normalizeSku, getItemSkuCode]);
 
-  const allClaimableSelected = claimableOrders.length > 0 && selectedIds.size === claimableOrders.length;
+  const allClaimableSelected = claimableOrders.length > 0 && selectedClaimableOrders.length === claimableOrders.length;
 
   // Build a map of order_id -> batch reference for showing claim batch info
   const orderToBatchRef = useMemo(() => {
@@ -859,33 +1018,6 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
     }
     return map;
   }, [claimBatches]);
-
-  // Admin Integrity Check - count orders with missing salesperson_id
-  const integrityStats = useMemo(() => {
-    if (role !== 'admin' || !orders) return null;
-    
-    const allDelivered = orders.filter(o => o.runner_status === 'DELIVERED');
-    const missingLink = allDelivered.filter(o => !o.salesperson_id);
-    
-    // Calculate what filter should return
-    let selectedUserName = 'All Users';
-    let expectedCount = allDelivered.length;
-    
-    if (salespersonFilters.length > 0) {
-      const selectedUsers = salespersonOptions.filter(sp => salespersonFilters.includes(sp.value));
-      selectedUserName = selectedUsers.map(u => u.label).join(', ') || salespersonFilters.join(', ');
-      expectedCount = allDelivered.filter(o => o.salesperson_id && salespersonFilters.includes(o.salesperson_id)).length;
-    }
-    
-    return {
-      totalDelivered: allDelivered.length,
-      missingLink: missingLink.length,
-      filteredCount: deliveredOrders.length,
-      expectedCount,
-      selectedUserName,
-      isMatch: deliveredOrders.length === expectedCount,
-    };
-  }, [role, orders, salespersonFilters, salespersonOptions, deliveredOrders]);
 
   const isMobile = useIsMobile();
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -1165,74 +1297,6 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
           </Card>
         )}
 
-        {/* Admin Data Integrity Panel - Only for Admin role */}
-        {isAdmin && integrityStats && (
-          <Collapsible open={integrityPanelOpen} onOpenChange={setIntegrityPanelOpen}>
-            <Card className={`border ${integrityStats.missingLink > 0 ? 'border-destructive/50 bg-destructive/5' : 'border-muted'}`}>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50 transition-colors">
-                  <CardTitle className="flex items-center justify-between text-sm font-medium">
-                    <span className="flex items-center gap-2">
-                      <Shield className="h-4 w-4" />
-                      Data Integrity Check
-                      {integrityStats.missingLink > 0 && (
-                        <Badge variant="destructive" className="text-xs">
-                          {integrityStats.missingLink} unlinked
-                        </Badge>
-                      )}
-                    </span>
-                    {integrityPanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="pt-0">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Total Delivered (DB)</p>
-                      <p className="text-lg font-semibold">{integrityStats.totalDelivered}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Missing salesperson_id</p>
-                      <p className={`text-lg font-semibold ${integrityStats.missingLink > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                        {integrityStats.missingLink}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Filter: {integrityStats.selectedUserName}</p>
-                      <p className="text-lg font-semibold">{integrityStats.filteredCount} orders</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Filter Status</p>
-                      {integrityStats.isMatch ? (
-                        <p className="text-lg font-semibold text-green-600 flex items-center gap-1">
-                          <CheckCircle className="h-4 w-4" /> Match
-                        </p>
-                      ) : (
-                        <p className="text-lg font-semibold text-destructive flex items-center gap-1">
-                          <AlertTriangle className="h-4 w-4" /> Mismatch
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {integrityStats.missingLink > 0 && (
-                    <div className="mt-4 p-3 bg-destructive/10 rounded-md flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
-                      <div className="text-sm">
-                        <p className="font-medium text-destructive">Unlinked orders detected</p>
-                        <p className="text-muted-foreground">
-                          {integrityStats.missingLink} delivered order(s) are missing salesperson_id. 
-                          These orders may not appear correctly when filtering by user.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </CollapsibleContent>
-            </Card>
-          </Collapsible>
-        )}
-
         {/* Action Bar - only for runners who can claim */}
         {canClaim && selectedClaimableOrders.length > 0 && (
           <Card className="border-primary/50 bg-primary/5">
@@ -1265,7 +1329,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                     setSelectedIds(new Set());
                   }
                 }}
-                selectedCount={selectedIds.size}
+                selectedCount={selectedClaimableOrders.length}
                 totalCount={claimableOrders.length}
               />
             )}
@@ -1280,7 +1344,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
               </div>
             ) : (
               paginatedOrders.map((order) => {
-                const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && order.delivered_at && orderHasValidAreaRate(order);
+                const isClaimable = isOrderClaimable(order);
                 const isSelected = selectedIds.has(order.id);
                 const { displayText } = formatOrderItemsDisplay(order.order_items);
                 const batchRef = orderToBatchRef.get(order.id);
@@ -1446,7 +1510,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                       </TableRow>
                     ) : (
                       paginatedOrders.map((order) => {
-                        const isClaimable = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && order.delivered_at && orderHasValidAreaRate(order);
+                        const isClaimable = isOrderClaimable(order);
                         const isInvalidArea = canClaim && order.reconciliation_status === 'NOT_CLAIMED' && (!orderHasValidAreaRate(order) || !order.delivered_at);
                         const isSelected = selectedIds.has(order.id);
                         const isExportSelected = exportSelectedIds.has(order.id);

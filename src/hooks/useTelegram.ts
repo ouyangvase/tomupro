@@ -18,26 +18,15 @@ export interface UserTelegramSettings {
   telegram_enabled: boolean;
   receive_stock_balance: boolean;
   receive_delivered_not_claimed: boolean;
+  receive_failed_delivery?: boolean;
+  receive_delivered_order?: boolean;
+  receive_receipt_events?: boolean;
+  receive_delivery_events?: boolean;
+  receive_team_delivery_events?: boolean;
+  receive_team_order_updates?: boolean;
   hide_zero_stock_sku: boolean;
   created_at: string;
   updated_at: string;
-}
-
-export interface TelegramPermission {
-  id: string;
-  user_id: string;
-  admin_enabled: boolean;
-  can_receive_stock_balance: boolean;
-  can_receive_delivered_not_claimed: boolean;
-  allowed_stock_owner_ids: string[];
-  allowed_warehouse_ids: string[];
-  allowed_runner_ids: string[];
-  allowed_team_user_ids: string[];
-  see_all_stock: boolean;
-  can_view_all_data: boolean;
-  created_at: string;
-  updated_at: string;
-  updated_by: string | null;
 }
 
 export interface TelegramLog {
@@ -137,54 +126,6 @@ export function useUpsertMyTelegramSettings() {
       qc.invalidateQueries({ queryKey: ['user-telegram-settings', v.user_id] });
       qc.invalidateQueries({ queryKey: ['all-user-telegram-settings'] });
     },
-  });
-}
-
-/* ── Permissions (Admin) ── */
-
-export function useAllTelegramPermissions() {
-  return useQuery({
-    queryKey: ['telegram-permissions'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('telegram_notification_permissions')
-        .select('*');
-      if (error) throw error;
-      return (data || []) as TelegramPermission[];
-    },
-  });
-}
-
-export function useMyTelegramPermission(userId: string | undefined) {
-  return useQuery({
-    queryKey: ['telegram-permission', userId],
-    queryFn: async () => {
-      if (!userId) return null;
-      const { data, error } = await (supabase as any)
-        .from('telegram_notification_permissions')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (error) throw error;
-      return data as TelegramPermission | null;
-    },
-    enabled: !!userId,
-  });
-}
-
-export function useUpsertTelegramPermission() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (perm: Partial<TelegramPermission> & { user_id: string }) => {
-      const { error } = await (supabase as any)
-        .from('telegram_notification_permissions')
-        .upsert({
-          ...perm,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['telegram-permissions'] }),
   });
 }
 

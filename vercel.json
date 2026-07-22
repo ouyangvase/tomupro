@@ -5,6 +5,10 @@
       "destination": "https://dtcchduronwsyunyakxj.supabase.co/functions/v1/blog-sitemap"
     },
     {
+      "source": "/api/integrations/snipers/delivered-orders",
+      "destination": "https://dtcchduronwsyunyakxj.supabase.co/functions/v1/snipers-delivered-orders"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

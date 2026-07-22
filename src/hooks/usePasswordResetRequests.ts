@@ -15,6 +15,21 @@ interface PasswordResetRequest {
   display_name?: string;
 }
 
+async function getFunctionError(error: unknown) {
+  const context = (error as { context?: unknown })?.context;
+  if (context instanceof Response) {
+    const body = await context.clone().json().catch(() => null);
+    const message =
+      body?.error ||
+      body?.message ||
+      body?.msg ||
+      (error instanceof Error ? error.message : 'Failed to approve password reset');
+    return new Error(message);
+  }
+
+  return error instanceof Error ? error : new Error('Failed to approve password reset');
+}
+
 export function usePasswordResetRequests() {
   return useQuery({
     queryKey: ['password-reset-requests'],
@@ -60,15 +75,17 @@ export function useApprovePasswordReset() {
         body: { request_id: requestId },
       });
 
-      if (error) throw error;
+      if (error) throw await getFunctionError(error);
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['password-reset-requests'] });
       toast({
         title: 'Password Reset Approved',
-        description: 'Password has been reset to the temporary password. User will be required to change it on next login.',
+        description: data?.already_processed
+          ? 'This request was already processed.'
+          : `Password has been reset to ${data?.temporary_password || 'the temporary password'}. User will be required to change it on next login.`,
       });
     },
     onError: (error: Error) => {

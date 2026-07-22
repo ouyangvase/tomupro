@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import {
   AlertTriangle, XCircle, Calendar, MessageSquare, ExternalLink,
-  Construction, RefreshCw, Package, DollarSign, CheckCircle, Truck,
+  Construction, Package, DollarSign, CheckCircle, Truck,
   Clock, Users, ArrowRight, Activity, TrendingUp, ShoppingCart,
   AlertCircle, Zap
 } from 'lucide-react';
@@ -107,9 +107,6 @@ export default function AdminOverview() {
               />
             </div>
             <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-36 h-9" />
-            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
             <Button size="sm" onClick={generateDailyDigest} disabled={generatingDigest}>
               {generatingDigest ? 'Generating...' : 'Generate Digest'}
             </Button>

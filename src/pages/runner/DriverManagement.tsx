@@ -1,13 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { useOrders } from '@/hooks/useOrders';
-import { 
-  useRunnerDrivers, 
-  useAddDriverToRunner, 
+import {
+  useRunnerDrivers,
+  useAddDriverToRunner,
   useRemoveDriverFromRunner,
-  useBulkAssignOrdersToDriver,
   useRunnerAcceptDelivery,
   useRunnerRejectDelivery,
+  useBulkRunnerAcceptDelivery,
   useGenerateDriverCode,
 } from '@/hooks/useDrivers';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
@@ -15,81 +17,226 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Progress } from '@/components/ui/progress';
-import { DataGrid } from '@/components/data-grid/DataGrid';
-import { PageHero } from '@/components/dashboard/PageHero';
-import { 
-  Users, UserPlus, Truck, Check, X, Package, 
-  CheckCircle, UserMinus, Key, Copy, Clock,
-  Wifi, WifiOff, AlertTriangle, Eye, Send
+import {
+  Users,
+  UserPlus,
+  Truck,
+  Check,
+  X,
+  CheckCircle,
+  UserMinus,
+  Key,
+  Copy,
+  Clock,
+  Wifi,
+  WifiOff,
+  Eye,
+  Image as ImageIcon,
+  ClipboardCheck,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import capybaraDriver from '@/assets/capybara-driver.png';
+import { formatBND } from '@/lib/currency';
+import { getSignedStorageUrl } from '@/lib/storageUrls';
+import type { Order, OrderItem } from '@/types/database';
 
 const DRIVER_CAPACITY = 40;
 
+type DeliveryProof = {
+  id: string;
+  order_id: string;
+  signedUrl: string;
+  uploaded_at: string;
+};
+
+type DriverReviewGroup = {
+  driverId: string;
+  driverName: string;
+  deliveredOrders: Order[];
+  failedOrders: Order[];
+  deliveredAmount: number;
+  failedAmount: number;
+  proofCount: number;
+};
+
+function getDriverName(order: Order, fallbackUsers: Map<string, { display_name?: string | null }>) {
+  if (!order.driver_id) return 'No driver';
+  return order.driver?.display_name || fallbackUsers.get(order.driver_id)?.display_name || 'Unknown Driver';
+}
+
+function getOrderSkuText(order: Order) {
+  const items = (order.order_items || []) as OrderItem[];
+  if (!items.length) return `${order.total_qty || 0} item(s)`;
+  return items
+    .map((item) => {
+      const skuCode = item.product?.sku_code || item.sku_label || 'UNKNOWN';
+      const skuName = item.product?.sku_name || 'UNKNOWN';
+      return `${skuCode}/${skuName} x ${item.qty}`;
+    })
+    .join(', ');
+}
+
+function getActiveDriverStatus(order: Order) {
+  return ['ASSIGNED', 'OUT_FOR_DELIVERY'].includes(order.driver_status || '') && order.runner_status !== 'DELIVERED';
+}
+
 export default function DriverManagement() {
   const { profile } = useAuth();
-  const { data: drivers = [], isLoading: driversLoading } = useRunnerDrivers(profile?.id);
+  const { data: drivers = [] } = useRunnerDrivers(profile?.id);
   const { data: users = [] } = useUserDirectory();
-  const { data: orders = [], isLoading: ordersLoading } = useOrders({ runnerId: profile?.id });
+  const { data: orders = [] } = useOrders({ runnerId: profile?.id });
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
-  
+
   const addDriver = useAddDriverToRunner();
   const removeDriver = useRemoveDriverFromRunner();
-  const bulkAssign = useBulkAssignOrdersToDriver();
   const acceptDelivery = useRunnerAcceptDelivery();
+  const bulkAcceptDelivery = useBulkRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
   const generateCode = useGenerateDriverCode();
 
   const [addDriverOpen, setAddDriverOpen] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState('');
-  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
-  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  const [assignToDriverId, setAssignToDriverId] = useState('');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectOrderId, setRejectOrderId] = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [openGroupIds, setOpenGroupIds] = useState<string[]>([]);
 
   const availableDrivers = useMemo(() => {
-    const assignedDriverIds = drivers.map(d => d.driver_id);
-    return users.filter(u => u.role === 'driver' && !assignedDriverIds.includes(u.id));
+    const assignedDriverIds = drivers.map((d) => d.driver_id);
+    return users.filter((u) => u.role === 'driver' && !assignedDriverIds.includes(u.id));
   }, [users, drivers]);
 
-  const assignableOrders = useMemo(() => {
-    return orders.filter(o => 
-      o.status === 'READY' && 
-      (o.runner_status === 'TAKEN' || o.runner_status === 'ASSIGNED') &&
-      (!o.driver_id || o.driver_status === 'UNASSIGNED')
-    );
-  }, [orders]);
+  const pendingAcceptanceOrders = useMemo(() => (
+    orders.filter((order) =>
+      order.driver_status === 'DRIVER_DELIVERED' &&
+      order.runner_accept_status === 'PENDING' &&
+      order.runner_status !== 'DELIVERED' &&
+      !!order.driver_id
+    )
+  ), [orders]);
 
-  const pendingAcceptanceOrders = useMemo(() => {
-    return orders.filter(o => 
-      o.driver_status === 'DRIVER_DELIVERED' && 
-      o.runner_accept_status === 'PENDING'
-    );
-  }, [orders]);
+  const failedReviewOrders = useMemo(() => (
+    orders.filter((order) =>
+      order.driver_status === 'DRIVER_FAILED' &&
+      order.runner_status !== 'DELIVERED' &&
+      order.status !== 'CANCELLED' &&
+      !!order.driver_id
+    )
+  ), [orders]);
 
-  const driverWorkloads = useMemo(() => {
-    const counts: Record<string, number> = {};
-    orders.forEach(o => {
-      if (o.driver_id && ['ASSIGNED', 'OUT_FOR_DELIVERY', 'DRIVER_DELIVERED'].includes(o.driver_status || '')) {
-        counts[o.driver_id] = (counts[o.driver_id] || 0) + 1;
-      }
+  const pendingOrderIds = useMemo(
+    () => [...pendingAcceptanceOrders, ...failedReviewOrders].map((order) => order.id),
+    [pendingAcceptanceOrders, failedReviewOrders]
+  );
+
+  const { data: proofsByOrder = {}, isLoading: proofsLoading } = useQuery({
+    queryKey: ['driver-management-delivery-proofs', pendingOrderIds],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('attachments')
+        .select('id, order_id, type, url, uploaded_at')
+        .eq('type', 'delivery_photo')
+        .in('order_id', pendingOrderIds)
+        .order('uploaded_at', { ascending: false });
+
+      if (error) throw error;
+
+      const proofs = await Promise.all((data || []).map(async (proof) => ({
+        id: proof.id,
+        order_id: proof.order_id as string,
+        signedUrl: await getSignedStorageUrl(proof.url, 'delivery-photos'),
+        uploaded_at: proof.uploaded_at,
+      })));
+
+      return proofs.reduce<Record<string, DeliveryProof[]>>((acc, proof) => {
+        if (!acc[proof.order_id]) acc[proof.order_id] = [];
+        acc[proof.order_id].push(proof);
+        return acc;
+      }, {});
+    },
+    enabled: pendingOrderIds.length > 0,
+    staleTime: 30000,
+  });
+
+  const activeDriverWorkloads = useMemo(() => {
+    const workloads: Record<string, { count: number; amount: number }> = {};
+    orders.forEach((order) => {
+      if (!order.driver_id || !getActiveDriverStatus(order)) return;
+      const current = workloads[order.driver_id] || { count: 0, amount: 0 };
+      workloads[order.driver_id] = {
+        count: current.count + 1,
+        amount: current.amount + Number(order.total_amount || 0),
+      };
     });
-    return counts;
+    return workloads;
   }, [orders]);
 
-  // Stats
-  const totalAssigned = Object.values(driverWorkloads).reduce((a, b) => a + b, 0);
+  const reviewGroups = useMemo(() => {
+    const groups = new Map<string, DriverReviewGroup>();
+
+    const ensureGroup = (order: Order) => {
+      const driverId = order.driver_id || 'no-driver';
+      const existing = groups.get(driverId) || {
+        driverId,
+        driverName: getDriverName(order, userById),
+        deliveredOrders: [],
+        failedOrders: [],
+        deliveredAmount: 0,
+        failedAmount: 0,
+        proofCount: 0,
+      };
+      return existing;
+    };
+
+    pendingAcceptanceOrders.forEach((order) => {
+      const existing = ensureGroup(order);
+      existing.deliveredOrders.push(order);
+      existing.deliveredAmount += Number(order.total_amount || 0);
+      existing.proofCount += proofsByOrder[order.id]?.length || 0;
+      groups.set(existing.driverId, existing);
+    });
+
+    failedReviewOrders.forEach((order) => {
+      const existing = ensureGroup(order);
+      existing.failedOrders.push(order);
+      existing.failedAmount += Number(order.total_amount || 0);
+      existing.proofCount += proofsByOrder[order.id]?.length || 0;
+      groups.set(existing.driverId, existing);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => (
+      (b.deliveredOrders.length + b.failedOrders.length) -
+      (a.deliveredOrders.length + a.failedOrders.length)
+    ) || a.driverName.localeCompare(b.driverName));
+  }, [pendingAcceptanceOrders, failedReviewOrders, proofsByOrder, userById]);
+
+  const pendingTotalAmount = useMemo(
+    () => pendingAcceptanceOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0),
+    [pendingAcceptanceOrders]
+  );
+
+  const failedTotalAmount = useMemo(
+    () => failedReviewOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0),
+    [failedReviewOrders]
+  );
+
+  const activeAssignedCount = useMemo(
+    () => Object.values(activeDriverWorkloads).reduce((sum, workload) => sum + workload.count, 0),
+    [activeDriverWorkloads]
+  );
+
+  const detailOrder = useMemo(
+    () => [...pendingAcceptanceOrders, ...failedReviewOrders].find((order) => order.id === detailOrderId) || null,
+    [pendingAcceptanceOrders, failedReviewOrders, detailOrderId]
+  );
+  const detailProofs = detailOrder ? proofsByOrder[detailOrder.id] || [] : [];
 
   const handleAddDriver = async () => {
     if (!selectedDriverId || !profile?.id) return;
@@ -102,16 +249,14 @@ export default function DriverManagement() {
     await removeDriver.mutateAsync(id);
   };
 
-  const handleBulkAssign = async () => {
-    if (!assignToDriverId || selectedOrders.length === 0) return;
-    await bulkAssign.mutateAsync({ orderIds: selectedOrders, driverId: assignToDriverId });
-    setAssignDialogOpen(false);
-    setSelectedOrders([]);
-    setAssignToDriverId('');
-  };
-
-  const handleAcceptDelivery = async (orderId: string) => {
-    await acceptDelivery.mutateAsync(orderId);
+  const handleAcceptOrders = async (orderIds: string[]) => {
+    if (orderIds.length === 0) return;
+    if (orderIds.length === 1) {
+      await acceptDelivery.mutateAsync(orderIds[0]);
+    } else {
+      await bulkAcceptDelivery.mutateAsync(orderIds);
+    }
+    if (detailOrderId && orderIds.includes(detailOrderId)) setDetailOrderId(null);
   };
 
   const handleOpenRejectDialog = (orderId: string) => {
@@ -123,331 +268,411 @@ export default function DriverManagement() {
   const handleRejectDelivery = async () => {
     if (!rejectOrderId || !rejectReason) return;
     await rejectDelivery.mutateAsync({ orderId: rejectOrderId, reason: rejectReason });
+    if (detailOrderId === rejectOrderId) setDetailOrderId(null);
     setRejectDialogOpen(false);
     setRejectOrderId('');
     setRejectReason('');
   };
 
-  const toggleOrderSelection = (orderId: string) => {
-    setSelectedOrders(prev => prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]);
+  const toggleGroupOpen = (driverId: string) => {
+    setOpenGroupIds((prev) => (
+      prev.includes(driverId) ? prev.filter((id) => id !== driverId) : [...prev, driverId]
+    ));
   };
 
-  const selectAllOrders = () => {
-    if (selectedOrders.length === assignableOrders.length) {
-      setSelectedOrders([]);
-    } else {
-      setSelectedOrders(assignableOrders.map(o => o.id));
-    }
-  };
-
-  const columns = [
-    {
-      key: 'select', header: '',
-      render: (order: any) => <Checkbox checked={selectedOrders.includes(order.id)} onCheckedChange={() => toggleOrderSelection(order.id)} />,
-    },
-    { key: 'order_code', header: 'Order' },
-    { key: 'customer_name', header: 'Customer' },
-    { key: 'area', header: 'Area' },
-    { key: 'total_amount', header: 'Amount (BND)', render: (order: any) => `BND ${Number(order.total_amount).toFixed(2)}` },
-  ];
-
-  const getCapacityColor = (workload: number) => {
-    const pct = (workload / DRIVER_CAPACITY) * 100;
-    if (pct >= 80) return 'bg-destructive';
-    if (pct >= 50) return 'bg-amber-500';
-    return 'bg-emerald-500';
-  };
+  const isAccepting = acceptDelivery.isPending || bulkAcceptDelivery.isPending;
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        {/* Hero */}
-        <PageHero
-          icon={<Truck className="h-6 w-6 text-primary" />}
-          title="Driver Operations"
-          subtitle="Manage drivers and assign delivery tasks"
-          image={capybaraDriver}
-          imageAlt="Driver Capybara"
-          actions={
-            <Button onClick={() => setAddDriverOpen(true)} className="rounded-xl gap-2">
-              <UserPlus className="h-4 w-4" />
-              Add Driver
-            </Button>
-          }
-        />
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <Card className="border-none shadow-sm bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10">
-            <CardContent className="p-5 flex items-center gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-emerald-500/15 flex items-center justify-center shrink-0">
-                <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{drivers.length}</p>
-                <p className="text-xs text-muted-foreground">Active Drivers</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm bg-gradient-to-br from-primary/5 to-primary/10">
-            <CardContent className="p-5 flex items-center gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-primary/15 flex items-center justify-center shrink-0">
-                <Package className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{totalAssigned}</p>
-                <p className="text-xs text-muted-foreground">Orders Assigned</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10">
-            <CardContent className="p-5 flex items-center gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-amber-500/15 flex items-center justify-center shrink-0">
-                <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{pendingAcceptanceOrders.length}</p>
-                <p className="text-xs text-muted-foreground">Pending Accept</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/10">
-            <CardContent className="p-5 flex items-center gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-blue-500/15 flex items-center justify-center shrink-0">
-                <Truck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{assignableOrders.length}</p>
-                <p className="text-xs text-muted-foreground">To Assign</p>
-              </div>
-            </CardContent>
-          </Card>
+      <div className="space-y-5">
+        <div className="flex flex-col gap-3 rounded-[1.25rem] border bg-background/80 p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="rounded-full">Drivers</Badge>
+              <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">Proof review</Badge>
+            </div>
+            <h1 className="mt-2 text-2xl font-black tracking-tight">Driver Operations</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Review driver-delivered orders, inspect proof photos, accept in bulk, and keep active driver workload clean.
+            </p>
+          </div>
+          <Button onClick={() => setAddDriverOpen(true)} className="h-10 rounded-full px-4">
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add Driver
+          </Button>
         </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="drivers" className="space-y-5">
-          <TabsList className="rounded-xl">
-            <TabsTrigger value="drivers" className="gap-2 rounded-lg">
-              <Users className="h-4 w-4" />
-              My Drivers ({drivers.length})
-            </TabsTrigger>
-            <TabsTrigger value="assign" className="gap-2 rounded-lg">
-              <Truck className="h-4 w-4" />
-              Assign Orders ({assignableOrders.length})
-            </TabsTrigger>
-            <TabsTrigger value="pending" className="gap-2 rounded-lg">
-              <Clock className="h-4 w-4" />
-              Pending ({pendingAcceptanceOrders.length})
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Drivers Tab */}
-          <TabsContent value="drivers">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {drivers.map(rd => {
-                const driverData = rd.driver as any;
-                const driverCode = driverData?.driver_code;
-                const driverName = driverData?.display_name ?? userById.get(rd.driver_id)?.display_name ?? 'Unknown';
-                const workload = driverWorkloads[rd.driver_id] || 0;
-                const capacityPct = Math.min((workload / DRIVER_CAPACITY) * 100, 100);
-                const email = driverData?.email || userById.get(rd.driver_id)?.email;
-                
-                return (
-                  <Card key={rd.id} className="border shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-                    <div className="h-1 bg-gradient-to-r from-primary to-primary/30" />
-                    <CardContent className="p-5 space-y-4">
-                      {/* Header */}
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-11 w-11 rounded-2xl bg-primary/10 flex items-center justify-center text-lg font-bold text-primary">
-                            {(driverName)[0]?.toUpperCase() || '?'}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-base">{driverName}</p>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              {workload > 0 ? (
-                                <Badge variant="secondary" className="text-xs gap-1 rounded-full">
-                                  <Wifi className="h-3 w-3" />
-                                  Active
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-xs gap-1 rounded-full text-muted-foreground">
-                                  <WifiOff className="h-3 w-3" />
-                                  Idle
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveDriver(rd.id)}>
-                          <UserMinus className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      {/* Capacity Bar */}
-                      <div>
-                        <div className="flex items-center justify-between text-xs mb-1.5">
-                          <span className="text-muted-foreground">{workload} orders</span>
-                          <span className="text-muted-foreground font-medium">{workload} / {DRIVER_CAPACITY}</span>
-                        </div>
-                        <div className="h-2.5 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${getCapacityColor(workload)}`}
-                            style={{ width: `${capacityPct}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Email */}
-                      {email && (
-                        <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/50">
-                          <span className="text-sm text-muted-foreground truncate mr-2">{email}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0"
-                            onClick={() => { navigator.clipboard.writeText(email); toast.success('Email copied'); }}
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      )}
-                      
-                      {/* Driver Code */}
-                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/50">
-                        <div className="flex items-center gap-2">
-                          <Key className="h-4 w-4 text-muted-foreground" />
-                          {driverCode ? (
-                            <span className="font-mono font-semibold text-sm">{driverCode}</span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">No code</span>
-                          )}
-                        </div>
-                        <div className="flex gap-1">
-                          {driverCode && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7"
-                              onClick={() => { navigator.clipboard.writeText(driverCode); toast.success('Code copied'); }}>
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                          <Button variant="outline" size="sm" className="h-7 text-xs rounded-lg"
-                            onClick={() => generateCode.mutate(rd.driver_id)} disabled={generateCode.isPending}>
-                            {generateCode.isPending ? '...' : driverCode ? 'Regenerate' : 'Generate'}
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-              
-              {drivers.length === 0 && (
-                <div className="col-span-full flex flex-col items-center justify-center py-16">
-                  <img src={capybaraDriver} alt="No drivers" className="h-28 w-28 object-contain mb-5 drop-shadow-md opacity-80" />
-                  <h3 className="text-lg font-semibold">No drivers yet</h3>
-                  <p className="text-sm text-muted-foreground mb-4">Add drivers to start assigning deliveries</p>
-                  <Button onClick={() => setAddDriverOpen(true)} className="rounded-xl gap-2">
-                    <UserPlus className="h-4 w-4" />
-                    Add Driver
-                  </Button>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: 'Waiting accept', value: String(pendingAcceptanceOrders.length), meta: `${formatBND(pendingTotalAmount)} delivered amount`, icon: Clock },
+            { label: 'Failed reports', value: String(failedReviewOrders.length), meta: `${formatBND(failedTotalAmount)} failed amount`, icon: AlertTriangle },
+            { label: 'Driver batches', value: String(reviewGroups.length), meta: `${reviewGroups.reduce((sum, group) => sum + group.proofCount, 0)} proof photo(s)`, icon: ClipboardCheck },
+            { label: 'Active workload', value: String(activeAssignedCount), meta: `${drivers.length} driver(s) linked`, icon: Truck },
+          ].map((metric) => (
+            <Card key={metric.label} className="overflow-hidden border shadow-sm">
+              <CardContent className="flex items-center gap-3 p-3 sm:p-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <metric.icon className="h-4 w-4" />
                 </div>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* Assign Orders Tab */}
-          <TabsContent value="assign">
-            <Card className="border shadow-sm">
-              <div className="flex items-center justify-between p-5 border-b">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Send className="h-4.5 w-4.5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Assign Orders to Driver</p>
-                    <p className="text-xs text-muted-foreground">{assignableOrders.length} orders ready</p>
-                  </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{metric.label}</p>
+                  <p className="mt-0.5 text-xl font-black tabular-nums sm:text-2xl">{metric.value}</p>
+                  <p className="truncate text-xs text-muted-foreground" title={metric.meta}>{metric.meta}</p>
                 </div>
-                {selectedOrders.length > 0 && (
-                  <Button onClick={() => setAssignDialogOpen(true)} className="rounded-xl gap-2">
-                    <Send className="h-4 w-4" />
-                    Assign {selectedOrders.length} Orders
-                  </Button>
-                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-5">
+            <Card className="overflow-hidden border shadow-sm">
+              <div className="flex flex-col gap-3 border-b bg-secondary/20 p-3 sm:p-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Driver review queue</p>
+                  <h2 className="mt-1 text-lg font-black sm:text-xl">Delivered and failed by driver</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {pendingAcceptanceOrders.length} delivered waiting, {failedReviewOrders.length} failed report(s), {formatBND(pendingTotalAmount)} delivered amount.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => handleAcceptOrders(pendingAcceptanceOrders.map((order) => order.id))}
+                  disabled={pendingAcceptanceOrders.length === 0 || isAccepting}
+                  className="h-10 rounded-full px-4"
+                >
+                  <Check className="mr-2 h-4 w-4" />
+                  Accept All
+                </Button>
               </div>
-              <CardContent className="p-5">
-                {assignableOrders.length > 0 ? (
-                  <>
-                    <div className="flex items-center gap-2 mb-4">
-                      <Checkbox 
-                        checked={selectedOrders.length === assignableOrders.length && assignableOrders.length > 0}
-                        onCheckedChange={selectAllOrders}
-                      />
-                      <Label className="text-sm">Select All</Label>
-                    </div>
-                    <DataGrid data={assignableOrders} columns={columns} keyField="id" loading={ordersLoading} />
-                  </>
+
+              <CardContent className="space-y-3 p-3 sm:p-4">
+                {reviewGroups.length > 0 ? (
+                  reviewGroups.map((group) => {
+                    const isOpen = openGroupIds.includes(group.driverId);
+                    const reviewCount = group.deliveredOrders.length + group.failedOrders.length;
+                    const allReviewOrders = [...group.deliveredOrders, ...group.failedOrders];
+
+                    return (
+                      <div key={group.driverId} className="rounded-2xl border bg-background shadow-sm">
+                        <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroupOpen(group.driverId)}
+                            className="flex min-w-0 items-start gap-3 text-left"
+                          >
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+                              {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-base font-black sm:text-lg">{group.driverName}</h3>
+                                <Badge variant="secondary" className="rounded-full">{reviewCount} order(s)</Badge>
+                                <Badge className="rounded-full bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10">
+                                  {group.deliveredOrders.length} delivered
+                                </Badge>
+                                <Badge className="rounded-full bg-red-500/10 text-red-700 hover:bg-red-500/10">
+                                  {group.failedOrders.length} failed
+                                </Badge>
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                                <div className="rounded-xl bg-secondary/40 p-2">
+                                  <p className="text-[10px] uppercase text-muted-foreground">Delivered amount</p>
+                                  <p className="font-black">{formatBND(group.deliveredAmount)}</p>
+                                </div>
+                                <div className="rounded-xl bg-secondary/40 p-2">
+                                  <p className="text-[10px] uppercase text-muted-foreground">Failed amount</p>
+                                  <p className="font-black">{formatBND(group.failedAmount)}</p>
+                                </div>
+                                <div className="rounded-xl bg-secondary/40 p-2">
+                                  <p className="text-[10px] uppercase text-muted-foreground">Proof photos</p>
+                                  <p className="font-black">{group.proofCount}</p>
+                                </div>
+                                <div className="rounded-xl bg-secondary/40 p-2">
+                                  <p className="text-[10px] uppercase text-muted-foreground">List</p>
+                                  <p className="font-black">{isOpen ? 'Open' : 'Closed'}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+
+                          <div className="grid grid-cols-2 gap-2 lg:w-[260px]">
+                            <Button
+                              variant="outline"
+                              onClick={() => toggleGroupOpen(group.driverId)}
+                              className="h-10 rounded-full"
+                            >
+                              {isOpen ? 'Hide' : 'Open'}
+                            </Button>
+                            <Button
+                              onClick={() => handleAcceptOrders(group.deliveredOrders.map((order) => order.id))}
+                              disabled={group.deliveredOrders.length === 0 || isAccepting}
+                              className="h-10 rounded-full"
+                            >
+                              <ClipboardCheck className="mr-2 h-4 w-4" />
+                              Accept Batch
+                            </Button>
+                          </div>
+                        </div>
+
+                        {isOpen && (
+                          <div className="divide-y border-t">
+                            {allReviewOrders.map((order) => {
+                              const proofs = proofsByOrder[order.id] || [];
+                              const isDelivered = order.driver_status === 'DRIVER_DELIVERED';
+
+                              return (
+                                <div key={order.id} className="grid gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailOrderId(order.id)}
+                                    className="min-w-0 text-left"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="font-black">{order.order_code}</p>
+                                      <Badge variant="outline" className="rounded-full">{order.area || 'No area'}</Badge>
+                                      <Badge className={isDelivered ? 'rounded-full bg-amber-500/10 text-amber-700 hover:bg-amber-500/10' : 'rounded-full bg-red-500/10 text-red-700 hover:bg-red-500/10'}>
+                                        {isDelivered ? 'Awaiting accept' : 'Failed delivery'}
+                                      </Badge>
+                                    </div>
+                                    <p className="mt-1 truncate text-sm font-semibold" title={order.customer_name}>{order.customer_name}</p>
+                                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{order.address}</p>
+                                    <p className="mt-2 line-clamp-1 text-xs text-muted-foreground" title={getOrderSkuText(order)}>
+                                      {getOrderSkuText(order)}
+                                    </p>
+                                    {!isDelivered && (order.driver_failed_reason || order.driver_failed_remark) && (
+                                      <p className="mt-2 line-clamp-2 text-xs font-medium text-destructive">
+                                        {order.driver_failed_reason}{order.driver_failed_remark ? ` / ${order.driver_failed_remark}` : ''}
+                                      </p>
+                                    )}
+                                  </button>
+
+                                  <div className="flex flex-col gap-2 md:items-end">
+                                    <div className="flex w-full items-center justify-between gap-2 md:justify-end">
+                                      <div className="text-left md:text-right">
+                                        <p className="text-lg font-black tabular-nums">{formatBND(Number(order.total_amount || 0))}</p>
+                                        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{order.payment_method}</p>
+                                      </div>
+                                      <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setDetailOrderId(order.id)}>
+                                        {proofs.length > 0 ? <ImageIcon className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                      </Button>
+                                    </div>
+                                    {isDelivered ? (
+                                      <div className="grid grid-cols-2 gap-2 md:w-[220px]">
+                                        <Button size="sm" onClick={() => handleAcceptOrders([order.id])} disabled={isAccepting} className="rounded-full">
+                                          <Check className="mr-1.5 h-4 w-4" />
+                                          Accept
+                                        </Button>
+                                        <Button variant="destructive" size="sm" onClick={() => handleOpenRejectDialog(order.id)} disabled={rejectDelivery.isPending} className="rounded-full">
+                                          <X className="mr-1.5 h-4 w-4" />
+                                          Reject
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <Button variant="outline" size="sm" onClick={() => setDetailOrderId(order.id)} className="w-full rounded-full md:w-[220px]">
+                                        <Eye className="mr-1.5 h-4 w-4" />
+                                        View Failed Report
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-4">
-                      <CheckCircle className="h-6 w-6 text-emerald-500" />
+                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-14 text-center">
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600">
+                      <CheckCircle className="h-6 w-6" />
                     </div>
-                    <p className="text-sm text-muted-foreground">No orders to assign — all clear!</p>
+                    <h3 className="font-black">No driver deliveries waiting</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Driver-submitted deliveries will appear here with proof photos.</p>
                   </div>
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
 
-          {/* Pending Tab */}
-          <TabsContent value="pending">
-            <div className="space-y-3">
-              {pendingAcceptanceOrders.length > 0 ? (
-                pendingAcceptanceOrders.map(order => (
-                  <Card key={order.id} className="border shadow-sm overflow-hidden">
-                    <div className="h-1 bg-gradient-to-r from-amber-400 to-amber-200" />
-                    <CardContent className="p-5">
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-1.5">
-                          <p className="font-semibold">{order.order_code}</p>
-                          <p className="text-sm text-muted-foreground">{order.customer_name} • {order.area}</p>
-                          <p className="text-sm">BND {Number(order.total_amount).toFixed(2)} ({order.payment_method})</p>
-                          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 mt-1">
-                            <Clock className="h-3 w-3 mr-1" />
-                            Awaiting Acceptance
-                          </Badge>
+          <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+            <Card className="border shadow-sm">
+              <CardContent className="space-y-3 p-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Driver summary</p>
+                  <h2 className="mt-1 text-lg font-black">Workload by driver</h2>
+                </div>
+                {drivers.length > 0 ? (
+                  drivers.map((runnerDriver) => {
+                    const driverData = runnerDriver.driver as any;
+                    const driverName = driverData?.display_name || userById.get(runnerDriver.driver_id)?.display_name || 'Unknown';
+                    const driverCode = driverData?.driver_code;
+                    const email = driverData?.email || userById.get(runnerDriver.driver_id)?.email;
+                    const workload = activeDriverWorkloads[runnerDriver.driver_id] || { count: 0, amount: 0 };
+                    const pendingForDriver = reviewGroups.find((group) => group.driverId === runnerDriver.driver_id);
+
+                    return (
+                      <div key={runnerDriver.id} className="rounded-2xl border p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-black" title={driverName}>{driverName}</p>
+                            <p className="truncate text-xs text-muted-foreground" title={email || ''}>{email || 'No email'}</p>
+                          </div>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveDriver(runnerDriver.id)}>
+                            <UserMinus className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" className="rounded-xl gap-1.5" onClick={() => handleAcceptDelivery(order.id)} disabled={acceptDelivery.isPending}>
-                            <Check className="h-4 w-4" /> Accept
-                          </Button>
-                          <Button variant="destructive" size="sm" className="rounded-xl gap-1.5" onClick={() => handleOpenRejectDialog(order.id)}>
-                            <X className="h-4 w-4" /> Reject
-                          </Button>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                          <div className="rounded-xl bg-secondary/40 p-2">
+                            <p className="text-[10px] uppercase text-muted-foreground">Active</p>
+                            <p className="font-black">{workload.count}</p>
+                          </div>
+                          <div className="rounded-xl bg-secondary/40 p-2">
+                            <p className="text-[10px] uppercase text-muted-foreground">Amount</p>
+                            <p className="font-black">{formatBND(workload.amount)}</p>
+                          </div>
+                          <div className="rounded-xl bg-amber-500/10 p-2">
+                            <p className="text-[10px] uppercase text-muted-foreground">Delivered pending</p>
+                            <p className="font-black">{pendingForDriver?.deliveredOrders.length || 0}</p>
+                          </div>
+                          <div className="rounded-xl bg-amber-500/10 p-2">
+                            <p className="text-[10px] uppercase text-muted-foreground">Delivered amount</p>
+                            <p className="font-black">{formatBND(pendingForDriver?.deliveredAmount || 0)}</p>
+                          </div>
+                          <div className="rounded-xl bg-red-500/10 p-2">
+                            <p className="text-[10px] uppercase text-muted-foreground">Failed reports</p>
+                            <p className="font-black">{pendingForDriver?.failedOrders.length || 0}</p>
+                          </div>
+                          <div className="rounded-xl bg-red-500/10 p-2">
+                            <p className="text-[10px] uppercase text-muted-foreground">Failed amount</p>
+                            <p className="font-black">{formatBND(pendingForDriver?.failedAmount || 0)}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between rounded-xl bg-muted/50 p-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Key className="h-4 w-4 text-muted-foreground" />
+                            <span className="truncate font-mono text-sm font-semibold">{driverCode || 'No code'}</span>
+                          </div>
+                          <div className="flex gap-1">
+                            {driverCode && (
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { navigator.clipboard.writeText(driverCode); toast.success('Code copied'); }}>
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Button variant="outline" size="sm" className="h-7 rounded-lg text-xs" onClick={() => generateCode.mutate(runnerDriver.driver_id)} disabled={generateCode.isPending}>
+                              {driverCode ? 'Regenerate' : 'Generate'}
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                          {workload.count > 0 ? <Wifi className="h-3.5 w-3.5 text-emerald-600" /> : <WifiOff className="h-3.5 w-3.5" />}
+                          {workload.count > 0 ? `${workload.count}/${DRIVER_CAPACITY} active order capacity` : 'No active delivery workload'}
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-4">
-                    <CheckCircle className="h-6 w-6 text-emerald-500" />
+                    );
+                  })
+                ) : (
+                  <div className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">
+                    No drivers linked yet.
                   </div>
-                  <h3 className="text-base font-semibold">All caught up!</h3>
-                  <p className="text-sm text-muted-foreground">No deliveries pending acceptance</p>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
 
-        {/* Add Driver Dialog */}
+        <Dialog open={!!detailOrder} onOpenChange={(open) => !open && setDetailOrderId(null)}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{detailOrder?.driver_status === 'DRIVER_FAILED' ? 'Driver Failed Report' : 'Driver Delivery Proof'}</DialogTitle>
+              <DialogDescription>
+                {detailOrder?.driver_status === 'DRIVER_FAILED'
+                  ? 'Review the failed-delivery reason, remark and uploaded proof.'
+                  : 'Review the driver-submitted delivery before accepting it.'}
+              </DialogDescription>
+            </DialogHeader>
+            {detailOrder && (
+              <div className="space-y-4">
+                <div className="grid gap-3 rounded-2xl border bg-secondary/20 p-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Order</p>
+                    <p className="font-black">{detailOrder.order_code}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Driver</p>
+                    <p className="font-black">{getDriverName(detailOrder, userById)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Customer</p>
+                    <p className="font-black">{detailOrder.customer_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Amount</p>
+                    <p className="font-black">{formatBND(Number(detailOrder.total_amount || 0))} ({detailOrder.payment_method})</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Address</p>
+                    <p className="font-medium">{detailOrder.address}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">SKU</p>
+                    <p className="font-medium">{getOrderSkuText(detailOrder)}</p>
+                  </div>
+                  {detailOrder.driver_status === 'DRIVER_FAILED' && (
+                    <div className="sm:col-span-2 rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Failed reason / remark</p>
+                      <p className="mt-1 font-medium text-destructive">
+                        {detailOrder.driver_failed_reason || 'No reason'}
+                        {detailOrder.driver_failed_remark ? ` / ${detailOrder.driver_failed_remark}` : ''}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-black">Uploaded photo</h3>
+                    {proofsLoading && <span className="text-xs text-muted-foreground">Loading proof...</span>}
+                  </div>
+                  {detailProofs.length > 0 ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {detailProofs.map((proof) => (
+                        <a key={proof.id} href={proof.signedUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border bg-muted">
+                          <img src={proof.signedUrl} alt="Driver uploaded delivery proof" className="h-full max-h-[360px] w-full object-contain" />
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                      <AlertTriangle className="h-4 w-4" />
+                      No delivery photo uploaded for this order.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            <DialogFooter className="gap-2 sm:gap-0">
+              {detailOrder?.driver_status === 'DRIVER_DELIVERED' && (
+                <>
+                  <Button variant="outline" onClick={() => handleOpenRejectDialog(detailOrder.id)} disabled={rejectDelivery.isPending}>
+                    <X className="mr-2 h-4 w-4" />
+                    Reject
+                  </Button>
+                  <Button onClick={() => handleAcceptOrders([detailOrder.id])} disabled={isAccepting}>
+                    <Check className="mr-2 h-4 w-4" />
+                    Accept
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={addDriverOpen} onOpenChange={setAddDriverOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add Driver</DialogTitle>
-              <DialogDescription>Select a driver to add to your team</DialogDescription>
+              <DialogDescription>Select a driver to add to your team.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
@@ -455,8 +680,8 @@ export default function DriverManagement() {
                   <SelectValue placeholder="Choose a driver..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableDrivers.map(d => (
-                    <SelectItem key={d.id} value={d.id}>{d.display_name}</SelectItem>
+                  {availableDrivers.map((driver) => (
+                    <SelectItem key={driver.id} value={driver.id}>{driver.display_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -466,52 +691,28 @@ export default function DriverManagement() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAddDriverOpen(false)}>Cancel</Button>
-              <Button onClick={handleAddDriver} disabled={!selectedDriverId || addDriver.isPending} className="rounded-xl">
+              <Button onClick={handleAddDriver} disabled={!selectedDriverId || addDriver.isPending}>
                 {addDriver.isPending ? 'Adding...' : 'Add Driver'}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Assign Dialog */}
-        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Assign Orders to Driver</DialogTitle>
-              <DialogDescription>{selectedOrders.length} orders selected</DialogDescription>
-            </DialogHeader>
-            <Select value={assignToDriverId} onValueChange={setAssignToDriverId}>
-              <SelectTrigger className="rounded-xl">
-                <SelectValue placeholder="Choose a driver..." />
-              </SelectTrigger>
-              <SelectContent>
-                {drivers.map(rd => (
-                  <SelectItem key={rd.driver_id} value={rd.driver_id}>
-                    {(rd.driver as any)?.display_name || userById.get(rd.driver_id)?.display_name || 'Unknown'} ({driverWorkloads[rd.driver_id] || 0} active)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleBulkAssign} disabled={!assignToDriverId || bulkAssign.isPending} className="rounded-xl">
-                {bulkAssign.isPending ? 'Assigning...' : 'Assign Orders'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Reject Dialog */}
         <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Reject Delivery</DialogTitle>
-              <DialogDescription>This will return the order to the driver for re-delivery</DialogDescription>
+              <DialogDescription>This returns the order to the driver for correction or re-delivery.</DialogDescription>
             </DialogHeader>
-            <Textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Explain why you're rejecting..." className="rounded-xl" />
+            <Textarea
+              value={rejectReason}
+              onChange={(event) => setRejectReason(event.target.value)}
+              placeholder="Explain why you are rejecting this delivery..."
+              className="rounded-xl"
+            />
             <DialogFooter>
               <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
-              <Button variant="destructive" onClick={handleRejectDelivery} disabled={!rejectReason || rejectDelivery.isPending} className="rounded-xl">
+              <Button variant="destructive" onClick={handleRejectDelivery} disabled={!rejectReason || rejectDelivery.isPending}>
                 {rejectDelivery.isPending ? 'Rejecting...' : 'Reject'}
               </Button>
             </DialogFooter>

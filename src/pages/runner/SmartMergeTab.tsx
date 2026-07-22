@@ -300,9 +300,6 @@ export default function SmartMergeTab() {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => ordersQ.refetch()} className="gap-1.5">
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </Button>
       </div>
 
       {/* Empty state */}

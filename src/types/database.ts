@@ -99,8 +99,8 @@ export interface FinanceAuditLog {
   action: string;
   module: string;
   record_id: string | null;
-  before_data: any;
-  after_data: any;
+  before_data: unknown;
+  after_data: unknown;
   created_at: string;
   // Joined
   user?: Profile;
@@ -200,6 +200,18 @@ export interface Order {
   phone: string;
   address: string;
   area: string | null;
+  normalized_address?: string | null;
+  normalized_locality?: string | null;
+  normalized_postal_code?: string | null;
+  delivery_area_code?: string | null;
+  delivery_area_name?: string | null;
+  area_classification_status?: string | null;
+  area_classification_confidence?: number | null;
+  area_classification_source?: string | null;
+  area_classification_reason?: string | null;
+  area_classified_at?: string | null;
+  area_classified_by?: string | null;
+  area_manual_override?: boolean | null;
   channel: string | null;
   notes: string | null;
   remark: string | null;
@@ -218,6 +230,9 @@ export interface Order {
   driver_failed_reason: string | null;
   driver_failed_remark: string | null;
   driver_next_delivery_date: string | null;
+  driver_assignment_batch_id?: string | null;
+  driver_assigned_at?: string | null;
+  driver_assigned_by?: string | null;
   failed_reason: string | null;
   failed_remark: string | null;
   failed_next_step: FailedNextStep | null;
@@ -390,6 +405,17 @@ export interface StockBalance {
   sku_name: string;
   balance_qty: number;
   last_movement_time: string;
+}
+
+export interface RunnerStockLocation {
+  id: string;
+  runner_id: string;
+  warehouse_id: string;
+  product_id: string;
+  remark: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Notification {

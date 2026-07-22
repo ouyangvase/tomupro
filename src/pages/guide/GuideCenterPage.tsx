@@ -41,7 +41,13 @@ export default function GuideCenterPage() {
   const { data: progressList = [] } = useAllGuideProgress();
   const updateProgress = useUpdateGuideProgress();
 
-  const role = (profile?.role as GuideRole) || 'salesperson';
+  const rawRole = profile?.role || 'salesperson';
+  const role: GuideRole = rawRole === 'runner_assistant'
+    ? 'runner'
+    : ['admin', 'manager', 'salesperson', 'runner', 'driver'].includes(rawRole)
+      ? (rawRole as GuideRole)
+      : 'salesperson';
+  const roleLabel = rawRole === 'runner_assistant' ? 'runner assistant' : role;
   const onboarding = onboardingFlows.find(o => o.role === role);
 
   const roleGuides = useMemo(() => {
@@ -100,7 +106,7 @@ export default function GuideCenterPage() {
               </div>
               <p className="text-muted-foreground text-sm">{roleDescriptions[role]}</p>
               <div className="flex items-center gap-4 mt-3">
-                <Badge variant="outline" className="text-xs capitalize">{role}</Badge>
+                <Badge variant="outline" className="text-xs capitalize">{roleLabel}</Badge>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <CheckCircle className="h-3.5 w-3.5 text-[hsl(var(--status-success))]" />
                   {completedCount}/{totalGuides} completed

@@ -94,10 +94,6 @@ export default function StockIntegrityScan() {
               <p className="text-sm text-muted-foreground">Ledger-based audit and repair system</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={auditLoading || summaryLoading}>
-            <RefreshCw className={cn("h-4 w-4 mr-2", (auditLoading || summaryLoading) && "animate-spin")} />
-            Refresh
-          </Button>
         </div>
 
         {/* ── Section 1: Stock Health Overview ── */}

@@ -7,7 +7,7 @@ import { SyncNowButton } from '@/components/google-sheet/SyncNowButton';
 import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 
 // Retry dynamic import once on chunk load failure (stale deployment cache)
-function lazyRetry<T extends { default: React.ComponentType<any> }>(
+function lazyRetry<T extends { default: React.ComponentType<unknown> }>(
   importFn: () => Promise<T>,
 ) {
   return lazy(() =>
@@ -81,10 +81,10 @@ export default function DispatchModule() {
 
   const runnerTabs = [
     { id: 'inbox', label: 'Runner Inbox' },
+    { id: 'driver-inbox', label: 'Driver Inbox' },
     { id: 'smart-merge', label: 'Smart Merge' },
     { id: 'pickup-orders', label: 'Pickup Orders' },
     { id: 'inbound', label: 'Inbound' },
-    { id: 'driver-inbox', label: 'Driver Inbox' },
     { id: 'drivers', label: 'Drivers' },
     { id: 'failed', label: 'Failed Orders' },
     { id: 'map', label: 'Live Map' },
@@ -121,17 +121,22 @@ export default function DispatchModule() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="flex-1">
-          <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-            <TabsList className="w-full justify-start bg-secondary/30 h-11">
+        <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="min-w-0 flex-1">
+          <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 scrollbar-hide touch-pan-x [-webkit-overflow-scrolling:touch] md:mx-0 md:px-0">
+            <TabsList className="inline-flex h-11 w-max min-w-max justify-start bg-secondary/30">
               {tabs.map(t => (
-                <TabsTrigger key={t.id} value={t.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{t.label}</TabsTrigger>
+                <TabsTrigger key={t.id} value={t.id} className="shrink-0 whitespace-nowrap px-3 text-xs md:px-4 md:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{t.label}</TabsTrigger>
               ))}
             </TabsList>
           </div>
         </Tabs>
         {(role === 'runner' || role === 'runner_assistant' || role === 'admin' || role === 'manager' || role === 'operator') && (
-          <SyncNowButton variant="ghost" size="sm" showLabel={false} className="shrink-0" />
+          <SyncNowButton
+            variant="ghost"
+            size="sm"
+            showLabel={false}
+            className={`shrink-0 ${role === 'runner_assistant' ? 'hidden md:inline-flex' : ''}`}
+          />
         )}
       </div>
       <EmbeddedProvider>

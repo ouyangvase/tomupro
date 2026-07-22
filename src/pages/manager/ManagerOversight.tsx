@@ -19,8 +19,7 @@ import {
   AlertTriangle, 
   Clock, 
   CheckCircle, 
-  FileWarning, 
-  RefreshCw,
+  FileWarning,
   ArrowRight,
   TrendingUp,
   TrendingDown,
@@ -57,7 +56,6 @@ export default function ManagerOversight() {
   
   const actionStats = isAdmin ? adminStats : managerStats;
   const isLoading = isAdmin ? adminLoading : managerLoading;
-  const refetch = isAdmin ? refetchAdmin : refetchManager;
   
   // Get group info for managers
   const { data: groups = [] } = useManagerGroups();
@@ -159,9 +157,6 @@ export default function ManagerOversight() {
               }
             </p>
           </div>
-          <Button variant="outline" size="icon" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
         </div>
 
         {/* Summary Cards */}

@@ -3,14 +3,22 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { usePaginatedStockBalance } from '@/hooks/usePaginatedStockBalance';
 import { useProducts, useCreateProduct, useUpdateProduct, useBulkUpdateProducts } from '@/hooks/useProducts';
+import {
+  getRunnerStockLocationKey,
+  useRunnerStockLocations,
+  useUpsertRunnerStockLocation,
+} from '@/hooks/useRunnerStockLocations';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUsers } from '@/hooks/useUsers';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useVisibleUserIds } from '@/hooks/useTeamVisibility';
+import { useBindings } from '@/hooks/useBindings';
+import { useManagerRunnerBindings } from '@/hooks/useManagerRunnerBindings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -24,6 +32,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -34,6 +43,7 @@ import { format } from 'date-fns';
 import {
   ArrowLeftRight, Eye, Users, User, UsersRound, Search, Package,
   AlertTriangle, Plus, Edit, CheckCircle, XCircle,
+  MapPin,
 } from 'lucide-react';
 import { StockTransferDialog } from '@/components/inventory/StockTransferDialog';
 import { VisibilityManagementDialog } from '@/components/inventory/VisibilityManagementDialog';
@@ -54,17 +64,27 @@ interface StockBalanceRow extends StockBalance {
   _key: string;
 }
 
+const isRunnerHolderRole = (value: string | null | undefined) => value === 'runner' || value === 'driver';
+
 export default function InventoryBalance() {
   const { profile, role } = useAuth();
   const { data: users = [] } = useUsers();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: userDirectory = [] } = useUserDirectory();
   const { visibleUserIds } = useVisibleUserIds();
+  const { data: salespersonRunnerBindings = [] } = useBindings(
+    role === 'salesperson' && profile?.id ? { salespersonId: profile.id } : undefined
+  );
+  const { data: managerRunnerBindings = [] } = useManagerRunnerBindings({
+    managerId: role === 'manager' ? profile?.id : undefined,
+  });
   const isMobile = useIsMobile();
 
   const isAdmin = profile?.role === 'admin';
   const isManager = profile?.role === 'manager';
+  const canFilterStockHolders = role === 'salesperson' || role === 'manager';
   const canEdit = role === 'admin' || role === 'salesperson' || role === 'manager';
+  const canEditStockLocation = role === 'runner';
 
   // Sub-tab: stock vs products
   const [activeSection, setActiveSection] = useState<'stock' | 'products'>('stock');
@@ -79,6 +99,9 @@ export default function InventoryBalance() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [visibilityOpen, setVisibilityOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
+  const [stockLocationOpen, setStockLocationOpen] = useState(false);
+  const [editingStockLocation, setEditingStockLocation] = useState<StockBalanceRow | null>(null);
+  const [stockLocationRemark, setStockLocationRemark] = useState('');
 
   // Products-specific state
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -125,14 +148,115 @@ export default function InventoryBalance() {
   const managers = users.filter(u => u.role === 'manager');
   const transferEligibleUsers = users.filter(u => u.role === 'salesperson' || u.role === 'manager');
 
+  const userLookup = useMemo(() => {
+    const map = new Map<string, { id: string; display_name: string; email?: string | null; role?: string }>();
+
+    userDirectory.forEach((u) => {
+      map.set(u.id, {
+        id: u.id,
+        display_name: u.display_name || u.email || 'Unknown user',
+        email: u.email,
+        role: u.role,
+      });
+    });
+
+    users.forEach((u) => {
+      map.set(u.id, {
+        id: u.id,
+        display_name: u.display_name || u.email || 'Unknown user',
+        email: u.email,
+        role: u.role,
+      });
+    });
+
+    return map;
+  }, [userDirectory, users]);
+
+  const stockHolderOptions = useMemo(() => {
+    const options = new Map<string, { id: string; display_name: string; role?: string }>();
+    const addFilterOption = (
+      id: string | null | undefined,
+      fallbackName: string | null | undefined,
+      roleLabel?: string
+    ) => {
+      if (!id || options.has(id)) return;
+      const user = userLookup.get(id);
+      options.set(id, {
+        id,
+        display_name: fallbackName || user?.display_name || 'Unknown user',
+        role: roleLabel || user?.role,
+      });
+    };
+
+    if (profile?.id && canFilterStockHolders) {
+      addFilterOption(profile.id, `${profile.display_name || profile.email || 'Me'} (Me)`, role || undefined);
+    }
+
+    if (role === 'salesperson') {
+      salespersonRunnerBindings.forEach((binding) => {
+        addFilterOption(
+          binding.runner_id,
+          binding.runner?.display_name || binding.runner?.email,
+          'runner'
+        );
+      });
+    }
+
+    if (role === 'manager') {
+      teamMembers.forEach((member) => {
+        addFilterOption(member.id, member.display_name || member.email, member.role);
+      });
+
+      managerRunnerBindings.forEach((binding) => {
+        addFilterOption(
+          binding.runner_id,
+          binding.runner?.display_name || binding.runner?.email,
+          'runner'
+        );
+      });
+    }
+
+    return Array.from(options.values()).sort((a, b) => {
+      if (a.id === profile?.id) return -1;
+      if (b.id === profile?.id) return 1;
+      if (isRunnerHolderRole(a.role) && !isRunnerHolderRole(b.role)) return -1;
+      if (isRunnerHolderRole(b.role) && !isRunnerHolderRole(a.role)) return 1;
+      return a.display_name.localeCompare(b.display_name);
+    });
+  }, [
+    profile?.id,
+    profile?.display_name,
+    profile?.email,
+    canFilterStockHolders,
+    role,
+    teamMembers,
+    salespersonRunnerBindings,
+    managerRunnerBindings,
+    userLookup,
+  ]);
+
   // Owner filter options
   const ownerOptions = useMemo(() => {
+    if (canFilterStockHolders) {
+      return stockHolderOptions;
+    }
     if (isManager) {
       const teamIds = [profile?.id, ...teamMembers.map(t => t.id)];
       return users.filter(u => teamIds.includes(u.id));
     }
     return users.filter(u => u.role === 'salesperson' || u.role === 'manager');
-  }, [isManager, profile?.id, teamMembers, users]);
+  }, [canFilterStockHolders, stockHolderOptions, isManager, profile?.id, teamMembers, users]);
+
+  const showOwnerFilter = activeSection === 'products'
+    ? (isAdmin || isManager)
+    : (isAdmin || (isManager && stockTab === 'team') || role === 'salesperson');
+  const ownerFilterPlaceholder = activeSection === 'stock' && canFilterStockHolders
+    ? 'All Stock Holders'
+    : 'All Owners';
+  const ownerFilterLabel = ownerFilterPlaceholder;
+  const holderHeader = canFilterStockHolders ? 'Held By' : 'Owner';
+  const holderDetailLabel = canFilterStockHolders ? 'Held By' : 'Owner';
+  const getHolderRole = (userId: string | null | undefined) => userLookup.get(userId || '')?.role;
 
   // Product owner filter options
   const productOwnerOptions = useMemo(() => {
@@ -185,19 +309,75 @@ export default function InventoryBalance() {
     }));
   }, [stockRows]);
 
+  const { data: stockLocationByKey = {} } = useRunnerStockLocations(stockData);
+  const upsertStockLocation = useUpsertRunnerStockLocation();
+
+  const openStockLocationEditor = (stock: StockBalanceRow) => {
+    const existing = stockLocationByKey[getRunnerStockLocationKey(stock)]?.remark || '';
+    setEditingStockLocation(stock);
+    setStockLocationRemark(existing);
+    setStockLocationOpen(true);
+  };
+
+  const handleSaveStockLocation = async () => {
+    if (!editingStockLocation) return;
+    await upsertStockLocation.mutateAsync({
+      warehouseId: editingStockLocation.warehouse_id,
+      productId: editingStockLocation.product_id,
+      remark: stockLocationRemark,
+    });
+    setStockLocationOpen(false);
+    setEditingStockLocation(null);
+    setStockLocationRemark('');
+  };
+
   // Stock columns
   const stockColumns: Column<StockBalanceRow>[] = [
     {
-      key: 'owner_name', header: 'Owner', sortable: true, render: (s) => (
-        <div className="flex items-center gap-2">
+      key: 'owner_name', header: holderHeader, sortable: true, render: (s) => {
+        const holderRole = getHolderRole(s.owner_user_id);
+
+        return (
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{s.owner_name}</Badge>
+          {isRunnerHolderRole(holderRole) && (
+            <Badge variant="secondary" className="text-xs">Runner</Badge>
+          )}
           {s.owner_user_id === profile?.id && (
             <Badge variant="secondary" className="text-xs">You</Badge>
           )}
         </div>
-      ),
+        );
+      },
     },
     { key: 'warehouse_name', header: 'Warehouse', sortable: true },
+    ...(canEditStockLocation ? [{
+      key: 'stock_location',
+      header: 'Stock Location',
+      minWidth: '160px',
+      preferredWidth: '14vw',
+      render: (s: StockBalanceRow) => {
+        const remark = stockLocationByKey[getRunnerStockLocationKey(s)]?.remark;
+        return (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'h-auto min-h-8 max-w-full justify-start gap-2 rounded-lg px-2 py-1 text-left',
+              remark ? 'text-foreground' : 'text-muted-foreground'
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              openStockLocationEditor(s);
+            }}
+          >
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="truncate">{remark || 'Add location'}</span>
+          </Button>
+        );
+      },
+    }] : []),
     {
       key: 'sku_code', header: 'SKU Code', render: (s) => (
         <span className="font-mono text-sm">{s.sku_code || '-'}</span>
@@ -334,6 +514,68 @@ export default function InventoryBalance() {
   );
 
   // ───────────── MOBILE VIEW ─────────────
+  const stockLocationDialog = (
+    <Dialog
+      open={stockLocationOpen}
+      onOpenChange={(open) => {
+        setStockLocationOpen(open);
+        if (!open) {
+          setEditingStockLocation(null);
+          setStockLocationRemark('');
+        }
+      }}
+    >
+      <DialogContent className="max-w-md border bg-background p-6 text-foreground">
+        <DialogHeader>
+          <DialogTitle>Stock Location</DialogTitle>
+          <DialogDescription>
+            Record where this stock is kept, for example Shelf Rack A level 3.1.
+          </DialogDescription>
+        </DialogHeader>
+
+        {editingStockLocation && (
+          <div className="rounded-xl border bg-muted/30 p-3 text-sm">
+            <div className="font-semibold">{editingStockLocation.sku_name || 'Unknown Product'}</div>
+            <div className="text-muted-foreground">
+              {[editingStockLocation.sku_code, editingStockLocation.warehouse_name].filter(Boolean).join(' - ')}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <Label htmlFor="runner-stock-location">Location remark</Label>
+          <Textarea
+            id="runner-stock-location"
+            value={stockLocationRemark}
+            onChange={(event) => setStockLocationRemark(event.target.value.slice(0, 180))}
+            placeholder="e.g. Shelf Rack A, level 3.1"
+            className="min-h-[110px] resize-none"
+          />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Visible only as your runner stock location note.</span>
+            <span>{stockLocationRemark.length}/180</span>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setStockLocationOpen(false)}
+            disabled={upsertStockLocation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveStockLocation}
+            disabled={!editingStockLocation || upsertStockLocation.isPending}
+          >
+            {upsertStockLocation.isPending ? 'Saving...' : 'Save Location'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (isMobile) {
     return (
       <AppLayout>
@@ -423,17 +665,22 @@ export default function InventoryBalance() {
             )}
           </div>
 
-          {/* Owner filter */}
-          {(isAdmin || (isManager && stockTab === 'team')) && (
+          {/* Owner / stock holder filter */}
+          {showOwnerFilter && (
             <Select value={ownerFilter} onValueChange={setOwnerFilter}>
               <SelectTrigger className="h-11">
-                <SelectValue placeholder="All Owners" />
+                <SelectValue placeholder={ownerFilterPlaceholder} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Owners</SelectItem>
+                <SelectItem value="all">{ownerFilterLabel}</SelectItem>
                 {(activeSection === 'stock' ? ownerOptions : productOwnerOptions).map(u => (
                   <SelectItem key={'id' in u ? u.id : u.id} value={'id' in u ? u.id : u.id}>
-                    {'display_name' in u ? u.display_name : (u as any).name}
+                    <div className="flex items-center gap-2">
+                      <span>{'display_name' in u ? u.display_name : (u as any).name}</span>
+                      {activeSection === 'stock' && 'role' in u && isRunnerHolderRole(u.role) && (
+                        <Badge variant="secondary" className="text-[10px]">Runner</Badge>
+                      )}
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -464,9 +711,14 @@ export default function InventoryBalance() {
                     skuCode={stock.sku_code || undefined}
                     balance={Number(stock.balance_qty) || 0}
                     ownerName={stock.owner_name || 'Unknown'}
+                    ownerLabel={holderDetailLabel}
+                    ownerRole={getHolderRole(stock.owner_user_id)}
                     warehouseName={stock.warehouse_name || undefined}
                     lastMovement={stock.last_movement_time}
                     isOwnStock={stock.owner_user_id === profile?.id}
+                    stockLocationRemark={stockLocationByKey[getRunnerStockLocationKey(stock)]?.remark || null}
+                    canEditStockLocation={canEditStockLocation}
+                    onEditStockLocation={() => openStockLocationEditor(stock)}
                   />
                 ))}
               </div>
@@ -546,6 +798,8 @@ export default function InventoryBalance() {
             </>
           )}
         </div>
+
+        {stockLocationDialog}
 
         {/* Product Create/Edit Dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -712,18 +966,21 @@ export default function InventoryBalance() {
             </>
           )}
 
-          {/* Owner filter */}
-          {(isAdmin || (isManager && (activeSection === 'stock' ? stockTab === 'team' : true))) && (
+          {/* Owner / stock holder filter */}
+          {showOwnerFilter && (
             <Select value={ownerFilter} onValueChange={setOwnerFilter}>
               <SelectTrigger className="w-[250px]">
-                <SelectValue placeholder="Filter by owner" />
+                <SelectValue placeholder={ownerFilterPlaceholder} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Owners</SelectItem>
+                <SelectItem value="all">{ownerFilterLabel}</SelectItem>
                 {(activeSection === 'stock' ? ownerOptions : productOwnerOptions).map(u => (
                   <SelectItem key={'id' in u ? u.id : u.id} value={'id' in u ? u.id : u.id}>
                     <div className="flex items-center gap-2">
                       <span>{'display_name' in u ? u.display_name : (u as any).name}</span>
+                      {activeSection === 'stock' && 'role' in u && isRunnerHolderRole(u.role) && (
+                        <Badge variant="secondary" className="text-[10px]">Runner</Badge>
+                      )}
                     </div>
                   </SelectItem>
                 ))}
@@ -791,6 +1048,8 @@ export default function InventoryBalance() {
           />
         )}
       </div>
+
+      {stockLocationDialog}
 
       {/* Admin dialogs */}
       {isAdmin && (

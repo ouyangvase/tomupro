@@ -42,7 +42,7 @@ export function useAllGuideProgress() {
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user && !!profile,
+    enabled: !!user,
   });
 }
 

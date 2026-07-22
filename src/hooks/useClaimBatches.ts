@@ -117,16 +117,27 @@ export function useSubmitBulkClaim() {
         body: { orderIds, note, exchangeRate },
       });
 
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
+      if (error && !data) throw error;
+      if (!data?.success && !((data?.skipped_count ?? 0) > 0 && (data?.failed_count ?? 0) === 0)) {
+        throw new Error(data?.error || error?.message || 'Claim batch submission failed. Please try again or contact admin.');
+      }
       return data;
     },
     onSuccess: (data) => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['claim-batches'] });
+      const orderCount = data.orderCount ?? data.success_count ?? 0;
+      const skippedCount = data.skipped_count ?? 0;
+      if (orderCount === 0 && skippedCount > 0) {
+        toast({
+          title: 'Already Submitted',
+          description: `${skippedCount} order(s) were already submitted and were skipped.`,
+        });
+        return;
+      }
       toast({
         title: 'Claim Submitted',
-        description: `Claim batch submitted for ${data.orderCount} orders (BND ${data.netAmountBND?.toFixed(2)} → RM ${data.netAmountRM?.toFixed(2)})`
+        description: `Claim batch submitted for ${orderCount} orders (BND ${data.netAmountBND?.toFixed(2)} -> RM ${data.netAmountRM?.toFixed(2)})`
       });
     },
     onError: (error: Error) => {

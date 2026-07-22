@@ -363,6 +363,106 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  .mobile-shell {
+    background:
+      radial-gradient(circle at 18% -8%, hsl(var(--primary) / 0.16), transparent 17rem),
+      radial-gradient(circle at 96% 8%, hsl(152 45% 48% / 0.06), transparent 14rem),
+      linear-gradient(180deg, #faf7f1 0%, #f4eee5 58%, #f7f2ea 100%);
+  }
+
+  .mobile-content {
+    scroll-padding-bottom: 9rem;
+  }
+
+  .mobile-top-island,
+  .mobile-bottom-dock,
+  .mobile-hero-shell {
+    border: 1px solid rgba(113, 78, 31, 0.08);
+    background: rgba(255, 255, 255, 0.48);
+    box-shadow:
+      0 18px 45px rgba(113, 78, 31, 0.10),
+      inset 0 1px 1px rgba(255, 255, 255, 0.72);
+  }
+
+  .mobile-top-island,
+  .mobile-bottom-dock {
+    backdrop-filter: blur(22px) saturate(145%);
+    -webkit-backdrop-filter: blur(22px) saturate(145%);
+  }
+
+  .mobile-top-island-core,
+  .mobile-bottom-dock-core,
+  .mobile-hero-core {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    background: rgba(255, 253, 248, 0.88);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.95),
+      inset 0 -1px 0 rgba(113, 78, 31, 0.04);
+  }
+
+  .mobile-top-island-core {
+    min-height: 72px;
+    border-radius: calc(2rem - 0.25rem);
+    padding: 0.625rem;
+  }
+
+  .mobile-bottom-dock-core {
+    border-radius: calc(2rem - 0.25rem);
+  }
+
+  .mobile-hero-shell {
+    border-radius: 2rem;
+    padding: 0.25rem;
+  }
+
+  .mobile-hero-core {
+    border-radius: calc(2rem - 0.25rem);
+  }
+
+  .mobile-icon-button {
+    display: inline-flex;
+    height: 46px;
+    width: 46px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 1px solid rgba(113, 78, 31, 0.08);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.95),
+      0 10px 24px rgba(113, 78, 31, 0.08);
+    transition: transform 500ms cubic-bezier(0.32, 0.72, 0, 1), background 500ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .mobile-icon-button:active {
+    transform: scale(0.96);
+    background: rgba(244, 234, 219, 0.9);
+  }
+
+  .mobile-motion {
+    transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  @media (max-width: 767px) {
+    .mobile-shell h1,
+    .mobile-shell h2,
+    .mobile-shell h3 {
+      letter-spacing: 0;
+    }
+
+    .mobile-shell .glass-card,
+    .mobile-shell .glass-card-strong {
+      border-color: rgba(229, 218, 203, 0.95);
+      border-radius: 1.6rem;
+      background: #fffdf8;
+      box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.95),
+        0 14px 36px rgba(113, 78, 31, 0.07);
+    }
+  }
 }
 
 /* ─── Landing Page Premium Animations ─────────────────────────────── */

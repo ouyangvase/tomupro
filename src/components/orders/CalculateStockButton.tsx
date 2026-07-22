@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Calculator, Loader2 } from 'lucide-react';
 import { useCalculateStock } from '@/hooks/useStockCalculation';
 import type { Order } from '@/types/database';
@@ -11,6 +12,7 @@ interface CalculateStockButtonProps {
   disabled?: boolean;
   size?: 'sm' | 'default';
   variant?: 'default' | 'outline' | 'secondary';
+  className?: string;
   /** Callback when calculation completes — parent stores the results */
   onResults?: (results: Map<string, OrderStockResult>) => void;
 }
@@ -21,6 +23,7 @@ export function CalculateStockButton({
   disabled,
   size = 'sm',
   variant = 'outline',
+  className,
   onResults,
 }: CalculateStockButtonProps) {
   const calculateStock = useCalculateStock();
@@ -46,7 +49,7 @@ export function CalculateStockButton({
       variant={variant}
       onClick={handleClick}
       disabled={disabled || calculateStock.isPending || count === 0}
-      className="rounded-full"
+      className={cn('rounded-full', className)}
     >
       {calculateStock.isPending ? (
         <Loader2 className="h-4 w-4 mr-1 animate-spin" />

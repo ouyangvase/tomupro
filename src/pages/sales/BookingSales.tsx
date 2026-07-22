@@ -266,7 +266,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
       <AppLayout>
         <div className="space-y-3 pb-4">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="space-y-2">
             <div className="flex items-center gap-2.5">
               <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
                 <ShoppingBag className="h-4.5 w-4.5 text-primary" />
@@ -276,24 +276,29 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                 <p className="text-xs text-muted-foreground">{pagination.totalCount || orders.length} orders</p>
               </div>
             </div>
-              {isEditable && (
-                <div className="flex gap-1.5">
-                  <CalculateStockButton
-                    orders={orders}
-                    selectedOrderIds={selectedRows}
-                    size="sm"
-                    onResults={(results) => setStockResults(prev => {
-                      const merged = new Map(prev);
-                      results.forEach((v, k) => merged.set(k, v));
-                      return merged;
-                    })}
-                  />
-                  <Button size="sm" onClick={handleCreateNew} className="h-8 px-2.5 text-xs">
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    New
-                  </Button>
-                <Button size="sm" variant="outline" onClick={() => setImportDialogOpen(true)} className="h-8 px-2.5 text-xs">
-                  <Upload className="h-3.5 w-3.5 mr-1" />
+            {isEditable && (
+              <div className="grid grid-cols-2 gap-2">
+                <CalculateStockButton
+                  orders={orders}
+                  selectedOrderIds={selectedRows}
+                  size="sm"
+                  className="h-10 w-full justify-center px-3 text-sm"
+                  onResults={(results) => setStockResults(prev => {
+                    const merged = new Map(prev);
+                    results.forEach((v, k) => merged.set(k, v));
+                    return merged;
+                  })}
+                />
+                <Button size="sm" onClick={handleCreateNew} className="h-10 w-full justify-center px-3 text-sm">
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  New
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting} className="h-10 w-full justify-center px-3 text-sm">
+                  {exporting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
+                  Export
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setImportDialogOpen(true)} className="h-10 w-full justify-center px-3 text-sm">
+                  <Upload className="h-4 w-4 mr-1.5" />
                   Import
                 </Button>
               </div>
@@ -312,7 +317,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
           </div>
 
           {/* Date Preset Buttons */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-1">
+          <div className="grid grid-cols-3 gap-2">
             {[
               { key: 'all', label: 'All' },
               { key: 'today', label: 'Today' },
@@ -325,7 +330,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                 size="sm"
                 variant={datePreset === key ? 'default' : 'outline'}
                 onClick={() => setDatePreset(key)}
-                className="rounded-full text-xs h-7 shrink-0"
+                className="h-9 w-full min-w-0 rounded-full px-2 text-sm"
               >
                 {label}
               </Button>
@@ -456,9 +461,16 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                     onSelectionChange={(checked) => toggleSelection(order.id, checked)}
                     onClick={() => handleRowClick(order)}
                     primaryAction={
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); handleRowClick(order); }}>
-                        View Details
-                      </Button>
+                      <div className="grid w-full grid-cols-2 gap-2">
+                        <KitaniInvitationButton
+                          order={order}
+                          link={kitaniLinks.get(order.id)}
+                          mode="mobile"
+                        />
+                        <Button size="sm" variant="outline" className="h-9 rounded-xl text-xs" onClick={(e) => { e.stopPropagation(); handleRowClick(order); }}>
+                          View Details
+                        </Button>
+                      </div>
                     }
                   />
                 );
@@ -513,15 +525,16 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
           image={capybaraDispatcher}
           imageAlt="Capybara dispatcher"
           actions={
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="grid w-full min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center xl:w-auto">
               <TeamViewToggle
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 selectedMember={selectedMember}
                 onMemberChange={setSelectedMember}
+                className="w-full"
               />
               {isEditable && (
-                <div className="flex gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
                   <CalculateStockButton
                     orders={orders}
                     selectedOrderIds={selectedRows}
@@ -531,11 +544,11 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                       return merged;
                     })}
                   />
-                  <Button onClick={handleCreateNew}>
+                  <Button onClick={handleCreateNew} className="shrink-0">
                     <Plus className="h-4 w-4 mr-2" />
                     New Order
                   </Button>
-                  <Button onClick={handleExport} variant="outline" disabled={exporting}>
+                  <Button onClick={handleExport} variant="outline" disabled={exporting} className="shrink-0">
                     {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     Export
                   </Button>

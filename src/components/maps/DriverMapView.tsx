@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, MapPin, Navigation, Package, Loader2, AlertTriangle, Route, Wifi, WifiOff } from "lucide-react";
+import { MapPin, Navigation, Package, Loader2, AlertTriangle, Route, Wifi, WifiOff } from "lucide-react";
 import { useDriverLatestLocations, getDriverStatus } from "@/hooks/useDriverLocations";
 import { useMyDrivers } from "@/hooks/useDrivers";
 import { useOrders } from "@/hooks/useOrders";
@@ -53,7 +53,7 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
 
   const { data: drivers } = useMyDrivers();
   const driverIds = drivers?.map((d) => d.driver_id) || [];
-  const { data: locations, refetch, isLoading } = useDriverLatestLocations(driverIds);
+  const { data: locations, isLoading } = useDriverLatestLocations(driverIds);
   const { data: orders } = useOrders({ runnerStatus: "ASSIGNED" });
   const { geocodeOrders, geocodedOrders, isGeocoding } = useGeocoding();
 
@@ -303,10 +303,6 @@ const DriverMapView: React.FC<DriverMapViewProps> = ({ runnerId }) => {
               {showRoute ? 'Hide Route' : 'Show Route'}
             </Button>
           )}
-          <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={() => refetch()} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
         </div>
       </div>
 

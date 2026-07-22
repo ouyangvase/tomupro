@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { format, parseISO, addDays } from 'date-fns';
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription 
@@ -14,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Package, User, MapPin, Phone, AlertCircle, Loader2, Calendar as CalendarCheck, XCircle, ArrowRight } from 'lucide-react';
+import { CalendarIcon, Package, User, MapPin, Phone, AlertCircle, Loader2, Calendar as CalendarCheck, XCircle, ArrowRight, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBND } from '@/lib/currency';
 import { useBindings } from '@/hooks/useBindings';
@@ -24,6 +25,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Order } from '@/types/database';
+import { useAttachments } from '@/hooks/useAttachments';
+import { getSignedStorageUrl } from '@/lib/storageUrls';
 
 type ResolutionType = 'AUTO_RESCHEDULE' | 'CONVERT_TO_BOOKING' | 'CONVERT_TO_READY' | 'CANCEL';
 
@@ -61,6 +64,23 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
 
   // Fetch bound runners for this salesperson
   const { data: bindings = [] } = useBindings({ salespersonId: profile?.id, active: true });
+  const { data: attachments = [] } = useAttachments({ orderId: order?.id });
+
+  const rawDeliveryProofs = useMemo(
+    () => attachments.filter((attachment) => attachment.type === 'delivery_photo'),
+    [attachments]
+  );
+
+  const { data: deliveryProofs = [] } = useQuery({
+    queryKey: ['action-resolution-delivery-proof-urls', rawDeliveryProofs.map((proof) => proof.id)],
+    queryFn: async () => Promise.all(rawDeliveryProofs.map(async (proof) => ({
+      id: proof.id,
+      signedUrl: await getSignedStorageUrl(proof.url, 'delivery-photos'),
+      uploaded_at: proof.uploaded_at,
+    }))),
+    enabled: rawDeliveryProofs.length > 0,
+    staleTime: 30000,
+  });
 
   const boundRunners = useMemo(() => {
     return bindings.map(b => b.runner).filter(Boolean);
@@ -268,8 +288,8 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
         navigate('/sales/cancelled');
       }
 
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to process action');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to process action');
     } finally {
       setIsSubmitting(false);
     }
@@ -351,6 +371,31 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
                     <span className="ml-2">{format(parseISO(order.next_delivery_date), 'dd MMM yyyy')}</span>
                   </div>
                 )}
+              </div>
+            </>
+          )}
+
+          {deliveryProofs.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <ImageIcon className="h-4 w-4" />
+                  Driver Proof Photo
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {deliveryProofs.slice(0, 3).map((proof) => (
+                    <a
+                      key={proof.id}
+                      href={proof.signedUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block aspect-square overflow-hidden rounded-xl border bg-muted"
+                    >
+                      <img src={proof.signedUrl} alt="Driver proof" className="h-full w-full object-cover" />
+                    </a>
+                  ))}
+                </div>
               </div>
             </>
           )}

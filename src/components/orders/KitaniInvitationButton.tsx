@@ -7,11 +7,10 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useCreateKitaniInvitation, type KitaniOrderLink } from '@/hooks/useKitaniOrderLinks';
 import type { Order } from '@/types/database';
@@ -19,6 +18,8 @@ import type { Order } from '@/types/database';
 interface KitaniInvitationButtonProps {
   order: Order;
   link?: KitaniOrderLink | null;
+  mode?: 'table' | 'mobile';
+  className?: string;
 }
 
 const statusLabels: Record<string, string> = {
@@ -40,7 +41,7 @@ function normalizeWhatsAppPhone(phone: string | null | undefined) {
   return `673${digits.replace(/^0+/, '')}`;
 }
 
-export function KitaniInvitationButton({ order, link }: KitaniInvitationButtonProps) {
+export function KitaniInvitationButton({ order, link, mode = 'table', className }: KitaniInvitationButtonProps) {
   const { toast } = useToast();
   const createInvitation = useCreateKitaniInvitation();
   const [open, setOpen] = useState(false);
@@ -77,20 +78,28 @@ export function KitaniInvitationButton({ order, link }: KitaniInvitationButtonPr
     toast({ title });
   };
 
-  const message = activeLink?.message || '';
+  const rawMessage = activeLink?.message || '';
   const invitationUrl = activeLink?.invitation_url || '';
+  const message = invitationUrl && rawMessage && !rawMessage.includes(invitationUrl)
+    ? `${rawMessage.trim()}\n\nConfirm your location: ${invitationUrl}`
+    : rawMessage;
   const whatsappPhone = normalizeWhatsAppPhone(order.phone);
   const whatsappUrl = whatsappPhone
     ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`
     : `https://wa.me/?text=${encodeURIComponent(message)}`;
 
   return (
-    <div className="flex justify-end" onClick={(event) => event.stopPropagation()}>
+    <div className={cn('flex w-full justify-end', className)} onClick={(event) => event.stopPropagation()}>
       <Button
         type="button"
         size="sm"
         variant={activeLink ? 'outline' : 'default'}
-        className="h-8 rounded-full px-3 text-xs font-semibold"
+        className={cn(
+          'min-w-0 justify-center whitespace-nowrap font-semibold',
+          mode === 'mobile'
+            ? 'h-9 w-full rounded-xl px-3 text-xs'
+            : 'h-8 w-full max-w-[156px] rounded-full px-3 text-xs'
+        )}
         disabled={createInvitation.isPending}
         onClick={handleOpen}
       >
@@ -107,15 +116,15 @@ export function KitaniInvitationButton({ order, link }: KitaniInvitationButtonPr
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl bg-background text-foreground">
-          <DialogHeader>
-            <DialogTitle>KITANI Delivery Link</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl max-h-[92dvh] overflow-y-auto rounded-3xl border border-border/70 bg-background p-0 text-foreground shadow-2xl">
+          <DialogHeader className="border-b border-border/60 px-5 pb-4 pt-5 text-left sm:px-6 sm:pt-6">
+            <DialogTitle className="text-xl">KITANI Delivery Link</DialogTitle>
+            <DialogDescription className="max-w-xl text-sm leading-relaxed">
               Send this message to the customer so they can verify their phone and confirm location.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 px-5 py-5 sm:px-6">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge variant="outline" className={badgeTone}>
                 {activeLink ? statusLabels[activeLink.status] || activeLink.status : 'Ready'}
@@ -129,11 +138,9 @@ export function KitaniInvitationButton({ order, link }: KitaniInvitationButtonPr
               )}
             </div>
 
-            <Textarea
-              readOnly
-              value={message}
-              className="min-h-[150px] bg-secondary/40 text-sm"
-            />
+            <div className="rounded-2xl border border-primary/30 bg-secondary/30 p-4 text-sm leading-relaxed text-foreground shadow-inner">
+              <p className="whitespace-pre-wrap break-words">{message || 'Create a KITANI link to generate the customer message.'}</p>
+            </div>
 
             <div className="rounded-xl border bg-secondary/30 p-3">
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Confirmation Link</p>
@@ -141,10 +148,11 @@ export function KitaniInvitationButton({ order, link }: KitaniInvitationButtonPr
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <div className="grid grid-cols-2 gap-2 border-t border-border/60 px-5 pb-5 pt-4 sm:grid-cols-4 sm:px-6">
             <Button
               type="button"
               variant="outline"
+              className="h-11 w-full"
               onClick={() => copyText(invitationUrl, 'KITANI link copied')}
               disabled={!invitationUrl}
             >
@@ -154,6 +162,7 @@ export function KitaniInvitationButton({ order, link }: KitaniInvitationButtonPr
             <Button
               type="button"
               variant="outline"
+              className="h-11 w-full"
               onClick={() => copyText(message, 'KITANI message copied')}
               disabled={!message}
             >
@@ -162,6 +171,7 @@ export function KitaniInvitationButton({ order, link }: KitaniInvitationButtonPr
             </Button>
             <Button
               type="button"
+              className="h-11 w-full"
               onClick={() => window.open(whatsappUrl, '_blank', 'noopener,noreferrer')}
               disabled={!message}
             >
@@ -171,14 +181,15 @@ export function KitaniInvitationButton({ order, link }: KitaniInvitationButtonPr
             {invitationUrl && (
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
+                className="h-11 w-full"
                 onClick={() => window.open(invitationUrl, '_blank', 'noopener,noreferrer')}
               >
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Open
               </Button>
             )}
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

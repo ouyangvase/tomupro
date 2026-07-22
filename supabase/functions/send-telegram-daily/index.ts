@@ -73,26 +73,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get all qualifying users
-    const { data: permissions } = await supabase
-      .from('telegram_notification_permissions')
-      .select('*')
-      .eq('admin_enabled', true);
-
+    // Get all users who self-enabled Telegram. Admin permission rows are no
+    // longer required for a user to receive their own Telegram notifications.
     const { data: userSettings } = await supabase
       .from('user_telegram_settings')
       .select('*')
       .eq('telegram_enabled', true)
       .not('chat_id', 'is', null);
 
-    if (!permissions?.length || !userSettings?.length) {
+    if (!userSettings?.length) {
       return new Response(
         JSON.stringify({ success: true, sent: 0, reason: 'No qualifying users' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const settingsMap = new Map(userSettings.map(s => [s.user_id, s]));
     const testUserId = body.test_user_id;
 
     // ── Fetch stock from stock_balance_view (same source as Inventory page) ──
@@ -142,11 +137,6 @@ Deno.serve(async (req) => {
     console.log(`[DEBUG] delivery charges loaded: ${chargeMap.size} entries`);
 
     // Get active bindings for runner→salesperson lookup
-    const { data: bindingsData } = await supabase
-      .from('bindings')
-      .select('runner_id, salesperson_id')
-      .eq('active', true);
-
     // Get warehouses to auto-derive warehouse IDs from stock owner IDs
     const { data: warehousesData } = await supabase
       .from('warehouses')
@@ -159,29 +149,23 @@ Deno.serve(async (req) => {
     let sentCount = 0;
     const debugInfo: Record<string, any> = {};
 
-    for (const perm of permissions) {
-      if (testUserId && perm.user_id !== testUserId) continue;
-
-      const userSetting = settingsMap.get(perm.user_id);
-      if (!userSetting || !userSetting.chat_id) continue;
+    for (const userSetting of (userSettings as any[])) {
+      const userId = userSetting.user_id;
+      if (testUserId && userId !== testUserId) continue;
+      if (!userSetting.chat_id) continue;
 
       const chatId = userSetting.chat_id;
-      const seeAll = perm.can_view_all_data || perm.see_all_stock;
 
-      const wantsStock = perm.can_receive_stock_balance && userSetting.receive_stock_balance;
-      const wantsDelivered = perm.can_receive_delivered_not_claimed && userSetting.receive_delivered_not_claimed;
+      const wantsStock = !!userSetting.receive_stock_balance;
+      const wantsDelivered = !!userSetting.receive_delivered_not_claimed;
 
       if (!wantsStock && !wantsDelivered) continue;
 
       // ── Pre-compute allowed IDs ──
-      const allowedOwnerIds: string[] = perm.allowed_stock_owner_ids || [];
-      const allowedRunnerIds: string[] = perm.allowed_runner_ids || [];
-      const allowedTeamUserIds: string[] = perm.allowed_team_user_ids || [];
-
       // Auto-derive warehouse IDs from allowed stock owners + user's own warehouses
       const derivedWarehouseIds: string[] = [];
       if (warehousesData) {
-        const ownerSet = new Set<string>([perm.user_id, ...allowedOwnerIds, ...allowedTeamUserIds]);
+        const ownerSet = new Set<string>([userId]);
         for (const wh of warehousesData) {
           if (ownerSet.has(wh.owner_user_id)) {
             derivedWarehouseIds.push(wh.id);
@@ -189,21 +173,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      const runnerBoundOwnerIds = new Set<string>();
-      if (allowedRunnerIds.length > 0 && bindingsData) {
-        for (const b of bindingsData) {
-          if (allowedRunnerIds.includes(b.runner_id)) {
-            runnerBoundOwnerIds.add(b.salesperson_id);
-          }
-        }
-      }
-
-      const allAllowedOwners = new Set<string>([
-        perm.user_id,
-        ...allowedOwnerIds,
-        ...allowedTeamUserIds,
-        ...runnerBoundOwnerIds,
-      ]);
+      const allAllowedOwners = new Set<string>([userId]);
 
       // ── Build combined message ──
       let msg = `<b>TomuPro Daily Report</b>\n\nDate: ${dateStr}\n`;
@@ -213,16 +183,7 @@ Deno.serve(async (req) => {
       if (wantsDelivered) {
         let filteredOrders = unclaimedOrders;
 
-        if (!seeAll) {
-          filteredOrders = filteredOrders.filter(o => {
-            if (o.salesperson_id === perm.user_id) return true;
-            if (o.runner_id === perm.user_id) return true;
-            if (allowedOwnerIds.length > 0 && allowedOwnerIds.includes(o.salesperson_id)) return true;
-            if (allowedRunnerIds.length > 0 && allowedRunnerIds.includes(o.runner_id)) return true;
-            if (allowedTeamUserIds.length > 0 && allowedTeamUserIds.includes(o.salesperson_id)) return true;
-            return false;
-          });
-        }
+        filteredOrders = filteredOrders.filter(o => o.salesperson_id === userId || o.runner_id === userId);
 
         // Calculate exactly like Submit Claim Batch modal (useClaimPreview):
         // Gross = SUM(total_amount)
@@ -248,7 +209,7 @@ Deno.serve(async (req) => {
 
         const netBND = grossBND - deliveryChargesBND;
 
-        console.log(`[DEBUG] User ${perm.user_id}: orders=${orderCount}, gross=${grossBND}, charges=${deliveryChargesBND}, net=${netBND}`);
+        console.log(`[DEBUG] User ${userId}: orders=${orderCount}, gross=${grossBND}, charges=${deliveryChargesBND}, net=${netBND}`);
 
         if (orderCount > 0) {
           msg += `\nDelivered Not Claimed:`;
@@ -262,14 +223,13 @@ Deno.serve(async (req) => {
           msg += `\nNo delivered orders not claimed.\n`;
         }
 
-        debugInfo[perm.user_id] = {
-          ...(debugInfo[perm.user_id] || {}),
+        debugInfo[userId] = {
+          ...(debugInfo[userId] || {}),
           ordersTotal: unclaimedOrders.length,
           ordersFiltered: orderCount,
           grossBND,
           deliveryChargesBND,
           netBND,
-          seeAll,
         };
       }
 
@@ -277,22 +237,20 @@ Deno.serve(async (req) => {
       if (wantsStock) {
         let filteredStock = allStock || [];
 
-        if (!seeAll) {
-          filteredStock = filteredStock.filter(s => {
-            const ownerId = s.owner_user_id;
-            if (ownerId && allAllowedOwners.has(ownerId)) return true;
-            if (derivedWarehouseIds.length > 0 && derivedWarehouseIds.includes(s.warehouse_id)) return true;
-            return false;
-          });
-        }
+        filteredStock = filteredStock.filter(s => {
+          const ownerId = s.owner_user_id;
+          if (ownerId && allAllowedOwners.has(ownerId)) return true;
+          if (derivedWarehouseIds.length > 0 && derivedWarehouseIds.includes(s.warehouse_id)) return true;
+          return false;
+        });
 
-        console.log(`[DEBUG] User ${perm.user_id}: stock total=${(allStock || []).length}, filtered=${filteredStock.length}`);
+        console.log(`[DEBUG] User ${userId}: stock total=${(allStock || []).length}, filtered=${filteredStock.length}`);
 
         // Apply hide_zero_stock_sku filter if user has it enabled
         const hideZero = userSetting.hide_zero_stock_sku ?? false;
         if (hideZero) {
           filteredStock = filteredStock.filter(s => (s.balance_qty ?? 0) !== 0);
-          console.log(`[DEBUG] User ${perm.user_id}: after zero filter=${filteredStock.length}`);
+          console.log(`[DEBUG] User ${userId}: after zero filter=${filteredStock.length}`);
         }
 
         // Group by owner, then by SKU
@@ -314,8 +272,8 @@ Deno.serve(async (req) => {
           owner.skus.set(skuCode, existingQty + qty);
         }
 
-        debugInfo[perm.user_id] = {
-          ...(debugInfo[perm.user_id] || {}),
+        debugInfo[userId] = {
+          ...(debugInfo[userId] || {}),
           stockTotal: (allStock || []).length,
           stockFiltered: filteredStock.length,
           ownersCount: ownerMap.size,
@@ -348,7 +306,7 @@ Deno.serve(async (req) => {
       try {
         const result = await sendTelegramMessage(botToken, chatId, msg.trim());
         await supabase.from('telegram_notification_logs').insert({
-          user_id: perm.user_id,
+          user_id: userId,
           chat_id: chatId,
           notification_type: 'daily_report',
           status: result.ok ? 'success' : 'failed',
@@ -358,7 +316,7 @@ Deno.serve(async (req) => {
         if (result.ok) sentCount++;
       } catch (err) {
         await supabase.from('telegram_notification_logs').insert({
-          user_id: perm.user_id,
+          user_id: userId,
           chat_id: chatId,
           notification_type: 'daily_report',
           status: 'failed',

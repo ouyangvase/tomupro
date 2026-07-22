@@ -4,6 +4,13 @@
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0Y2NoZHVyb253c3l1bnlha3hqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2Mjc1NzEsImV4cCI6MjA4NTIwMzU3MX0.O7OyK07BNfvY3bz32IQlqdEW_vPuTxiFPCRKcVT9Q_M";
   var STORAGE_KEY = "sb-" + PROJECT_REF + "-auth-token";
   var PUBLIC_TITLE = "TOMUPRO | Brunei Delivery, COD & Logistics Company";
+  var PUBLIC_ASSET_VERSION = "2026071901";
+  var PUBLIC_LOGO_SRC = "/landing/tomupro-logo-public.png?v=" + PUBLIC_ASSET_VERSION;
+  var PUBLIC_HERO_SRC = "/landing/tomupro-auth-hero-public.png?v=" + PUBLIC_ASSET_VERSION;
+  var PUBLIC_IMAGE_FALLBACK_SRC = "/landing/truck-last-mile.jpg?v=" + PUBLIC_ASSET_VERSION;
+  var PUBLIC_TRUCK_LAST_MILE_SRC = "/landing/truck-last-mile.jpg?v=" + PUBLIC_ASSET_VERSION;
+  var PUBLIC_MERCHANT_PHOTO_SRC = "/landing/merchant-photo.jpg?v=" + PUBLIC_ASSET_VERSION;
+  var PUBLIC_LOGO_FALLBACK_SRC = "/app-icon.png?v=" + PUBLIC_ASSET_VERSION;
 
   function hasSession() {
     try {
@@ -239,11 +246,30 @@
     document.body.insertBefore(shell, document.body.firstChild);
   }
 
+  function bindImageFallbacks() {
+    document.querySelectorAll("#tomu-public-shell img, .public-auth-modal img").forEach(function (img) {
+      var src = img.getAttribute("src") || "";
+      var fallback = img.getAttribute("data-fallback-src");
+      if (!fallback && src.indexOf("logo") !== -1) fallback = PUBLIC_LOGO_FALLBACK_SRC;
+      if (!fallback && src.indexOf("/landing/") !== -1) fallback = PUBLIC_IMAGE_FALLBACK_SRC;
+      if (!fallback || fallback === src) return;
+
+      var applyFallback = function () {
+        if (img.getAttribute("data-fallback-applied") === "1") return;
+        img.setAttribute("data-fallback-applied", "1");
+        img.src = fallback;
+      };
+
+      img.addEventListener("error", applyFallback);
+      if (img.complete && img.naturalWidth === 0) applyFallback();
+    });
+  }
+
   function buildNav() {
     return [
       '<header class="pnav">',
       '  <div class="pnav-inner">',
-      '    <a href="#home" class="pbrand"><img src="/landing/logo-griffin.png" alt="TOMUPRO" width="38" height="38"><div class="pbrand-text"><b>TOMU<span>PRO</span></b><small>Brunei Logistics Operating System</small></div></a>',
+      '    <a href="#home" class="pbrand"><img src="' + PUBLIC_LOGO_SRC + '" data-fallback-src="' + PUBLIC_LOGO_FALLBACK_SRC + '" alt="TOMUPRO logo" width="38" height="38"><div class="pbrand-text"><b>TOMU<span>PRO</span></b><small>Brunei Logistics Operating System</small></div></a>',
       '    <nav class="plinks"><a href="#services">Services</a><a href="#areas">Delivery Areas</a><a href="#track">Tracking</a><a href="#contact">Contact</a></nav>',
       '    <div class="pnav-cta"><button class="pbtn-login" data-open-auth="login">Login</button><button class="pbtn-cta-gold" data-open-auth="signup">Get Started &rarr;</button></div>',
       '    <button class="pmobile-toggle" aria-label="Menu">&#9776;</button>',
@@ -264,7 +290,7 @@
       '    <div class="phero-trust"><span class="trust-dot"></span> Trusted across Brunei <span class="trust-sep">&bull;</span> Bandar Seri Begawan <span class="trust-sep">&bull;</span> Kuala Belait <span class="trust-sep">&bull;</span> Tutong <span class="trust-sep">&bull;</span> Muara</div>',
       '  </div>',
       '  <div class="phero-visual">',
-      '    <img src="/landing/tomupro-auth-hero.png" alt="TOMUPRO courier loading parcels into a delivery van at a Brunei warehouse" class="phero-img" width="1821" height="864">',
+      '    <img src="' + PUBLIC_HERO_SRC + '" data-fallback-src="' + PUBLIC_IMAGE_FALLBACK_SRC + '" alt="TOMUPRO courier loading parcels into a delivery van at a Brunei warehouse" class="phero-img" width="1821" height="864">',
       '    <div class="float-card fc-live"><div class="fc-dot-live"></div><div class="fc-body"><div class="fc-label">Live Tracking</div><div class="fc-title">Out for Delivery</div><div class="fc-meta">Order ORD-78456 estimated 10:30 AM</div></div></div>',
       '    <div class="float-card fc-done"><div class="fc-icon-done">&#10003;</div><div class="fc-body"><div class="fc-title-done">Delivered</div><div class="fc-meta">Order ORD-78455 delivered to customer</div></div><div class="fc-time">09:41 AM<br><small>Today</small></div></div>',
       '  </div>',
@@ -284,7 +310,7 @@
 
   function buildServices() {
     return [
-      '<section id="services"><div class="wrap split"><div class="txt"><div class="eyebrow">Last-Mile Delivery</div><h2>From Small Parcels<br>to Bulky Loads</h2><p>An economical delivery service for small, large, heavy and irregular-sized parcels delivered by car, van or pick-up across Brunei.</p><div class="svc-tags"><span class="svc-tag">Same-day Delivery</span><span class="svc-tag">Warehousing</span><span class="svc-tag">COD Management</span></div><a href="#contact" class="btn btn-line">Talk to TOMUPRO</a></div><div class="media photo-card"><img src="/landing/truck-last-mile.jpg" alt="TOMUPRO last-mile delivery truck" width="560" height="400"><div class="photo-overlay"><div class="photo-tag">Last-mile delivery in Brunei</div></div></div></div></section>'
+      '<section id="services"><div class="wrap split"><div class="txt"><div class="eyebrow">Last-Mile Delivery</div><h2>From Small Parcels<br>to Bulky Loads</h2><p>An economical delivery service for small, large, heavy and irregular-sized parcels delivered by car, van or pick-up across Brunei.</p><div class="svc-tags"><span class="svc-tag">Same-day Delivery</span><span class="svc-tag">Warehousing</span><span class="svc-tag">COD Management</span></div><a href="#contact" class="btn btn-line">Talk to TOMUPRO</a></div><div class="media photo-card"><img src="' + PUBLIC_TRUCK_LAST_MILE_SRC + '" alt="TOMUPRO last-mile delivery truck" width="560" height="400"><div class="photo-overlay"><div class="photo-tag">Last-mile delivery in Brunei</div></div></div></div></section>'
     ].join("");
   }
 
@@ -330,7 +356,7 @@
 
   function buildSuccess() {
     return [
-      '<section class="success" id="success"><div class="wrap success-grid"><div><span class="badge-gold">Merchant Success Story</span><h2>Helping Brunei Businesses<br>Deliver More, Worry Less</h2><p class="lead">From local startups to established brands, TOMUPRO empowers businesses across Brunei with reliable delivery, real-time tracking and operational support.</p><div class="stats-card"><div><div class="stat-n">98%</div><div class="stat-l">On-time Delivery</div><div class="stat-s">Across Brunei</div></div><div><div class="stat-n">2.5X</div><div class="stat-l">Business Growth</div><div class="stat-s">Average capacity increase</div></div><div><div class="stat-n">1,200+</div><div class="stat-l">Happy Merchants</div><div class="stat-s">Trust TOMUPRO every day</div></div></div></div><div><div class="success-photo"><img src="/landing/merchant-photo.jpg" alt="TOMUPRO merchant" width="400" height="400"></div><div class="quote-card"><span class="qm">&ldquo;</span><p>The real-time tracking and dedicated support from TOMUPRO give us peace of mind.</p></div></div></div></section>'
+      '<section class="success" id="success"><div class="wrap success-grid"><div><span class="badge-gold">Merchant Success Story</span><h2>Helping Brunei Businesses<br>Deliver More, Worry Less</h2><p class="lead">From local startups to established brands, TOMUPRO empowers businesses across Brunei with reliable delivery, real-time tracking and operational support.</p><div class="stats-card"><div><div class="stat-n">98%</div><div class="stat-l">On-time Delivery</div><div class="stat-s">Across Brunei</div></div><div><div class="stat-n">2.5X</div><div class="stat-l">Business Growth</div><div class="stat-s">Average capacity increase</div></div><div><div class="stat-n">1,200+</div><div class="stat-l">Happy Merchants</div><div class="stat-s">Trust TOMUPRO every day</div></div></div></div><div><div class="success-photo"><img src="' + PUBLIC_MERCHANT_PHOTO_SRC + '" alt="TOMUPRO merchant receiving a parcel handoff" width="400" height="400"></div><div class="quote-card"><span class="qm">&ldquo;</span><p>The real-time tracking and dedicated support from TOMUPRO give us peace of mind.</p></div></div></div></section>'
     ].join("");
   }
 
@@ -348,13 +374,13 @@
 
   function buildFooter() {
     return [
-      '<footer><div class="wrap foot"><div class="fbrand"><div class="fbrand-top"><img class="fgriffin" src="/landing/logo-griffin.png" alt="TOMUPRO" width="32" height="32"><b>TOMU<span>PRO</span></b></div><p>A one-stop solution for Brunei delivery operations.</p></div><div><h5>Quick Links</h5><div class="frow2"><a href="#services">Services</a></div><div class="frow2"><a href="#features">Features</a></div><div class="frow2"><a href="#track">Track Parcel</a></div><div class="frow2"><a href="/blog">Blog</a></div></div><div><h5>Contact</h5><div class="frow2"><a href="mailto:hello@tomu.my">hello@tomu.my</a></div><div class="frow2"><a href="tel:+6738136587">+673 813 6587</a></div><div class="frow2"><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer">Instagram @tomupro</a></div></div></div><div class="foot-bottom">2026 TOMUPRO Brunei. All rights reserved.</div></footer>'
+      '<footer><div class="wrap foot"><div class="fbrand"><div class="fbrand-top"><img class="fgriffin" src="' + PUBLIC_LOGO_SRC + '" data-fallback-src="' + PUBLIC_LOGO_FALLBACK_SRC + '" alt="TOMUPRO logo" width="32" height="32"><b>TOMU<span>PRO</span></b></div><p>A one-stop solution for Brunei delivery operations.</p></div><div><h5>Quick Links</h5><div class="frow2"><a href="#services">Services</a></div><div class="frow2"><a href="#features">Features</a></div><div class="frow2"><a href="#track">Track Parcel</a></div><div class="frow2"><a href="/blog">Blog</a></div></div><div><h5>Contact</h5><div class="frow2"><a href="mailto:hello@tomu.my">hello@tomu.my</a></div><div class="frow2"><a href="tel:+6738136587">+673 813 6587</a></div><div class="frow2"><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer">Instagram @tomupro</a></div></div></div><div class="foot-bottom">2026 TOMUPRO Brunei. All rights reserved.</div></footer>'
     ].join("");
   }
 
   function buildAuthModal() {
     return [
-      '<div class="public-auth-modal" data-public-auth-modal aria-hidden="true"><div class="public-auth-backdrop" data-close-auth></div><div class="public-auth-card"><button class="public-auth-close" data-close-auth aria-label="Close">&times;</button><div class="public-auth-layout"><div class="public-auth-visual"><img src="/landing/tomupro-auth-hero.png" alt="TOMUPRO logistics access for Brunei delivery businesses"><div class="public-auth-visual-shade"></div><div class="public-auth-proof"><span>TOMUPRO Access</span><strong>Run delivery operations with <em>clarity</em>.</strong><p>Sign in to manage parcels, runners, COD collection, fulfillment inventory, and delivery performance across Brunei.</p></div></div><div class="public-auth-panel"><div class="public-auth-tabs"><button data-auth-tab="login" class="active">Log In</button><button data-auth-tab="signup">Get Started</button></div>',
+      '<div class="public-auth-modal" data-public-auth-modal aria-hidden="true"><div class="public-auth-backdrop" data-close-auth></div><div class="public-auth-card"><button class="public-auth-close" data-close-auth aria-label="Close">&times;</button><div class="public-auth-layout"><div class="public-auth-visual"><img src="' + PUBLIC_HERO_SRC + '" data-fallback-src="' + PUBLIC_IMAGE_FALLBACK_SRC + '" alt="TOMUPRO logistics access for Brunei delivery businesses"><div class="public-auth-visual-shade"></div><div class="public-auth-proof"><span>TOMUPRO Access</span><strong>Run delivery operations with <em>clarity</em>.</strong><p>Sign in to manage parcels, runners, COD collection, fulfillment inventory, and delivery performance across Brunei.</p></div></div><div class="public-auth-panel"><div class="public-auth-tabs"><button data-auth-tab="login" class="active">Log In</button><button data-auth-tab="signup">Get Started</button></div>',
       '<form data-auth-panel="login" data-login-form><label>Email<input name="email" type="email" required placeholder="Enter your email address"></label><label>Password<input name="password" type="password" required placeholder="Enter your password"></label><div class="public-auth-forgot"><a href="#" data-forgot-password>Forgot Password?</a></div><div data-form-message class="public-form-message"></div><button type="submit" class="public-auth-submit">Sign In &rarr;</button></form>',
       '<form data-auth-panel="signup" data-signup-form hidden><label>Display Name<input name="display_name" type="text" required placeholder="Your name"></label><label>Email<input name="email" type="email" required placeholder="Enter your email address"></label><label>Password<input name="password" type="password" required minlength="8" placeholder="Minimum 8 characters"></label><label>Admin Code <span>Optional</span><input name="invite_code" type="text" placeholder="TOMU-SP-XXXX"></label><div data-form-message class="public-form-message"></div><button type="submit" class="public-auth-submit">Create Account &rarr;</button></form>',
       '</div></div></div></div>'
@@ -362,6 +388,7 @@
   }
 
   function bindShell() {
+    bindImageFallbacks();
     document.querySelectorAll("[data-open-auth]").forEach(function (button) {
       button.addEventListener("click", function (event) {
         event.preventDefault();

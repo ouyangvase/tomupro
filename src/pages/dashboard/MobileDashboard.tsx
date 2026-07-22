@@ -91,18 +91,18 @@ function AlertCard({ label, value, icon, href, severity }: AlertCardProps) {
     <button
       onClick={() => navigate(href)}
       className={cn(
-        'flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] w-full text-left',
+        'mobile-motion flex w-full items-center gap-3 rounded-[1.55rem] border p-3.5 text-left shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_10px_26px_rgba(113,78,31,0.06)] transition-all duration-500 active:scale-[0.98]',
         colors[severity]
       )}
     >
-      <div className={cn('p-2 rounded-xl bg-card/60', textColors[severity])}>
+      <div className={cn('rounded-2xl bg-card/70 p-2', textColors[severity])}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">
         <p className={cn('text-2xl font-extrabold tabular-nums', textColors[severity])}>{value}</p>
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
       </div>
-      <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.8} />
     </button>
   );
 }
@@ -116,9 +116,9 @@ function OperationsPipeline({ stages }: PipelineProps) {
   const total = stages.reduce((sum, s) => sum + s.value, 0) || 1;
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-base font-bold text-foreground">Operations Pipeline</h3>
-      <div className="flex h-3 rounded-full overflow-hidden bg-secondary/50">
+    <div className="rounded-[1.75rem] border border-[#e5dacb] bg-[#fffdf8] p-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_12px_34px_rgba(113,78,31,0.06)]">
+      <h3 className="text-base font-black text-[#171512]">Operations Pipeline</h3>
+      <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-[#eee5d9]">
         {stages.map((stage, i) => (
           <div
             key={stage.label}
@@ -127,11 +127,11 @@ function OperationsPipeline({ stages }: PipelineProps) {
           />
         ))}
       </div>
-      <div className="grid grid-cols-4 gap-2">
+      <div className="mt-3 grid grid-cols-4 gap-2">
         {stages.map((stage) => (
           <div key={stage.label} className="text-center">
-            <p className="text-lg font-bold tabular-nums">{stage.value}</p>
-            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{stage.label}</p>
+            <p className="text-lg font-black tabular-nums text-[#171512]">{stage.value}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8a8174]">{stage.label}</p>
           </div>
         ))}
       </div>
@@ -149,16 +149,16 @@ interface MetricCardProps {
 
 function MetricCard({ label, value, icon, isLoading }: MetricCardProps) {
   return (
-    <div className="min-w-[140px] p-4 rounded-2xl bg-card border border-border/40 shadow-sm shrink-0">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-1.5 rounded-lg bg-primary/10 text-primary">{icon}</div>
+    <div className="min-w-[150px] shrink-0 rounded-[1.55rem] border border-[#e5dacb] bg-[#fffdf8] p-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_10px_26px_rgba(113,78,31,0.06)]">
+      <div className="mb-2 flex items-center gap-2">
+        <div className="rounded-2xl bg-[#f4eadb] p-2 text-[#b97823]">{icon}</div>
       </div>
       {isLoading ? (
         <Skeleton className="h-7 w-16 mb-1" />
       ) : (
-        <p className="text-xl font-bold tabular-nums">{value}</p>
+        <p className="text-xl font-black tabular-nums text-[#171512]">{value}</p>
       )}
-      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8a8174]">{label}</p>
     </div>
   );
 }

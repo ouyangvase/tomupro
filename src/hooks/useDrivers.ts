@@ -4,7 +4,14 @@ import { toast } from 'sonner';
 import type { RunnerDriver, Profile } from '@/types/database';
 import { createDriverCashLiability } from '@/hooks/useCashLiabilities';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { DRIVER_WORKLOAD_STATUSES, isDriverWorkloadOrder } from '@/lib/driverOrderScope';
 import { useAuth } from '@/contexts/AuthContext';
+
+function flushTelegramEventQueue() {
+  supabase.functions.invoke('send-telegram-event').catch((error) => {
+    console.warn('Failed to flush Telegram event queue:', error);
+  });
+}
 
 // Get drivers for a runner (with driver_code)
 export function useRunnerDrivers(runnerId?: string) {
@@ -99,7 +106,6 @@ async function fetchDriverParentRunnerId(driverId: string): Promise<string | nul
 
   if (error) {
     // If both the function and table read fail (e.g. policies), treat as not linked.
-    // eslint-disable-next-line no-console
     console.warn('Failed to resolve driver parent runner id', runnerIdError ?? error);
     return null;
   }
@@ -344,6 +350,7 @@ export function useDriverMarkDelivered() {
     onSuccess: (_, { paymentMethod }) => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+      flushTelegramEventQueue();
       const msg = paymentMethod === 'CASH' 
         ? 'Delivered (Cash recorded), awaiting runner acceptance'
         : 'Delivered (Transfer), awaiting runner acceptance';
@@ -388,6 +395,7 @@ export function useDriverMarkFailed() {
     },
     onSuccess: () => {
       invalidateOrderQueries(queryClient);
+      flushTelegramEventQueue();
       toast.success('Marked as failed');
     },
     onError: (error: Error) => {
@@ -499,14 +507,14 @@ export function useDriverOrderCount(driverId?: string) {
     queryFn: async () => {
       if (!driverId) return 0;
       
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from('orders')
-        .select('*', { count: 'exact', head: true })
+        .select('id, driver_status, runner_status, runner_accept_status')
         .eq('driver_id', driverId)
-        .in('driver_status', ['ASSIGNED', 'OUT_FOR_DELIVERY', 'DRIVER_DELIVERED']);
+        .in('driver_status', [...DRIVER_WORKLOAD_STATUSES]);
       
       if (error) throw error;
-      return count || 0;
+      return (data || []).filter(isDriverWorkloadOrder).length;
     },
     enabled: !!driverId,
   });
@@ -566,12 +574,14 @@ export function useUnassignDriverFromOrder() {
   });
 }
 
-// Get orders for runner's driver inbox (all orders where runner_id = current user)
+// Get active orders for Runner Driver Inbox.
+// This intentionally matches Runner Inbox active scope:
+// READY orders assigned/taken by the current runner, excluding delivered/failed/unassigned.
 export function useRunnerDriverOrders() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['runner-driver-orders'],
+    queryKey: ['runner-driver-orders', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
 
@@ -582,7 +592,9 @@ export function useRunnerDriverOrders() {
           order_items(*)
         `)
         .eq('runner_id', user.id)
-        .neq('status', 'CANCELLED')
+        .eq('status', 'READY')
+        .in('runner_status', ['ASSIGNED', 'TAKEN'])
+        .order('runner_assigned_at', { ascending: false, nullsFirst: false })
         .order('order_date', { ascending: false });
 
       if (error) throw error;
@@ -596,7 +608,7 @@ export function useRunnerDriverOrders() {
       });
 
       // Fetch user directory
-      let usersMap: Record<string, { id: string; display_name: string; email: string | null }> = {};
+      const usersMap: Record<string, { id: string; display_name: string; email: string | null }> = {};
       if (userIds.size > 0) {
         const { data: usersData } = await supabase
           .from('user_directory')

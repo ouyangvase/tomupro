@@ -51,7 +51,9 @@ export function useSalespersonStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('salesperson_id', user.id)
-          .eq('status', 'READY'),
+          .eq('status', 'READY')
+          .neq('runner_status', 'DELIVERED')
+          .neq('runner_status', 'FAILED_DELIVERY'),
         
         // Pending delivery (ASSIGNED or TAKEN, READY status)
         supabase
@@ -148,7 +150,8 @@ export function useManagerStats() {
           .select('id', { count: 'exact', head: true })
           .in('salesperson_id', visibleIds)
           .eq('status', 'READY')
-          .neq('runner_status', 'DELIVERED'),
+          .neq('runner_status', 'DELIVERED')
+          .neq('runner_status', 'FAILED_DELIVERY'),
         
         // Pending delivery (ASSIGNED or TAKEN, READY status)
         supabase
@@ -210,7 +213,8 @@ export function useManagerStats() {
           .select('total_amount')
           .in('salesperson_id', visibleIds)
           .in('status', ['BOOKING', 'READY'])
-          .neq('runner_status', 'DELIVERED'),
+          .neq('runner_status', 'DELIVERED')
+          .neq('runner_status', 'FAILED_DELIVERY'),
       ]);
 
       const teamRealizedGmv = (deliveredAmountRes.data || []).reduce(
@@ -260,6 +264,7 @@ export function useRunnerStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('runner_id', user.id)
+          .eq('status', 'READY')
           .in('runner_status', ['ASSIGNED', 'TAKEN']),
         
         // Delivered today
@@ -330,7 +335,9 @@ export function useAdminStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('status', 'READY'),
+          .eq('status', 'READY')
+          .neq('runner_status', 'DELIVERED')
+          .neq('runner_status', 'FAILED_DELIVERY'),
         
         // Cancelled orders
         supabase

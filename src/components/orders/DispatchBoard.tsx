@@ -112,42 +112,46 @@ export function DispatchBoard({
         </div>
       )}
 
-      {/* Column labels */}
-      <div className="flex items-center gap-4 px-4 py-2 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
-        {selectable && <div className="w-4 shrink-0" />}
-        <div className="w-[110px] shrink-0">Order</div>
-        <div className="flex-1">Customer & Address</div>
-        <div className="w-[110px] shrink-0 text-right">Amount</div>
-        <div className="w-[130px] shrink-0">Runner</div>
-        <div className="w-[100px] shrink-0 text-right">Status</div>
-        {showStockStatus && <div className="w-[100px] shrink-0 text-right">Stock</div>}
-        {renderKitaniAction && <div className="w-[120px] shrink-0 text-right">KITANI</div>}
-        <div className="w-[80px] shrink-0 text-right hidden xl:block">Date</div>
-      </div>
+      <div className="overflow-x-auto pb-1">
+        <div className="min-w-[1180px]">
+          {/* Column labels */}
+          <div className="flex items-center gap-3 px-4 py-2 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
+            {selectable && <div className="w-4 shrink-0" />}
+            <div className="w-[110px] shrink-0">Order</div>
+            <div className="flex-1">Customer & Address</div>
+            <div className="w-[110px] shrink-0 text-right">Amount</div>
+            <div className="w-[130px] shrink-0">Runner</div>
+            <div className="w-[120px] shrink-0 text-right">Status</div>
+            {showStockStatus && <div className="w-[132px] shrink-0 text-right">Stock</div>}
+            {renderKitaniAction && <div className="w-[160px] shrink-0 text-right">KITANI</div>}
+            <div className="w-[72px] shrink-0 text-right hidden xl:block">Date</div>
+          </div>
 
-      {/* Rows */}
-      <div className={cn('space-y-1', isFetching && 'opacity-50 pointer-events-none transition-opacity')}>
-        {orders.map(order => (
-          <DispatchBoardRow
-            key={order.id}
-            order={order}
-            isSelected={selectedRows.includes(order.id)}
-            isHighlighted={highlightOrderId === order.id}
-            selectable={selectable}
-            onSelect={(checked) => {
-              if (checked) {
-                onSelectionChange([...selectedRows, order.id]);
-              } else {
-                onSelectionChange(selectedRows.filter(id => id !== order.id));
-              }
-            }}
-            onClick={() => onRowClick(order)}
-            showStockStatus={showStockStatus}
-            stockStatus={stockResults?.get(order.id)?.stock_status}
-            onStockBadgeClick={onStockBadgeClick}
-            kitaniAction={renderKitaniAction?.(order)}
-          />
-        ))}
+          {/* Rows */}
+          <div className={cn('space-y-1', isFetching && 'opacity-50 pointer-events-none transition-opacity')}>
+            {orders.map(order => (
+              <DispatchBoardRow
+                key={order.id}
+                order={order}
+                isSelected={selectedRows.includes(order.id)}
+                isHighlighted={highlightOrderId === order.id}
+                selectable={selectable}
+                onSelect={(checked) => {
+                  if (checked) {
+                    onSelectionChange([...selectedRows, order.id]);
+                  } else {
+                    onSelectionChange(selectedRows.filter(id => id !== order.id));
+                  }
+                }}
+                onClick={() => onRowClick(order)}
+                showStockStatus={showStockStatus}
+                stockStatus={stockResults?.get(order.id)?.stock_status}
+                onStockBadgeClick={onStockBadgeClick}
+                kitaniAction={renderKitaniAction?.(order)}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Pagination */}

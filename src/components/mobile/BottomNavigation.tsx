@@ -85,8 +85,8 @@ export function BottomNavigation() {
   };
 
   return (
-    <nav className="liquid-glass fixed bottom-3 left-3 right-3 z-50 safe-area-pb rounded-3xl shadow-lg">
-      <div className="flex items-center justify-around h-[68px] px-1">
+    <nav className="mobile-bottom-dock fixed bottom-3 left-3 right-3 z-40 rounded-[2rem] p-1 safe-area-pb">
+      <div className="mobile-bottom-dock-core flex h-[72px] items-center justify-around px-1">
         {tabs.map((tab) => {
           const active = isActive(tab.href);
           return (
@@ -94,22 +94,24 @@ export function BottomNavigation() {
               key={tab.id}
               onClick={() => navigate(tab.href)}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all duration-200",
-                "min-w-[60px]",
+                "group flex min-w-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-1.5",
+                "mobile-motion transition-all duration-500 active:scale-[0.96]",
                 active
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "text-[#b97823]"
+                  : "text-[#766f66] hover:text-[#171512]"
               )}
             >
               <div className={cn(
-                "p-1.5 rounded-xl transition-all duration-200",
-                active && "bg-primary/15 scale-110 shadow-[0_0_18px_rgba(111,255,0,0.12)]"
+                "mobile-motion flex h-9 w-9 items-center justify-center rounded-2xl transition-all duration-500",
+                active
+                  ? "bg-[#f2e4cf] shadow-[inset_0_1px_1px_rgba(255,255,255,0.9),0_8px_18px_rgba(160,101,28,0.14)]"
+                  : "bg-transparent group-active:bg-[#f4efe7]"
               )}>
                 {tab.icon}
               </div>
               <span className={cn(
-                "text-[10px] font-semibold transition-colors",
-                active && "text-primary"
+                "max-w-[64px] truncate text-[10px] font-semibold leading-none transition-colors",
+                active && "text-[#b97823]"
               )}>
                 {tab.label}
               </span>

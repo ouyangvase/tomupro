@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { GripVertical, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DraggableOrderListProps<T> {
@@ -135,13 +135,7 @@ export function DraggableOrderList<T>({
             <div
               key={id}
               data-order-index={index}
-              draggable
-              onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={(e) => handleDragOver(e, index)}
-              onDragEnd={handleDragEnd}
-              onTouchStart={(e) => handleTouchStart(e, index)}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
               className={cn(
                 "relative transition-all duration-200",
                 isDragging && "opacity-50 scale-[0.97] shadow-xl z-10",
@@ -151,6 +145,18 @@ export function DraggableOrderList<T>({
               <div className="flex items-start gap-1.5">
                 {/* Drag handle */}
                 <div
+                  role="button"
+                  aria-label="Drag handle to reorder this delivery"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragEnd={handleDragEnd}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    handleTouchStart(e, index);
+                  }}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className={cn(
                     "flex-shrink-0 mt-5 p-1.5 cursor-grab active:cursor-grabbing touch-none rounded-lg transition-colors",
                     "hover:bg-primary/10 active:bg-primary/20"

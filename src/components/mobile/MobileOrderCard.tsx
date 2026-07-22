@@ -56,9 +56,9 @@ export function MobileOrderCard({
   return (
     <Card
       className={cn(
-        'p-3 transition-colors overflow-hidden',
-        isSelected && 'bg-primary/5 border-primary/30',
-        onClick && 'active:bg-secondary/50',
+        'mobile-motion overflow-hidden rounded-[1.65rem] border-[#e5dacb] bg-[#fffdf8] p-3 shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_12px_34px_rgba(113,78,31,0.07)] transition-all duration-500',
+        isSelected && 'border-[#c78b2f] bg-[#fff7ea] ring-2 ring-[#c78b2f]/18',
+        onClick && 'active:scale-[0.99]',
         className
       )}
     >
@@ -80,7 +80,7 @@ export function MobileOrderCard({
         <div className="flex-1 min-w-0">
           {/* Top line: Order Ref + Area + Status */}
           <div className="flex items-center flex-wrap gap-2 mb-2">
-            <span className="font-mono font-semibold text-sm">{orderRef}</span>
+            <span className="font-mono text-sm font-black text-[#171512]">{orderRef}</span>
             {areaBadge}
             {statusBadge}
           </div>
@@ -98,10 +98,10 @@ export function MobileOrderCard({
                   field.fullWidth && 'col-span-2'
                 )}
               >
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-0.5">
+                <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8a8174]">
                   {field.label}
                 </span>
-                <div className="text-sm font-medium truncate">
+                <div className="truncate text-sm font-semibold text-[#25221e]">
                   {field.value}
                 </div>
               </div>
@@ -121,7 +121,7 @@ export function MobileOrderCard({
               variant="ghost"
               size="sm"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="w-full mt-2 h-8 text-xs text-muted-foreground hover:text-foreground"
+              className="mt-2 h-9 w-full rounded-full text-xs font-semibold text-[#7d7468] hover:text-foreground"
             >
               {isExpanded ? (
                 <>
@@ -139,7 +139,7 @@ export function MobileOrderCard({
 
           {/* Expanded content */}
           {isExpanded && (
-            <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
+            <div className="mt-3 space-y-3 border-t border-[#eadfce] pt-3">
               {expandedFields.length > 0 && (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                   {expandedFields.map((field, index) => (
@@ -150,7 +150,7 @@ export function MobileOrderCard({
                         field.fullWidth && 'col-span-2'
                       )}
                     >
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-0.5">
+                      <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8a8174]">
                         {field.label}
                       </span>
                       <div className="text-sm break-words">
@@ -188,7 +188,7 @@ export function MobileSelectAllCard({
   totalCount = 0,
 }: MobileSelectAllCardProps) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 bg-secondary/30 rounded-lg border border-border/50">
+    <div className="flex items-center gap-3 rounded-[1.35rem] border border-[#e5dacb] bg-[#fffdf8] px-3 py-3 shadow-[inset_0_1px_1px_rgba(255,255,255,0.95)]">
       <Checkbox
         checked={isAllSelected}
         onCheckedChange={(checked) => onSelectAll(checked as boolean)}

@@ -284,6 +284,12 @@ export function useMarkDeliveredFast() {
       } else {
         toast({ title: 'Marked as delivered' });
       }
+
+      supabase.functions.invoke('send-snipers-delivered', {
+        body: { orderId: result.orderId, eventType: 'tomupro.order.delivered' },
+      }).catch((err) => {
+        console.error('[SNIPERS] delivered event trigger failed:', err);
+      });
     },
     onSettled: () => {
       // Debounced refetch after 1.5s to pick up background processing results

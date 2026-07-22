@@ -66,9 +66,13 @@ export function useRunnerDashboardStats() {
 
       const orders = allOrders || [];
 
-      // Calculate today's stats
-      const pendingAssignment = orders.filter(o => o.runner_status === 'UNASSIGNED').length;
-      const inProgress = orders.filter(o => ['ASSIGNED', 'TAKEN'].includes(o.runner_status)).length;
+      const readyActiveOrders = orders.filter(o =>
+        o.status === 'READY' && ['ASSIGNED', 'TAKEN'].includes(o.runner_status)
+      );
+
+      // Calculate active queue stats using the same scope as Runner Inbox.
+      const pendingAssignment = orders.filter(o => o.status === 'READY' && o.runner_status === 'UNASSIGNED').length;
+      const inProgress = readyActiveOrders.length;
       
       const deliveredTodayOrders = orders.filter(o => 
         o.runner_status === 'DELIVERED' && 
@@ -87,8 +91,7 @@ export function useRunnerDashboardStats() {
       const failedToday = failedTodayOrders.length;
 
       // Total today's value (in progress + delivered today)
-      const inProgressOrders = orders.filter(o => ['ASSIGNED', 'TAKEN'].includes(o.runner_status));
-      const totalTodayValue = inProgressOrders.reduce((sum, o) => sum + Number(o.total_amount), 0) + deliveredTodayValue;
+      const totalTodayValue = readyActiveOrders.reduce((sum, o) => sum + Number(o.total_amount), 0) + deliveredTodayValue;
 
       // All time stats
       const totalDelivered = orders.filter(o => o.runner_status === 'DELIVERED').length;
@@ -134,6 +137,7 @@ export function useRunnerDashboardStats() {
       // Driver issues (orders assigned to drivers but stuck)
       const driverIssuesCount = orders.filter(o => 
         o.driver_id && 
+        o.status === 'READY' &&
         ['ASSIGNED', 'TAKEN'].includes(o.runner_status) &&
         o.updated_at < new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // More than 24 hours
       ).length;
@@ -142,8 +146,8 @@ export function useRunnerDashboardStats() {
       const urgentOrders = orders
         .filter(o => 
           o.runner_status === 'FAILED_DELIVERY' || 
-          (o.runner_status === 'UNASSIGNED') ||
-          (['ASSIGNED', 'TAKEN'].includes(o.runner_status) && !o.driver_id)
+          (o.status === 'READY' && o.runner_status === 'UNASSIGNED') ||
+          (o.status === 'READY' && ['ASSIGNED', 'TAKEN'].includes(o.runner_status) && !o.driver_id)
         )
         .slice(0, 5)
         .map(o => ({

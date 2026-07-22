@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -10,7 +11,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { CalendarIcon, ExternalLink, MapPin, Package, CreditCard } from 'lucide-react';
+import { CalendarIcon, ExternalLink, MapPin, Package, CreditCard, Image as ImageIcon } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import { buildWhatsAppUrl } from '@/lib/phone';
 import { format } from 'date-fns';
@@ -18,6 +19,8 @@ import { cn } from '@/lib/utils';
 import { useReasons } from '@/hooks/useReasons';
 import { useRunnerReviewOrder } from '@/hooks/useRunnerReview';
 import { useRunnerAcceptDelivery } from '@/hooks/useDrivers';
+import { useAttachments } from '@/hooks/useAttachments';
+import { getSignedStorageUrl } from '@/lib/storageUrls';
 
 interface Order {
   id: string;
@@ -69,6 +72,23 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
   const { data: failedReasons } = useReasons('FAILED_DELIVERY', true);
   const reviewMutation = useRunnerReviewOrder();
   const acceptMutation = useRunnerAcceptDelivery();
+  const { data: attachments = [] } = useAttachments({ orderId: order?.id });
+
+  const rawDeliveryProofs = useMemo(
+    () => attachments.filter((attachment) => attachment.type === 'delivery_photo'),
+    [attachments]
+  );
+
+  const { data: deliveryProofs = [] } = useQuery({
+    queryKey: ['runner-review-delivery-proof-urls', rawDeliveryProofs.map((proof) => proof.id)],
+    queryFn: async () => Promise.all(rawDeliveryProofs.map(async (proof) => ({
+      id: proof.id,
+      signedUrl: await getSignedStorageUrl(proof.url, 'delivery-photos'),
+      uploaded_at: proof.uploaded_at,
+    }))),
+    enabled: rawDeliveryProofs.length > 0,
+    staleTime: 30000,
+  });
 
   const resetForm = () => {
     setOutcome('');
@@ -151,7 +171,7 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Phone</p>
-              <WhatsAppPhoneLink order={order as any} showIcon={false} />
+              <WhatsAppPhoneLink order={order} showIcon={false} />
             </div>
             <div className="col-span-2">
               <p className="text-sm text-muted-foreground flex items-center gap-1">
@@ -209,6 +229,28 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
               )}
             </div>
           </div>
+
+          {deliveryProofs.length > 0 && (
+            <div className="p-4 border rounded-lg space-y-3">
+              <h4 className="font-medium flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                Driver Proof Photo
+              </h4>
+              <div className="grid grid-cols-3 gap-2">
+                {deliveryProofs.slice(0, 3).map((proof) => (
+                  <a
+                    key={proof.id}
+                    href={proof.signedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block aspect-square overflow-hidden rounded-xl border bg-muted"
+                  >
+                    <img src={proof.signedUrl} alt="Driver proof" className="h-full w-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           <Separator />
 

@@ -24,6 +24,8 @@ interface ClaimPreview {
   }>;
 }
 
+const NO_AREA_LABEL = 'No Area';
+
 export function useDeliveryCharges() {
   const { user } = useAuth();
 
@@ -63,18 +65,21 @@ export function useClaimPreview(orders: Order[], exchangeRate: number): ClaimPre
 
     for (const order of orders) {
       const amount = Number(order.total_amount);
-      const area = order.area?.toLowerCase() || '';
+      const normalizedArea = order.area?.trim() || '';
+      const area = normalizedArea.toLowerCase();
       let deliveryCharge = 0;
 
-      if (order.area) {
+      if (normalizedArea) {
         const charge = deliveryCharges[area];
         if (charge === undefined) {
-          if (!missingAreas.includes(order.area)) {
-            missingAreas.push(order.area);
+          if (!missingAreas.includes(normalizedArea)) {
+            missingAreas.push(normalizedArea);
           }
         } else {
           deliveryCharge = charge;
         }
+      } else if (!missingAreas.includes(NO_AREA_LABEL)) {
+        missingAreas.push(NO_AREA_LABEL);
       }
 
       grossBND += amount;
@@ -83,7 +88,7 @@ export function useClaimPreview(orders: Order[], exchangeRate: number): ClaimPre
       orderBreakdown.push({
         orderId: order.id,
         orderCode: order.order_code,
-        area: order.area,
+        area: normalizedArea || null,
         amount,
         deliveryCharge,
         netAmount: amount - deliveryCharge,

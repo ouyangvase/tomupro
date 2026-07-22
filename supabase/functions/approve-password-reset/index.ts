@@ -5,86 +5,101 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const DEFAULT_TEMPORARY_PASSWORD = 'Tomu@12345678';
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const temporaryPassword = Deno.env.get('PASSWORD_RESET_TEMPORARY_PASSWORD') || DEFAULT_TEMPORARY_PASSWORD;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify caller is admin via JWT
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Missing authorization' }, 401);
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user: caller }, error: authError } = await supabase.auth.getUser(token);
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user: caller }, error: authError } = await authClient.auth.getUser();
     if (authError || !caller) {
-      return new Response(JSON.stringify({ error: 'Invalid token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Invalid token' }, 401);
     }
 
-    // Check caller is admin
-    const { data: callerProfile } = await supabase
+    const { data: callerProfile, error: callerProfileError } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', caller.id)
-      .single();
+      .maybeSingle();
+
+    if (callerProfileError) {
+      console.error('Failed to load caller profile:', callerProfileError);
+      return jsonResponse({ error: 'Unable to verify admin access' }, 500);
+    }
 
     if (callerProfile?.role !== 'admin') {
-      return new Response(JSON.stringify({ error: 'Admin access required' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Admin access required' }, 403);
     }
 
-    const { request_id } = await req.json();
-    if (!request_id) {
-      return new Response(JSON.stringify({ error: 'Missing request_id' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let requestId: string | undefined;
+    try {
+      const body = await req.json();
+      requestId = body?.request_id;
+    } catch {
+      return jsonResponse({ error: 'Invalid request body' }, 400);
     }
 
-    // Fetch the pending request
+    if (!requestId) {
+      return jsonResponse({ error: 'Missing request_id' }, 400);
+    }
+
     const { data: resetRequest, error: fetchError } = await supabase
       .from('password_reset_requests')
       .select('*')
-      .eq('id', request_id)
-      .eq('status', 'pending')
-      .single();
+      .eq('id', requestId)
+      .maybeSingle();
 
     if (fetchError || !resetRequest) {
-      return new Response(JSON.stringify({ error: 'Request not found or already processed' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      console.error('Failed to fetch password reset request:', fetchError);
+      return jsonResponse({ error: 'Request not found' }, 404);
+    }
+
+    if (resetRequest.status !== 'pending') {
+      return jsonResponse({
+        success: true,
+        already_processed: true,
+        status: resetRequest.status,
+        temporary_password: temporaryPassword,
       });
     }
 
-    // Reset the user's auth password to 12345678
     const { error: updateAuthError } = await supabase.auth.admin.updateUserById(
       resetRequest.user_id,
-      { password: '12345678' }
+      { password: temporaryPassword }
     );
 
     if (updateAuthError) {
       console.error('Failed to reset auth password:', updateAuthError);
-      return new Response(JSON.stringify({ error: 'Failed to reset password' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: updateAuthError.message || 'Failed to reset password' }, 500);
     }
 
-    // Set force_password_reset flag on profile
     const { error: profileError } = await supabase
       .from('profiles')
       .update({
@@ -96,9 +111,9 @@ Deno.serve(async (req) => {
 
     if (profileError) {
       console.error('Failed to set force_password_reset:', profileError);
+      return jsonResponse({ error: 'Password was reset, but the profile reset flag could not be saved' }, 500);
     }
 
-    // Mark request as approved
     const { error: resolveError } = await supabase
       .from('password_reset_requests')
       .update({
@@ -106,24 +121,23 @@ Deno.serve(async (req) => {
         resolved_by: caller.id,
         resolved_at: new Date().toISOString(),
       })
-      .eq('id', request_id);
+      .eq('id', requestId);
 
     if (resolveError) {
       console.error('Failed to update request status:', resolveError);
+      return jsonResponse({ error: 'Password was reset, but the request status could not be saved' }, 500);
     }
 
-    // Notify the requesting user
     await supabase.from('notifications').insert({
       user_id: resetRequest.user_id,
       title: 'Password Reset Approved',
-      message: 'Your password has been reset. Please log in with the temporary password and set a new one.',
+      message: `Your password has been reset. Please log in with the temporary password (${temporaryPassword}) and set a new one.`,
       type: 'SYSTEM',
       priority: 'HIGH',
       is_read: false,
       entity_type: 'PASSWORD_RESET',
     });
 
-    // Log audit entry
     await supabase.from('audit_logs').insert({
       actor_id: caller.id,
       entity_type: 'user',
@@ -136,15 +150,12 @@ Deno.serve(async (req) => {
       },
     });
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return jsonResponse({
+      success: true,
+      temporary_password: temporaryPassword,
     });
   } catch (err) {
     console.error('approve-password-reset error:', err);
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });

@@ -17,6 +17,7 @@ out/
 .env.test.local
 .env.production.local
 .env.*.local
+.env.codex-*
 *.local
 
 # API keys, tokens, credentials
@@ -61,12 +62,16 @@ coverage/
 # Temporary files
 tmp/
 temp/
+.tmp-bun/
 *.tmp
 *.bak
 *.swp
 
 # Vercel
 .vercel/
+
+# Supabase local metadata
+supabase/.temp/
 
 # Debug
 *.debug

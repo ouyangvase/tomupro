@@ -69,7 +69,8 @@ export default function RunnerInbox() {
   const canDeliver = !isAssistant || !!assistantBinding?.can_deliver;
   const canConfirmReceipt = !isAssistant || !!assistantBinding?.can_confirm_receipt;
   const hasNoDeliveryAccess = isAssistant && !assistantBinding?.can_deliver;
-  const isReceiptOnlyAssistant = isAssistant && !!assistantBinding?.can_confirm_receipt && !assistantBinding?.can_deliver;
+  const isReceiptOnlyAssistant = hasNoDeliveryAccess;
+  const canReviewReceipts = canConfirmReceipt || isReceiptOnlyAssistant;
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -128,7 +129,7 @@ export default function RunnerInbox() {
     assignedDateTo: assignedDateRange.to,
   }), [effectiveRunnerId, serverSearch, filters.runnerStatus, filters.area, filters.driverId, filters.reconciliationStatus, filters.paymentMethod, filters.receiptStatus, assignedDateRange.from, assignedDateRange.to, isReceiptOnlyAssistant]);
 
-  const { data: orders, isLoading, isFetching, pagination, setPage, refetch } = usePaginatedOrders(orderFilters, 50);
+  const { data: orders, isLoading, isFetching, pagination, setPage } = usePaginatedOrders(orderFilters, 50);
 
   // Server-side stats for summary cards (not affected by pagination)
   const { data: inboxStats } = useRunnerInboxStats();
@@ -157,6 +158,14 @@ export default function RunnerInbox() {
       return order && order.runner_status === 'DELIVERED' && order.reconciliation_status === 'NOT_CLAIMED';
     });
   }, [selectedRows, orders, offPageSelectedCount]);
+
+  const selectedReceiptReviewOrder = useMemo(() => {
+    if (selectedRows.length !== 1 || !canReviewReceipts || canDeliver) return null;
+    const order = orders.find(o => o.id === selectedRows[0]);
+    if (!order || order.payment_method !== 'TRANSFER') return null;
+    if (order.receipt_status === 'confirmed' || order.receipt_status === 'rejected') return null;
+    return order;
+  }, [selectedRows, orders, canReviewReceipts, canDeliver]);
 
   const claimableOrders = useMemo(() => {
     return orders?.filter(o =>
@@ -338,15 +347,8 @@ export default function RunnerInbox() {
               <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="rounded-full">
                 {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />} Export
               </Button>
-              <Button variant="outline" size="sm" onClick={() => refetch()} className="rounded-full">
-                Refresh
-              </Button>
             </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => refetch()} className="rounded-full">
-              Refresh
-            </Button>
-          )}
+          ) : undefined}
         />
 
         {/* Compact Stats */}
@@ -470,9 +472,21 @@ export default function RunnerInbox() {
             {/* Select all header */}
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-secondary/50 border border-border">
               <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} disabled={selectAllLoading} className="h-4 w-4" />
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-xs font-medium text-muted-foreground flex-1">
                 {selectAllLoading ? 'Selecting all...' : selectedRows.length > 0 ? `${selectedRows.length} selected` : `Select all (${pagination.totalCount})`}
               </span>
+              {selectedReceiptReviewOrder && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setReceiptOrder(selectedReceiptReviewOrder);
+                    setReceiptDialogOpen(true);
+                  }}
+                  className="h-8 rounded-full px-3 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" /> Accept Receipt
+                </Button>
+              )}
             </div>
 
             {/* Orders */}
@@ -488,7 +502,7 @@ export default function RunnerInbox() {
                 onViewReceipt={() => { setReceiptOrder(order); setReceiptDialogOpen(true); }}
                 isMobile={isMobile}
                 canDeliver={canDeliver}
-                canConfirmReceipt={canConfirmReceipt}
+                canConfirmReceipt={canReviewReceipts}
                 stockMap={runnerStockMap}
               />
             ))}
@@ -552,7 +566,7 @@ export default function RunnerInbox() {
         open={receiptDialogOpen}
         onOpenChange={setReceiptDialogOpen}
         order={receiptOrder}
-        readOnly={!canConfirmReceipt}
+        readOnly={!canReviewReceipts}
         onConfirmed={() => {
           // After receipt is confirmed, auto-open deliver dialog only if user has delivery access
           if (receiptOrder && canDeliver) {
@@ -605,6 +619,7 @@ interface RunnerOrderCardProps {
 
 function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, onViewReceipt, isMobile, canDeliver, canConfirmReceipt, stockMap }: RunnerOrderCardProps) {
   const isReceiptBlocked = order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed';
+  const canAcceptReceipt = canConfirmReceipt && !canDeliver && order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed' && order.receipt_status !== 'rejected';
 
   const isMobileRejected = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
 
@@ -725,7 +740,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
                 </Button>
               </>
             )}
-            {order.payment_method === 'TRANSFER' && order.receipt_url && (
+            {order.payment_method === 'TRANSFER' && order.receipt_url && !canAcceptReceipt && (
               <Button
                 size="sm"
                 variant="outline"
@@ -733,6 +748,15 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
                 className="rounded-full h-9 px-3"
               >
                 <ImageIcon className="h-4 w-4 mr-1" /> Receipt
+              </Button>
+            )}
+            {canAcceptReceipt && (
+              <Button
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); onViewReceipt?.(); }}
+                className="rounded-full h-10 px-4 flex-1 min-w-[160px] bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+              >
+                <CheckCircle className="h-4 w-4 mr-1" /> Accept Receipt
               </Button>
             )}
             <Button
@@ -854,7 +878,16 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
               </Button>
             </>
           )}
-          {order.payment_method === 'TRANSFER' && order.receipt_url && (
+          {canAcceptReceipt && (
+            <Button
+              size="sm"
+              onClick={() => onViewReceipt?.()}
+              className="rounded-full h-8 px-3 text-xs bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+            >
+              <CheckCircle className="h-3.5 w-3.5 mr-1" /> Accept Receipt
+            </Button>
+          )}
+          {order.payment_method === 'TRANSFER' && order.receipt_url && !canAcceptReceipt && (
             <Button size="sm" variant="outline" onClick={() => onViewReceipt?.()} className="rounded-full h-8 px-2.5 text-xs">
               <ImageIcon className="h-3.5 w-3.5 mr-1" /> Receipt
             </Button>

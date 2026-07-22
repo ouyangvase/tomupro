@@ -87,7 +87,9 @@ export function useManagerDashboard(period: PeriodType = 'mtd') {
       // Calculate team overview stats
       const deliveredOrders = teamOrders?.filter(o => o.runner_status === 'DELIVERED') || [];
       const bookingOrders = teamOrders?.filter(o => o.status === 'BOOKING') || [];
-      const readyOrders = teamOrders?.filter(o => o.status === 'READY' && o.runner_status !== 'DELIVERED') || [];
+      const readyOrders = teamOrders?.filter(o =>
+        o.status === 'READY' && !['DELIVERED', 'FAILED_DELIVERY'].includes(o.runner_status)
+      ) || [];
       const actionRequiredOrders = teamOrders?.filter(o => o.runner_status === 'FAILED_DELIVERY') || [];
       
       const realizedGmv = deliveredOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
@@ -97,7 +99,9 @@ export function useManagerDashboard(period: PeriodType = 'mtd') {
       const personalOrders = teamOrders?.filter(o => o.salesperson_id === user.id) || [];
       const personalDelivered = personalOrders.filter(o => o.runner_status === 'DELIVERED');
       const personalBooking = personalOrders.filter(o => o.status === 'BOOKING');
-      const personalReady = personalOrders.filter(o => o.status === 'READY' && o.runner_status !== 'DELIVERED');
+      const personalReady = personalOrders.filter(o =>
+        o.status === 'READY' && !['DELIVERED', 'FAILED_DELIVERY'].includes(o.runner_status)
+      );
       
       // Team health calculations
       const salespersonDeliveries = new Map<string, number>();
