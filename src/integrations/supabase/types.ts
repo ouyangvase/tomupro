@@ -2835,6 +2835,53 @@ export type Database = {
           },
         ]
       }
+      message_templates: {
+        Row: {
+          body: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          template_key: string
+          updated_at: string
+          updated_by: string | null
+          variables: string[]
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          template_key: string
+          updated_at?: string
+          updated_by?: string | null
+          variables?: string[]
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          template_key?: string
+          updated_at?: string
+          updated_by?: string | null
+          variables?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           body: string | null

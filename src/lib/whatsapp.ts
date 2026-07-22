@@ -1,77 +1,26 @@
 import type { Order, OrderItem } from '@/types/database';
-import { sanitizePhoneForWhatsApp, isScientificNotation } from '@/lib/phone';
+import { sanitizePhoneForWhatsApp } from '@/lib/phone';
 
-/**
- * Sanitize phone number for WhatsApp.
- * Returns digits with country code (Brunei 673 prepended for local numbers,
- * international numbers returned as-is with their own country code).
- */
-export function sanitizePhoneNumber(phone: string): string {
-  return sanitizePhoneForWhatsApp(phone);
-}
+export const WHATSAPP_ORDER_TEMPLATE_KEY = 'customer_whatsapp_order_message';
 
-/**
- * Check if phone number is valid for WhatsApp
- */
-export function isValidWhatsAppPhone(phone: string): boolean {
-  const local = sanitizePhoneNumber(phone);
-  return local.length > 0;
-}
+export const DEFAULT_WHATSAPP_ORDER_TEMPLATE = `Hi @name, this is Logistic Admin from Tomu.
 
-/**
- * Format order items for WhatsApp message
- * Returns format: "SKU/ProductName × Qty unit"
- */
-function formatOrderItemsForWhatsApp(orderItems: OrderItem[] | undefined): string {
-  if (!orderItems || orderItems.length === 0) {
-    return 'Product × 1 unit';
-  }
+Delivery Info
+Name: @name
+Contact: @phone
+Address: @address
+Area: @area
 
-  const formattedItems = orderItems.map(item => {
-    const skuCode = item.product?.sku_code || item.sku_label || 'PRODUCT';
-    const productName = item.product?.sku_name || 'Unknown';
-    return `${skuCode}/${productName} × ${item.qty} unit`;
-  });
+Product:
+@items
 
-  return formattedItems.join('\n');
-}
+Total Qty: @qty
+Price: @price
 
-/**
- * Get total quantity from order items
- */
-function getTotalQty(orderItems: OrderItem[] | undefined): number {
-  if (!orderItems || orderItems.length === 0) return 1;
-  return orderItems.reduce((sum, item) => sum + (item.qty || 0), 0);
-}
+Delivery will be arranged according to runner route.
+Runner will contact you before delivery.
 
-/**
- * Generate WhatsApp message using the exact template
- */
-export function generateWhatsAppMessage(order: Order): string {
-  const customerName = order.customer_name || 'Customer';
-  const localPhone = sanitizePhoneNumber(order.phone);
-  const address = order.address || 'Address not provided';
-  const area = order.area || 'Area not specified';
-  const productInfo = formatOrderItemsForWhatsApp(order.order_items);
-  const amount = Number(order.total_amount || 0).toFixed(0);
-
-  // Updated template with emojis and new format
-  const message = `Hi ${customerName} 👋
-This is Logistic Admin from Tomu.
-
-📦 Delivery Info
-Name: ${customerName}
-Contact: +673${localPhone}
-Address: ${address}
-Area: ${area}
-
-Product: ${productInfo}
-Price: BND ${amount}
-
-✅ Delivery will be arranged according to runner route.
-📞 Runner will contact you 1 hour before delivery.
-
-💰 Please choose payment:
+Please choose payment:
 
 COD
 
@@ -81,30 +30,111 @@ BIBD: 00-008-01-0051019
 Baiduri: 0300117734291
 Tomu Enterprise`;
 
-  return message;
+export const WHATSAPP_TEMPLATE_TAGS = [
+  { tag: '@name', description: 'Customer name' },
+  { tag: '@phone', description: 'Customer phone number' },
+  { tag: '@address', description: 'Delivery address' },
+  { tag: '@area', description: 'Delivery area' },
+  { tag: '@ordercode', description: 'Order code' },
+  { tag: '@productname', description: 'Product and SKU names' },
+  { tag: '@qty', description: 'Total quantity' },
+  { tag: '@price', description: 'Amount to collect' },
+  { tag: '@items', description: 'One line per product with quantity' },
+] as const;
+
+/**
+ * Sanitize phone number for WhatsApp.
+ * Returns digits with country code.
+ */
+export function sanitizePhoneNumber(phone: string): string {
+  return sanitizePhoneForWhatsApp(phone);
 }
 
 /**
- * Generate WhatsApp URL for an order
- * Uses api.whatsapp.com/send format as specified
- * Handles both Brunei and international numbers correctly.
+ * Check if phone number is valid for WhatsApp.
  */
-export function generateWhatsAppUrl(order: Order): string | null {
+export function isValidWhatsAppPhone(phone: string): boolean {
+  const local = sanitizePhoneNumber(phone);
+  return local.length > 0;
+}
+
+function formatOrderItemsForWhatsApp(orderItems: OrderItem[] | undefined): string {
+  if (!orderItems || orderItems.length === 0) {
+    return 'Product x 1';
+  }
+
+  return orderItems
+    .map(item => {
+      const skuCode = item.product?.sku_code || item.sku_label || 'PRODUCT';
+      const productName = item.product?.sku_name || 'Unknown';
+      return `${skuCode}/${productName} x ${item.qty}`;
+    })
+    .join('\n');
+}
+
+function formatProductNames(orderItems: OrderItem[] | undefined): string {
+  if (!orderItems || orderItems.length === 0) {
+    return 'Product';
+  }
+
+  return orderItems
+    .map(item => {
+      const skuCode = item.product?.sku_code || item.sku_label || 'PRODUCT';
+      const productName = item.product?.sku_name || 'Unknown';
+      return `${skuCode}/${productName}`;
+    })
+    .join(', ');
+}
+
+function getTotalQty(orderItems: OrderItem[] | undefined): number {
+  if (!orderItems || orderItems.length === 0) return 1;
+  return orderItems.reduce((sum, item) => sum + (item.qty || 0), 0);
+}
+
+function replaceTemplateTags(template: string, values: Record<string, string>): string {
+  return Object.entries(values).reduce(
+    (message, [tag, value]) => message.replaceAll(tag, value),
+    template,
+  );
+}
+
+export function generateWhatsAppMessage(order: Order, templateBody?: string | null): string {
+  const customerName = order.customer_name || 'Customer';
+  const localPhone = sanitizePhoneNumber(order.phone);
+  const displayPhone = localPhone ? `+${localPhone}` : (order.phone || '-');
+  const address = order.address || 'Address not provided';
+  const area = order.area || 'Area not specified';
+  const productInfo = formatOrderItemsForWhatsApp(order.order_items);
+  const totalQty = getTotalQty(order.order_items);
+  const amount = Number(order.total_amount || 0).toFixed(2);
+  const template = templateBody?.trim() || DEFAULT_WHATSAPP_ORDER_TEMPLATE;
+
+  return replaceTemplateTags(template, {
+    '@name': customerName,
+    '@phone': displayPhone,
+    '@address': address,
+    '@area': area,
+    '@ordercode': order.order_code || '',
+    '@productname': formatProductNames(order.order_items),
+    '@qty': String(totalQty),
+    '@price': `BND ${amount}`,
+    '@items': productInfo,
+  });
+}
+
+export function generateWhatsAppUrl(order: Order, templateBody?: string | null): string | null {
   const phoneDigits = sanitizePhoneNumber(order.phone);
 
   if (!phoneDigits) {
     return null;
   }
 
-  const message = generateWhatsAppMessage(order);
+  const message = generateWhatsAppMessage(order, templateBody);
   const encodedMessage = encodeURIComponent(message);
 
   return `https://api.whatsapp.com/send?phone=${phoneDigits}&text=${encodedMessage}`;
 }
 
-/**
- * Format phone for display (unchanged)
- */
 export function formatPhoneDisplay(phone: string): string {
   return phone || '-';
 }

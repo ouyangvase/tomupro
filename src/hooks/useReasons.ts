@@ -112,17 +112,33 @@ export function useDeleteReason() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // Soft delete by setting is_active = false
-      const { error } = await supabase
+      const clearOrderReferences = await supabase
+        .from('orders')
+        .update({ runner_failed_reason_id: null })
+        .eq('runner_failed_reason_id', id);
+
+      if (clearOrderReferences.error) throw clearOrderReferences.error;
+
+      const clearRescheduleReferences = await supabase
+        .from('reschedule_history')
+        .update({ reason_id: null })
+        .eq('reason_id', id);
+
+      if (clearRescheduleReferences.error) throw clearRescheduleReferences.error;
+
+      const { data, error } = await supabase
         .from('reasons')
-        .update({ is_active: false })
-        .eq('id', id);
+        .delete()
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('Reason was not deleted. Please check admin delete permission.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reasons'] });
-      toast.success('Reason deactivated');
+      toast.success('Reason permanently deleted');
     },
     onError: (error) => {
       toast.error(`Failed to delete reason: ${error.message}`);

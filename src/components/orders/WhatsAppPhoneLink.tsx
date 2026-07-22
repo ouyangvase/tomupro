@@ -1,7 +1,8 @@
 import { Phone } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { generateWhatsAppUrl, isValidWhatsAppPhone, sanitizePhoneNumber } from '@/lib/whatsapp';
-import type { Order, OrderItem } from '@/types/database';
+import { generateWhatsAppUrl, isValidWhatsAppPhone, WHATSAPP_ORDER_TEMPLATE_KEY } from '@/lib/whatsapp';
+import { useMessageTemplate } from '@/hooks/useMessageTemplates';
+import type { Order } from '@/types/database';
 
 // WhatsApp icon SVG component
 function WhatsAppIcon({ className }: { className?: string }) {
@@ -41,10 +42,10 @@ interface WhatsAppPhoneLinkProps {
  * Shows phone number as clickable link that opens WhatsApp with prefilled message
  */
 export function WhatsAppPhoneLink({ order, showIcon = true, className = '' }: WhatsAppPhoneLinkProps) {
+  const { data: messageTemplate } = useMessageTemplate(WHATSAPP_ORDER_TEMPLATE_KEY);
   const phone = order.phone || '';
-  const whatsappUrl = generateWhatsAppUrl(order as Order);
+  const whatsappUrl = generateWhatsAppUrl(order as Order, messageTemplate?.body);
   const isValid = isValidWhatsAppPhone(phone);
-  const localPhone = sanitizePhoneNumber(phone);
 
   if (!phone) {
     return <span className="text-muted-foreground">-</span>;
@@ -104,8 +105,9 @@ export function WhatsAppPhoneLink({ order, showIcon = true, className = '' }: Wh
  * Compact version for mobile cards
  */
 export function WhatsAppPhoneLinkCompact({ order, className = '' }: Omit<WhatsAppPhoneLinkProps, 'showIcon'>) {
+  const { data: messageTemplate } = useMessageTemplate(WHATSAPP_ORDER_TEMPLATE_KEY);
   const phone = order.phone || '';
-  const whatsappUrl = generateWhatsAppUrl(order as Order);
+  const whatsappUrl = generateWhatsAppUrl(order as Order, messageTemplate?.body);
   const isValid = isValidWhatsAppPhone(phone);
 
   if (!phone) {
