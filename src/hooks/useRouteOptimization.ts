@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Order } from '@/types/database';
+import {
+  getTodayDateKey,
+  isDriverWorkloadOrder,
+  isVisibleDriverInboxOrder,
+} from '@/lib/driverOrderScope';
 
 export interface AreaGroup {
   area: string | null;
@@ -18,8 +23,10 @@ export interface RouteOptimization {
 
 // Get orders grouped by area for a driver
 export function useDriverRouteOptimization(driverId?: string) {
+  const todayDateKey = getTodayDateKey();
+
   return useQuery({
-    queryKey: ['driver-route-optimization', driverId],
+    queryKey: ['driver-route-optimization', driverId, todayDateKey],
     queryFn: async () => {
       if (!driverId) return null;
 
@@ -34,16 +41,19 @@ export function useDriverRouteOptimization(driverId?: string) {
         .order('area', { ascending: true });
 
       if (error) throw error;
-      if (!orders || orders.length === 0) return null;
+      const scopedOrders = ((orders || []) as unknown as Order[]).filter((order) =>
+        isVisibleDriverInboxOrder(order, todayDateKey)
+      );
+      if (scopedOrders.length === 0) return null;
 
       // Group orders by area
       const areaMap = new Map<string, Order[]>();
-      orders.forEach(order => {
+      scopedOrders.forEach(order => {
         const area = order.area || 'Unknown Area';
         if (!areaMap.has(area)) {
           areaMap.set(area, []);
         }
-        areaMap.get(area)!.push(order as unknown as Order);
+        areaMap.get(area)!.push(order);
       });
 
       // Create area groups with stats
@@ -60,7 +70,7 @@ export function useDriverRouteOptimization(driverId?: string) {
       return {
         groups,
         suggestedOrder,
-        totalOrders: orders.length,
+        totalOrders: scopedOrders.length,
         totalAreas: groups.length,
       } as RouteOptimization;
     },
@@ -70,8 +80,10 @@ export function useDriverRouteOptimization(driverId?: string) {
 
 // Get route optimization for runner's view of all drivers
 export function useRunnerRouteOverview(runnerId?: string) {
+  const todayDateKey = getTodayDateKey();
+
   return useQuery({
-    queryKey: ['runner-route-overview', runnerId],
+    queryKey: ['runner-route-overview', runnerId, todayDateKey],
     queryFn: async () => {
       if (!runnerId) return [];
 
@@ -88,11 +100,12 @@ export function useRunnerRouteOverview(runnerId?: string) {
 
       if (error) throw error;
       if (!orders) return [];
+      const scopedOrders = (orders || []).filter((order) => isDriverWorkloadOrder(order, todayDateKey));
 
       // Group by driver, then by area
       const driverMap = new Map<string, { driverName: string; areas: Map<string, Order[]> }>();
       
-      orders.forEach(order => {
+      scopedOrders.forEach(order => {
         const driverId = order.driver_id!;
         const driverName = (order.driver as any)?.display_name || 'Unknown';
         const area = order.area || 'Unknown Area';

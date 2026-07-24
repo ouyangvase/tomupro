@@ -54,15 +54,36 @@ export interface QuickRepairResult {
 
 // Fetch full stock integrity audit
 export function useFullStockIntegrityAudit(
-  ownerFilter?: string | null,
+  ownerFilter?: string | string[] | null,
   statusFilter?: string | null
 ) {
   return useQuery({
     queryKey: ['full-stock-integrity-audit', ownerFilter, statusFilter],
     queryFn: async () => {
+      const normalizedStatus = statusFilter === 'all' ? null : statusFilter ?? null;
+
+      if (Array.isArray(ownerFilter)) {
+        const ownerIds = Array.from(new Set(ownerFilter.filter(Boolean)));
+        if (ownerIds.length === 0) return [] as FullStockIntegrityRow[];
+
+        const rows = await Promise.all(
+          ownerIds.map(async (ownerId) => {
+            const { data, error } = await supabase.rpc('full_stock_integrity_audit', {
+              p_owner_filter: ownerId,
+              p_status_filter: normalizedStatus,
+            });
+
+            if (error) throw error;
+            return (data || []) as FullStockIntegrityRow[];
+          })
+        );
+
+        return rows.flat();
+      }
+
       const { data, error } = await supabase.rpc('full_stock_integrity_audit', {
         p_owner_filter: ownerFilter === 'all' ? null : ownerFilter ?? null,
-        p_status_filter: statusFilter === 'all' ? null : statusFilter ?? null
+        p_status_filter: normalizedStatus
       });
       
       if (error) throw error;
@@ -73,7 +94,7 @@ export function useFullStockIntegrityAudit(
 }
 
 // Fetch summary stats
-export function useStockIntegritySummary() {
+export function useStockIntegritySummary(enabled = true) {
   return useQuery({
     queryKey: ['stock-integrity-summary'],
     queryFn: async () => {
@@ -90,6 +111,7 @@ export function useStockIntegritySummary() {
       };
     },
     staleTime: 0,
+    enabled,
   });
 }
 

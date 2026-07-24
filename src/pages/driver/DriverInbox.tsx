@@ -7,6 +7,7 @@ import { useRouteSuggestion } from '@/hooks/useRouteSuggestion';
 import { useDriverRemarks } from '@/hooks/useDriverRemarks';
 import { useDriverOrderPriority } from '@/hooks/useDriverOrderPriority';
 import { useUploadAttachment } from '@/hooks/useAttachments';
+import { useDriverPickups } from '@/hooks/useDriverPickups';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp, Search, Clock, AlertTriangle, Camera, Download } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import LocationTracker from '@/components/driver/LocationTracker';
-import { DeliveryPaymentDialog } from '@/components/driver/DeliveryPaymentDialog';
+import { DeliveryPaymentDialog, type DriverPaymentMethod, type DriverPaymentSplit } from '@/components/driver/DeliveryPaymentDialog';
 import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
 import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import { AddressActions } from '@/components/driver/AddressActions';
@@ -31,7 +32,14 @@ import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { compressImage } from '@/lib/imageCompression';
 import { downloadXlsx } from '@/lib/xlsxExport';
-import { isVisibleDriverInboxOrder } from '@/lib/driverOrderScope';
+import {
+  getTodayDateKey,
+  isCompletedDriverDeliveryAccepted,
+  isSameDriverOperationalDate,
+  isVisibleDriverInboxOrder,
+  normalizeDriverStatus,
+} from '@/lib/driverOrderScope';
+import { toast } from 'sonner';
 import type { Order, OrderItem, Product } from '@/types/database';
 
 type DriverInboxOrder = Order & {
@@ -112,6 +120,7 @@ export default function DriverInbox() {
   const markFailed = useDriverMarkFailed();
   const updateOrder = useUpdateOrder();
   const uploadAttachment = useUploadAttachment();
+  const { data: driverPickups = [] } = useDriverPickups();
 
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
   const [failedProofDialogOpen, setFailedProofDialogOpen] = useState(false);
@@ -128,6 +137,7 @@ export default function DriverInbox() {
   const [failedProofFiles, setFailedProofFiles] = useState<File[]>([]);
   const [failedProofPreviews, setFailedProofPreviews] = useState<string[]>([]);
   const [proofUploading, setProofUploading] = useState(false);
+  const todayDateKey = useMemo(() => getTodayDateKey(), []);
 
   // Filter orders assigned to this driver
   const myOrders = useMemo<DriverInboxOrder[]>(() => {
@@ -144,7 +154,7 @@ export default function DriverInbox() {
 
   // Get ALL assigned driver orders (no date filtering) with search
   const filteredOrders = useMemo(() => {
-    const statusFiltered = myOrders.filter(isVisibleDriverInboxOrder);
+    const statusFiltered = myOrders.filter((order) => isVisibleDriverInboxOrder(order, todayDateKey));
     
     if (!searchQuery.trim()) return statusFiltered;
     
@@ -166,15 +176,22 @@ export default function DriverInbox() {
         || itemText.includes(query)
       );
     });
-  }, [myOrders, searchQuery]);
+  }, [myOrders, searchQuery, todayDateKey]);
 
-  const pendingOrders = filteredOrders.filter(o => 
-    o.driver_status === 'ASSIGNED' || o.driver_status === 'OUT_FOR_DELIVERY'
+  const pendingOrders = filteredOrders.filter((o) => {
+    const status = normalizeDriverStatus(o.driver_status);
+    return status === 'ASSIGNED' || status === 'OUT_FOR_DELIVERY';
+  });
+  const acceptedDeliveredOrders = useMemo(
+    () => myOrders.filter((order) => isCompletedDriverDeliveryAccepted(order) && isSameDriverOperationalDate(order, todayDateKey)),
+    [myOrders, todayDateKey],
   );
-  const deliveredPendingAcceptance = filteredOrders.filter(o => 
-    o.driver_status === 'DRIVER_DELIVERED' && o.runner_accept_status !== 'ACCEPTED'
+  const failedOrdersCount = useMemo(
+    () => myOrders.filter((order) => normalizeDriverStatus(order.driver_status) === 'DRIVER_FAILED' && isSameDriverOperationalDate(order, todayDateKey)).length,
+    [myOrders, todayDateKey],
   );
-  const failedOrdersList = filteredOrders.filter(o => o.driver_status === 'DRIVER_FAILED');
+  const deliveredPendingAcceptance: DriverInboxOrder[] = [];
+  const failedOrdersList: DriverInboxOrder[] = [];
 
   const pendingOrderIds = useMemo(() => pendingOrders.map(o => o.id), [pendingOrders]);
 
@@ -231,6 +248,41 @@ export default function DriverInbox() {
     
     return ordersCopy;
   }, [pendingOrders, priorities, suggestions, getDeliveryDate]);
+
+  const pickedProductQty = useMemo(() => {
+    const totals = new Map<string, number>();
+    driverPickups.forEach((pickup) => {
+      if (pickup.driver_id !== profile?.id) return;
+      if (normalizeDriverStatus(pickup.status) !== 'DRIVER_ACKED') return;
+
+      (pickup.items || []).forEach((item) => {
+        const productId = String(item.product_id || '');
+        const qty = Number(item.qty || 0);
+        if (!productId || qty <= 0) return;
+        totals.set(productId, (totals.get(productId) || 0) + qty);
+      });
+    });
+    return totals;
+  }, [driverPickups, profile?.id]);
+
+  const hasPickupForOrder = useCallback((order?: DriverInboxOrder | null) => {
+    if (!order) return false;
+    const required = new Map<string, number>();
+
+    ((order.order_items || []) as DriverOrderItem[]).forEach((item) => {
+      const productId = String((item as DriverOrderItem & { product_id?: string | null }).product_id || '');
+      const qty = Number(item.qty || 0);
+      if (!productId || qty <= 0) return;
+      required.set(productId, (required.get(productId) || 0) + qty);
+    });
+
+    if (required.size === 0) return false;
+
+    for (const [productId, qty] of required.entries()) {
+      if ((pickedProductQty.get(productId) || 0) < qty) return false;
+    }
+    return true;
+  }, [pickedProductQty]);
 
   const handleExportOrders = useCallback(() => {
     if (filteredOrders.length === 0) return;
@@ -343,9 +395,19 @@ export default function DriverInbox() {
     }
   };
 
-  const handleMarkDelivered = async (orderId: string, paymentMethod: 'CASH' | 'TRANSFER') => {
+  const handleMarkDelivered = async (orderId: string, paymentMethod: DriverPaymentMethod, split: DriverPaymentSplit) => {
+    if (selectedOrderDetails && !hasPickupForOrder(selectedOrderDetails)) {
+      toast.error('Pickup stock must match this order before delivery can be submitted.');
+      return;
+    }
+
     await uploadDeliveryProofs(orderId, deliveredProofFiles);
-    await markDelivered.mutateAsync({ orderId, paymentMethod });
+    await markDelivered.mutateAsync({
+      orderId,
+      paymentMethod,
+      cashAmount: split.cashAmount,
+      transferAmount: split.transferAmount,
+    });
     setDeliveredDialogOpen(false);
     setSelectedOrder(null);
     setSelectedOrderDetails(null);
@@ -353,11 +415,16 @@ export default function DriverInbox() {
   };
 
   const handleOpenDeliveredDialog = useCallback((order: DriverInboxOrder) => {
+    if (!hasPickupForOrder(order)) {
+      toast.error('Pickup stock must match this order before delivery can be submitted.');
+      return;
+    }
+
     setSelectedOrder(order.id);
     setSelectedOrderDetails(order);
     resetProofSelection('delivered');
     setDeliveredDialogOpen(true);
-  }, [resetProofSelection]);
+  }, [hasPickupForOrder, resetProofSelection]);
 
   const handleToggleOutForDelivery = useCallback(async (orderId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'ASSIGNED' ? 'OUT_FOR_DELIVERY' : 'ASSIGNED';
@@ -368,6 +435,11 @@ export default function DriverInbox() {
   }, [updateOrder]);
 
   const handleOpenFailedDialog = useCallback((order: DriverInboxOrder) => {
+    if (!hasPickupForOrder(order)) {
+      toast.error('Pickup stock must match this order before failed delivery can be submitted.');
+      return;
+    }
+
     setSelectedOrder(order.id);
     setSelectedOrderDetails(order);
     setFailedReason('');
@@ -375,7 +447,7 @@ export default function DriverInbox() {
     setNextDeliveryDate('');
     resetProofSelection('failed');
     setFailedDialogOpen(true);
-  }, [resetProofSelection]);
+  }, [hasPickupForOrder, resetProofSelection]);
 
   const handleOpenFailedProofDialog = useCallback((order: DriverInboxOrder) => {
     setSelectedOrder(order.id);
@@ -398,6 +470,10 @@ export default function DriverInbox() {
 
   const handleSubmitFailed = async () => {
     if (!selectedOrder || !failedReason) return;
+    if (selectedOrderDetails && !hasPickupForOrder(selectedOrderDetails)) {
+      toast.error('Pickup stock must match this order before failed delivery can be submitted.');
+      return;
+    }
     
     await uploadDeliveryProofs(selectedOrder, failedProofFiles);
     await markFailed.mutateAsync({
@@ -438,6 +514,7 @@ export default function DriverInbox() {
     const isExpanded = expandedCards.has(order.id);
     const displayPosition = index + 1;
     const statusConfig = driverStatusConfig[order.driver_status || 'ASSIGNED'];
+    const canUpdateDelivery = hasPickupForOrder(order);
 
     return (
       <div
@@ -605,6 +682,12 @@ export default function DriverInbox() {
               onSave={upsertRemark}
               onDelete={deleteRemark}
             />
+
+            {!canUpdateDelivery && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-800">
+                Pickup stock must match this order before delivery or failed status can be submitted.
+              </div>
+            )}
             
             {/* Action Buttons */}
             <div className="flex gap-3 pt-3">
@@ -612,7 +695,7 @@ export default function DriverInbox() {
                 className="flex-1 h-12 min-h-[48px] text-sm font-semibold rounded-xl shadow-sm" 
                 variant="default"
                 onClick={() => handleOpenDeliveredDialog(order)}
-                disabled={markDelivered.isPending}
+                disabled={markDelivered.isPending || !canUpdateDelivery}
               >
                 <Check className="h-5 w-5 mr-2" />
                 Delivered
@@ -621,6 +704,7 @@ export default function DriverInbox() {
                 className="flex-1 h-12 min-h-[48px] text-sm font-semibold rounded-xl shadow-sm" 
                 variant="destructive"
                 onClick={() => handleOpenFailedDialog(order)}
+                disabled={markFailed.isPending || !canUpdateDelivery}
               >
                 <X className="h-5 w-5 mr-2" />
                 Failed
@@ -640,7 +724,9 @@ export default function DriverInbox() {
     handleToggleOutForDelivery,
     handleOpenDeliveredDialog,
     handleOpenFailedDialog,
+    hasPickupForOrder,
     markDelivered.isPending,
+    markFailed.isPending,
     upsertRemark,
     deleteRemark,
   ]);
@@ -691,7 +777,7 @@ export default function DriverInbox() {
           {/* Delivered */}
           <div className="glass-card p-3 text-center border-[hsl(var(--status-pending)/0.3)]">
             <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-pending))]">
-              {deliveredPendingAcceptance.length}
+              {acceptedDeliveredOrders.length}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
               Delivered
@@ -700,7 +786,7 @@ export default function DriverInbox() {
           {/* Failed */}
           <div className="glass-card p-3 text-center border-[hsl(var(--status-error)/0.3)]">
             <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-error))]">
-              {failedOrdersList.length}
+              {failedOrdersCount}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
               Failed

@@ -9,17 +9,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Trophy, TrendingUp, TrendingDown, Minus, AlertTriangle, Sparkles, RefreshCw,
-  Award, Crown, Timer, Medal, Flame, Target, Zap, ChevronUp, Calendar, Users
+  Award, Crown, Timer, Medal, Flame, Target, Zap, ChevronUp, Calendar, Users,
+  Star, ShieldCheck, ArrowUpRight
 } from "lucide-react";
 import { CapybaraState } from "@/components/dashboard/CapybaraState";
 import { AnimatedCounter } from "@/components/dashboard/AnimatedCounter";
-import { PageHero } from "@/components/dashboard/PageHero";
 import { useAuth } from "@/contexts/AuthContext";
-import { useVisibleRankings, useMyRanking, usePreviousPeriodRanking, useLeaderboardSettings, PeriodMode, LeaderboardRanking } from "@/hooks/useLeaderboard";
+import { useVisibleRankings, useMyRanking, usePreviousPeriodRanking, PeriodMode, LeaderboardRanking } from "@/hooks/useLeaderboard";
 import { formatBND } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { format, endOfMonth, endOfQuarter, endOfYear, differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
-import capybaraSales from "@/assets/capybara-sales.png";
 
 function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -91,80 +90,204 @@ function CountdownTimer({ mode }: { mode: PeriodMode }) {
 }
 
 // ─── Podium Card ────────────────────────────────────────
-function PodiumCard({ ranking, position, isCurrentUser, periodMode }: {
-  ranking: LeaderboardRanking; position: 1 | 2 | 3; isCurrentUser: boolean; periodMode: PeriodMode;
+function LeaderboardMetricPill({ icon, label, value, tone = "light" }: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  tone?: "light" | "dark";
 }) {
-  const config = {
-    1: {
-      container: "order-2 z-20 -mt-6",
-      card: "min-h-[330px] bg-gradient-to-b from-primary/15 via-card to-card border-2 border-primary/40 shadow-[0_0_60px_-10px_hsl(var(--primary)/0.4)]",
-      avatar: "w-28 h-28 ring-4 ring-primary shadow-[0_0_30px_-5px_hsl(var(--primary)/0.5)]",
-      avatarBg: "bg-gradient-to-br from-primary/30 to-primary/10 text-primary",
-      icon: Crown, iconColor: "text-primary", iconBg: "bg-primary/20 border border-primary/30",
-      salesSize: "text-4xl", badge: "bg-primary text-primary-foreground", glow: true,
-    },
-    2: {
-      container: "order-1 z-10",
-      card: "min-h-[280px] bg-gradient-to-b from-muted/60 via-card to-card border border-muted-foreground/30",
-      avatar: "w-24 h-24 ring-4 ring-muted-foreground/40",
-      avatarBg: "bg-gradient-to-br from-muted-foreground/20 to-muted text-muted-foreground",
-      icon: Medal, iconColor: "text-muted-foreground", iconBg: "bg-muted-foreground/20 border border-muted-foreground/20",
-      salesSize: "text-2xl", badge: "bg-muted-foreground/20 text-muted-foreground", glow: false,
-    },
-    3: {
-      container: "order-3 z-10",
-      card: "min-h-[260px] bg-gradient-to-b from-[hsl(25,80%,55%)]/15 via-card to-card border border-[hsl(25,80%,55%)]/40",
-      avatar: "w-24 h-24 ring-4 ring-[hsl(25,80%,55%)]/40",
-      avatarBg: "bg-gradient-to-br from-[hsl(25,80%,55%)]/30 to-[hsl(25,80%,55%)]/10 text-[hsl(25,80%,55%)]",
-      icon: Award, iconColor: "text-[hsl(25,80%,55%)]", iconBg: "bg-[hsl(25,80%,55%)]/20 border border-[hsl(25,80%,55%)]/30",
-      salesSize: "text-2xl", badge: "bg-[hsl(25,80%,55%)]/20 text-[hsl(25,80%,55%)]", glow: false,
-    },
-  }[position];
-
-  const IconComponent = config.icon;
-
   return (
-    <div className={cn("flex flex-col items-center w-full max-w-[210px] group", config.container)}>
-      <div className="relative">
-        <div className={cn("absolute -top-3 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 rounded-full font-bold text-sm shadow-lg", config.badge)}>
-          #{position}
-        </div>
-        <div className={cn(
-          "rounded-2xl p-6 flex flex-col items-center justify-between w-full backdrop-blur-sm transition-all duration-300 group-hover:shadow-xl group-hover:-translate-y-1",
-          config.card, isCurrentUser && "ring-2 ring-primary ring-offset-2 ring-offset-background"
-        )}>
-          <div className={cn("rounded-full p-2.5 mb-4", config.iconBg)}>
-            <IconComponent className={cn("h-5 w-5", config.iconColor)} />
-          </div>
-          <Avatar className={cn(config.avatar, "mb-4 transition-transform group-hover:scale-105")}>
-            {ranking.avatar_url && <AvatarImage src={ranking.avatar_url} alt={ranking.salesperson_name} />}
-            <AvatarFallback className={cn("text-2xl font-bold", config.avatarBg)}>{getInitials(ranking.salesperson_name)}</AvatarFallback>
-          </Avatar>
-          <h3 className={cn("font-semibold text-base mb-1 text-center truncate w-full", isCurrentUser && "text-primary")}>
-            {ranking.salesperson_name}
-          </h3>
-          {isCurrentUser && <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-3">You</span>}
-          <div className="text-center space-y-2 mt-auto">
-            <p className="text-xs text-muted-foreground font-medium">
-              <span className="text-foreground font-semibold">{ranking.delivered_orders}</span> delivered
-            </p>
-            <div className="flex items-center justify-center gap-1.5">
-              <Flame className="h-5 w-5 text-primary" />
-              <span className={cn("font-bold tabular-nums tracking-tight", config.salesSize)}>
-                {formatBND(ranking.net_sales).replace('BND ', '')}
-              </span>
-            </div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Net Sales</p>
-          </div>
-          {position === 1 && (
-            <div className="mt-5 pt-4 border-t border-primary/20 w-full">
-              <CountdownTimer mode={periodMode} />
-            </div>
-          )}
-        </div>
-        {config.glow && <div className="absolute inset-0 -z-10 bg-gradient-to-b from-primary/20 to-transparent rounded-2xl blur-2xl scale-110 opacity-60" />}
+    <div className={cn(
+      "flex min-w-0 items-center gap-3 rounded-2xl border px-4 py-3",
+      tone === "dark"
+        ? "border-white/10 bg-white/[0.07] text-white"
+        : "border-border/70 bg-card/80 text-foreground"
+    )}>
+      <div className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+        tone === "dark" ? "bg-[#d49a2f]/20 text-[#f4bd57]" : "bg-primary/10 text-primary"
+      )}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className={cn(
+          "text-[10px] font-semibold uppercase tracking-[0.18em]",
+          tone === "dark" ? "text-white/55" : "text-muted-foreground"
+        )}>{label}</p>
+        <div className="truncate text-base font-bold tabular-nums">{value}</div>
       </div>
     </div>
+  );
+}
+
+function AwardStage({ top3Rankings, rankings, currentUserId, periodLabel, periodMode, lastUpdated, isFetching }: {
+  top3Rankings: LeaderboardRanking[];
+  rankings: LeaderboardRanking[];
+  currentUserId?: string;
+  periodLabel: string;
+  periodMode: PeriodMode;
+  lastUpdated: Date;
+  isFetching: boolean;
+}) {
+  const champion = top3Rankings[0];
+  if (!champion) return null;
+
+  const second = top3Rankings[1];
+  const third = top3Rankings[2];
+  const topThree = [champion, second, third].filter(Boolean) as LeaderboardRanking[];
+  const totalDelivered = rankings.reduce((sum, item) => sum + item.delivered_orders, 0);
+  const totalSales = rankings.reduce((sum, item) => sum + item.net_sales, 0);
+  const leadGap = second ? Math.max(0, champion.net_sales - second.net_sales) : 0;
+
+  return (
+    <section className="relative overflow-hidden rounded-[28px] border border-[#d49a2f]/40 bg-[#17130d] text-white shadow-[0_22px_70px_-42px_rgba(0,0,0,0.9)]">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#f4bd57] to-transparent" />
+      <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-[#d49a2f]/25 blur-3xl" />
+      <div className="absolute -bottom-24 left-10 h-64 w-64 rounded-full bg-[#6b4a15]/35 blur-3xl" />
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.10),transparent_32%,rgba(212,154,47,0.10)_62%,transparent)]" />
+
+      <div className="relative grid gap-5 p-5 sm:p-6 lg:grid-cols-[1.25fr_0.75fr] lg:p-7">
+        <div className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="rounded-full border border-[#d49a2f]/35 bg-[#d49a2f]/20 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f7d18a]">
+              Grand leaderboard
+            </Badge>
+            <Badge className="rounded-full border border-white/10 bg-white/[0.07] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+              {periodLabel}
+            </Badge>
+            <span className={cn(
+              "inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+              isFetching ? "bg-[#d49a2f]/20 text-[#f4bd57]" : "bg-emerald-400/15 text-emerald-200"
+            )}>
+              <span className={cn("h-2 w-2 rounded-full", isFetching ? "animate-pulse bg-[#f4bd57]" : "bg-emerald-300")} />
+              Live ranking
+            </span>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div className="min-w-0 space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-2 text-xs font-medium text-white/75">
+                <Crown className="h-4 w-4 text-[#f4bd57]" />
+                Winner spotlight
+              </div>
+              <div className="space-y-3">
+                <h1 className="max-w-[11ch] text-4xl font-black leading-[0.96] sm:text-5xl lg:text-6xl">
+                  Chase the crown
+                </h1>
+                <p className="max-w-2xl text-sm leading-6 text-white/68 sm:text-base">
+                  The top seat is decided by real delivered orders and net sales. Every confirmed delivery moves the board.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-[#d49a2f]/35 bg-[#d49a2f]/12 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+              <div className="rounded-[20px] border border-white/10 bg-black/20 p-3 [&_*]:text-white">
+                <CountdownTimer mode={periodMode} />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-[#d49a2f]/35 bg-white/[0.08] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="relative shrink-0">
+                <div className="absolute -inset-2 rounded-full bg-[#d49a2f]/30 blur-xl" />
+                <Avatar className="relative h-24 w-24 border-4 border-[#f4bd57] shadow-[0_0_0_8px_rgba(212,154,47,0.18)] sm:h-28 sm:w-28">
+                  {champion.avatar_url && <AvatarImage src={champion.avatar_url} alt={champion.salesperson_name} />}
+                  <AvatarFallback className="bg-[#f4bd57] text-2xl font-black text-[#17130d]">{getInitials(champion.salesperson_name)}</AvatarFallback>
+                </Avatar>
+                <div className="absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#f4bd57] text-[#17130d] shadow-lg">
+                  <Crown className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className="rounded-full bg-[#f4bd57] px-3 py-1 text-[#17130d]">Champion</Badge>
+                  {champion.salesperson_id === currentUserId && (
+                    <Badge className="rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-white">You</Badge>
+                  )}
+                </div>
+                <h2 className="mt-2 text-3xl font-black leading-tight sm:text-4xl">{champion.salesperson_name}</h2>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <LeaderboardMetricPill tone="dark" icon={<Flame className="h-4 w-4" />} label="Net sales" value={formatBND(champion.net_sales)} />
+                  <LeaderboardMetricPill tone="dark" icon={<Target className="h-4 w-4" />} label="Delivered" value={champion.delivered_orders} />
+                  <LeaderboardMetricPill tone="dark" icon={<ShieldCheck className="h-4 w-4" />} label="Success" value={`${champion.success_rate.toFixed(0)}%`} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <LeaderboardMetricPill tone="dark" icon={<Users className="h-4 w-4" />} label="Players" value={rankings.length} />
+            <LeaderboardMetricPill tone="dark" icon={<Target className="h-4 w-4" />} label="Delivered" value={totalDelivered} />
+            <LeaderboardMetricPill tone="dark" icon={<Flame className="h-4 w-4" />} label="Board sales" value={formatBND(totalSales)} />
+          </div>
+        </div>
+
+        <aside className="min-w-0 space-y-4 rounded-[26px] border border-white/10 bg-black/20 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#f4bd57]">Award board</p>
+              <h3 className="mt-1 text-2xl font-black">Top contenders</h3>
+            </div>
+            <Badge className="rounded-full border border-white/10 bg-white/[0.07] text-white/70">
+              Updated {format(lastUpdated, 'HH:mm')}
+            </Badge>
+          </div>
+
+          <div className="space-y-3">
+            {topThree.map((ranking) => {
+              const positionConfig = {
+                1: { label: "Gold", icon: <Crown className="h-4 w-4" />, accent: "bg-[#f4bd57] text-[#17130d]" },
+                2: { label: "Silver", icon: <Medal className="h-4 w-4" />, accent: "bg-white/20 text-white" },
+                3: { label: "Bronze", icon: <Award className="h-4 w-4" />, accent: "bg-[#c7772f]/30 text-[#ffd1a6]" },
+              }[ranking.rank_position as 1 | 2 | 3] || { label: "Rank", icon: <Star className="h-4 w-4" />, accent: "bg-white/10 text-white" };
+
+              return (
+                <div key={ranking.salesperson_id} className={cn(
+                  "group rounded-2xl border border-white/10 bg-white/[0.07] p-3 transition-[transform,background-color,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-[#d49a2f]/45 hover:bg-white/[0.10]",
+                  ranking.salesperson_id === currentUserId && "border-[#f4bd57]/70"
+                )}>
+                  <div className="flex items-center gap-3">
+                    <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl font-black", positionConfig.accent)}>
+                      {positionConfig.icon}
+                    </div>
+                    <Avatar className="h-11 w-11 border border-white/10">
+                      {ranking.avatar_url && <AvatarImage src={ranking.avatar_url} alt={ranking.salesperson_name} />}
+                      <AvatarFallback className="bg-white/10 font-bold text-white">{getInitials(ranking.salesperson_name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-base font-bold">{ranking.salesperson_name}</p>
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/60">#{ranking.rank_position} {positionConfig.label}</span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-white/55">{ranking.delivered_orders} delivered - {ranking.success_rate.toFixed(0)}% success</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black tabular-nums">{formatBND(ranking.net_sales).replace('BND ', '')}</p>
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-white/45">sales</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="rounded-2xl border border-[#d49a2f]/25 bg-[#d49a2f]/10 p-4">
+            <div className="flex items-center gap-2 text-[#f4bd57]">
+              <ArrowUpRight className="h-4 w-4" />
+              <p className="text-xs font-bold uppercase tracking-[0.18em]">Current lead</p>
+            </div>
+            <p className="mt-2 text-2xl font-black">{second ? formatBND(leadGap) : 'No challenger yet'}</p>
+            <p className="mt-1 text-sm leading-5 text-white/62">
+              {second
+                ? `${second.salesperson_name} is chasing ${champion.salesperson_name}.`
+                : "The next challenger appears once more players record sales."}
+            </p>
+          </div>
+        </aside>
+      </div>
+    </section>
   );
 }
 
@@ -491,7 +614,6 @@ export default function LeaderboardPage() {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
 
   const { profile } = useAuth();
-  const { data: settings } = useLeaderboardSettings();
   const { rankings, top3Rankings, lastUpdated, isLoading, isFetching } = useVisibleRankings(
     periodMode, selectedMonth, selectedQuarter, selectedYear
   );
@@ -503,31 +625,33 @@ export default function LeaderboardPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-8 max-w-6xl mx-auto pb-8">
-        {/* Hero */}
-        <PageHero
-          icon={<Trophy className="h-6 w-6 text-primary" />}
-          title="Performance Arena"
-          subtitle="Compete. Deliver. Rise to the top."
-          image={capybaraSales}
-          imageAlt="Champion Capybara"
-          actions={
-            <div className="flex items-center gap-3">
-              <Badge variant="outline" className="rounded-full px-3 py-1 font-medium text-xs border-primary/30">
-                <Calendar className="h-3 w-3 mr-1.5" />
-                {periodLabel}
-              </Badge>
-              <div className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium",
-                isFetching ? "bg-[hsl(var(--status-pending))]/20 text-[hsl(var(--status-pending))]" : "bg-[hsl(var(--status-success))]/20 text-[hsl(var(--status-success))]"
-              )}>
-                <span className={cn("w-2 h-2 rounded-full", isFetching ? "bg-[hsl(var(--status-pending))] animate-pulse" : "bg-[hsl(var(--status-success))]")} />
-                Live
-              </div>
-              {isFetching && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+      <div className="mx-auto max-w-7xl space-y-6 pb-8">
+        <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Trophy className="h-5 w-5" />
             </div>
-          }
-        />
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Performance</p>
+              <h1 className="text-2xl font-black leading-tight sm:text-3xl">Leaderboard</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">Grand ranking for delivered orders, net sales, and success rate.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="rounded-full px-3 py-1 font-medium text-xs border-primary/30">
+              <Calendar className="h-3 w-3 mr-1.5" />
+              {periodLabel}
+            </Badge>
+            <div className={cn(
+              "flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium",
+              isFetching ? "bg-[hsl(var(--status-pending))]/20 text-[hsl(var(--status-pending))]" : "bg-[hsl(var(--status-success))]/20 text-[hsl(var(--status-success))]"
+            )}>
+              <span className={cn("h-2 w-2 rounded-full", isFetching ? "animate-pulse bg-[hsl(var(--status-pending))]" : "bg-[hsl(var(--status-success))]")} />
+              Live
+            </div>
+            {isFetching && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          </div>
+        </div>
 
         {/* Time Filters */}
         <TimeFilterControls
@@ -552,21 +676,16 @@ export default function LeaderboardPage() {
         )}
 
         {!isLoading && rankings.length > 0 && (
-          <div className="space-y-8">
-            {/* Podium */}
-            {top3Rankings.length >= 3 ? (
-              <div className="flex justify-center items-end gap-3 md:gap-6 py-6">
-                <PodiumCard ranking={top3Rankings[1]} position={2} isCurrentUser={top3Rankings[1].salesperson_id === profile?.id} periodMode={periodMode} />
-                <PodiumCard ranking={top3Rankings[0]} position={1} isCurrentUser={top3Rankings[0].salesperson_id === profile?.id} periodMode={periodMode} />
-                <PodiumCard ranking={top3Rankings[2]} position={3} isCurrentUser={top3Rankings[2].salesperson_id === profile?.id} periodMode={periodMode} />
-              </div>
-            ) : top3Rankings.length > 0 && (
-              <div className="flex justify-center items-end gap-3 md:gap-6 py-6">
-                {top3Rankings.map((r, i) => (
-                  <PodiumCard key={r.salesperson_id} ranking={r} position={(i + 1) as 1 | 2 | 3} isCurrentUser={r.salesperson_id === profile?.id} periodMode={periodMode} />
-                ))}
-              </div>
-            )}
+          <div className="space-y-6">
+            <AwardStage
+              top3Rankings={top3Rankings}
+              rankings={rankings}
+              currentUserId={profile?.id}
+              periodLabel={periodLabel}
+              periodMode={periodMode}
+              lastUpdated={lastUpdated}
+              isFetching={isFetching}
+            />
 
             {/* Achievement Strip */}
             <AchievementStrip rankings={rankings} />

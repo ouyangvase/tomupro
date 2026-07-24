@@ -99,6 +99,8 @@ export function useCreateRunnerAssistant() {
       assistant_id: string;
       can_deliver: boolean;
       can_confirm_receipt: boolean;
+      can_manage_driver_stock?: boolean;
+      can_manage_driver_inbox?: boolean;
     }) => {
 
       // Check if binding already exists (maybe inactive)
@@ -116,6 +118,8 @@ export function useCreateRunnerAssistant() {
             runner_id: input.runner_id,
             can_deliver: input.can_deliver,
             can_confirm_receipt: input.can_confirm_receipt,
+            can_manage_driver_stock: input.can_manage_driver_stock ?? false,
+            can_manage_driver_inbox: input.can_manage_driver_inbox ?? false,
             is_active: true,
             created_by: user?.id,
           })
@@ -133,6 +137,8 @@ export function useCreateRunnerAssistant() {
           assistant_id: input.assistant_id,
           can_deliver: input.can_deliver,
           can_confirm_receipt: input.can_confirm_receipt,
+          can_manage_driver_stock: input.can_manage_driver_stock ?? false,
+          can_manage_driver_inbox: input.can_manage_driver_inbox ?? false,
           created_by: user?.id,
         })
         .select()
@@ -162,11 +168,15 @@ export function useUpdateRunnerAssistant() {
       id: string;
       can_deliver?: boolean;
       can_confirm_receipt?: boolean;
+      can_manage_driver_stock?: boolean;
+      can_manage_driver_inbox?: boolean;
       is_active?: boolean;
     }) => {
       const updates: Record<string, any> = {};
       if (input.can_deliver !== undefined) updates.can_deliver = input.can_deliver;
       if (input.can_confirm_receipt !== undefined) updates.can_confirm_receipt = input.can_confirm_receipt;
+      if (input.can_manage_driver_stock !== undefined) updates.can_manage_driver_stock = input.can_manage_driver_stock;
+      if (input.can_manage_driver_inbox !== undefined) updates.can_manage_driver_inbox = input.can_manage_driver_inbox;
       if (input.is_active !== undefined) updates.is_active = input.is_active;
 
       const { data, error } = await supabase

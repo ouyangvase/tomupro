@@ -406,9 +406,27 @@ Deno.serve(async (req) => {
   body.eventIds = eventIds;
 
   const isExplicitEventBatch = eventIds.length > 0;
-  const isDrain = !body.eventId && !isExplicitEventBatch;
+  const isQueueRequest = !body.eventId && !isExplicitEventBatch;
+  const isDrain = isQueueRequest && body.drain === true;
+  const drainEnabled = Deno.env.get("SNIPERS_DRAIN_ENABLED") === "true";
+  if (isQueueRequest && !isDrain) {
+    return jsonResponse({
+      success: true,
+      drain: false,
+      processed: 0,
+      reason: "SNIPERS implicit queue drain is disabled. Use orderId, eventId, or explicit eventIds.",
+    });
+  }
   if (isDrain && !auth.isServiceRole) {
     return jsonResponse({ success: false, error: "Only service credentials may drain SNIPERS delivery events" }, 403);
+  }
+  if (isDrain && !drainEnabled) {
+    return jsonResponse({
+      success: true,
+      drain: true,
+      processed: 0,
+      reason: "SNIPERS queue drain is disabled by SNIPERS_DRAIN_ENABLED.",
+    });
   }
   if (isExplicitEventBatch && !auth.isServiceRole) {
     if (!auth.userId || !(await canTriggerBatchSend(supabase, auth.userId))) {

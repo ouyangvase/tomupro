@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHero } from '@/components/dashboard/PageHero';
 import { DispatchStatusCards } from '@/components/orders/DispatchStatusCards';
@@ -15,7 +15,12 @@ import capybaraEmpty from '@/assets/capybara-empty.png';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { OrderFiltersPanel, type OrderFilters } from '@/components/filters/OrderFiltersPanel';
 
-export default function RunnerFailedOrders() {
+interface RunnerFailedOrdersProps {
+  initialSearch?: string;
+  highlightOrderId?: string | null;
+}
+
+export default function RunnerFailedOrders({ initialSearch = '', highlightOrderId = null }: RunnerFailedOrdersProps) {
   const { user } = useAuth();
   const [serverSearch, setServerSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
@@ -37,6 +42,12 @@ export default function RunnerFailedOrders() {
   }, 50);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+
+  useEffect(() => {
+    if (initialSearch) {
+      setServerSearch(initialSearch);
+    }
+  }, [initialSearch]);
 
   const failedDeliveries = useMemo(() => orders.filter(o => o.runner_status === 'FAILED_DELIVERY'), [orders]);
   const cancelledOrders = useMemo(() => orders.filter(o => o.status === 'CANCELLED'), [orders]);
@@ -81,7 +92,7 @@ export default function RunnerFailedOrders() {
           <div className="relative min-w-[200px] flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by order ref, customer, area..."
+              placeholder="Search order code..."
               value={serverSearch}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-9 h-10 rounded-full border-border/60 bg-card"
@@ -116,6 +127,7 @@ export default function RunnerFailedOrders() {
           totalPages={pagination.totalPages}
           onPageChange={setPage}
           isFetching={isFetching}
+          highlightOrderId={highlightOrderId}
         />
       </div>
 

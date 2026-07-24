@@ -7,8 +7,8 @@ import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { DRIVER_WORKLOAD_STATUSES, isDriverWorkloadOrder } from '@/lib/driverOrderScope';
 import { useAuth } from '@/contexts/AuthContext';
 
-function flushTelegramEventQueue() {
-  supabase.functions.invoke('send-telegram-event').catch((error) => {
+function flushTelegramEventQueue(body?: Record<string, unknown>) {
+  supabase.functions.invoke('send-telegram-event', { body: body || { limit: 3 } }).catch((error) => {
     console.warn('Failed to flush Telegram event queue:', error);
   });
 }
@@ -42,13 +42,14 @@ export function useRunnerDrivers(runnerId?: string) {
 }
 
 // Get drivers for current runner (self)
-export function useMyDrivers() {
+export function useMyDrivers(runnerIdOverride?: string) {
   const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
 
   return useQuery({
-    queryKey: ['my-drivers'],
+    queryKey: ['my-drivers', runnerScopeId],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!runnerScopeId) return [];
       
       const { data, error } = await supabase
         .from('runner_drivers')
@@ -56,13 +57,14 @@ export function useMyDrivers() {
           *,
           driver:profiles!runner_drivers_driver_id_fkey(id, display_name, email, role, is_active)
         `)
-        .eq('runner_id', user.id)
+        .eq('runner_id', runnerScopeId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
       return data as unknown as RunnerDriver[];
     },
+    enabled: Boolean(runnerScopeId),
   });
 }
 
@@ -289,6 +291,8 @@ export function useBulkAssignOrdersToDriver() {
 }
 
 // Driver marks order as delivered with payment method
+type DriverDeliveredPaymentMethod = 'CASH' | 'TRANSFER' | 'CASH_TRANSFER';
+
 export function useDriverMarkDelivered() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -296,10 +300,13 @@ export function useDriverMarkDelivered() {
   return useMutation({
     mutationFn: async ({
       orderId,
-      paymentMethod
+      paymentMethod,
+      cashAmount,
     }: {
       orderId: string;
-      paymentMethod: 'CASH' | 'TRANSFER'
+      paymentMethod: DriverDeliveredPaymentMethod;
+      cashAmount?: number;
+      transferAmount?: number;
     }) => {
       // Get current user (driver)
       if (!user?.id) throw new Error('Not authenticated');
@@ -313,6 +320,15 @@ export function useDriverMarkDelivered() {
       
       if (orderError) throw orderError;
 
+      const orderAmount = Number(order.total_amount || 0);
+      const collectedCash =
+        paymentMethod === 'CASH'
+          ? orderAmount
+          : paymentMethod === 'TRANSFER'
+            ? 0
+            : Math.max(0, Math.min(orderAmount, Number(cashAmount || 0)));
+      const collectedTransfer = Math.max(0, orderAmount - collectedCash);
+
       // Update order with driver-reported payment method
       const { data, error } = await supabase
         .from('orders')
@@ -320,6 +336,8 @@ export function useDriverMarkDelivered() {
           driver_status: 'DRIVER_DELIVERED',
           driver_delivered_at: new Date().toISOString(),
           driver_payment_method: paymentMethod,
+          driver_cash_amount: collectedCash,
+          driver_transfer_amount: collectedTransfer,
           runner_accept_status: 'PENDING',
         })
         .eq('id', orderId)
@@ -328,8 +346,8 @@ export function useDriverMarkDelivered() {
       
       if (error) throw error;
 
-      // If CASH, create liability immediately
-      if (paymentMethod === 'CASH' && order.runner_id) {
+      // Cash liability is only for the cash portion; transfer balance is not collected from driver.
+      if (collectedCash > 0 && order.runner_id) {
         try {
           await createDriverCashLiability({
             driverId: user.id,
@@ -337,7 +355,7 @@ export function useDriverMarkDelivered() {
             orderId,
             orderCode: order.order_code,
             customerName: order.customer_name,
-            cashAmount: Number(order.total_amount),
+            cashAmount: collectedCash,
           });
         } catch (liabilityError) {
           // Log but don't fail the main operation
@@ -347,13 +365,15 @@ export function useDriverMarkDelivered() {
       
       return data;
     },
-    onSuccess: (_, { paymentMethod }) => {
+    onSuccess: (_, { orderId, paymentMethod }) => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
-      flushTelegramEventQueue();
-      const msg = paymentMethod === 'CASH' 
+      flushTelegramEventQueue({ order_id: orderId, event_type: 'driver_delivered', limit: 2 });
+      const msg = paymentMethod === 'CASH'
         ? 'Delivered (Cash recorded), awaiting runner acceptance'
-        : 'Delivered (Transfer), awaiting runner acceptance';
+        : paymentMethod === 'CASH_TRANSFER'
+          ? 'Delivered (Cash + transfer recorded), awaiting runner acceptance'
+          : 'Delivered (Transfer), awaiting runner acceptance';
       toast.success(msg);
     },
     onError: (error: Error) => {
@@ -393,9 +413,9 @@ export function useDriverMarkFailed() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, { orderId }) => {
       invalidateOrderQueries(queryClient);
-      flushTelegramEventQueue();
+      flushTelegramEventQueue({ order_id: orderId, event_type: 'driver_failed', limit: 2 });
       toast.success('Marked as failed');
     },
     onError: (error: Error) => {
@@ -509,7 +529,7 @@ export function useDriverOrderCount(driverId?: string) {
       
       const { data, error } = await supabase
         .from('orders')
-        .select('id, driver_status, runner_status, runner_accept_status')
+        .select('id, status, driver_status, runner_status, runner_accept_status, order_date, expected_pickup_date, next_delivery_date, runner_assigned_at, created_at')
         .eq('driver_id', driverId)
         .in('driver_status', [...DRIVER_WORKLOAD_STATUSES]);
       
@@ -577,13 +597,14 @@ export function useUnassignDriverFromOrder() {
 // Get active orders for Runner Driver Inbox.
 // This intentionally matches Runner Inbox active scope:
 // READY orders assigned/taken by the current runner, excluding delivered/failed/unassigned.
-export function useRunnerDriverOrders() {
+export function useRunnerDriverOrders(runnerIdOverride?: string) {
   const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
 
   return useQuery({
-    queryKey: ['runner-driver-orders', user?.id],
+    queryKey: ['runner-driver-orders', runnerScopeId],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!runnerScopeId) return [];
 
       const { data, error } = await supabase
         .from('orders')
@@ -591,7 +612,7 @@ export function useRunnerDriverOrders() {
           *,
           order_items(*)
         `)
-        .eq('runner_id', user.id)
+        .eq('runner_id', runnerScopeId)
         .eq('status', 'READY')
         .in('runner_status', ['ASSIGNED', 'TAKEN'])
         .order('runner_assigned_at', { ascending: false, nullsFirst: false })
@@ -627,5 +648,6 @@ export function useRunnerDriverOrders() {
         driver: order.driver_id ? usersMap[order.driver_id] : null,
       })) || [];
     },
+    enabled: Boolean(runnerScopeId),
   });
 }

@@ -206,8 +206,8 @@ export function usePaginatedOrders(
 
       // Search
       if (filters.searchQuery?.trim()) {
-        const searchTerm = `%${filters.searchQuery.trim()}%`;
-        query = query.or(`order_code.ilike.${searchTerm},customer_name.ilike.${searchTerm},area.ilike.${searchTerm},phone.ilike.${searchTerm},address.ilike.${searchTerm}`);
+        const searchTerm = `${filters.searchQuery.trim().toUpperCase().replace(/\s+/g, '')}%`;
+        query = query.ilike('order_code', searchTerm);
       }
 
       // Area filter
@@ -427,8 +427,8 @@ export function useAllOrderIds(
         if (filters.excludeStatus) query = query.neq('status', filters.excludeStatus);
 
         if (filters.searchQuery?.trim()) {
-          const searchTerm = `%${filters.searchQuery.trim()}%`;
-          query = query.or(`order_code.ilike.${searchTerm},customer_name.ilike.${searchTerm},area.ilike.${searchTerm},phone.ilike.${searchTerm},address.ilike.${searchTerm}`);
+          const searchTerm = `${filters.searchQuery.trim().toUpperCase().replace(/\s+/g, '')}%`;
+          query = query.ilike('order_code', searchTerm);
         }
         if (filters.areaFilter && filters.areaFilter !== 'all') {
           query = query.eq('area', filters.areaFilter);

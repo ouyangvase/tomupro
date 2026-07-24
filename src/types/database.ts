@@ -151,6 +151,8 @@ export interface RunnerAssistant {
   assistant_id: string;
   can_deliver: boolean;
   can_confirm_receipt: boolean;
+  can_manage_driver_stock: boolean;
+  can_manage_driver_inbox: boolean;
   is_active: boolean;
   created_by: string | null;
   created_at: string;
@@ -227,6 +229,8 @@ export interface Order {
   driver_status: DriverStatus | null;
   runner_accept_status: RunnerAcceptStatus | null;
   driver_delivered_at: string | null;
+  driver_cash_amount?: number | null;
+  driver_transfer_amount?: number | null;
   driver_failed_reason: string | null;
   driver_failed_remark: string | null;
   driver_next_delivery_date: string | null;

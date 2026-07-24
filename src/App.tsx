@@ -248,7 +248,7 @@ function AppRoutes() {
       <Route path="/runner/delivered-orders" element={<Navigate to="/orders?tab=delivered" replace />} />
       <Route path="/runner/inbox" element={<Navigate to="/dispatch?tab=inbox" replace />} />
       <Route path="/admin/runner-inbox" element={<Navigate to="/dispatch?tab=inbox" replace />} />
-      <Route path="/runner/inbound" element={<Navigate to="/dispatch?tab=inbound" replace />} />
+      <Route path="/runner/inbound" element={<Navigate to="/inventory?tab=inbound" replace />} />
       <Route path="/runner/driver-inbox" element={<Navigate to="/dispatch?tab=driver-inbox" replace />} />
       <Route path="/runner/drivers" element={<Navigate to="/dispatch?tab=drivers" replace />} />
       <Route path="/runner/failed-orders" element={<Navigate to="/dispatch?tab=failed" replace />} />
@@ -274,7 +274,7 @@ function AppRoutes() {
       <Route path="/admin/delivery-fees-report" element={<Navigate to="/finance?tab=delivery-report" replace />} />
       <Route path="/admin/overview" element={<Navigate to="/finance?tab=overview" replace />} />
       <Route path="/runner/claims" element={<Navigate to="/finance?tab=my-claims" replace />} />
-      <Route path="/runner/cash-settlement" element={<Navigate to="/finance?tab=cash-settlement" replace />} />
+      <Route path="/runner/cash-settlement" element={<Navigate to="/dispatch?tab=driver-stock" replace />} />
       <Route path="/runner/cash-driver" element={<Navigate to="/finance?tab=cash-driver" replace />} />
       <Route path="/runner/delivery-charges" element={<Navigate to="/finance?tab=delivery-charges" replace />} />
       <Route path="/runner/driver-pickups" element={<Navigate to="/finance?tab=driver-pickups" replace />} />

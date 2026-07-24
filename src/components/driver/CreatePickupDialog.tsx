@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,8 +19,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
 interface CreatePickupDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  defaultDriverId?: string;
+  runnerIdOverride?: string;
+  trigger?: ReactNode;
 }
 
 interface PickupItem {
@@ -30,11 +33,15 @@ interface PickupItem {
   buffer_qty: number;
 }
 
-export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogProps) {
+export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', runnerIdOverride, trigger }: CreatePickupDialogProps) {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   
-  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [internalOpen, setInternalOpen] = useState(false);
+  const dialogOpen = open ?? internalOpen;
+  const setDialogOpen = onOpenChange ?? setInternalOpen;
+
+  const [selectedDriverId, setSelectedDriverId] = useState(defaultDriverId);
   const [pickupDate, setPickupDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<PickupItem[]>([]);
@@ -43,12 +50,18 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const [acknowledgeReturn, setAcknowledgeReturn] = useState(false);
   const [forceCreate, setForceCreate] = useState(false);
 
-  const { data: drivers } = useMyDrivers();
+  const { data: drivers } = useMyDrivers(runnerIdOverride);
   const { data: products } = useProducts();
   const { data: blockingOrders, isLoading: loadingBlocking } = useDriverBlockingOrders(selectedDriverId || undefined);
-  const { data: suggestedQty, isLoading: loadingSuggestion } = useSuggestedPickupQty(selectedDriverId || undefined, pickupDate);
+  const { data: suggestedQty, isLoading: loadingSuggestion } = useSuggestedPickupQty(selectedDriverId || undefined, pickupDate, runnerIdOverride);
   const { canReceivePickup, returnRequired, mustReturnItems, totalMustReturn, isLoading: loadingReturnCheck } = useCanDriverReceivePickup(selectedDriverId || undefined);
   const createPickup = useCreatePickup();
+
+  useEffect(() => {
+    if (dialogOpen) {
+      setSelectedDriverId(defaultDriverId || '');
+    }
+  }, [defaultDriverId, dialogOpen]);
 
   // Reset acknowledgments when driver changes
   useEffect(() => {
@@ -107,6 +120,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
 
     await createPickup.mutateAsync({
       driver_id: selectedDriverId,
+      runner_id: runnerIdOverride,
       pickup_date: pickupDate,
       notes: notes || undefined,
       items: validItems.map(i => ({
@@ -118,7 +132,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
       force: forceCreate || acknowledgeBlocking || acknowledgeReturn,
     });
 
-    onOpenChange(false);
+    setDialogOpen(false);
     setSelectedDriverId('');
     setNotes('');
     setItems([]);
@@ -131,16 +145,34 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
   const hasBlockingOrders = blockingOrders && blockingOrders.length > 0;
   const hasReturnRequired = selectedDriverId && returnRequired;
   const hasSuggestions = suggestedQty && suggestedQty.length > 0;
+  const suggestedByProductId = useMemo(() => {
+    const map = new Map<string, SuggestedQuantity>();
+    (suggestedQty || []).forEach((suggestion) => map.set(suggestion.product_id, suggestion));
+    return map;
+  }, [suggestedQty]);
 
   const getProductName = (productId: string) => {
+    const suggestion = suggestedByProductId.get(productId);
+    if (suggestion) {
+      return `${suggestion.sku_code ? `${suggestion.sku_code} / ` : ''}${suggestion.sku_name}`;
+    }
+
     const product = products?.find(p => p.id === productId);
-    if (!product) return 'Unknown';
+    if (!product) return 'Unlinked product';
     return `${product.sku_code || 'N/A'} / ${product.sku_name}`;
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <DialogTrigger asChild>
+        {trigger || (
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Pickup
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-3xl p-4 sm:max-w-3xl sm:p-6">
         <DialogHeader>
           <DialogTitle>Create Pickup for Driver</DialogTitle>
           <DialogDescription>
@@ -149,7 +181,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Driver</Label>
               <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
@@ -183,11 +215,15 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-700">Outstanding Orders Warning</AlertTitle>
               <AlertDescription className="text-amber-700">
-                Driver has {blockingOrders.length} outstanding order(s) from previous days that need status updates:
-                <ul className="mt-2 list-disc list-inside">
+                Driver has {blockingOrders.length} active outstanding order(s) from previous days that need status updates. Delivered orders are ignored:
+                <ul className="mt-2 space-y-1">
                   {blockingOrders.slice(0, 5).map(order => (
-                    <li key={order.order_id}>
-                      {order.order_code} - {order.customer_name} ({order.driver_status})
+                    <li key={order.order_id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-semibold">{order.order_code}</span>
+                      <span>{order.customer_name}</span>
+                      <Badge variant="outline" className="border-amber-300 text-amber-700">
+                        {order.driver_status}
+                      </Badge>
                     </li>
                   ))}
                   {blockingOrders.length > 5 && <li>...and {blockingOrders.length - 5} more</li>}
@@ -277,11 +313,12 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="Optional notes for the pickup"
+              className="min-h-24"
             />
           </div>
 
           <div className="space-y-2">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label>Items</Label>
               <Button size="sm" variant="outline" onClick={addItem}>
                 <Plus className="h-4 w-4 mr-1" /> Add Item
@@ -289,6 +326,8 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
             </div>
 
             {items.length > 0 && (
+              <>
+              <div className="hidden sm:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -360,6 +399,73 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                   })}
                 </TableBody>
               </Table>
+              </div>
+
+              <div className="space-y-2 sm:hidden">
+                {items.map((item, index) => {
+                  const isLower = item.required_qty > 0 && item.qty < item.required_qty;
+                  return (
+                    <div key={index} className={`rounded-2xl border bg-card p-3 ${isLower ? 'border-destructive/40 bg-destructive/5' : 'border-border/70'}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">Product</p>
+                          {item.required_qty > 0 ? (
+                            <p className="mt-1 break-words text-sm font-bold text-foreground">{getProductName(item.product_id)}</p>
+                          ) : (
+                            <Select
+                              value={item.product_id}
+                              onValueChange={v => updateItem(index, 'product_id', v)}
+                            >
+                              <SelectTrigger className="mt-1 h-10 rounded-xl">
+                                <SelectValue placeholder="Select product" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {products?.map(product => (
+                                  <SelectItem key={product.id} value={product.id}>
+                                    {product.sku_code || 'N/A'} / {product.sku_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-9 w-9 shrink-0"
+                          onClick={() => removeItem(index)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="rounded-xl bg-muted/50 p-2 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-muted-foreground">Required</p>
+                          <p className="mt-1 text-base font-black">{item.required_qty || 0}</p>
+                        </div>
+                        <div className="rounded-xl bg-muted/50 p-2 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-muted-foreground">Buffer</p>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={item.buffer_qty}
+                            onChange={e => updateItem(index, 'buffer_qty', parseInt(e.target.value) || 0)}
+                            className="mt-1 h-9 rounded-xl text-center"
+                          />
+                        </div>
+                        <div className="rounded-xl bg-muted/50 p-2 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-muted-foreground">Total</p>
+                          <Badge variant={isLower ? "destructive" : "default"} className="mt-2 rounded-full">
+                            {item.qty}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              </>
             )}
 
             {hasLowerThanRequired && (
@@ -383,8 +489,8 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
             )}
           </div>
 
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button
@@ -397,6 +503,7 @@ export function CreatePickupDialog({ open, onOpenChange }: CreatePickupDialogPro
                 (!forceCreate && hasReturnRequired && !acknowledgeReturn) ||
                 createPickup.isPending
               }
+              className="w-full sm:w-auto"
             >
               {createPickup.isPending ? 'Creating...' : forceCreate ? 'Force Create' : 'Create Pickup'}
             </Button>

@@ -55,6 +55,16 @@ interface Recipient {
   kind: RecipientKind;
 }
 
+interface SendTelegramEventRequest {
+  event_id?: string;
+  event_ids?: string[];
+  order_id?: string;
+  event_type?: string;
+  limit?: number;
+  drain?: boolean;
+  trigger?: string;
+}
+
 async function sendTelegramMessage(botToken: string, chatId: string, text: string): Promise<TelegramResponse> {
   const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
@@ -266,6 +276,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    let requestBody: SendTelegramEventRequest = {};
+    try {
+      requestBody = await req.json();
+    } catch {
+      requestBody = {};
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -285,12 +302,34 @@ Deno.serve(async (req) => {
 
     const botToken = botSettings.bot_token;
 
-    const { data: rawEvents, error: evError } = await supabase
+    const eventIds = Array.isArray(requestBody.event_ids)
+      ? [...new Set(requestBody.event_ids.map((id) => String(id).trim()).filter(Boolean))]
+      : [];
+    const eventLimit = requestBody.event_id || eventIds.length > 0 || requestBody.order_id
+      ? Math.min(Math.max(Number(requestBody.limit || 5), 1), 10)
+      : requestBody.drain === true
+        ? Math.min(Math.max(Number(requestBody.limit || 10), 1), 10)
+        : Math.min(Math.max(Number(requestBody.limit || 3), 1), 3);
+
+    let eventQuery = supabase
       .from('telegram_event_queue')
       .select('*')
       .eq('processed', false)
       .order('created_at', { ascending: true })
-      .limit(50);
+      .limit(eventLimit);
+
+    if (requestBody.event_id) {
+      eventQuery = eventQuery.eq('id', requestBody.event_id);
+    } else if (eventIds.length > 0) {
+      eventQuery = eventQuery.in('id', eventIds.slice(0, eventLimit));
+    } else if (requestBody.order_id) {
+      eventQuery = eventQuery.eq('order_id', requestBody.order_id);
+      if (requestBody.event_type) {
+        eventQuery = eventQuery.eq('event_type', requestBody.event_type);
+      }
+    }
+
+    const { data: rawEvents, error: evError } = await eventQuery;
 
     if (evError) throw evError;
 

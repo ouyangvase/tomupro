@@ -217,7 +217,7 @@ function ClaimEligibilityBadge({ order, approvedChargeMap, canClaim }: { order: 
   );
 }
 
-export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightOrderId?: string | null }) {
+export default function RunnerDeliveredOrders({ initialSearch = '', highlightOrderId }: { initialSearch?: string; highlightOrderId?: string | null }) {
   const { user, profile, role } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -265,6 +265,12 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { dateRange, setDateRange } = useDateRangeState();
+
+  useEffect(() => {
+    if (initialSearch) {
+      setSearchQuery(initialSearch);
+    }
+  }, [initialSearch]);
   
   // ---------- Unified RPC path for ALL roles (bypasses RLS via SECURITY DEFINER) ----------
   const isRunnerRole = role === 'runner';
@@ -355,13 +361,9 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
 
     // Search
     if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+      const q = searchQuery.trim().toUpperCase().replace(/\s+/g, '');
       filtered = filtered.filter(o =>
-        (o.order_code || '').toLowerCase().includes(q) ||
-        (o.customer_name || '').toLowerCase().includes(q) ||
-        (o.area || '').toLowerCase().includes(q) ||
-        (o.phone || '').toLowerCase().includes(q) ||
-        (o.address || '').toLowerCase().includes(q)
+        (o.order_code || '').toUpperCase().replace(/\s+/g, '').startsWith(q)
       );
     }
     // Area
@@ -1204,7 +1206,7 @@ export default function RunnerDeliveredOrders({ highlightOrderId }: { highlightO
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search order code, customer, area..."
+                    placeholder="Search order code..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 h-10"

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import {
 import { useUsers } from '@/hooks/useUsers';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useVisibleUserIds } from '@/hooks/useTeamVisibility';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -40,7 +41,11 @@ export default function StockIntegrityAudit() {
   const { profile } = useAuth();
   const isMobile = useIsMobile();
   const isAdmin = profile?.role === 'admin';
+  const role = profile?.role;
+  const isScopedStockRole = role === 'manager' || role === 'salesperson';
+  const canAccessStockAudit = role === 'admin' || role === 'runner' || isScopedStockRole;
   const { data: users = [] } = useUsers();
+  const { visibleUserIds, isLoading: visibilityLoading } = useVisibleUserIds('stock');
 
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,22 +53,51 @@ export default function StockIntegrityAudit() {
   const [quickFilter, setQuickFilter] = useState<'all' | 'negative' | 'mismatch' | 'problems'>('all');
   const [selectedRow, setSelectedRow] = useState<FullStockIntegrityRow | null>(null);
 
-  const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useStockIntegritySummary();
+  const scopedOwnerIds = useMemo(() => {
+    if (!profile?.id) return [];
+    if (role === 'salesperson') return [profile.id];
+    if (role === 'manager') return visibleUserIds ?? [];
+    return [];
+  }, [profile?.id, role, visibleUserIds]);
+
+  const effectiveOwnerFilter = useMemo<string | string[] | null>(() => {
+    if (isScopedStockRole) {
+      if (ownerFilter === 'all') return scopedOwnerIds;
+      return scopedOwnerIds.includes(ownerFilter) ? ownerFilter : [];
+    }
+
+    return ownerFilter === 'all' ? null : ownerFilter;
+  }, [isScopedStockRole, ownerFilter, scopedOwnerIds]);
+
+  const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useStockIntegritySummary(!isScopedStockRole);
   const { data: auditData = [], isLoading, refetch: refetchAudit } = useFullStockIntegrityAudit(
-    ownerFilter === 'all' ? null : ownerFilter,
+    effectiveOwnerFilter,
     statusFilter === 'all' ? null : statusFilter
   );
 
   const quickRepair = useQuickRepair();
   const fullRebuild = useFullStockRebuild();
 
-  const handleRefresh = () => { refetchSummary(); refetchAudit(); };
+  const handleRefresh = () => {
+    if (!isScopedStockRole) refetchSummary();
+    refetchAudit();
+  };
+
+  useEffect(() => {
+    if (!isScopedStockRole || ownerFilter === 'all') return;
+    if (!scopedOwnerIds.includes(ownerFilter)) setOwnerFilter('all');
+  }, [isScopedStockRole, ownerFilter, scopedOwnerIds]);
 
   // Filter options
   const ownerOptions = useMemo(() => {
+    if (isScopedStockRole) {
+      const allowedOwnerIds = new Set(scopedOwnerIds);
+      return users.filter(u => allowedOwnerIds.has(u.id));
+    }
+
     const ownerIds = new Set(auditData.map(r => r.owner_user_id));
     return users.filter(u => ownerIds.has(u.id) || u.role === 'salesperson' || u.role === 'manager');
-  }, [users, auditData]);
+  }, [isScopedStockRole, scopedOwnerIds, users, auditData]);
 
   // Apply local filters
   const filteredData = useMemo(() => {
@@ -84,23 +118,34 @@ export default function StockIntegrityAudit() {
   }, [auditData, searchQuery, quickFilter]);
 
   const localSummary = computeIntegritySummary(filteredData);
+  const scopedSummary = computeIntegritySummary(auditData);
+  const visibleSummary = isScopedStockRole
+    ? {
+        total_skus: scopedSummary.totalSkus,
+        healthy_count: scopedSummary.healthyCount,
+        mismatch_count: scopedSummary.mismatchCount,
+        negative_count: scopedSummary.negativeCount,
+        health_percentage: scopedSummary.healthPercentage,
+      }
+    : summaryData;
+  const visibleSummaryLoading = isScopedStockRole ? isLoading || visibilityLoading : summaryLoading;
 
   // Access control
-  if (profile?.role !== 'admin' && profile?.role !== 'runner') {
+  if (!canAccessStockAudit) {
     return (
       <AppLayout>
         <div className="p-6">
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Access Denied</AlertTitle>
-            <AlertDescription>Only administrators and runners can access the Stock Integrity Audit.</AlertDescription>
+            <AlertDescription>Only administrators, runners, managers, and salespersons can access Stock Audit.</AlertDescription>
           </Alert>
         </div>
       </AppLayout>
     );
   }
 
-  const healthScore = summaryData?.health_percentage ?? 100;
+  const healthScore = visibleSummary?.health_percentage ?? 100;
   const healthColor = healthScore >= 90 ? 'text-[hsl(var(--status-success))]' : healthScore >= 70 ? 'text-[hsl(var(--status-warning))]' : 'text-destructive';
 
   return (
@@ -123,23 +168,23 @@ export default function StockIntegrityAudit() {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <HealthCard
             label="Healthy SKUs"
-            value={summaryData?.healthy_count}
-            total={summaryData?.total_skus}
-            loading={summaryLoading}
+            value={visibleSummary?.healthy_count}
+            total={visibleSummary?.total_skus}
+            loading={visibleSummaryLoading}
             color="success"
             icon={<CheckCircle className="h-5 w-5 text-[hsl(var(--status-success))]" />}
           />
           <HealthCard
             label="Issues Found"
-            value={(summaryData?.mismatch_count ?? 0) + (summaryData?.negative_count ?? 0)}
-            loading={summaryLoading}
+            value={(visibleSummary?.mismatch_count ?? 0) + (visibleSummary?.negative_count ?? 0)}
+            loading={visibleSummaryLoading}
             color="error"
             icon={<AlertTriangle className="h-5 w-5 text-destructive" />}
           />
           <HealthCard
             label="Mismatch"
-            value={summaryData?.mismatch_count}
-            loading={summaryLoading}
+            value={visibleSummary?.mismatch_count}
+            loading={visibleSummaryLoading}
             color="warning"
             icon={<ArrowUpDown className="h-5 w-5 text-[hsl(var(--status-warning))]" />}
           />
@@ -148,7 +193,7 @@ export default function StockIntegrityAudit() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Health Score</p>
-                  {summaryLoading ? (
+                  {visibleSummaryLoading ? (
                     <Skeleton className="h-10 w-20 mt-1" />
                   ) : (
                     <p className={cn("text-4xl font-bold tracking-tight", healthColor)}>{healthScore}%</p>

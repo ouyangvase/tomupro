@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { startOfDay, addDays } from 'date-fns';
+import { getTodayDateKey } from '@/lib/driverOrderScope';
 
 export interface ReturnableItem {
   product_id: string;
@@ -26,10 +26,9 @@ export interface ReturnRequiredResult {
 }
 
 /**
- * Hook to get returnable items for a driver
- * Uses the database function get_driver_returnable_items() for accurate calculation
- * Formula: Available = Pickup - Delivered (runner accepted) - Already Returned
- * Failed deliveries do NOT reduce available qty - driver still has those items!
+ * Hook to get returnable items for a driver.
+ * Formula: Available = acknowledged pickup - driver delivered accepted by runner - already returned.
+ * No pickup means no return requirement.
  */
 export function useDriverReturnRequired(driverId?: string) {
   const { user } = useAuth();
@@ -40,85 +39,139 @@ export function useDriverReturnRequired(driverId?: string) {
       if (!user) throw new Error('Not authenticated');
 
       const targetDriverId = driverId || user.id;
-      const tomorrow = startOfDay(addDays(new Date(), 1));
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      const today = getTodayDateKey();
 
-      // Get returnable items from database function (now includes breakdown)
-      const { data: returnableData, error: returnableError } = await supabase
-        .rpc('get_driver_returnable_items');
+      const { data: pickupRows, error: pickupError } = await supabase
+        .from('driver_pickups')
+        .select(`
+          id,
+          pickup_date,
+          status,
+          items:driver_pickup_items(
+            product_id,
+            qty,
+            product:products(sku_name, sku_code)
+          )
+        `)
+        .eq('driver_id', targetDriverId)
+        .eq('status', 'DRIVER_ACKED')
+        .lt('pickup_date', today);
 
-      if (returnableError) throw returnableError;
+      if (pickupError) throw pickupError;
 
-      // Get orders needed for tomorrow to categorize items
-      const { data: tomorrowOrders, error: ordersError } = await supabase
+      const pickedByProduct = new Map<string, ReturnableItem>();
+      let earliestPickupDate: string | null = null;
+
+      for (const pickup of (pickupRows || []) as any[]) {
+        const pickupDate = String(pickup.pickup_date || '');
+        if (pickupDate && (!earliestPickupDate || pickupDate < earliestPickupDate)) {
+          earliestPickupDate = pickupDate;
+        }
+
+        for (const item of pickup.items || []) {
+          if (!item.product_id) continue;
+          const qty = Number(item.qty || 0);
+          if (qty <= 0) continue;
+          const product = Array.isArray(item.product) ? item.product[0] : item.product;
+          const existing = pickedByProduct.get(item.product_id);
+          if (existing) {
+            existing.pickup_qty += qty;
+            existing.available_qty += qty;
+            existing.suggested_return_qty += qty;
+          } else {
+            pickedByProduct.set(item.product_id, {
+              product_id: item.product_id,
+              sku_code: product?.sku_code || null,
+              sku_name: product?.sku_name || 'Unknown',
+              pickup_qty: qty,
+              delivered_qty: 0,
+              returned_qty: 0,
+              available_qty: qty,
+              needed_tomorrow_qty: 0,
+              suggested_return_qty: qty,
+              must_return: true,
+            });
+          }
+        }
+      }
+
+      if (pickedByProduct.size === 0) {
+        return {
+          isReturnRequired: false,
+          items: [],
+          mustReturnItems: [],
+          keepForTomorrowItems: [],
+          totalMustReturn: 0,
+          totalAvailable: 0,
+        };
+      }
+
+      const { data: returnRows, error: returnsError } = await supabase
+        .from('driver_returns')
+        .select(`
+          id,
+          status,
+          items:driver_return_items(product_id, qty)
+        `)
+        .eq('driver_id', targetDriverId)
+        .neq('status', 'CANCELLED');
+
+      if (returnsError) throw returnsError;
+
+      for (const row of (returnRows || []) as any[]) {
+        for (const item of row.items || []) {
+          const current = pickedByProduct.get(item.product_id);
+          if (!current) continue;
+          const qty = Number(item.qty || 0);
+          current.returned_qty += qty;
+          current.available_qty = Math.max(current.available_qty - qty, 0);
+          current.suggested_return_qty = current.available_qty;
+        }
+      }
+
+      const deliveredQuery = supabase
         .from('orders')
         .select(`
           id,
-          next_delivery_date,
-          expected_pickup_date,
-          order_date,
           driver_status,
-          runner_status,
           runner_accept_status,
+          driver_delivered_at,
+          delivered_at,
           order_items(product_id, qty)
         `)
         .eq('driver_id', targetDriverId)
-        .neq('status', 'CANCELLED')
-        .not('runner_status', 'in', '("DELIVERED")');
+        .eq('driver_status', 'DRIVER_DELIVERED')
+        .eq('runner_accept_status', 'ACCEPTED');
 
-      if (ordersError) throw ordersError;
+      const { data: deliveredRows, error: deliveredError } = earliestPickupDate
+        ? await deliveredQuery.or(`driver_delivered_at.gte.${earliestPickupDate},delivered_at.gte.${earliestPickupDate}`)
+        : await deliveredQuery;
 
-      // Calculate needed for tomorrow per product
-      const neededTomorrow = new Map<string, number>();
-      
-      for (const order of tomorrowOrders || []) {
-        // Determine delivery date
-        const deliveryDate = order.next_delivery_date || order.expected_pickup_date || order.order_date;
-        if (!deliveryDate) continue;
-        
-        // Check if this order is for tomorrow
-        const orderDeliveryDate = deliveryDate.split('T')[0];
-        if (orderDeliveryDate !== tomorrowStr) continue;
+      if (deliveredError) throw deliveredError;
 
-        // Skip already delivered orders
-        if (order.runner_status === 'DELIVERED' || order.runner_accept_status === 'ACCEPTED') {
-          continue;
-        }
-
-        // Sum up items needed for tomorrow
+      for (const order of (deliveredRows || []) as any[]) {
         for (const item of order.order_items || []) {
-          if (!item.product_id) continue;
-          const current = neededTomorrow.get(item.product_id) || 0;
-          neededTomorrow.set(item.product_id, current + item.qty);
+          const current = pickedByProduct.get(item.product_id);
+          if (!current) continue;
+          const qty = Number(item.qty || 0);
+          current.delivered_qty += qty;
+          current.available_qty = Math.max(current.available_qty - qty, 0);
+          current.suggested_return_qty = current.available_qty;
         }
       }
 
-      // Build categorized items with full breakdown
-      const items: ReturnableItem[] = [];
-      
-      for (const item of returnableData || []) {
-        if (!item.product_id || item.available_qty <= 0) continue;
+      const items = Array.from(pickedByProduct.values())
+        .map(item => ({
+          ...item,
+          available_qty: Math.max(item.available_qty, 0),
+          suggested_return_qty: Math.max(item.available_qty, 0),
+          must_return: item.available_qty > 0,
+        }))
+        .filter(item => item.available_qty > 0)
+        .sort((a, b) => a.sku_name.localeCompare(b.sku_name));
 
-        const neededQty = neededTomorrow.get(item.product_id) || 0;
-        const mustReturnQty = Math.max(Number(item.available_qty) - neededQty, 0);
-        
-        items.push({
-          product_id: item.product_id,
-          sku_code: item.sku_code,
-          sku_name: item.sku_name || 'Unknown',
-          pickup_qty: Number(item.pickup_qty),
-          delivered_qty: Number(item.delivered_qty),
-          returned_qty: Number(item.returned_qty),
-          available_qty: Number(item.available_qty),
-          needed_tomorrow_qty: neededQty,
-          suggested_return_qty: mustReturnQty,
-          must_return: mustReturnQty > 0,
-        });
-      }
-
-      // Categorize items
       const mustReturnItems = items.filter(i => i.must_return);
-      const keepForTomorrowItems = items.filter(i => !i.must_return && i.needed_tomorrow_qty > 0);
+      const keepForTomorrowItems: ReturnableItem[] = [];
 
       const totalMustReturn = mustReturnItems.reduce((sum, i) => sum + i.suggested_return_qty, 0);
       const totalAvailable = items.reduce((sum, i) => sum + i.available_qty, 0);

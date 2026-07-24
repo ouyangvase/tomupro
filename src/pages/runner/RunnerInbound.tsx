@@ -1,5 +1,4 @@
 import { useState, useMemo, useRef } from 'react';
-import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -191,8 +190,7 @@ export default function RunnerInbound() {
   const selectedUser = boundUsers.find(u => u.id === targetUserId);
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Hero Header */}
         <PageHero
           icon={<PackageOpen className="h-6 w-6 text-primary" />}
@@ -564,8 +562,7 @@ export default function RunnerInbound() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
-    </AppLayout>
+    </div>
   );
 }
 

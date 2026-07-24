@@ -583,7 +583,7 @@ export default function IntegrationSettings() {
             <div className="space-y-0.5">
               <Label className="font-medium text-foreground">Enable Smart Merge</Label>
               <p className="text-xs text-muted-foreground">
-                When enabled, runners will see a "Smart Merge" tab in Dispatch that groups orders by phone, address, and delivery date
+                When enabled, runners can open Duplicate Orders from Runner Inbox to group orders by phone, address, and delivery date
               </p>
             </div>
             <Switch

@@ -3066,6 +3066,7 @@ export type Database = {
           discount_amount: number | null
           dispute_notes: string | null
           dispute_reason: string | null
+          driver_cash_amount: number | null
           driver_delivered_at: string | null
           driver_failed_reason: string | null
           driver_failed_remark: string | null
@@ -3073,6 +3074,7 @@ export type Database = {
           driver_next_delivery_date: string | null
           driver_payment_method: string | null
           driver_status: string | null
+          driver_transfer_amount: number | null
           expected_pickup_date: string | null
           failed_next_step:
             | Database["public"]["Enums"]["failed_next_step"]
@@ -3138,6 +3140,7 @@ export type Database = {
           discount_amount?: number | null
           dispute_notes?: string | null
           dispute_reason?: string | null
+          driver_cash_amount?: number | null
           driver_delivered_at?: string | null
           driver_failed_reason?: string | null
           driver_failed_remark?: string | null
@@ -3145,6 +3148,7 @@ export type Database = {
           driver_next_delivery_date?: string | null
           driver_payment_method?: string | null
           driver_status?: string | null
+          driver_transfer_amount?: number | null
           expected_pickup_date?: string | null
           failed_next_step?:
             | Database["public"]["Enums"]["failed_next_step"]
@@ -3210,6 +3214,7 @@ export type Database = {
           discount_amount?: number | null
           dispute_notes?: string | null
           dispute_reason?: string | null
+          driver_cash_amount?: number | null
           driver_delivered_at?: string | null
           driver_failed_reason?: string | null
           driver_failed_remark?: string | null
@@ -3217,6 +3222,7 @@ export type Database = {
           driver_next_delivery_date?: string | null
           driver_payment_method?: string | null
           driver_status?: string | null
+          driver_transfer_amount?: number | null
           expected_pickup_date?: string | null
           failed_next_step?:
             | Database["public"]["Enums"]["failed_next_step"]

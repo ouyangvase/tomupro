@@ -1,13 +1,16 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useSearchParams } from 'react-router-dom';
-import { lazy, Suspense, useEffect, Component, type ReactNode } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState, Component, type ReactNode } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import { SyncNowButton } from '@/components/google-sheet/SyncNowButton';
 import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Layers, X } from 'lucide-react';
 
 // Retry dynamic import once on chunk load failure (stale deployment cache)
-function lazyRetry<T extends { default: React.ComponentType<unknown> }>(
+function lazyRetry<T extends { default: React.ComponentType<any> }>(
   importFn: () => Promise<T>,
 ) {
   return lazy(() =>
@@ -26,13 +29,12 @@ function lazyRetry<T extends { default: React.ComponentType<unknown> }>(
 
 const RunnerInbox = lazyRetry(() => import('@/pages/runner/RunnerInbox'));
 const AdminRunnerInbox = lazyRetry(() => import('@/pages/admin/AdminRunnerInbox'));
-const RunnerInbound = lazyRetry(() => import('@/pages/runner/RunnerInbound'));
 const DriverLocationsPage = lazyRetry(() => import('@/pages/runner/DriverLocationsPage'));
 const RunnerDriverInbox = lazyRetry(() => import('@/pages/runner/RunnerDriverInbox'));
 const DriverManagement = lazyRetry(() => import('@/pages/runner/DriverManagement'));
+const RunnerDriverStockWorkspace = lazyRetry(() => import('@/pages/runner/RunnerDriverStockWorkspace'));
 const RunnerFailedOrders = lazyRetry(() => import('@/pages/runner/RunnerFailedOrders'));
 const RunnerDeliveredOrders = lazyRetry(() => import('@/pages/runner/RunnerDeliveredOrders'));
-const RunnerPickupOrders = lazyRetry(() => import('@/pages/runner/RunnerPickupOrders'));
 const SmartMergeTab = lazyRetry(() => import('@/pages/runner/SmartMergeTab'));
 
 const Loading = () => (
@@ -76,47 +78,109 @@ export default function DispatchModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const role = profile?.role;
-  const { data: assistantBinding } = useMyAssistantBinding();
+  const { data: assistantBinding, isLoading: assistantBindingLoading } = useMyAssistantBinding();
   const activeTab = searchParams.get('tab') || 'inbox';
+  const highlightOrderId = searchParams.get('highlight') || null;
+  const routeSearch = searchParams.get('search') || '';
+  const [showDuplicateOrders, setShowDuplicateOrders] = useState(false);
+  const assistantRunnerId = role === 'runner_assistant' ? assistantBinding?.runner_id : undefined;
 
   const runnerTabs = [
     { id: 'inbox', label: 'Runner Inbox' },
     { id: 'driver-inbox', label: 'Driver Inbox' },
-    { id: 'smart-merge', label: 'Smart Merge' },
-    { id: 'pickup-orders', label: 'Pickup Orders' },
-    { id: 'inbound', label: 'Inbound' },
     { id: 'drivers', label: 'Drivers' },
+    { id: 'driver-stock', label: 'Driver Stock' },
     { id: 'failed', label: 'Failed Orders' },
-    { id: 'map', label: 'Live Map' },
     { id: 'delivered', label: 'Delivered Orders' },
+    { id: 'map', label: 'Live Map' },
   ];
 
   const adminTabs = [
     { id: 'inbox', label: 'Runner Inbox' },
-    { id: 'smart-merge', label: 'Smart Merge' },
-    { id: 'inbound', label: 'Inbound' },
     { id: 'map', label: 'Live Map' },
   ];
 
-  const runnerAssistantTabs = assistantBinding?.can_deliver
-    ? [
-        { id: 'inbox', label: 'Runner Inbox' },
-        { id: 'delivered', label: 'Delivered Orders' },
-      ]
-    : [
-        { id: 'inbox', label: 'Receipt Inbox' },
-      ];
+  const runnerAssistantTabs = [
+    { id: 'inbox', label: assistantBinding?.can_deliver ? 'Runner Inbox' : 'Receipt Inbox' },
+    ...(assistantBinding?.can_manage_driver_inbox ? [{ id: 'driver-inbox', label: 'Driver Inbox' }] : []),
+    ...(assistantBinding?.can_manage_driver_stock ? [{ id: 'driver-stock', label: 'Driver Stock' }] : []),
+    ...(assistantBinding?.can_deliver ? [{ id: 'delivered', label: 'Delivered Orders' }] : []),
+  ];
 
   const tabs = role === 'runner' ? runnerTabs : role === 'runner_assistant' ? runnerAssistantTabs : adminTabs;
+  const canUseDriverInbox = role === 'runner' || (role === 'runner_assistant' && Boolean(assistantBinding?.can_manage_driver_inbox));
+  const canUseDriverStock = role === 'runner' || (role === 'runner_assistant' && Boolean(assistantBinding?.can_manage_driver_stock));
 
   // Redirect unknown tabs to inbox (inside useEffect to avoid render-time state updates)
   const validTabIds = tabs.map(t => t.id);
-  const isInvalidTab = !!role && !!activeTab && !validTabIds.includes(activeTab);
+  const assistantTabsPending = role === 'runner_assistant' && assistantBindingLoading;
+  const isInvalidTab = !!role && !!activeTab && !assistantTabsPending && !validTabIds.includes(activeTab);
   useEffect(() => {
     if (isInvalidTab) {
       setSearchParams({ tab: 'inbox' }, { replace: true });
     }
   }, [isInvalidTab, setSearchParams]);
+
+  useEffect(() => {
+    setShowDuplicateOrders(false);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!highlightOrderId) return;
+
+    const timer = window.setTimeout(() => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('highlight');
+        return next;
+      }, { replace: true });
+    }, 4000);
+
+    return () => window.clearTimeout(timer);
+  }, [highlightOrderId, setSearchParams]);
+
+  const duplicateOrdersAction = activeTab === 'inbox' && role === 'runner' ? (
+    <Button
+      type="button"
+      variant={showDuplicateOrders ? 'default' : 'outline'}
+      size="sm"
+      className="h-10 rounded-full whitespace-nowrap"
+      onClick={() => setShowDuplicateOrders((open) => !open)}
+    >
+      <Layers className="mr-2 h-4 w-4" />
+      Duplicate Orders
+    </Button>
+  ) : null;
+
+  const duplicateOrdersPanel = showDuplicateOrders && role === 'runner' ? (
+    <Card className="mt-3 p-3 md:p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">Duplicate Orders</p>
+          <p className="text-xs text-muted-foreground">
+            Orders with the same customer phone, address, and delivery date.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 rounded-full"
+          onClick={() => setShowDuplicateOrders(false)}
+          aria-label="Close duplicate orders"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <TabErrorBoundary>
+        <SmartMergeTab embedded />
+      </TabErrorBoundary>
+    </Card>
+  ) : null;
+
+  if (activeTab === 'inbound') {
+    return <Navigate to="/inventory?tab=inbound" replace />;
+  }
 
   return (
     <div className="space-y-4">
@@ -142,15 +206,76 @@ export default function DispatchModule() {
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
-            {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : <TabErrorBoundary><RunnerInbox /></TabErrorBoundary>)}
-            {activeTab === 'smart-merge' && <TabErrorBoundary><SmartMergeTab /></TabErrorBoundary>}
-            {activeTab === 'pickup-orders' && role === 'runner' && <RunnerPickupOrders />}
-            {activeTab === 'inbound' && <RunnerInbound />}
-            {activeTab === 'driver-inbox' && role === 'runner' && <RunnerDriverInbox />}
+            {activeTab === 'inbox' && role === 'admin' && (
+              <div className="mb-4">
+                <Button
+                  type="button"
+                  variant={showDuplicateOrders ? 'default' : 'outline'}
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => setShowDuplicateOrders((open) => !open)}
+                >
+                  <Layers className="mr-2 h-4 w-4" />
+                  Duplicate Orders
+                </Button>
+                {showDuplicateOrders && (
+                  <Card className="mt-3 p-3 md:p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">Duplicate Orders</p>
+                        <p className="text-xs text-muted-foreground">
+                          Orders with the same customer phone, address, and delivery date.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 rounded-full"
+                        onClick={() => setShowDuplicateOrders(false)}
+                        aria-label="Close duplicate orders"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <TabErrorBoundary>
+                      <SmartMergeTab embedded />
+                    </TabErrorBoundary>
+                  </Card>
+                )}
+              </div>
+            )}
+            {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : (
+              <TabErrorBoundary>
+                <RunnerInbox
+                  initialSearch={routeSearch}
+                  highlightOrderId={highlightOrderId}
+                  duplicateOrdersAction={duplicateOrdersAction}
+                  duplicateOrdersPanel={duplicateOrdersPanel}
+                />
+              </TabErrorBoundary>
+            ))}
+            {activeTab === 'driver-inbox' && canUseDriverInbox && (
+              <TabErrorBoundary>
+                <RunnerDriverInbox runnerIdOverride={assistantRunnerId} />
+              </TabErrorBoundary>
+            )}
             {activeTab === 'drivers' && role === 'runner' && <DriverManagement />}
-            {activeTab === 'failed' && role === 'runner' && <RunnerFailedOrders />}
+            {activeTab === 'driver-stock' && canUseDriverStock && (
+              <TabErrorBoundary>
+                <RunnerDriverStockWorkspace
+                  runnerIdOverride={assistantRunnerId}
+                  hideCashSettlement={role === 'runner_assistant'}
+                />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'failed' && role === 'runner' && (
+              <RunnerFailedOrders initialSearch={routeSearch} highlightOrderId={highlightOrderId} />
+            )}
             {activeTab === 'map' && <DriverLocationsPage />}
-            {activeTab === 'delivered' && (role === 'runner' || role === 'runner_assistant') && <RunnerDeliveredOrders />}
+            {activeTab === 'delivered' && (role === 'runner' || role === 'runner_assistant') && (
+              <RunnerDeliveredOrders initialSearch={routeSearch} highlightOrderId={highlightOrderId} />
+            )}
           </div>
         </Suspense>
       </EmbeddedProvider>

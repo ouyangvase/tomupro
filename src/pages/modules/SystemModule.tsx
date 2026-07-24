@@ -10,6 +10,7 @@ const InviteCodesAdmin = lazy(() => import('@/pages/admin/InviteCodesAdmin'));
 const CommissionSettings = lazy(() => import('@/pages/admin/CommissionSettings'));
 const LeaderboardSettings = lazy(() => import('@/pages/admin/LeaderboardSettings'));
 const ReasonsSettings = lazy(() => import('@/pages/settings/ReasonsSettings'));
+const AreaLearningSettings = lazy(() => import('@/pages/admin/AreaLearningSettings'));
 const IntegrationSettings = lazy(() => import('@/pages/admin/IntegrationSettings'));
 const BrandingSettings = lazy(() => import('@/pages/admin/BrandingSettings'));
 const TelegramAdminSettings = lazy(() => import('@/pages/admin/TelegramAdminSettings'));
@@ -30,6 +31,7 @@ const tabs = [
   { id: 'commission', label: 'Commission' },
   { id: 'leaderboard', label: 'Leaderboard' },
   { id: 'reasons', label: 'Reasons' },
+  { id: 'area-learning', label: 'Area Learning' },
   { id: 'integrations', label: 'Integrations' },
   { id: 'google-sheet', label: 'Google Sheet' },
   { id: 'telegram', label: 'Telegram' },
@@ -74,6 +76,7 @@ export default function SystemModule() {
             {activeTab === 'commission' && <CommissionSettings />}
             {activeTab === 'leaderboard' && <LeaderboardSettings />}
             {activeTab === 'reasons' && <ReasonsSettings />}
+            {activeTab === 'area-learning' && <AreaLearningSettings />}
             {activeTab === 'integrations' && <IntegrationSettings />}
             {activeTab === 'google-sheet' && <GoogleSheetSettings />}
             {activeTab === 'telegram' && <TelegramAdminSettings />}

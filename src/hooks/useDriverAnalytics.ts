@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths, format, differenceInMinutes, parseISO } from 'date-fns';
+import { getTodayDateKey, isDriverWorkloadOrder } from '@/lib/driverOrderScope';
 
 export interface DailyStats {
   date: string;
@@ -15,6 +16,11 @@ export interface AreaStats {
   failedCount: number;
   totalAmount: number;
   avgDeliveryTime: number | null;
+}
+
+export interface DriverStatusMetric {
+  count: number;
+  amount: number;
 }
 
 export interface DriverAnalytics {
@@ -53,11 +59,19 @@ export interface DriverAnalytics {
   // Performance metrics
   successRate: number;
   avgOrderValue: number;
+  statusSummary: {
+    delivered: DriverStatusMetric;
+    failed: DriverStatusMetric;
+    waitingAccept: DriverStatusMetric;
+    failedWaitingAccept: DriverStatusMetric;
+  };
 }
 
 export function useDriverAnalytics(driverId?: string) {
+  const todayDateKey = getTodayDateKey();
+
   return useQuery({
-    queryKey: ['driver-analytics', driverId],
+    queryKey: ['driver-analytics', driverId, todayDateKey],
     queryFn: async (): Promise<DriverAnalytics | null> => {
       if (!driverId) return null;
 
@@ -76,12 +90,25 @@ export function useDriverAnalytics(driverId?: string) {
       // Fetch all relevant orders for this driver
       const { data: orders, error } = await supabase
         .from('orders')
-        .select('*')
+        .select('id, order_date, expected_pickup_date, next_delivery_date, runner_assigned_at, created_at, total_amount, area, status, runner_status, driver_status, runner_accept_status, driver_delivered_at')
         .eq('driver_id', driverId)
         .gte('order_date', format(lastMonthStart, 'yyyy-MM-dd'));
       
       if (error) throw error;
       if (!orders) return null;
+      const amountOf = (items: typeof orders) => items.reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
+      const metricOf = (items: typeof orders): DriverStatusMetric => ({
+        count: items.length,
+        amount: amountOf(items),
+      });
+      const isAcceptedDelivered = (order: typeof orders[number]) =>
+        order.driver_status === 'DRIVER_DELIVERED' && order.runner_accept_status === 'ACCEPTED';
+      const isDriverFailed = (order: typeof orders[number]) => order.driver_status === 'DRIVER_FAILED';
+      const isWaitingAccept = (order: typeof orders[number]) =>
+        order.driver_status === 'DRIVER_DELIVERED' && order.runner_accept_status === 'PENDING';
+      const isFailedWaitingAccept = (order: typeof orders[number]) =>
+        order.driver_status === 'DRIVER_FAILED' && order.runner_accept_status === 'PENDING';
+      const currentActiveOrders = orders.filter((order) => isDriverWorkloadOrder(order, todayDateKey));
 
       // Helper to calculate stats for a date range
       const calcStats = (start: Date, end: Date) => {
@@ -90,15 +117,15 @@ export function useDriverAnalytics(driverId?: string) {
           return orderDate >= start && orderDate <= end;
         });
         
-        const delivered = rangeOrders.filter(o => o.runner_accept_status === 'ACCEPTED').length;
-        const failed = rangeOrders.filter(o => o.driver_status === 'DRIVER_FAILED').length;
+        const delivered = rangeOrders.filter(isAcceptedDelivered).length;
+        const failed = rangeOrders.filter(isDriverFailed).length;
         const totalAmount = rangeOrders
-          .filter(o => o.runner_accept_status === 'ACCEPTED')
-          .reduce((sum, o) => sum + o.total_amount, 0);
+          .filter(isAcceptedDelivered)
+          .reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
         
         // Calculate avg delivery time
         const deliveredWithTime = rangeOrders.filter(o => 
-          o.runner_accept_status === 'ACCEPTED' && 
+          isAcceptedDelivered(o) &&
           o.driver_delivered_at && 
           o.created_at
         );
@@ -123,11 +150,11 @@ export function useDriverAnalytics(driverId?: string) {
         const dayOrders = orders.filter(o => o.order_date === dayStr);
         weeklyTrend.push({
           date: dayStr,
-          delivered: dayOrders.filter(o => o.runner_accept_status === 'ACCEPTED').length,
-          failed: dayOrders.filter(o => o.driver_status === 'DRIVER_FAILED').length,
+          delivered: dayOrders.filter(isAcceptedDelivered).length,
+          failed: dayOrders.filter(isDriverFailed).length,
           totalAmount: dayOrders
-            .filter(o => o.runner_accept_status === 'ACCEPTED')
-            .reduce((sum, o) => sum + o.total_amount, 0),
+            .filter(isAcceptedDelivered)
+            .reduce((sum, o) => sum + Number(o.total_amount || 0), 0),
         });
       }
 
@@ -138,46 +165,32 @@ export function useDriverAnalytics(driverId?: string) {
         const dayOrders = orders.filter(o => o.order_date === dayStr);
         monthlyTrend.push({
           date: dayStr,
-          delivered: dayOrders.filter(o => o.runner_accept_status === 'ACCEPTED').length,
-          failed: dayOrders.filter(o => o.driver_status === 'DRIVER_FAILED').length,
+          delivered: dayOrders.filter(isAcceptedDelivered).length,
+          failed: dayOrders.filter(isDriverFailed).length,
           totalAmount: dayOrders
-            .filter(o => o.runner_accept_status === 'ACCEPTED')
-            .reduce((sum, o) => sum + o.total_amount, 0),
+            .filter(isAcceptedDelivered)
+            .reduce((sum, o) => sum + Number(o.total_amount || 0), 0),
         });
       }
 
-      // Calculate area stats
-      const areaMap = new Map<string, { delivered: number; failed: number; amount: number; times: number[] }>();
-      orders.forEach(order => {
+      // Current route area coverage uses the same active-order scope as My Deliveries, Route, Pickups and Returns.
+      const areaMap = new Map<string, { active: number; amount: number }>();
+      currentActiveOrders.forEach(order => {
         const area = order.area || 'Unknown';
         if (!areaMap.has(area)) {
-          areaMap.set(area, { delivered: 0, failed: 0, amount: 0, times: [] });
+          areaMap.set(area, { active: 0, amount: 0 });
         }
         const stats = areaMap.get(area)!;
-        
-        if (order.runner_accept_status === 'ACCEPTED') {
-          stats.delivered++;
-          stats.amount += order.total_amount;
-          if (order.driver_delivered_at && order.created_at) {
-            const minutes = differenceInMinutes(
-              parseISO(order.driver_delivered_at),
-              parseISO(order.created_at)
-            );
-            stats.times.push(minutes);
-          }
-        } else if (order.driver_status === 'DRIVER_FAILED') {
-          stats.failed++;
-        }
+        stats.active++;
+        stats.amount += Number(order.total_amount || 0);
       });
 
       const areaStats: AreaStats[] = Array.from(areaMap.entries()).map(([area, stats]) => ({
         area,
-        deliveredCount: stats.delivered,
-        failedCount: stats.failed,
+        deliveredCount: stats.active,
+        failedCount: 0,
         totalAmount: stats.amount,
-        avgDeliveryTime: stats.times.length > 0 
-          ? Math.round(stats.times.reduce((a, b) => a + b, 0) / stats.times.length)
-          : null,
+        avgDeliveryTime: null,
       }));
 
       const topAreas = [...areaStats]
@@ -185,13 +198,13 @@ export function useDriverAnalytics(driverId?: string) {
         .slice(0, 5);
 
       // Calculate overall metrics
-      const allDelivered = orders.filter(o => o.runner_accept_status === 'ACCEPTED').length;
-      const allFailed = orders.filter(o => o.driver_status === 'DRIVER_FAILED').length;
+      const allDelivered = orders.filter(isAcceptedDelivered).length;
+      const allFailed = orders.filter(isDriverFailed).length;
       const total = allDelivered + allFailed;
       const successRate = total > 0 ? Math.round((allDelivered / total) * 100) : 0;
       const avgOrderValue = allDelivered > 0 
-        ? Math.round(orders.filter(o => o.runner_accept_status === 'ACCEPTED')
-            .reduce((sum, o) => sum + o.total_amount, 0) / allDelivered)
+        ? Math.round(orders.filter(isAcceptedDelivered)
+            .reduce((sum, o) => sum + Number(o.total_amount || 0), 0) / allDelivered)
         : 0;
 
       return {
@@ -205,6 +218,12 @@ export function useDriverAnalytics(driverId?: string) {
         topAreas,
         successRate,
         avgOrderValue,
+        statusSummary: {
+          delivered: metricOf(orders.filter(isAcceptedDelivered)),
+          failed: metricOf(orders.filter(isDriverFailed)),
+          waitingAccept: metricOf(orders.filter(isWaitingAccept)),
+          failedWaitingAccept: metricOf(orders.filter(isFailedWaitingAccept)),
+        },
       };
     },
     enabled: !!driverId,
@@ -235,7 +254,7 @@ export function useRunnerDriversAnalytics(runnerId?: string) {
       const driverIds = drivers.map(d => d.driver_id);
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('*')
+        .select('driver_id,total_amount,driver_status,runner_accept_status,order_date')
         .in('driver_id', driverIds)
         .gte('order_date', format(thisMonthStart, 'yyyy-MM-dd'));
       
@@ -243,7 +262,7 @@ export function useRunnerDriversAnalytics(runnerId?: string) {
 
       return drivers.map(driver => {
         const driverOrders = orders?.filter(o => o.driver_id === driver.driver_id) || [];
-        const delivered = driverOrders.filter(o => o.runner_accept_status === 'ACCEPTED').length;
+        const delivered = driverOrders.filter(o => o.driver_status === 'DRIVER_DELIVERED' && o.runner_accept_status === 'ACCEPTED').length;
         const failed = driverOrders.filter(o => o.driver_status === 'DRIVER_FAILED').length;
         const total = delivered + failed;
         
@@ -254,8 +273,8 @@ export function useRunnerDriversAnalytics(runnerId?: string) {
           failed,
           successRate: total > 0 ? Math.round((delivered / total) * 100) : 0,
           totalAmount: driverOrders
-            .filter(o => o.runner_accept_status === 'ACCEPTED')
-            .reduce((sum, o) => sum + o.total_amount, 0),
+            .filter(o => o.driver_status === 'DRIVER_DELIVERED' && o.runner_accept_status === 'ACCEPTED')
+            .reduce((sum, o) => sum + Number(o.total_amount || 0), 0),
         };
       });
     },

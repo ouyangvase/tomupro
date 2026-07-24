@@ -6,6 +6,7 @@ import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
 const InventoryBalance = lazy(() => import('@/pages/InventoryBalance'));
 const InboundPending = lazy(() => import('@/pages/inbound/InboundPending'));
+const RunnerInbound = lazy(() => import('@/pages/runner/RunnerInbound'));
 const InboundHistory = lazy(() => import('@/pages/inbound/InboundHistory'));
 const StockAdjustment = lazy(() => import('@/pages/inventory/StockAdjustment'));
 const WarehouseManagement = lazy(() => import('@/pages/admin/WarehouseManagement'));
@@ -25,9 +26,9 @@ export default function InventoryModule() {
 
   const allTabs = [
     { id: 'balance', label: 'Stock Balance', roles: ['admin', 'manager', 'salesperson', 'runner'] },
-    { id: 'inbound', label: 'Inbound Pending', roles: ['admin', 'salesperson', 'manager'] },
+    { id: 'inbound', label: role === 'runner' ? 'Inbound Stock' : 'Inbound Pending', roles: ['admin', 'salesperson', 'manager', 'runner'] },
     { id: 'inbound-history', label: 'Inbound History', roles: ['admin', 'runner'] },
-    { id: 'stock-audit', label: 'Stock Audit', roles: ['admin', 'runner'] },
+    { id: 'stock-audit', label: 'Stock Audit', roles: ['admin', 'runner', 'manager', 'salesperson'] },
     { id: 'adjustments', label: 'Adjustments', roles: ['admin'] },
     { id: 'warehouses', label: 'Warehouses', roles: ['admin'] },
     { id: 'data-sharing', label: 'Data Sharing', roles: ['admin'] },
@@ -51,7 +52,7 @@ export default function InventoryModule() {
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
             {activeTab === 'balance' && <InventoryBalance />}
-            {activeTab === 'inbound' && <InboundPending />}
+            {activeTab === 'inbound' && (role === 'runner' ? <RunnerInbound /> : <InboundPending />)}
             {activeTab === 'inbound-history' && <InboundHistory />}
             {activeTab === 'stock-audit' && <StockIntegrityAudit />}
             {activeTab === 'adjustments' && <StockAdjustment />}

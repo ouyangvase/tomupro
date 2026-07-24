@@ -52,6 +52,10 @@ interface MergeGroup {
   combinedSkuList: SkuItem[];
 }
 
+interface SmartMergeTabProps {
+  embedded?: boolean;
+}
+
 /* ── Helpers ── */
 
 function normalizePhone(phone: string | null | undefined): string {
@@ -68,7 +72,7 @@ function normalizeAddr(a: string | null | undefined): string {
 
 /* ── Component ── */
 
-export default function SmartMergeTab() {
+export default function SmartMergeTab({ embedded = false }: SmartMergeTabProps) {
   const { user, role } = useAuth();
   const isRunner = role === 'runner';
 
@@ -195,14 +199,14 @@ export default function SmartMergeTab() {
   const [delivering, setDelivering] = useState(false);
 
   useEffect(() => {
-    if (!ordersQ.isLoading && mergeGroups.length > 0) {
+    if (!embedded && !ordersQ.isLoading && mergeGroups.length > 0) {
       const shown = sessionStorage.getItem('sm_popup');
       if (!shown) {
         setShowPopup(true);
         sessionStorage.setItem('sm_popup', '1');
       }
     }
-  }, [ordersQ.isLoading, mergeGroups.length]);
+  }, [embedded, ordersQ.isLoading, mergeGroups.length]);
 
   const toggleExpand = useCallback((key: string) => {
     setExpanded(prev => {
@@ -286,6 +290,7 @@ export default function SmartMergeTab() {
   return (
     <div className="space-y-5">
       {/* Header */}
+      {!embedded && (
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-primary/10">
@@ -301,6 +306,7 @@ export default function SmartMergeTab() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Empty state */}
       {mergeGroups.length === 0 && (

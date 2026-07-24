@@ -13,18 +13,14 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { useRunnerDriverOrders, useMyDrivers, useRunnerAcceptDelivery, useRunnerRejectDelivery, useBulkRunnerAcceptDelivery } from '@/hooks/useDrivers';
 import {
-  fetchRunnerDispatchAreaOrderIds,
   useApplyDriverAssignmentBatch,
   useCorrectOrderDeliveryArea,
   useDeliveryAreas,
-  useRunnerDispatchAreaSummary,
   useRunnerDispatchDriverWorkloads,
-  useRunnerDispatchLocalitySummary,
   type DeliveryArea,
   type DispatchAreaOrderId,
   type DispatchAreaSummary,
   type DispatchDriverWorkload,
-  type DispatchLocalitySummary,
 } from '@/hooks/useRunnerDispatchAutomation';
 import { useManualReopenOrder } from '@/hooks/useRescheduleHistory';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
@@ -55,6 +51,12 @@ import { toast } from 'sonner';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
+import {
+  getDriverOperationalDateKey,
+  getTodayDateKey,
+  isDriverWorkloadOrder,
+  isStaleActiveDriverAssignment,
+} from '@/lib/driverOrderScope';
 import type { Order } from '@/types/database';
 
 const NORMAL_AREAS: DeliveryArea[] = [
@@ -76,7 +78,7 @@ const SPECIAL_AREAS: DeliveryArea[] = [
 ];
 
 const LOCALITY_RULES: Array<{ code: string; name: string; terms: string[] }> = [
-  { code: 'BELAIT', name: 'Belait', terms: ['KUALA BELAIT', 'SERIA', 'LUMUT', 'PANAGA', 'PANDAN', 'MUMONG', 'SUNGAI LIANG'] },
+  { code: 'BELAIT', name: 'Belait', terms: ['KUALA BELAIT', 'SERIA', 'LUMUT', 'PANAGA', 'PANDAN', 'MUMONG', 'SUNGAI LIANG', 'LIANG'] },
   { code: 'TUTONG', name: 'Tutong', terms: ['TUTONG', 'BUKIT BERUANG', 'KUPANG', 'LAMUNIN', 'KIUDANG', 'PENANJONG', 'LUGU'] },
   { code: 'TEMBURONG', name: 'Temburong', terms: ['TEMBURONG', 'BANGAR', 'BATANG DURI', 'SIBUT'] },
   { code: 'BM_GADONG_RIMBA', name: 'Gadong / Rimba', terms: ['GADONG', 'RIMBA', 'MATA MATA', 'MATA-MATA', 'BERIBI', 'KIARONG', 'KIULAP', 'TUNGKU', 'KATOK'] },
@@ -268,9 +270,16 @@ function isNormalArea(areaCode: string) {
   return !['NEEDS_REVIEW', 'SELF_PICKUP', 'CANCELLED'].includes(areaCode);
 }
 
-function isActivelyAssigned(order: RunnerOrder) {
-  if (!order.driver_id) return false;
-  return !['UNASSIGNED', 'REMOVED', 'CANCELLED'].includes(order.driver_status || '');
+function isActivelyAssigned(order: RunnerOrder, targetDateKey = getTodayDateKey()) {
+  return isDriverWorkloadOrder(order, targetDateKey);
+}
+
+function isAssignedForAreaSummary(order: RunnerOrder, targetDateKey: string) {
+  return isActivelyAssigned(order, targetDateKey) || isStaleActiveDriverAssignment(order, targetDateKey);
+}
+
+function isCurrentDayUnassigned(order: RunnerOrder, targetDateKey: string) {
+  return getDriverOperationalDateKey(order) === targetDateKey && !isAssignedForAreaSummary(order, targetDateKey);
 }
 
 function isAcceptedDriverWorkloadOrder(order: RunnerOrder) {
@@ -304,15 +313,15 @@ function makeEmptySummary(area: DeliveryArea): DispatchAreaSummary {
   };
 }
 
-function buildLocalAreaSummary(dayOrders: RunnerOrder[], areas: DeliveryArea[]): DispatchAreaSummary[] {
+function buildLocalAreaSummary(dayOrders: RunnerOrder[], areas: DeliveryArea[], targetDateKey: string): DispatchAreaSummary[] {
   return areas.map((area) => {
     const areaOrders = dayOrders.filter((order) => inferAreaFromOrder(order) === area.code);
-    const assigned = area.is_special ? [] : areaOrders.filter(isActivelyAssigned);
-    const unassigned = area.is_special ? [] : areaOrders.filter((order) => !isActivelyAssigned(order));
+    const assigned = area.is_special ? [] : areaOrders.filter((order) => isAssignedForAreaSummary(order, targetDateKey));
+    const unassigned = area.is_special ? [] : areaOrders.filter((order) => isCurrentDayUnassigned(order, targetDateKey));
     const totalCollect = areaOrders.reduce((sum, order) => sum + getCollectAmount(order), 0);
     const assignedCollect = assigned.reduce((sum, order) => sum + getCollectAmount(order), 0);
     const unassignedCollect = unassigned.reduce((sum, order) => sum + getCollectAmount(order), 0);
-    const driverNames = Array.from(new Set(areaOrders.map((order) => order.driver?.display_name).filter(Boolean))) as string[];
+    const driverNames = Array.from(new Set(assigned.map((order) => order.driver?.display_name).filter(Boolean))) as string[];
 
     return {
       ...makeEmptySummary(area),
@@ -433,13 +442,19 @@ function UserDotLabel({ name }: { name: string }) {
   );
 }
 
-export default function RunnerDriverInbox() {
+type RunnerDriverInboxProps = {
+  runnerIdOverride?: string;
+};
+
+export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInboxProps = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
-  const { data: orders = [], isLoading } = useRunnerDriverOrders();
-  const { data: myDrivers = [] } = useMyDrivers();
+  const runnerScopeId = runnerIdOverride || profile?.id;
+  const canUseDbDriverWorkloads = !runnerIdOverride;
+  const { data: orders = [], isLoading } = useRunnerDriverOrders(runnerIdOverride);
+  const { data: myDrivers = [] } = useMyDrivers(runnerIdOverride);
   const { data: dbDeliveryAreas = [] } = useDeliveryAreas();
   const acceptDelivery = useRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
@@ -449,7 +464,8 @@ export default function RunnerDriverInbox() {
   const applyBatch = useApplyDriverAssignmentBatch();
   const correctArea = useCorrectOrderDeliveryArea();
 
-  const activeQueueScopeDate = null;
+  const todayDateKey = useMemo(() => getTodayDateKey(), []);
+  const activeQueueScopeDate = todayDateKey;
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedAreaOrderSnapshots, setSelectedAreaOrderSnapshots] = useState<DispatchAreaOrderId[]>([]);
   const [selectedPendingRows, setSelectedPendingRows] = useState<string[]>([]);
@@ -478,23 +494,18 @@ export default function RunnerDriverInbox() {
   const [driverSearch, setDriverSearch] = useState('');
   const [driverAvailabilityFilter, setDriverAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all');
   const [driverSort, setDriverSort] = useState<'workload' | 'collect' | 'delivery-rate' | 'capacity' | 'name'>('workload');
-  const [assignRemainingLoadingArea, setAssignRemainingLoadingArea] = useState<string | null>(null);
 
-  const { data: dbAreaSummary = [], isFetching: areaSummaryFetching } = useRunnerDispatchAreaSummary(activeQueueScopeDate);
-  const { data: dbLocalitySummary = [], isFetching: localitySummaryFetching } = useRunnerDispatchLocalitySummary(
-    activeQueueScopeDate,
-    activeAreaCode !== 'all' ? activeAreaCode : undefined,
-  );
   const { data: dbDriverWorkloads = [], isFetching: driverWorkloadFetching } = useRunnerDispatchDriverWorkloads(activeQueueScopeDate);
   const performanceRange = useMemo(() => getDateRange(performanceAnchorDate, performancePeriod), [performanceAnchorDate, performancePeriod]);
   const { data: performanceOrders = [], isFetching: performanceFetching } = useQuery({
-    queryKey: ['runner-driver-performance-orders', profile?.id, performancePeriod, performanceRange.start, performanceRange.end],
-    enabled: Boolean(profile?.id),
+    queryKey: ['runner-driver-performance-orders', runnerScopeId, performancePeriod, performanceRange.start, performanceRange.end],
+    enabled: Boolean(runnerScopeId),
     queryFn: async () => {
+      if (!runnerScopeId) return [];
       const { data, error } = await supabase
         .from('orders')
         .select('id,driver_id,status,runner_status,driver_status,runner_accept_status,payment_method,total_amount,order_date,runner_assigned_at,updated_at')
-        .eq('runner_id', profile!.id)
+        .eq('runner_id', runnerScopeId)
         .not('driver_id', 'is', null)
         .gte('order_date', performanceRange.start)
         .lt('order_date', performanceRange.end);
@@ -511,11 +522,31 @@ export default function RunnerDriverInbox() {
 
   const normalAreas = useMemo(() => deliveryAreas.filter((area) => !area.is_special), [deliveryAreas]);
 
-  const dayOrders = useMemo(() => orders as RunnerOrder[], [orders]);
+  const allRunnerOrders = useMemo(() => orders as RunnerOrder[], [orders]);
+  const dayOrders = useMemo(
+    () => allRunnerOrders.filter((order) => getDriverOperationalDateKey(order) === todayDateKey),
+    [allRunnerOrders, todayDateKey],
+  );
+  const staleActiveAssignments = useMemo(
+    () => allRunnerOrders.filter((order) => isStaleActiveDriverAssignment(order, todayDateKey)),
+    [allRunnerOrders, todayDateKey],
+  );
+  const dispatchAreaOrders = useMemo(() => {
+    const byId = new Map<string, RunnerOrder>();
+    dayOrders.forEach((order) => byId.set(order.id, order));
+    staleActiveAssignments.forEach((order) => byId.set(order.id, order));
+    return Array.from(byId.values());
+  }, [dayOrders, staleActiveAssignments]);
+  const staleActiveCollect = useMemo(
+    () => staleActiveAssignments.reduce((sum, order) => sum + getCollectAmount(order), 0),
+    [staleActiveAssignments],
+  );
 
-  const localAreaSummary = useMemo(() => buildLocalAreaSummary(dayOrders, deliveryAreas), [dayOrders, deliveryAreas]);
-  const dbAreaSummaryHasOrders = dbAreaSummary.some((area) => Number(area.total_orders || 0) > 0);
-  const areaSummary = dbAreaSummaryHasOrders ? dbAreaSummary : localAreaSummary;
+  const localAreaSummary = useMemo(
+    () => buildLocalAreaSummary(dispatchAreaOrders, deliveryAreas, todayDateKey),
+    [deliveryAreas, dispatchAreaOrders, todayDateKey],
+  );
+  const areaSummary = localAreaSummary;
 
   const globalSummary = useMemo(() => {
     const normal = areaSummary.filter((area) => !area.is_special);
@@ -533,28 +564,28 @@ export default function RunnerDriverInbox() {
       needsReview: needsReview?.total_orders || 0,
       selfPickup: selfPickup?.total_orders || 0,
       cancelled: cancelled?.total_orders || 0,
-      activeDrivers: dbDriverWorkloads.length
+      activeDrivers: canUseDbDriverWorkloads && dbDriverWorkloads.length
         ? dbDriverWorkloads.filter((driver) => driver.is_available).length
         : new Set(dayOrders.map((order) => order.driver_id).filter(Boolean)).size,
       percentage: total ? Number(((assigned / total) * 100).toFixed(1)) : 0,
     };
-  }, [areaSummary, dbDriverWorkloads, dayOrders]);
+  }, [areaSummary, canUseDbDriverWorkloads, dbDriverWorkloads, dayOrders]);
 
   const areaOrderPool = useMemo(() => {
-    return dayOrders.filter((order) => {
+    return dispatchAreaOrders.filter((order) => {
       const code = inferAreaFromOrder(order);
       if (activeAreaCode !== 'all' && code !== activeAreaCode) return false;
       if (driverFilter !== 'all' && order.driver_id !== driverFilter) return false;
       return true;
     });
-  }, [dayOrders, activeAreaCode, driverFilter]);
+  }, [dispatchAreaOrders, activeAreaCode, driverFilter]);
 
   const visibleAssignmentOrders = useMemo(() => {
     let filtered = areaOrderPool.filter((order) => {
       const code = inferAreaFromOrder(order);
       if (!isNormalArea(code)) return true;
-      if (assignmentFilter === 'assigned') return isActivelyAssigned(order);
-      if (assignmentFilter === 'unassigned') return !isActivelyAssigned(order);
+      if (assignmentFilter === 'assigned') return isAssignedForAreaSummary(order, todayDateKey);
+      if (assignmentFilter === 'unassigned') return isCurrentDayUnassigned(order, todayDateKey);
       return true;
     });
 
@@ -571,41 +602,15 @@ export default function RunnerDriverInbox() {
     }
 
     return filtered.sort((a, b) => {
-      const assignedDiff = Number(isActivelyAssigned(a)) - Number(isActivelyAssigned(b));
+      const assignedDiff = Number(isAssignedForAreaSummary(a, todayDateKey)) - Number(isAssignedForAreaSummary(b, todayDateKey));
       if (assignedDiff !== 0) return assignedDiff;
       return (a.order_code || '').localeCompare(b.order_code || '');
     });
-  }, [areaOrderPool, assignmentFilter, searchQuery]);
+  }, [areaOrderPool, assignmentFilter, searchQuery, todayDateKey]);
 
   const displayedAssignmentOrders = useMemo(() => visibleAssignmentOrders.slice(0, 300), [visibleAssignmentOrders]);
 
   const localityGroups = useMemo<LocalityGroupView[]>(() => {
-    if (dbLocalitySummary.length && activeAreaCode !== 'all') {
-      return dbLocalitySummary
-        .map((summary: DispatchLocalitySummary) => {
-          const summaryLabel = normalizeText(summary.locality);
-          const groupOrders = areaOrderPool.filter((order) => {
-            const code = inferAreaFromOrder(order);
-            const localLabel = normalizeText(getLocalityLabel(order, code));
-            const address = normalizeText(order.address);
-            return localLabel === summaryLabel || address.includes(summaryLabel);
-          });
-          const unassigned = groupOrders.filter((order) => !isActivelyAssigned(order));
-          return {
-            label: summary.locality,
-            orders: groupOrders,
-            unassigned,
-            totalOrders: summary.total_orders,
-            assignedOrders: summary.assigned_orders,
-            unassignedOrders: summary.unassigned_orders,
-            collectAmount: summary.total_collect_amount,
-            assignedCollectAmount: summary.assigned_collect_amount,
-            unassignedCollectAmount: summary.unassigned_collect_amount,
-          };
-        })
-        .sort((a, b) => b.unassignedOrders - a.unassignedOrders || a.label.localeCompare(b.label));
-    }
-
     const grouped = new Map<string, RunnerOrder[]>();
     areaOrderPool.forEach((order) => {
       const code = inferAreaFromOrder(order);
@@ -616,22 +621,22 @@ export default function RunnerDriverInbox() {
       .map(([label, groupOrders]) => ({
         label,
         orders: groupOrders,
-        unassigned: groupOrders.filter((order) => !isActivelyAssigned(order)),
+        unassigned: groupOrders.filter((order) => isCurrentDayUnassigned(order, todayDateKey)),
         totalOrders: groupOrders.length,
-        assignedOrders: groupOrders.filter(isActivelyAssigned).length,
-        unassignedOrders: groupOrders.filter((order) => !isActivelyAssigned(order)).length,
+        assignedOrders: groupOrders.filter((order) => isAssignedForAreaSummary(order, todayDateKey)).length,
+        unassignedOrders: groupOrders.filter((order) => isCurrentDayUnassigned(order, todayDateKey)).length,
         collectAmount: groupOrders.reduce((sum, order) => sum + getCollectAmount(order), 0),
-        assignedCollectAmount: groupOrders.filter(isActivelyAssigned).reduce((sum, order) => sum + getCollectAmount(order), 0),
-        unassignedCollectAmount: groupOrders.filter((order) => !isActivelyAssigned(order)).reduce((sum, order) => sum + getCollectAmount(order), 0),
+        assignedCollectAmount: groupOrders.filter((order) => isAssignedForAreaSummary(order, todayDateKey)).reduce((sum, order) => sum + getCollectAmount(order), 0),
+        unassignedCollectAmount: groupOrders.filter((order) => isCurrentDayUnassigned(order, todayDateKey)).reduce((sum, order) => sum + getCollectAmount(order), 0),
       }))
       .sort((a, b) => b.unassignedOrders - a.unassignedOrders || a.label.localeCompare(b.label));
-  }, [dbLocalitySummary, activeAreaCode, areaOrderPool]);
+  }, [areaOrderPool, todayDateKey]);
 
-  const dayOrderById = useMemo(() => {
+  const dispatchOrderById = useMemo(() => {
     const byId = new Map<string, RunnerOrder>();
-    dayOrders.forEach((order) => byId.set(order.id, order));
+    dispatchAreaOrders.forEach((order) => byId.set(order.id, order));
     return byId;
-  }, [dayOrders]);
+  }, [dispatchAreaOrders]);
 
   const selectedSnapshotById = useMemo(() => {
     const byId = new Map<string, DispatchAreaOrderId>();
@@ -641,37 +646,61 @@ export default function RunnerDriverInbox() {
 
   const selectedOrders = useMemo(() => {
     return selectedRows
-      .map((orderId) => dayOrderById.get(orderId))
+      .map((orderId) => dispatchOrderById.get(orderId))
       .filter((order): order is RunnerOrder => Boolean(order));
-  }, [dayOrderById, selectedRows]);
+  }, [dispatchOrderById, selectedRows]);
 
   const getSelectedCollectAmount = useCallback((orderId: string) => {
-    const order = dayOrderById.get(orderId);
+    const order = dispatchOrderById.get(orderId);
     if (order) return getCollectAmount(order);
     return Number(selectedSnapshotById.get(orderId)?.collect_amount || 0);
-  }, [dayOrderById, selectedSnapshotById]);
+  }, [dispatchOrderById, selectedSnapshotById]);
 
   const getSelectedAreaCode = useCallback((orderId: string) => {
-    const order = dayOrderById.get(orderId);
+    const order = dispatchOrderById.get(orderId);
     if (order) return inferAreaFromOrder(order);
     return selectedSnapshotById.get(orderId)?.delivery_area_code || 'NEEDS_REVIEW';
-  }, [dayOrderById, selectedSnapshotById]);
+  }, [dispatchOrderById, selectedSnapshotById]);
 
   const getSelectedAreaLabel = useCallback((orderId: string) => {
-    const order = dayOrderById.get(orderId);
+    const order = dispatchOrderById.get(orderId);
     if (order) return getAreaLabel(inferAreaFromOrder(order), deliveryAreas);
     const snapshot = selectedSnapshotById.get(orderId);
     if (!snapshot) return 'Unknown';
     return snapshot.delivery_area_name || getAreaLabel(snapshot.delivery_area_code, deliveryAreas);
-  }, [dayOrderById, deliveryAreas, selectedSnapshotById]);
+  }, [dispatchOrderById, deliveryAreas, selectedSnapshotById]);
+
+  const assignmentAreaUnassignedOrders = useMemo(() => {
+    if (!isNormalArea(activeAreaCode)) return [];
+    return dispatchAreaOrders.filter((order) => (
+      inferAreaFromOrder(order) === activeAreaCode
+      && isCurrentDayUnassigned(order, todayDateKey)
+    ));
+  }, [activeAreaCode, dispatchAreaOrders, todayDateKey]);
+
+  const assignmentAreaLocalityGroups = useMemo(() => {
+    const grouped = new Map<string, RunnerOrder[]>();
+    assignmentAreaUnassignedOrders.forEach((order) => {
+      const label = getLocalityLabel(order, activeAreaCode);
+      grouped.set(label, [...(grouped.get(label) || []), order]);
+    });
+    return Array.from(grouped.entries())
+      .map(([label, orders]) => ({ label, orders }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [activeAreaCode, assignmentAreaUnassignedOrders]);
+
+  const assignmentAreaStaleOrders = useMemo(() => {
+    if (!isNormalArea(activeAreaCode)) return [];
+    return staleActiveAssignments.filter((order) => inferAreaFromOrder(order) === activeAreaCode);
+  }, [activeAreaCode, staleActiveAssignments]);
 
   const selectedTotalCollect = selectedRows.reduce((sum, orderId) => sum + getSelectedCollectAmount(orderId), 0);
   const cappedAssignmentLimit = selectedRows.length ? Math.min(Math.max(assignmentOrderLimit || selectedRows.length, 1), selectedRows.length) : 0;
   const assignmentOrderIds = selectedRows.slice(0, cappedAssignmentLimit);
   const assignmentTotalCollect = assignmentOrderIds.reduce((sum, orderId) => sum + getSelectedCollectAmount(orderId), 0);
   const selectedHasAssigned = selectedRows.some((orderId) => {
-    const order = dayOrderById.get(orderId);
-    return order ? isActivelyAssigned(order) : false;
+    const order = dispatchOrderById.get(orderId);
+    return order ? isAssignedForAreaSummary(order, todayDateKey) : false;
   });
   const selectedHasSpecial = selectedRows.some((orderId) => !isNormalArea(getSelectedAreaCode(orderId)));
 
@@ -696,8 +725,9 @@ export default function RunnerDriverInbox() {
   }, [dayOrders]);
 
   const driverWorkloads = useMemo<DriverWorkloadView[]>(() => {
-    const dbDriverWorkloadsHaveAssignments = dbDriverWorkloads.some((driver) => Number(driver.assigned_order_count || 0) > 0);
-    if (dbDriverWorkloads.length && (dbDriverWorkloadsHaveAssignments || dayOrders.length === 0)) {
+    const dbDriverWorkloadsHaveAssignments =
+      canUseDbDriverWorkloads && dbDriverWorkloads.some((driver) => Number(driver.assigned_order_count || 0) > 0);
+    if (canUseDbDriverWorkloads && dbDriverWorkloads.length && (dbDriverWorkloadsHaveAssignments || dayOrders.length === 0)) {
       return dbDriverWorkloads.map((driver: DispatchDriverWorkload) => {
         const acceptedOrders = acceptedWorkloadOrdersByDriver.get(driver.driver_id) || [];
         const hasLocalOrderScope = dayOrders.length > 0;
@@ -751,7 +781,7 @@ export default function RunnerDriverInbox() {
         deliveryRate: performance.deliveryRate,
       };
     });
-  }, [dbDriverWorkloads, myDrivers, dayOrders, acceptedWorkloadOrdersByDriver, deliveryAreas, performanceByDriver]);
+  }, [acceptedWorkloadOrdersByDriver, canUseDbDriverWorkloads, dbDriverWorkloads, deliveryAreas, dayOrders, myDrivers, performanceByDriver]);
 
   const visibleDriverWorkloads = useMemo(() => {
     const query = driverSearch.trim().toLowerCase();
@@ -839,6 +869,15 @@ export default function RunnerDriverInbox() {
     const selectedIds = new Set(uniqueIds);
     setSelectedRows(uniqueIds);
     setSelectedAreaOrderSnapshots(snapshots.filter((snapshot) => selectedIds.has(snapshot.order_id)));
+    setAssignmentOrderLimit(uniqueIds.length);
+  };
+
+  const handleSelectStaleAssignments = () => {
+    if (staleActiveAssignments.length === 0) return;
+    selectOrders(staleActiveAssignments.map((order) => order.id));
+    setAssignmentAction('REASSIGN');
+    setTargetDriver('');
+    setAssignmentDialogOpen(true);
   };
 
   const handleSelectVisible = (checked: boolean) => {
@@ -869,42 +908,48 @@ export default function RunnerDriverInbox() {
     clearSelection();
   };
 
-  const handleAssignRemaining = async (areaCode: string) => {
+  const handleAssignRemaining = (areaCode: string) => {
     if (!isNormalArea(areaCode)) return;
     setActiveAreaCode(areaCode);
     setAssignmentFilter('unassigned');
-    setAssignRemainingLoadingArea(areaCode);
-    try {
-      const remainingRows = await fetchRunnerDispatchAreaOrderIds({
-        operationalDate: activeQueueScopeDate,
-        deliveryAreaCode: areaCode,
-        unassignedOnly: true,
-      });
-      const remaining = remainingRows.map((order) => order.order_id);
+    const remainingOrders = dispatchAreaOrders.filter((order) =>
+      inferAreaFromOrder(order) === areaCode
+      && isCurrentDayUnassigned(order, todayDateKey)
+    );
 
-      if (remaining.length === 0) {
-        toast.error('No unassigned orders in this area');
-        return;
-      }
-
-      selectOrders(remaining, remainingRows);
-      setAssignmentOrderLimit(remaining.length);
-      setAssignmentAction('ASSIGN');
-      setTargetDriver('');
-      setAssignmentDialogOpen(true);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to load area orders';
-      toast.error(`Unable to load area orders: ${message}`);
-    } finally {
-      setAssignRemainingLoadingArea(null);
+    if (remainingOrders.length === 0) {
+      toast.error('No unassigned orders in this area');
+      return;
     }
+
+    const snapshots: DispatchAreaOrderId[] = remainingOrders.map((order) => ({
+      order_id: order.id,
+      order_code: order.order_code || null,
+      delivery_area_code: areaCode,
+      delivery_area_name: getAreaLabel(areaCode, deliveryAreas),
+      collect_amount: getCollectAmount(order),
+    }));
+
+    selectOrders(remainingOrders.map((order) => order.id), snapshots);
+    setAssignmentOrderLimit(remainingOrders.length);
+    setAssignmentAction('ASSIGN');
+    setTargetDriver('');
+    setAssignmentDialogOpen(true);
   };
 
   const handleSelectGroup = (ordersToSelect: RunnerOrder[], unassignedOnly = false) => {
-    const selected = (unassignedOnly ? ordersToSelect.filter((order) => !isActivelyAssigned(order)) : ordersToSelect)
+    const selected = (unassignedOnly ? ordersToSelect.filter((order) => isCurrentDayUnassigned(order, todayDateKey)) : ordersToSelect)
       .filter((order) => isNormalArea(inferAreaFromOrder(order)))
       .map((order) => order.id);
     selectOrders(selected);
+  };
+
+  const selectAssignmentSubset = (orders: RunnerOrder[], action: AssignmentAction) => {
+    if (!orders.length) return;
+    selectOrders(orders.map((order) => order.id));
+    setAssignmentOrderLimit(orders.length);
+    setAssignmentAction(action);
+    setTargetDriver('');
   };
 
   const handleAssignmentLimitChange = (value: string) => {
@@ -1087,7 +1132,7 @@ export default function RunnerDriverInbox() {
                     Active queue
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-[#e4dbcf] bg-[#fbfaf7] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7d7468]">
-                    {(areaSummaryFetching || localitySummaryFetching || driverWorkloadFetching || performanceFetching) && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {(driverWorkloadFetching || performanceFetching) && <Loader2 className="h-3 w-3 animate-spin" />}
                     Updated {format(new Date(), 'HH:mm')}
                   </span>
                 </div>
@@ -1132,6 +1177,28 @@ export default function RunnerDriverInbox() {
                         {globalSummary.unassigned} unassigned - {formatBND(globalSummary.unassignedCollect)} open collect
                       </div>
                     </div>
+
+                    {staleActiveAssignments.length > 0 && (
+                      <div className="mb-3 rounded-[1rem] border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <div className="min-w-0">
+                            <p className="font-bold">Previous-day assignments need reassignment</p>
+                            <p className="text-xs font-medium text-amber-800">
+                              {staleActiveAssignments.length} active order(s) are still assigned from earlier dates - {formatBND(staleActiveCollect)} open collect.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleSelectStaleAssignments}
+                            className="shrink-0 rounded-full border-amber-300 bg-white"
+                          >
+                            Reassign old orders
+                          </Button>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                       <div
@@ -1220,20 +1287,10 @@ export default function RunnerDriverInbox() {
                                   type="button"
                                   size="sm"
                                   onClick={() => handleAssignRemaining(area.area_code)}
-                                  disabled={assignRemainingLoadingArea === area.area_code}
                                   className="mt-3 h-9 rounded-full bg-[#171717] px-4 text-white hover:bg-[#2b2b2b] active:scale-[0.98]"
                                 >
-                                  {assignRemainingLoadingArea === area.area_code ? (
-                                    <>
-                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                      Loading orders
-                                    </>
-                                  ) : (
-                                    <>
-                                      Assign {area.unassigned_orders} Remaining
-                                      <ArrowRight className="ml-2 h-4 w-4" />
-                                    </>
-                                  )}
+                                  Assign {area.unassigned_orders} Remaining
+                                  <ArrowRight className="ml-2 h-4 w-4" />
                                 </Button>
                               )}
                             </div>
@@ -1290,7 +1347,7 @@ export default function RunnerDriverInbox() {
                         size="sm"
                         onClick={() => {
                           const selected = visibleAssignmentOrders
-                            .filter((order) => isNormalArea(inferAreaFromOrder(order)) && !isActivelyAssigned(order))
+                            .filter((order) => isNormalArea(inferAreaFromOrder(order)) && isCurrentDayUnassigned(order, todayDateKey))
                             .map((order) => order.id);
                           selectOrders(selected);
                         }}
@@ -1587,6 +1644,70 @@ export default function RunnerDriverInbox() {
                   <p className="break-words font-medium">{selectedAreasLabel || '-'}</p>
                 </div>
               </div>
+
+              {isNormalArea(activeAreaCode) && (
+                <div className="space-y-3 rounded-xl border border-[#e3ddd4] bg-[#fbfaf7] p-3">
+                  <div>
+                    <p className="text-sm font-semibold">Choose a smaller area</p>
+                    <p className="text-xs text-muted-foreground">
+                      Assign every remaining order together, or select one locality.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectAssignmentSubset(assignmentAreaUnassignedOrders, 'ASSIGN')}
+                    >
+                      All remaining ({assignmentAreaUnassignedOrders.length})
+                    </Button>
+                    {assignmentAreaLocalityGroups.map((group) => (
+                      <Button
+                        key={group.label}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => selectAssignmentSubset(group.orders, 'ASSIGN')}
+                      >
+                        {group.label} ({group.orders.length})
+                      </Button>
+                    ))}
+                  </div>
+
+                  {assignmentAreaStaleOrders.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-sm font-medium text-amber-950">
+                        {assignmentAreaStaleOrders.length} previous-day order(s) still assigned
+                      </p>
+                      <p className="text-xs text-amber-900/75">
+                        They remain in this area's assigned total until completed or moved to another Driver.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => selectAssignmentSubset(assignmentAreaStaleOrders, 'REASSIGN')}
+                        >
+                          Reassign previous-day ({assignmentAreaStaleOrders.length})
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => selectAssignmentSubset(
+                            [...assignmentAreaUnassignedOrders, ...assignmentAreaStaleOrders],
+                            'REASSIGN',
+                          )}
+                        >
+                          Move all ({assignmentAreaUnassignedOrders.length + assignmentAreaStaleOrders.length})
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="rounded-xl border border-[#e3ddd4] bg-[#fbfaf7] p-3">
                 <div className="flex items-end justify-between gap-3">

@@ -36,6 +36,8 @@ export default function RunnerAssistantSettings() {
   const [selectedRunnerId, setSelectedRunnerId] = useState('');
   const [canDeliver, setCanDeliver] = useState(false);
   const [canConfirmReceipt, setCanConfirmReceipt] = useState(false);
+  const [canManageDriverStock, setCanManageDriverStock] = useState(false);
+  const [canManageDriverInbox, setCanManageDriverInbox] = useState(false);
 
   // Filter users by role for dropdowns
   const assistantUsers = allUsers.filter(u => u.role === 'runner_assistant' && u.is_active);
@@ -54,6 +56,8 @@ export default function RunnerAssistantSettings() {
       assistant_id: selectedAssistantId,
       can_deliver: canDeliver,
       can_confirm_receipt: canConfirmReceipt,
+      can_manage_driver_stock: canManageDriverStock,
+      can_manage_driver_inbox: canManageDriverInbox,
     }, {
       onSuccess: () => {
         setCreateOpen(false);
@@ -67,9 +71,15 @@ export default function RunnerAssistantSettings() {
     setSelectedRunnerId('');
     setCanDeliver(false);
     setCanConfirmReceipt(false);
+    setCanManageDriverStock(false);
+    setCanManageDriverInbox(false);
   };
 
-  const handleToggle = (assistant: RunnerAssistant, field: 'can_deliver' | 'can_confirm_receipt', value: boolean) => {
+  const handleToggle = (
+    assistant: RunnerAssistant,
+    field: 'can_deliver' | 'can_confirm_receipt' | 'can_manage_driver_stock' | 'can_manage_driver_inbox',
+    value: boolean,
+  ) => {
     updateAssistant.mutate({ id: assistant.id, [field]: value });
   };
 
@@ -127,6 +137,20 @@ export default function RunnerAssistantSettings() {
                       onCheckedChange={(v) => handleToggle(a, 'can_confirm_receipt', v)}
                     />
                     <Label className="text-xs">Can Confirm Receipt</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={!!a.can_manage_driver_stock}
+                      onCheckedChange={(v) => handleToggle(a, 'can_manage_driver_stock', v)}
+                    />
+                    <Label className="text-xs">Driver Stock</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={!!a.can_manage_driver_inbox}
+                      onCheckedChange={(v) => handleToggle(a, 'can_manage_driver_inbox', v)}
+                    />
+                    <Label className="text-xs">Driver Inbox</Label>
                   </div>
                   <Button
                     variant="ghost"
@@ -201,6 +225,20 @@ export default function RunnerAssistantSettings() {
                   <p className="text-xs text-muted-foreground">Can confirm or reject transfer receipts</p>
                 </div>
                 <Switch checked={canConfirmReceipt} onCheckedChange={setCanConfirmReceipt} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Access C: Driver Stock</p>
+                  <p className="text-xs text-muted-foreground">Can help the assigned runner with pickups, returns, and allocated stock</p>
+                </div>
+                <Switch checked={canManageDriverStock} onCheckedChange={setCanManageDriverStock} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Access D: Driver Inbox</p>
+                  <p className="text-xs text-muted-foreground">Can use the assigned runner's Driver Inbox assignment workspace</p>
+                </div>
+                <Switch checked={canManageDriverInbox} onCheckedChange={setCanManageDriverInbox} />
               </div>
             </div>
           </div>

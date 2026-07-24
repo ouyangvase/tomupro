@@ -4,11 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, MapPin, Package, Target, DollarSign } from 'lucide-react';
+import { Clock, MapPin, Package, Target } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-
-const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6'];
 
 export default function DriverAnalyticsPage() {
   const { profile } = useAuth();
@@ -40,13 +37,40 @@ export default function DriverAnalyticsPage() {
     );
   }
 
-  const weeklyChange = analytics.lastWeek.delivered > 0
-    ? Math.round(((analytics.thisWeek.delivered - analytics.lastWeek.delivered) / analytics.lastWeek.delivered) * 100)
-    : analytics.thisWeek.delivered > 0 ? 100 : 0;
-
-  const monthlyChange = analytics.lastMonth.delivered > 0
-    ? Math.round(((analytics.thisMonth.delivered - analytics.lastMonth.delivered) / analytics.lastMonth.delivered) * 100)
-    : analytics.thisMonth.delivered > 0 ? 100 : 0;
+  const formatAmount = (value: number) => `BND ${Number(value || 0).toFixed(2)}`;
+  const statusCards = [
+    {
+      title: 'Delivered',
+      subtitle: 'Accepted by runner',
+      metric: analytics.statusSummary.delivered,
+      icon: Target,
+      tone: 'bg-emerald-50 text-emerald-700',
+    },
+    {
+      title: 'Failed',
+      subtitle: 'Driver failed',
+      metric: analytics.statusSummary.failed,
+      icon: Package,
+      tone: 'bg-red-50 text-red-700',
+    },
+    {
+      title: 'Waiting Accept',
+      subtitle: 'Delivered, waiting runner',
+      metric: analytics.statusSummary.waitingAccept,
+      icon: Clock,
+      tone: 'bg-amber-50 text-amber-700',
+    },
+    {
+      title: 'Failed Waiting',
+      subtitle: 'Failed, waiting runner',
+      metric: analytics.statusSummary.failedWaitingAccept,
+      icon: MapPin,
+      tone: 'bg-orange-50 text-orange-700',
+    },
+  ];
+  const monthlyActivity = analytics.monthlyTrend.filter(
+    (day) => day.delivered > 0 || day.failed > 0 || day.totalAmount > 0,
+  );
 
   return (
     <AppLayout>
@@ -59,98 +83,66 @@ export default function DriverAnalyticsPage() {
           <p className="text-muted-foreground">Track your delivery performance and trends</p>
         </div>
 
-      {/* Overview Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Success Rate</p>
-                <p className="text-2xl font-bold">{analytics.successRate}%</p>
+      {/* Operational status summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        {statusCards.map(({ title, subtitle, metric, icon: Icon, tone }) => (
+          <Card key={title} className="border-border/70 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    {title}
+                  </p>
+                  <p className="mt-1 text-3xl font-bold leading-none">{metric.count}</p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">{formatAmount(metric.amount)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+                </div>
+                <div className={`rounded-full p-2 ${tone}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
               </div>
-              <Target className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Avg Order Value</p>
-                <p className="text-2xl font-bold">BND {analytics.avgOrderValue}</p>
-              </div>
-              <DollarSign className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">This Week</p>
-                <p className="text-2xl font-bold">{analytics.thisWeek.delivered}</p>
-              </div>
-              {weeklyChange >= 0 ? (
-                <TrendingUp className="h-8 w-8 text-green-500" />
-              ) : (
-                <TrendingDown className="h-8 w-8 text-red-500" />
-              )}
-            </div>
-            <p className={`text-xs mt-1 ${weeklyChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {weeklyChange >= 0 ? '+' : ''}{weeklyChange}% vs last week
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">This Month</p>
-                <p className="text-2xl font-bold">{analytics.thisMonth.delivered}</p>
-              </div>
-              {monthlyChange >= 0 ? (
-                <TrendingUp className="h-8 w-8 text-green-500" />
-              ) : (
-                <TrendingDown className="h-8 w-8 text-red-500" />
-              )}
-            </div>
-            <p className={`text-xs mt-1 ${monthlyChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {monthlyChange >= 0 ? '+' : ''}{monthlyChange}% vs last month
-            </p>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <Tabs defaultValue="weekly">
         <TabsList>
           <TabsTrigger value="weekly">Weekly Trend</TabsTrigger>
           <TabsTrigger value="monthly">Monthly Trend</TabsTrigger>
-          <TabsTrigger value="areas">Area Coverage</TabsTrigger>
+          <TabsTrigger value="areas">Active Areas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="weekly">
           <Card>
             <CardHeader>
               <CardTitle>This Week's Performance</CardTitle>
-              <CardDescription>Daily delivery breakdown</CardDescription>
+              <CardDescription>Accepted delivered orders, failed orders, and collection by day.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analytics.weeklyTrend}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="date" 
-                      tickFormatter={(val) => format(parseISO(val), 'EEE')}
-                    />
-                    <YAxis />
-                    <Tooltip 
-                      labelFormatter={(val) => format(parseISO(val as string), 'EEEE, dd MMM')}
-                    />
-                    <Bar dataKey="delivered" fill="#10b981" name="Delivered" />
-                    <Bar dataKey="failed" fill="#ef4444" name="Failed" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
+                {analytics.weeklyTrend.map((day) => (
+                  <div key={day.date} className="rounded-2xl border bg-card p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      {format(parseISO(day.date), 'EEE')}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">{format(parseISO(day.date), 'dd MMM')}</p>
+                    <div className="mt-3 space-y-1 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span>Delivered</span>
+                        <span className="font-semibold text-emerald-700">{day.delivered}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Failed</span>
+                        <span className="font-semibold text-red-700">{day.failed}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Amount</span>
+                        <span className="font-semibold">{formatAmount(day.totalAmount)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
               {analytics.thisWeek.avgDeliveryTimeMinutes && (
                 <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
@@ -166,37 +158,32 @@ export default function DriverAnalyticsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Monthly Performance</CardTitle>
-              <CardDescription>Daily trend for this month</CardDescription>
+              <CardDescription>Only active days are shown to keep the page light.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={analytics.monthlyTrend}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="date" 
-                      tickFormatter={(val) => format(parseISO(val), 'd')}
-                    />
-                    <YAxis />
-                    <Tooltip 
-                      labelFormatter={(val) => format(parseISO(val as string), 'dd MMM yyyy')}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="delivered" 
-                      stroke="#10b981" 
-                      strokeWidth={2}
-                      name="Delivered"
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="failed" 
-                      stroke="#ef4444" 
-                      strokeWidth={2}
-                      name="Failed"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="space-y-2">
+                {monthlyActivity.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    No delivery activity this month.
+                  </div>
+                ) : (
+                  monthlyActivity.map((day) => (
+                    <div key={day.date} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-3">
+                      <div>
+                        <p className="font-semibold">{format(parseISO(day.date), 'dd MMM yyyy')}</p>
+                        <p className="text-sm text-muted-foreground">{formatAmount(day.totalAmount)} accepted delivered amount</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700">
+                          {day.delivered} delivered
+                        </Badge>
+                        <Badge variant="outline" className="bg-red-50 text-red-700">
+                          {day.failed} failed
+                        </Badge>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
@@ -208,38 +195,37 @@ export default function DriverAnalyticsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MapPin className="h-5 w-5" />
-                  Top Areas
+                  Active Route Areas
                 </CardTitle>
-                <CardDescription>Your most active delivery areas</CardDescription>
+                <CardDescription>Current orders needing delivery by area</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[250px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={analytics.topAreas}
-                        dataKey="deliveredCount"
-                        nameKey="area"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                      >
-                        {analytics.topAreas.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <div className="space-y-3">
+                  {analytics.topAreas.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                      No active delivery areas.
+                    </div>
+                  ) : (
+                    analytics.topAreas.map((area) => (
+                      <div key={area.area} className="rounded-2xl border bg-card p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{area.area}</p>
+                            <p className="text-sm text-muted-foreground">{formatAmount(area.totalAmount)} active collect</p>
+                          </div>
+                          <Badge variant="secondary">{area.deliveredCount} active</Badge>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Area Statistics</CardTitle>
-                <CardDescription>Delivery performance by area</CardDescription>
+                <CardTitle>Active Area Statistics</CardTitle>
+                <CardDescription>Today&apos;s assigned delivery workload by area</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 max-h-[300px] overflow-y-auto">
@@ -251,13 +237,8 @@ export default function DriverAnalyticsPage() {
                           <p className="font-medium text-sm">{area.area}</p>
                           <div className="flex gap-2 mt-1">
                             <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
-                              {area.deliveredCount} delivered
+                              {area.deliveredCount} active
                             </Badge>
-                            {area.failedCount > 0 && (
-                              <Badge variant="outline" className="bg-red-50 text-red-700 text-xs">
-                                {area.failedCount} failed
-                              </Badge>
-                            )}
                           </div>
                         </div>
                         <div className="text-right">

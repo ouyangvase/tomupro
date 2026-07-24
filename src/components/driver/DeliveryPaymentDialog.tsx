@@ -8,12 +8,20 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { formatBND } from '@/lib/currency';
-import { CreditCard, Banknote, Loader2, Check } from 'lucide-react';
+import { Banknote, Check, CreditCard, Loader2, SplitSquareHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
+
+export type DriverPaymentMethod = 'CASH' | 'TRANSFER' | 'CASH_TRANSFER';
+
+export interface DriverPaymentSplit {
+  cashAmount: number;
+  transferAmount: number;
+}
 
 interface DeliveryPaymentDialogProps {
   open: boolean;
@@ -24,7 +32,7 @@ interface DeliveryPaymentDialogProps {
     customer_name: string | null;
     total_amount: number;
   } | null;
-  onConfirm: (orderId: string, paymentMethod: 'CASH' | 'TRANSFER') => Promise<void>;
+  onConfirm: (orderId: string, paymentMethod: DriverPaymentMethod, split: DriverPaymentSplit) => Promise<void>;
   isPending: boolean;
   proofPreview?: string | null;
   proofPreviews?: string[];
@@ -45,17 +53,48 @@ export function DeliveryPaymentDialog({
   onProofFilesChange,
   onRemoveProofFile,
 }: DeliveryPaymentDialogProps) {
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'TRANSFER' | ''>('');
+  const [paymentMethod, setPaymentMethod] = useState<DriverPaymentMethod | ''>('');
+  const [cashAmountText, setCashAmountText] = useState('');
+
+  const orderAmount = Number(order?.total_amount || 0);
+  const enteredCashAmount = cashAmountText.trim() === '' ? NaN : Number(cashAmountText);
+  const splitCashAmount = Number.isFinite(enteredCashAmount)
+    ? Math.max(0, Math.min(orderAmount, enteredCashAmount))
+    : 0;
+  const splitTransferAmount = Math.max(0, orderAmount - splitCashAmount);
+  const splitInvalid = paymentMethod === 'CASH_TRANSFER' && (
+    cashAmountText.trim() === '' ||
+    !Number.isFinite(enteredCashAmount) ||
+    enteredCashAmount < 0 ||
+    enteredCashAmount > orderAmount
+  );
+
+  const handlePaymentChange = (value: string) => {
+    setPaymentMethod(value as DriverPaymentMethod);
+    if (value !== 'CASH_TRANSFER') {
+      setCashAmountText('');
+    }
+  };
 
   const handleConfirm = async () => {
-    if (!order || !paymentMethod) return;
-    await onConfirm(order.id, paymentMethod);
+    if (!order || !paymentMethod || splitInvalid) return;
+
+    const split =
+      paymentMethod === 'CASH'
+        ? { cashAmount: orderAmount, transferAmount: 0 }
+        : paymentMethod === 'TRANSFER'
+          ? { cashAmount: 0, transferAmount: orderAmount }
+          : { cashAmount: splitCashAmount, transferAmount: splitTransferAmount };
+
+    await onConfirm(order.id, paymentMethod, split);
     setPaymentMethod('');
+    setCashAmountText('');
   };
 
   const handleClose = (newOpen: boolean) => {
     if (!newOpen) {
       setPaymentMethod('');
+      setCashAmountText('');
     }
     onOpenChange(newOpen);
   };
@@ -64,87 +103,129 @@ export function DeliveryPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Confirm Delivery</DialogTitle>
           <DialogDescription>
-            How did the customer pay for this order?
+            Select how the customer paid. If it is mixed, enter the cash amount and TOMUPRO records the rest as transfer.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Order Details */}
-          <div className="bg-secondary/30 rounded-lg p-4 space-y-2">
-            <div className="flex justify-between">
+        <div className="space-y-5 py-4">
+          <div className="space-y-2 rounded-lg bg-secondary/30 p-4">
+            <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Order</span>
               <span className="font-medium">{order.order_code}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Customer</span>
-              <span className="font-medium">{order.customer_name || '-'}</span>
+              <span className="text-right font-medium">{order.customer_name || '-'}</span>
             </div>
-            <div className="flex justify-between border-t pt-2 mt-2">
+            <div className="mt-2 flex justify-between gap-3 border-t pt-2">
               <span className="text-muted-foreground">Amount</span>
-              <span className="font-bold text-lg text-primary">
-                {formatBND(order.total_amount)}
-              </span>
+              <span className="text-lg font-bold text-primary">{formatBND(order.total_amount)}</span>
             </div>
           </div>
 
-          {/* Payment Method Selection */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">
               Payment Method <span className="text-destructive">*</span>
             </Label>
             <RadioGroup
               value={paymentMethod}
-              onValueChange={(value) => setPaymentMethod(value as 'CASH' | 'TRANSFER')}
-              className="grid grid-cols-2 gap-3"
+              onValueChange={handlePaymentChange}
+              className="grid grid-cols-1 gap-3 sm:grid-cols-3"
             >
               <Label
                 htmlFor="cash"
                 className={cn(
-                  'flex flex-col items-center justify-center gap-2 rounded-xl border-2 p-4 cursor-pointer transition-all min-h-[100px]',
+                  'flex min-h-[96px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 p-4 transition-all',
                   paymentMethod === 'CASH'
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border hover:border-primary/50'
                 )}
               >
                 <RadioGroupItem value="CASH" id="cash" className="sr-only" />
-                <Banknote className="h-8 w-8" />
+                <Banknote className="h-7 w-7" />
                 <span className="font-semibold">Cash</span>
-                <span className="text-xs text-muted-foreground text-center">
-                  Customer paid cash
-                </span>
+                <span className="text-center text-xs text-muted-foreground">All cash</span>
               </Label>
 
               <Label
                 htmlFor="transfer"
                 className={cn(
-                  'flex flex-col items-center justify-center gap-2 rounded-xl border-2 p-4 cursor-pointer transition-all min-h-[100px]',
+                  'flex min-h-[96px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 p-4 transition-all',
                   paymentMethod === 'TRANSFER'
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border hover:border-primary/50'
                 )}
               >
                 <RadioGroupItem value="TRANSFER" id="transfer" className="sr-only" />
-                <CreditCard className="h-8 w-8" />
+                <CreditCard className="h-7 w-7" />
                 <span className="font-semibold">Transfer</span>
-                <span className="text-xs text-muted-foreground text-center">
-                  Already paid / transferred
-                </span>
+                <span className="text-center text-xs text-muted-foreground">All transfer</span>
+              </Label>
+
+              <Label
+                htmlFor="cash-transfer"
+                className={cn(
+                  'flex min-h-[96px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 p-4 transition-all',
+                  paymentMethod === 'CASH_TRANSFER'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border hover:border-primary/50'
+                )}
+              >
+                <RadioGroupItem value="CASH_TRANSFER" id="cash-transfer" className="sr-only" />
+                <SplitSquareHorizontal className="h-7 w-7" />
+                <span className="font-semibold">Cash + Transfer</span>
+                <span className="text-center text-xs text-muted-foreground">Cash first, balance transfer</span>
               </Label>
             </RadioGroup>
           </div>
 
           {paymentMethod === 'CASH' && (
-            <div className="bg-[hsl(var(--status-warning))]/10 border border-[hsl(var(--status-warning))]/30 rounded-lg p-3 text-sm">
+            <div className="rounded-lg border border-[hsl(var(--status-warning))]/30 bg-[hsl(var(--status-warning))]/10 p-3 text-sm">
               <p className="font-medium text-[hsl(var(--status-warning))]">
-                💵 Cash collected: {formatBND(order.total_amount)}
+                Cash collected: {formatBND(order.total_amount)}
               </p>
-              <p className="text-muted-foreground mt-1">
+              <p className="mt-1 text-muted-foreground">
                 This cash will be recorded and must be handed to your runner.
               </p>
+            </div>
+          )}
+
+          {paymentMethod === 'CASH_TRANSFER' && (
+            <div className="rounded-lg border bg-card p-3">
+              <Label htmlFor="cash-amount" className="text-sm font-medium">
+                Cash amount collected
+              </Label>
+              <Input
+                id="cash-amount"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={orderAmount}
+                step="0.01"
+                value={cashAmountText}
+                onChange={(event) => setCashAmountText(event.target.value)}
+                placeholder="0.00"
+                className="mt-2"
+              />
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-md bg-secondary/40 p-2">
+                  <p className="text-muted-foreground">Cash</p>
+                  <p className="font-semibold">{formatBND(splitCashAmount)}</p>
+                </div>
+                <div className="rounded-md bg-secondary/40 p-2">
+                  <p className="text-muted-foreground">Transfer balance</p>
+                  <p className="font-semibold">{formatBND(splitTransferAmount)}</p>
+                </div>
+              </div>
+              {splitInvalid && (
+                <p className="mt-2 text-xs text-destructive">
+                  Cash amount must be between BND 0.00 and {formatBND(orderAmount)}.
+                </p>
+              )}
             </div>
           )}
 
@@ -170,7 +251,7 @@ export function DeliveryPaymentDialog({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={!paymentMethod || isPending}
+            disabled={!paymentMethod || splitInvalid || isPending}
             className="gap-2"
           >
             {isPending ? (

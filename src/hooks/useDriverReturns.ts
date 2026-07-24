@@ -28,10 +28,15 @@ export interface DriverReturnItem {
 }
 
 // Fetch returns for a runner
-export function useRunnerReturns() {
+export function useRunnerReturns(runnerIdOverride?: string) {
+  const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
+
   return useQuery({
-    queryKey: ['runner-returns'],
+    queryKey: ['runner-returns', runnerScopeId],
     queryFn: async () => {
+      if (!runnerScopeId) return [];
+
       const { data, error } = await supabase
         .from('driver_returns')
         .select(`
@@ -39,10 +44,12 @@ export function useRunnerReturns() {
           driver:profiles!driver_returns_driver_id_fkey(display_name),
           items:driver_return_items(*, product:products(sku_name, sku_code))
         `)
+        .eq('runner_id', runnerScopeId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data as DriverReturn[];
     },
+    enabled: Boolean(runnerScopeId),
   });
 }
 

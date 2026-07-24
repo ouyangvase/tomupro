@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, type ReactNode } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHero } from '@/components/dashboard/PageHero';
 import capybaraRunner from '@/assets/capybara-runner.png';
@@ -42,7 +42,19 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
 
-export default function RunnerInbox() {
+interface RunnerInboxProps {
+  initialSearch?: string;
+  highlightOrderId?: string | null;
+  duplicateOrdersAction?: ReactNode;
+  duplicateOrdersPanel?: ReactNode;
+}
+
+export default function RunnerInbox({
+  initialSearch = '',
+  highlightOrderId = null,
+  duplicateOrdersAction = null,
+  duplicateOrdersPanel = null,
+}: RunnerInboxProps) {
   const { user, role } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -135,6 +147,21 @@ export default function RunnerInbox() {
   const { data: inboxStats } = useRunnerInboxStats();
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+
+  useEffect(() => {
+    if (initialSearch) {
+      setServerSearch(initialSearch);
+    }
+  }, [initialSearch]);
+
+  useEffect(() => {
+    if (!highlightOrderId) return;
+    const timeout = window.setTimeout(() => {
+      const el = document.querySelector(`[data-order-id="${highlightOrderId}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [highlightOrderId, orders]);
 
   // Stats from server-side counts (accurate across all pages)
   const assignedCount = inboxStats?.assignedCount ?? 0;
@@ -281,8 +308,8 @@ export default function RunnerInbox() {
           .neq('status', 'CANCELLED');
 
         if (serverSearch?.trim()) {
-          const term = `%${serverSearch.trim()}%`;
-          query = query.or(`order_code.ilike.${term},customer_name.ilike.${term},area.ilike.${term},phone.ilike.${term},address.ilike.${term}`);
+          const term = `${serverSearch.trim().toUpperCase().replace(/\s+/g, '')}%`;
+          query = query.ilike('order_code', term);
         }
         if (filters.runnerStatus) query = query.eq('runner_status', filters.runnerStatus);
         if (filters.area && filters.area !== 'all') query = query.eq('area', filters.area);
@@ -378,7 +405,7 @@ export default function RunnerInbox() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search order ref, customer, area..."
+            placeholder="Search order code..."
             value={serverSearch}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 h-10 rounded-full border-border/60 bg-card"
@@ -387,17 +414,29 @@ export default function RunnerInbox() {
 
         {/* Filters */}
         {!hasNoDeliveryAccess && (
-          <OrderFiltersPanel
-            filters={filters}
-            onFiltersChange={setFilters}
-            areaOptions={areaOptions}
-            driverOptions={driverOptions}
-            showDriverFilter
-            showRunnerStatus
-            showDriverStatus={false}
-            showOrderStatus={false}
-            showReconciliationStatus
-          />
+          <>
+            <div className="flex flex-col gap-2 md:flex-row md:items-start">
+              <div className="min-w-0 flex-1">
+                <OrderFiltersPanel
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                  areaOptions={areaOptions}
+                  driverOptions={driverOptions}
+                  showDriverFilter
+                  showRunnerStatus
+                  showDriverStatus={false}
+                  showOrderStatus={false}
+                  showReconciliationStatus
+                />
+              </div>
+              {duplicateOrdersAction && (
+                <div className="flex shrink-0 justify-end">
+                  {duplicateOrdersAction}
+                </div>
+              )}
+            </div>
+            {duplicateOrdersPanel}
+          </>
         )}
 
         {/* Assigned date quick filters */}
@@ -637,7 +676,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
 
   if (isMobile) {
     return (
-      <Card className={cn(
+      <Card data-order-id={order.id} className={cn(
         'overflow-hidden transition-all',
         isSelected && 'ring-2 ring-primary/30 border-primary/20',
         isMobileRejected && 'border-red-300 dark:border-red-800/60 bg-red-50/30 dark:bg-red-950/10'
@@ -777,6 +816,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
   const isRejectedReceipt = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
   return (
     <Card
+      data-order-id={order.id}
       className={cn(
         'cursor-pointer hover:shadow-sm hover:border-primary/15 transition-all',
         isSelected && 'ring-2 ring-primary/20 border-primary/20 bg-primary/[0.02]',

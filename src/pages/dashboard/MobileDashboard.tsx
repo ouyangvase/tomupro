@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBND } from '@/lib/currency';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
+import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
 import { cn } from '@/lib/utils';
 import { GlobalSearchBar } from '@/components/GlobalSearchBar';
 import capybaraAdmin from '@/assets/capybara-admin.png';
@@ -49,6 +50,7 @@ import {
   Loader2,
   ArrowRight,
   Zap,
+  Trophy,
 } from 'lucide-react';
 
 // Loading component
@@ -173,13 +175,13 @@ function AdminMobileDashboard() {
 
   const quickActions: QuickAction[] = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart className="h-5 w-5" />, href: '/orders' },
+    { id: 'finance', label: 'Finance', icon: <DollarSign className="h-5 w-5" />, href: '/finance' },
+    { id: 'performance', label: 'Performance', icon: <Trophy className="h-5 w-5" />, href: '/performance?tab=leaderboard' },
     { id: 'users', label: 'Users', icon: <Users className="h-5 w-5" />, href: '/team?tab=users' },
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
     { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/inventory?tab=products' },
     { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=claims' },
-    
-    { id: 'bindings', label: 'Bindings', icon: <Settings className="h-5 w-5" />, href: '/system?tab=bindings' },
-    { id: 'overview', label: 'Overview', icon: <BarChart3 className="h-5 w-5" />, href: '/finance?tab=overview' },
+    { id: 'system', label: 'System', icon: <Settings className="h-5 w-5" />, href: '/system' },
   ];
 
   const pipelineStages = [
@@ -244,6 +246,8 @@ function SalespersonMobileDashboard() {
   const { profile } = useAuth();
   const { data: dashData, isLoading } = useSalespersonDashboard();
   const { data: actionStats } = useSalespersonActionRequiredStats();
+  const { data: leaderboardSettings } = useLeaderboardSettings();
+  const showPerformanceAction = !(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
 
   const quickActions: QuickAction[] = [
     { id: 'new-order', label: 'New Order', icon: <ShoppingCart className="h-5 w-5" />, href: '/orders?tab=booking' },
@@ -251,6 +255,7 @@ function SalespersonMobileDashboard() {
     { id: 'ready', label: 'Ready', icon: <Truck className="h-5 w-5" />, href: '/orders?tab=ready' },
     { id: 'delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/orders?tab=delivered' },
     { id: 'action', label: 'Actions', icon: <AlertTriangle className="h-5 w-5" />, href: '/orders?tab=action-required', badge: actionStats?.total, badgeColor: 'warning' },
+    ...(showPerformanceAction ? [{ id: 'performance', label: 'Performance', icon: <Trophy className="h-5 w-5" />, href: '/performance?tab=leaderboard' }] : []),
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
     { id: 'products', label: 'Products', icon: <PackageCheck className="h-5 w-5" />, href: '/inventory?tab=products' },
     { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=claims' },
@@ -322,6 +327,8 @@ function ManagerMobileDashboard() {
   const { profile } = useAuth();
   const { data: dashData, isLoading } = useManagerDashboard('mtd');
   const { data: actionStats } = useManagerActionRequiredStats();
+  const { data: leaderboardSettings } = useLeaderboardSettings();
+  const showPerformanceAction = !(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
 
   const quickActions: QuickAction[] = [
     { id: 'team-booking', label: 'Booking', icon: <Package className="h-5 w-5" />, href: '/orders?tab=booking', badge: dashData?.teamOverview.bookingOrders },
@@ -329,9 +336,9 @@ function ManagerMobileDashboard() {
     { id: 'team-delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/orders?tab=delivered' },
     { id: 'oversight', label: 'Oversight', icon: <Users className="h-5 w-5" />, href: '/team?tab=oversight' },
     { id: 'action', label: 'Actions', icon: <AlertTriangle className="h-5 w-5" />, href: '/orders?tab=action-required', badge: actionStats?.systemTotal, badgeColor: 'warning' },
+    ...(showPerformanceAction ? [{ id: 'performance', label: 'Performance', icon: <Trophy className="h-5 w-5" />, href: '/performance?tab=leaderboard' }] : []),
     { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
     { id: 'approvals', label: 'Approvals', icon: <FileCheck className="h-5 w-5" />, href: '/team?tab=approvals' },
-    { id: 'ranking', label: 'Ranking', icon: <BarChart3 className="h-5 w-5" />, href: '/performance?tab=ranking' },
   ];
 
   return (
@@ -388,11 +395,11 @@ function RunnerMobileDashboard() {
     { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/dispatch?tab=inbox', badge: stats?.todayStats.inProgress },
     { id: 'delivered', label: 'Delivered', icon: <CheckCircle className="h-5 w-5" />, href: '/orders?tab=delivered' },
     { id: 'failed', label: 'Failed', icon: <XCircle className="h-5 w-5" />, href: '/dispatch?tab=failed', badge: stats?.blockerStats.failedOrdersCount, badgeColor: 'destructive' },
-    { id: 'inbound', label: 'Inbound', icon: <Package className="h-5 w-5" />, href: '/dispatch?tab=inbound' },
+    { id: 'inbound', label: 'Inbound', icon: <Package className="h-5 w-5" />, href: '/inventory?tab=inbound' },
     { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=my-claims' },
     { id: 'charges', label: 'Charges', icon: <DollarSign className="h-5 w-5" />, href: '/finance?tab=delivery-charges' },
     { id: 'drivers', label: 'Drivers', icon: <Navigation className="h-5 w-5" />, href: '/dispatch?tab=drivers' },
-    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/finance?tab=allocated-stock' },
+    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/dispatch?tab=driver-stock' },
   ];
 
   const pipelineStages = [

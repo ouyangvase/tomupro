@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { getOrderTabRoute } from '@/lib/orderNavigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 
 interface SearchResult {
   id: string;
@@ -13,6 +15,8 @@ interface SearchResult {
   customer_name: string | null;
   status: string;
   runner_status: string | null;
+  driver_status?: string | null;
+  runner_accept_status?: string | null;
   created_at: string;
 }
 
@@ -28,6 +32,38 @@ const getDisplayStatus = (order: SearchResult) => {
   return order.status;
 };
 
+const normalizeOrderCodeQuery = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');
+
+const getRunnerSearchRoute = (order: SearchResult) => {
+  const runnerStatus = (order.runner_status || '').toUpperCase();
+  const driverStatus = (order.driver_status || '').toUpperCase();
+  const tab = runnerStatus === 'DELIVERED'
+    ? 'delivered'
+    : runnerStatus === 'FAILED_DELIVERY' || driverStatus === 'DRIVER_FAILED'
+      ? 'failed'
+      : 'inbox';
+
+  const params = new URLSearchParams({ tab, highlight: order.id });
+  if (order.order_code) params.set('search', order.order_code);
+  return `/dispatch?${params.toString()}`;
+};
+
+const getRoleAwareSearchRoute = (order: SearchResult, role?: string | null) => {
+  if (role === 'runner' || role === 'runner_assistant') {
+    return getRunnerSearchRoute(order);
+  }
+
+  if (role === 'driver') {
+    const params = new URLSearchParams({ highlight: order.id });
+    if (order.order_code) params.set('search', order.order_code);
+    return `/delivery?${params.toString()}`;
+  }
+
+  const route = getOrderTabRoute(order.status, order.runner_status, order.id);
+  if (!order.order_code) return route;
+  return `${route}&search=${encodeURIComponent(order.order_code)}`;
+};
+
 export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearchBarProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -37,6 +73,8 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const { data: assistantBinding } = useMyAssistantBinding();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -55,7 +93,8 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
   // Search orders when query changes
   useEffect(() => {
     const searchOrders = async () => {
-      if (query.length < 2) {
+      const orderCodeQuery = normalizeOrderCodeQuery(query);
+      if (orderCodeQuery.length < 2) {
         setResults([]);
         setShowDropdown(false);
         return;
@@ -63,14 +102,38 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
 
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
-          .rpc('search_visible_orders', {
-            p_query: query,
-            p_limit: 8
-          });
+        let ordersQuery = supabase
+          .from('orders')
+          .select('id, order_code, customer_name, status, runner_status, driver_status, runner_accept_status, created_at')
+          .ilike('order_code', `${orderCodeQuery}%`)
+          .order('created_at', { ascending: false })
+          .limit(8);
 
+        if (profile?.role === 'driver') {
+          ordersQuery = ordersQuery.eq('driver_id', profile.id);
+        } else if (profile?.role === 'runner') {
+          ordersQuery = ordersQuery.eq('runner_id', profile.id);
+        } else if (profile?.role === 'runner_assistant') {
+          if (!assistantBinding?.runner_id) {
+            setResults([]);
+            setShowDropdown(true);
+            return;
+          }
+          ordersQuery = ordersQuery.eq('runner_id', assistantBinding.runner_id);
+        }
+
+        const { data, error } = await ordersQuery;
         if (error) throw error;
-        setResults(data || []);
+        setResults((data || []).map((order) => ({
+          id: order.id,
+          order_code: order.order_code || '',
+          customer_name: order.customer_name,
+          status: order.status || '',
+          runner_status: order.runner_status,
+          driver_status: order.driver_status,
+          runner_accept_status: order.runner_accept_status,
+          created_at: order.created_at,
+        })));
         setShowDropdown(true);
       } catch (error) {
         setResults([]);
@@ -81,13 +144,13 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
 
     const debounce = setTimeout(searchOrders, 300);
     return () => clearTimeout(debounce);
-  }, [query]);
+  }, [query, profile?.id, profile?.role, assistantBinding?.runner_id]);
 
   const handleResultClick = (order: SearchResult) => {
     setQuery('');
     setShowDropdown(false);
     setIsOpen(false);
-    const route = getOrderTabRoute(order.status, order.runner_status, order.id);
+    const route = getRoleAwareSearchRoute(order, profile?.role);
     navigate(route);
   };
 
@@ -111,7 +174,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
               <Input
                 ref={inputRef}
                 type="text"
-                placeholder="Search order, name, phone..."
+                placeholder="Search order code..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="pl-9 pr-8 h-9 rounded-xl bg-white/[0.04] border-white/10 text-foreground placeholder:text-muted-foreground"
@@ -182,7 +245,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                   </button>
                 ))}
               </div>
-            ) : query.length >= 2 ? (
+            ) : normalizeOrderCodeQuery(query).length >= 2 ? (
               <div className="py-4 text-center text-sm text-muted-foreground">
                 No orders found
               </div>
@@ -200,7 +263,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         <Input
           type="text"
-          placeholder="Search order, name, phone..."
+          placeholder="Search order code..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="pl-10 pr-10 h-12 bg-white/[0.04] border-white/10 rounded-xl text-foreground placeholder:text-muted-foreground"
@@ -258,7 +321,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                 </button>
               ))}
             </div>
-          ) : query.length >= 2 ? (
+          ) : normalizeOrderCodeQuery(query).length >= 2 ? (
             <div className="py-6 text-center text-muted-foreground">
               No orders found for "{query}"
             </div>
