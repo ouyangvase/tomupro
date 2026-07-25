@@ -640,6 +640,47 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [receiptUploading, setReceiptUploading] = useState(false);
 
+  useEffect(() => {
+    return () => {
+      if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+    };
+  }, [receiptPreview]);
+
+  const selectReceiptFile = (file: File | undefined) => {
+    if (!file) return;
+    setReceiptFile(file);
+    setReceiptPreview(URL.createObjectURL(file));
+  };
+
+  const uploadReceipt = async (orderId: string, file: File) => {
+    setReceiptUploading(true);
+    try {
+      const { blob, extension } = await compressImage(file, { maxWidth: 1000, quality: 0.8 });
+      const path = `receipts/${orderId}/${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from('receipts')
+        .upload(path, blob, { contentType: blob.type });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
+      const { error: updateError } = await (supabase as any)
+        .from('orders')
+        .update({
+          receipt_url: publicUrl,
+          receipt_status: 'pending',
+          receipt_rejected_reason: null,
+          receipt_confirmed_by: null,
+          receipt_confirmed_at: null,
+        })
+        .eq('id', orderId);
+      if (updateError) throw updateError;
+
+      return publicUrl;
+    } finally {
+      setReceiptUploading(false);
+    }
+  };
+
   const isDelivered = order?.runner_status === 'DELIVERED';
   const isAdmin = role === 'admin';
   const isManager = role === 'manager';
@@ -834,24 +875,21 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         } as any);
         orderId = result.id;
 
-        // Upload receipt for TRANSFER orders
-        if (values.payment_method === 'TRANSFER' && receiptFile && orderId) {
-          try {
-            setReceiptUploading(true);
-            const { blob, extension } = await compressImage(receiptFile, { maxWidth: 1000, quality: 0.8 });
-            const path = `receipts/${orderId}/${Date.now()}.${extension}`;
-            const { error: uploadError } = await supabase.storage.from('receipts').upload(path, blob, { contentType: blob.type });
-            if (uploadError) throw uploadError;
-            const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
-            await (supabase as any).from('orders').update({ receipt_url: publicUrl, receipt_status: 'pending' }).eq('id', orderId);
-          } catch (uploadErr: any) {
-            toast({ variant: 'destructive', title: 'Receipt upload failed', description: uploadErr.message || 'Please re-upload the receipt from the order edit screen.' });
-          } finally {
-            setReceiptUploading(false);
-          }
-        }
       } else if (order) {
         await updateOrder.mutateAsync({ id: order.id, ...orderData } as any);
+      }
+
+      if (values.payment_method === 'TRANSFER' && receiptFile && orderId) {
+        try {
+          await uploadReceipt(orderId, receiptFile);
+        } catch (uploadErr: any) {
+          toast({
+            variant: 'destructive',
+            title: 'Receipt upload failed',
+            description: uploadErr.message || 'Please try uploading the receipt again.',
+          });
+          if (mode === 'edit') return;
+        }
       }
 
       if (orderId) {
@@ -1334,38 +1372,25 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                             )}
                             {/* Re-upload for rejected receipts (salesperson) */}
                             {order.receipt_status === 'rejected' && !isRunner && (
-                              <label className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-primary/30 text-primary hover:bg-primary/5 cursor-pointer transition-colors">
+                              <label className="relative flex items-center gap-1.5 overflow-hidden text-xs px-3 py-1.5 rounded-lg border border-primary/30 text-primary hover:bg-primary/5 cursor-pointer transition-colors">
                                 <Camera className="h-3.5 w-3.5" /> Re-upload Receipt
                                 <input
                                   type="file"
                                   accept="image/*"
                                   capture="environment"
-                                  className="hidden"
+                                  aria-label="Re-upload transfer receipt"
+                                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                                   onChange={async (e) => {
                                     const file = e.target.files?.[0];
                                     if (!file) return;
                                     try {
-                                      setReceiptUploading(true);
-                                      const { blob, extension } = await compressImage(file, { maxWidth: 1000, quality: 0.8 });
-                                      const path = `receipts/${order.id}/${Date.now()}.${extension}`;
-                                      const { error: uploadError } = await supabase.storage.from('receipts').upload(path, blob, { contentType: blob.type });
-                                      if (uploadError) throw uploadError;
-                                      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
-                                      await (supabase as any).from('orders').update({
-                                        receipt_url: publicUrl,
-                                        receipt_status: 'pending',
-                                        receipt_rejected_reason: null,
-                                        receipt_confirmed_by: null,
-                                        receipt_confirmed_at: null,
-                                      }).eq('id', order.id);
+                                      const publicUrl = await uploadReceipt(order.id, file);
                                       const { logAudit } = await import('@/hooks/useAuditLogs');
                                       logAudit({ entity_type: 'order', entity_id: order.id, action: 'receipt_re_uploaded', after_json: { receipt_url: publicUrl } });
                                       toast({ title: 'Receipt re-uploaded', description: 'Receipt has been re-uploaded and is pending confirmation.' });
                                       onOpenChange(false);
                                     } catch (err: any) {
                                       toast({ variant: 'destructive', title: 'Upload failed', description: err.message });
-                                    } finally {
-                                      setReceiptUploading(false);
                                     }
                                   }}
                                 />
@@ -1388,7 +1413,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                                 </button>
                               </div>
                             ) : (
-                              <label className="flex flex-col items-center gap-2 p-6 rounded-xl border-2 border-dashed border-border/50 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all">
+                              <label className="relative flex flex-col items-center gap-2 overflow-hidden p-6 rounded-xl border-2 border-dashed border-border/50 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all">
                                 <Camera className="h-8 w-8 text-muted-foreground" />
                                 <span className="text-sm text-muted-foreground">Tap to upload transfer receipt</span>
                                 <span className="text-[11px] text-muted-foreground/60">Image will be compressed automatically</span>
@@ -1396,14 +1421,9 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                                   type="file"
                                   accept="image/*"
                                   capture="environment"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                      setReceiptFile(file);
-                                      setReceiptPreview(URL.createObjectURL(file));
-                                    }
-                                  }}
+                                  aria-label="Upload transfer receipt"
+                                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                  onChange={(e) => selectReceiptFile(e.target.files?.[0])}
                                 />
                               </label>
                             )}
@@ -1564,11 +1584,13 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                 <Button
                   type="submit"
                   form="order-form"
-                  disabled={createOrder.isPending || updateOrder.isPending || isLocked}
+                  disabled={createOrder.isPending || updateOrder.isPending || receiptUploading || isLocked}
                   className="flex-[2] h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm"
                 >
-                  {createOrder.isPending || updateOrder.isPending
-                    ? 'Saving...'
+                  {receiptUploading
+                    ? 'Uploading receipt...'
+                    : createOrder.isPending || updateOrder.isPending
+                      ? 'Saving...'
                     : mode === 'create'
                       ? '🚀 Create Order'
                       : 'Save Changes'}
