@@ -24,6 +24,12 @@ export function invalidateOrderQueries(queryClient: QueryClient) {
   // Runner stats
   queryClient.invalidateQueries({ queryKey: ['runner-inbox-stats'] });
   queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
+  queryClient.invalidateQueries({ queryKey: ['driver-assignments'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-dispatch-driver-workloads'] });
+  queryClient.invalidateQueries({ queryKey: ['driver-route-optimization'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-route-overview'] });
+  queryClient.invalidateQueries({ queryKey: ['driver-analytics'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-drivers-analytics'] });
 
   // Admin ready order stats
   queryClient.invalidateQueries({ queryKey: ['ready-order-stats'] });
@@ -56,6 +62,9 @@ export function invalidateOrderQueries(queryClient: QueryClient) {
   // Pickups and returns
   queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
   queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
+  queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
+  queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
   queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
   queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
 

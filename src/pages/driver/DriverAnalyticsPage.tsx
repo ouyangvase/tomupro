@@ -1,263 +1,243 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMemo, useState } from 'react';
+import {
+  endOfMonth,
+  endOfWeek,
+  endOfYear,
+  format,
+  getDay,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+  startOfYear,
+  subMonths,
+  addMonths,
+} from 'date-fns';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
-import { AppLayout } from '@/components/layout/AppLayout';
-import { Clock, MapPin, Package, Target } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { CalendarDays, ChevronLeft, ChevronRight, Target } from 'lucide-react';
+
+type Period = 'today' | 'week' | 'month' | 'year' | 'custom';
+
+const periodOptions: Array<{ value: Period; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+  { value: 'year', label: 'Year' },
+  { value: 'custom', label: 'Custom' },
+];
+
+function dateKey(date: Date) {
+  return format(date, 'yyyy-MM-dd');
+}
 
 export default function DriverAnalyticsPage() {
   const { profile } = useAuth();
-  const { data: analytics, isLoading } = useDriverAnalytics(profile?.id);
+  const [period, setPeriod] = useState<Period>('month');
+  const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
+  const [customFrom, setCustomFrom] = useState(dateKey(startOfMonth(new Date())));
+  const [customTo, setCustomTo] = useState(dateKey(new Date()));
+  const [selectedDate, setSelectedDate] = useState(dateKey(new Date()));
 
-  if (isLoading) {
-    return (
-      <AppLayout>
-        <div className="text-center py-12 text-muted-foreground">Loading analytics...</div>
-      </AppLayout>
-    );
-  }
+  const range = useMemo(() => {
+    const now = new Date();
+    if (period === 'today') return { from: dateKey(now), to: dateKey(now) };
+    if (period === 'week') {
+      return {
+        from: dateKey(startOfWeek(now, { weekStartsOn: 1 })),
+        to: dateKey(endOfWeek(now, { weekStartsOn: 1 })),
+      };
+    }
+    if (period === 'year') return { from: dateKey(startOfYear(now)), to: dateKey(endOfYear(now)) };
+    if (period === 'custom') return { from: customFrom, to: customTo };
+    return { from: dateKey(startOfMonth(now)), to: dateKey(endOfMonth(now)) };
+  }, [customFrom, customTo, period]);
 
-  if (!analytics) {
-    return (
-      <AppLayout>
-        <div className="max-w-2xl mx-auto">
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h2 className="text-xl font-semibold mb-2">No Data Yet</h2>
-              <p className="text-muted-foreground">
-                Start delivering orders to see your performance analytics.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </AppLayout>
-    );
-  }
+  const calendarFrom = dateKey(startOfMonth(calendarMonth));
+  const calendarTo = dateKey(endOfMonth(calendarMonth));
+  const { data: analytics, isLoading } = useDriverAnalytics(profile?.id, {
+    dateFrom: range.from,
+    dateTo: range.to,
+    calendarFrom,
+    calendarTo,
+  });
 
-  const formatAmount = (value: number) => `BND ${Number(value || 0).toFixed(2)}`;
-  const statusCards = [
-    {
-      title: 'Delivered',
-      subtitle: 'Accepted by runner',
-      metric: analytics.statusSummary.delivered,
-      icon: Target,
-      tone: 'bg-emerald-50 text-emerald-700',
-    },
-    {
-      title: 'Failed',
-      subtitle: 'Driver failed',
-      metric: analytics.statusSummary.failed,
-      icon: Package,
-      tone: 'bg-red-50 text-red-700',
-    },
-    {
-      title: 'Waiting Accept',
-      subtitle: 'Delivered, waiting runner',
-      metric: analytics.statusSummary.waitingAccept,
-      icon: Clock,
-      tone: 'bg-amber-50 text-amber-700',
-    },
-    {
-      title: 'Failed Waiting',
-      subtitle: 'Failed, waiting runner',
-      metric: analytics.statusSummary.failedWaitingAccept,
-      icon: MapPin,
-      tone: 'bg-orange-50 text-orange-700',
-    },
-  ];
-  const monthlyActivity = analytics.monthlyTrend.filter(
-    (day) => day.delivered > 0 || day.failed > 0 || day.totalAmount > 0,
-  );
+  const selectedDay = analytics?.daily.find((day) => day.date === selectedDate);
+  const leadingDays = (getDay(startOfMonth(calendarMonth)) + 6) % 7;
+  const summary = analytics?.summary;
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Target className="h-6 w-6" />
-            My Performance
-          </h1>
-          <p className="text-muted-foreground">Track your delivery performance and trends</p>
+      <div className="mx-auto max-w-3xl space-y-5 pb-24">
+        <header className="border-b border-border pb-4">
+          <p className="text-xs font-bold uppercase text-primary">Performance</p>
+          <h1 className="mt-1 text-2xl font-bold">Delivery calendar</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Delivered / assigned for each day</p>
+        </header>
+
+        <div className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1">
+          {periodOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setPeriod(option.value)}
+              className={cn(
+                'h-9 shrink-0 rounded-md px-3 text-sm font-semibold transition-colors',
+                period === option.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
 
-      {/* Operational status summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        {statusCards.map(({ title, subtitle, metric, icon: Icon, tone }) => (
-          <Card key={title} className="border-border/70 shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    {title}
-                  </p>
-                  <p className="mt-1 text-3xl font-bold leading-none">{metric.count}</p>
-                  <p className="mt-2 text-sm font-semibold text-foreground">{formatAmount(metric.amount)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
-                </div>
-                <div className={`rounded-full p-2 ${tone}`}>
-                  <Icon className="h-4 w-4" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Tabs defaultValue="weekly">
-        <TabsList>
-          <TabsTrigger value="weekly">Weekly Trend</TabsTrigger>
-          <TabsTrigger value="monthly">Monthly Trend</TabsTrigger>
-          <TabsTrigger value="areas">Active Areas</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="weekly">
-          <Card>
-            <CardHeader>
-              <CardTitle>This Week's Performance</CardTitle>
-              <CardDescription>Accepted delivered orders, failed orders, and collection by day.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
-                {analytics.weeklyTrend.map((day) => (
-                  <div key={day.date} className="rounded-2xl border bg-card p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      {format(parseISO(day.date), 'EEE')}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">{format(parseISO(day.date), 'dd MMM')}</p>
-                    <div className="mt-3 space-y-1 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span>Delivered</span>
-                        <span className="font-semibold text-emerald-700">{day.delivered}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Failed</span>
-                        <span className="font-semibold text-red-700">{day.failed}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Amount</span>
-                        <span className="font-semibold">{formatAmount(day.totalAmount)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {analytics.thisWeek.avgDeliveryTimeMinutes && (
-                <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  Average delivery time: {analytics.thisWeek.avgDeliveryTimeMinutes} minutes
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="monthly">
-          <Card>
-            <CardHeader>
-              <CardTitle>Monthly Performance</CardTitle>
-              <CardDescription>Only active days are shown to keep the page light.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {monthlyActivity.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                    No delivery activity this month.
-                  </div>
-                ) : (
-                  monthlyActivity.map((day) => (
-                    <div key={day.date} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-3">
-                      <div>
-                        <p className="font-semibold">{format(parseISO(day.date), 'dd MMM yyyy')}</p>
-                        <p className="text-sm text-muted-foreground">{formatAmount(day.totalAmount)} accepted delivered amount</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700">
-                          {day.delivered} delivered
-                        </Badge>
-                        <Badge variant="outline" className="bg-red-50 text-red-700">
-                          {day.failed} failed
-                        </Badge>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="areas">
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  Active Route Areas
-                </CardTitle>
-                <CardDescription>Current orders needing delivery by area</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {analytics.topAreas.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                      No active delivery areas.
-                    </div>
-                  ) : (
-                    analytics.topAreas.map((area) => (
-                      <div key={area.area} className="rounded-2xl border bg-card p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold">{area.area}</p>
-                            <p className="text-sm text-muted-foreground">{formatAmount(area.totalAmount)} active collect</p>
-                          </div>
-                          <Badge variant="secondary">{area.deliveredCount} active</Badge>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Active Area Statistics</CardTitle>
-                <CardDescription>Today&apos;s assigned delivery workload by area</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                  {analytics.areaStats
-                    .sort((a, b) => b.deliveredCount - a.deliveredCount)
-                    .map(area => (
-                      <div key={area.area} className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                        <div>
-                          <p className="font-medium text-sm">{area.area}</p>
-                          <div className="flex gap-2 mt-1">
-                            <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
-                              {area.deliveredCount} active
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium">BND {area.totalAmount.toLocaleString()}</p>
-                          {area.avgDeliveryTime && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {area.avgDeliveryTime}m avg
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
+        {period === 'custom' && (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-xs font-semibold text-muted-foreground">
+              From
+              <Input className="mt-1" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
+            </label>
+            <label className="text-xs font-semibold text-muted-foreground">
+              To
+              <Input className="mt-1" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+            </label>
           </div>
-        </TabsContent>
-      </Tabs>
+        )}
+
+        <section className="border-b border-border pb-5">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Delivered</p>
+              <p className="mt-1 text-2xl font-bold">{summary?.delivered ?? 0} / {summary?.assigned ?? 0}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Delivery rate</p>
+              <p className="mt-1 text-2xl font-bold">{(summary?.deliveryRate ?? 0).toFixed(1)}%</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Cash collected</p>
+              <p className="mt-1 text-xl font-bold">BND {(summary?.cashCollected ?? 0).toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Failed</p>
+              <p className="mt-1 text-xl font-bold text-destructive">{summary?.failed ?? 0}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Pending</p>
+              <p className="mt-1 text-xl font-bold">{summary?.pending ?? 0}</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Previous month"
+              onClick={() => {
+                const month = subMonths(calendarMonth, 1);
+                setCalendarMonth(month);
+                setSelectedDate(dateKey(startOfMonth(month)));
+              }}
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="font-bold">{format(calendarMonth, 'MMMM yyyy')}</h2>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Next month"
+              onClick={() => {
+                const month = addMonths(calendarMonth, 1);
+                setCalendarMonth(month);
+                setSelectedDate(dateKey(startOfMonth(month)));
+              }}
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-7 text-center text-xs font-semibold text-muted-foreground">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+              <div key={day} className="py-2">{day}</div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 border-l border-t border-border">
+            {Array.from({ length: leadingDays }).map((_, index) => (
+              <div key={`blank-${index}`} className="aspect-square border-b border-r border-border bg-muted/30" />
+            ))}
+            {(analytics?.daily || []).map((day) => (
+              <button
+                key={day.date}
+                type="button"
+                onClick={() => setSelectedDate(day.date)}
+                className={cn(
+                  'aspect-square min-w-0 border-b border-r border-border p-1 text-left transition-colors hover:bg-muted',
+                  selectedDate === day.date && 'bg-primary/10 ring-2 ring-inset ring-primary',
+                )}
+              >
+                <span className="block text-xs font-semibold">{format(parseISO(day.date), 'd')}</span>
+                <span
+                  className={cn(
+                    'mt-1 block text-center text-xs font-bold sm:text-sm',
+                    day.failed > 0 && 'text-destructive',
+                    day.assigned > 0 && day.delivered === day.assigned && 'text-emerald-700',
+                  )}
+                >
+                  {day.delivered} / {day.assigned}
+                </span>
+              </button>
+            ))}
+          </div>
+          {isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Loading calendar...</p>}
+        </section>
+
+        <section className="border-t border-border pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase text-muted-foreground">Selected day</p>
+              <h2 className="mt-1 font-bold">{format(parseISO(selectedDate), 'dd MMMM yyyy')}</h2>
+            </div>
+            <Badge variant="secondary">{selectedDay?.assigned ?? 0} assigned</Badge>
+          </div>
+
+          {!selectedDay || selectedDay.orders.length === 0 ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              <CalendarDays className="mx-auto mb-2 h-7 w-7" />
+              No assigned orders on this day.
+            </div>
+          ) : (
+            <div className="mt-3 divide-y divide-border border-y border-border">
+              {selectedDay.orders.map((order) => (
+                <div key={order.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold">{order.order_code}</p>
+                    <p className="truncate text-xs text-muted-foreground">{order.customer_name}</p>
+                  </div>
+                  <Badge
+                    variant={order.assignment_state === 'FAILED' ? 'destructive' : 'outline'}
+                    className={cn(order.assignment_state === 'DELIVERED' && 'border-emerald-600 text-emerald-700')}
+                  >
+                    {order.assignment_state.replace('_', ' ')}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {!analytics && !isLoading && (
+          <div className="py-12 text-center text-muted-foreground">
+            <Target className="mx-auto mb-2 h-8 w-8" />
+            No performance data yet.
+          </div>
+        )}
       </div>
     </AppLayout>
   );

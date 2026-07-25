@@ -7,18 +7,27 @@ import {
   getTodayDateKey,
   isVisibleDriverInboxOrder,
 } from '@/lib/driverOrderScope';
+import { fetchDriverAssignments } from '@/hooks/useDriverAssignments';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
 
 export interface DriverPickup {
   id: string;
   pickup_date: string;
   runner_id: string;
   driver_id: string;
-  status: 'PENDING_DRIVER_ACK' | 'DRIVER_ACKED' | 'CANCELLED';
+  status: 'PENDING_DRIVER_ACK' | 'DRIVER_ACKED' | 'COMPLETED' | 'CANCELLED';
   notes: string | null;
   created_at: string;
+  created_by: string | null;
+  updated_at: string;
   acknowledged_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  source_order_ids: string[];
+  source_order_codes: string[];
   runner?: { display_name: string };
   driver?: { display_name: string };
+  creator?: { display_name: string };
   items?: DriverPickupItem[];
 }
 
@@ -29,9 +38,24 @@ export interface DriverPickupItem {
   qty: number;
   required_qty: number | null;
   buffer_qty: number;
+  collected_qty: number;
   created_at: string;
   product?: { sku_name: string; sku_code: string | null };
 }
+
+type StockMovementItem = {
+  product_id: string;
+  qty: number;
+  product?: { sku_name?: string | null; sku_code?: string | null } | Array<{
+    sku_name?: string | null;
+    sku_code?: string | null;
+  }> | null;
+};
+
+type StockMovementRecord = {
+  driver_id: string;
+  items?: StockMovementItem[] | null;
+};
 
 export interface BlockingOrder {
   order_id: string;
@@ -85,6 +109,7 @@ export interface RunnerDriverPickupNeed {
   overdue_order_count: number;
   total_qty: number;
   items: PickupNeedItem[];
+  order_ids: string[];
   order_codes: string[];
   overdue_order_codes: string[];
 }
@@ -200,40 +225,16 @@ async function fetchActiveDriverOrders(params: {
   driverIds?: string[];
   driverId?: string;
 }) {
-  let query = supabase
-    .from('orders')
-    .select(`
-      id,
-      order_code,
-      customer_name,
-      driver_id,
-      runner_id,
-      status,
-      driver_status,
-      runner_status,
-      runner_accept_status,
-      order_date,
-      expected_pickup_date,
-      next_delivery_date,
-      runner_assigned_at,
-      created_at,
-      order_items(
-        product_id,
-        qty,
-        sku_label,
-        product:products(sku_name, sku_code)
-      )
-    `)
-    .in('driver_status', [...ACTIVE_DRIVER_PICKUP_STATUSES]);
-
-  if (params.runnerId) query = query.eq('runner_id', params.runnerId);
-  if (params.driverIds?.length) query = query.in('driver_id', params.driverIds);
-  if (params.driverId) query = query.eq('driver_id', params.driverId);
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  return ((data || []) as ActiveDriverDeliveryOrder[]).filter((order) => isActiveDriverPickupOrder(order));
+  const assignments = await fetchDriverAssignments({
+    runnerId: params.runnerId,
+    driverId: params.driverId,
+    dateFrom: getTodayDateKey(),
+    dateTo: getTodayDateKey(),
+    activeOnly: true,
+    includeItems: true,
+  });
+  const allowedDrivers = params.driverIds?.length ? new Set(params.driverIds) : null;
+  return assignments.filter((order) => !allowedDrivers || allowedDrivers.has(order.driver_id)) as ActiveDriverDeliveryOrder[];
 }
 
 // Fetch pickups for a runner (all their drivers)
@@ -251,6 +252,7 @@ export function useRunnerPickups(runnerIdOverride?: string) {
         .select(`
           *,
           driver:profiles!driver_pickups_driver_id_fkey(id, display_name, email),
+          creator:profiles!driver_pickups_created_by_fkey(id, display_name, email),
           items:driver_pickup_items(*, product:products(id, sku_name, sku_code))
         `)
         .eq('runner_id', runnerScopeId)
@@ -314,6 +316,8 @@ export function useCreatePickup() {
       pickup_date: string;
       notes?: string;
       items: { product_id: string; qty: number; required_qty?: number; buffer_qty?: number }[];
+      source_order_ids?: string[];
+      source_order_codes?: string[];
       force?: boolean; // Allow bypassing blocking order checks
     }) => {
       if (!user?.id) throw new Error('Not authenticated');
@@ -329,46 +333,15 @@ export function useCreatePickup() {
         }
       }
 
-      // Create pickup
-      const { data: pickup, error: pickupError } = await supabase
-        .from('driver_pickups')
-        .insert({
-          runner_id: params.runner_id || user.id,
-          driver_id: params.driver_id,
-          pickup_date: params.pickup_date,
-          notes: params.notes,
-        })
-        .select()
-        .single();
-      if (pickupError) throw pickupError;
-
-      // Create pickup items with required_qty and buffer_qty for audit
-      if (params.items.length > 0) {
-        const { error: itemsError } = await supabase
-          .from('driver_pickup_items')
-          .insert(params.items.map(item => ({
-            pickup_id: pickup.id,
-            product_id: item.product_id,
-            qty: item.qty,
-            required_qty: item.required_qty || null,
-            buffer_qty: item.buffer_qty || 0,
-          })));
-        if (itemsError) throw itemsError;
-      }
-
-      // Notify driver about the new pickup
-      const totalItems = params.items.reduce((sum, i) => sum + i.qty, 0);
-      await supabase.from('notifications').insert({
-        user_id: params.driver_id,
-        title: 'New Pickup Ready',
-        message: `You have a new pickup with ${totalItems} item(s) ready for collection on ${params.pickup_date}.`,
-        type: 'pickup_created',
-        reference_type: 'driver_pickup',
-        reference_id: pickup.id,
-        priority: 'HIGH',
+      return callSupabaseRpc<string>('create_driver_pickup_task', {
+        p_runner_id: params.runner_id || user.id,
+        p_driver_id: params.driver_id,
+        p_pickup_date: params.pickup_date,
+        p_notes: params.notes || '',
+        p_items: params.items,
+        p_source_order_ids: params.source_order_ids || [],
+        p_source_order_codes: params.source_order_codes || [],
       });
-
-      return pickup;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
@@ -376,6 +349,57 @@ export function useCreatePickup() {
       queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
       queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
       toast({ title: 'Pickup created successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
+export function useUpdatePickup() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (params: {
+      pickup_id: string;
+      pickup_date: string;
+      notes?: string;
+      items: { product_id: string; qty: number; required_qty?: number; buffer_qty?: number }[];
+    }) => {
+      return callSupabaseRpc<string>('update_driver_pickup_task', {
+        p_pickup_id: params.pickup_id,
+        p_pickup_date: params.pickup_date,
+        p_notes: params.notes || '',
+        p_items: params.items,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
+      toast({ title: 'Pickup updated' });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
+export function useCompletePickup() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (pickupId: string) => {
+      return callSupabaseRpc<string>('complete_driver_pickup_task', {
+        p_pickup_id: pickupId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
+      toast({ title: 'Pickup completed' });
     },
     onError: (error: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
@@ -420,11 +444,9 @@ export function useCancelPickup() {
 
   return useMutation({
     mutationFn: async (pickupId: string) => {
-      const { error } = await supabase
-        .from('driver_pickups')
-        .update({ status: 'CANCELLED' })
-        .eq('id', pickupId);
-      if (error) throw error;
+      return callSupabaseRpc<string>('cancel_driver_pickup_task', {
+        p_pickup_id: pickupId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
@@ -472,7 +494,7 @@ export function useDeletePickup() {
   });
 }
 
-// Fetch live driver allocated stock from acknowledged pickups only, minus runner-acknowledged returns.
+// Stock becomes collected only after the runner completes an acknowledged pickup.
 export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: string) {
   const { user } = useAuth();
   const runnerScopeId = runnerIdOverride || (driverId ? user?.id : undefined);
@@ -496,7 +518,7 @@ export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: st
             product:products(id, sku_name, sku_code)
           )
         `)
-        .eq('status', 'DRIVER_ACKED');
+        .eq('status', 'COMPLETED');
 
       let returnQuery = supabase
         .from('driver_returns')
@@ -546,7 +568,7 @@ export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: st
         pending_qty: number;
       }>();
 
-      const addStockDelta = (stockDriverId: string | null | undefined, item: any, delta: number) => {
+      const addStockDelta = (stockDriverId: string | null | undefined, item: StockMovementItem, delta: number) => {
         if (!stockDriverId || !item?.product_id) return;
         const qty = Number(item.qty || 0);
         if (qty <= 0) return;
@@ -571,15 +593,15 @@ export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: st
         });
       };
 
-      for (const pickup of pickups || []) {
-        for (const item of (pickup as any).items || []) {
-          addStockDelta((pickup as any).driver_id, item, 1);
+      for (const pickup of (pickups || []) as unknown as StockMovementRecord[]) {
+        for (const item of pickup.items || []) {
+          addStockDelta(pickup.driver_id, item, 1);
         }
       }
 
-      for (const driverReturn of returns || []) {
-        for (const item of (driverReturn as any).items || []) {
-          addStockDelta((driverReturn as any).driver_id, item, -1);
+      for (const driverReturn of (returns || []) as unknown as StockMovementRecord[]) {
+        for (const item of driverReturn.items || []) {
+          addStockDelta(driverReturn.driver_id, item, -1);
         }
       }
 
@@ -637,6 +659,7 @@ export function useRunnerDriverPickupNeeds(runnerIdOverride?: string) {
             overdue_order_count: overdueOrders.length,
             total_qty: items.reduce((sum, item) => sum + item.required_qty, 0),
             items,
+            order_ids: driverOrders.map(order => order.id),
             order_codes: driverOrders.map(order => order.order_code || '-').filter(Boolean),
             overdue_order_codes: overdueOrders.map(order => order.order_code || '-').filter(Boolean),
           };

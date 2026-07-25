@@ -1,11 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Order } from '@/types/database';
-import {
-  getTodayDateKey,
-  isDriverWorkloadOrder,
-  isVisibleDriverInboxOrder,
-} from '@/lib/driverOrderScope';
+import { getTodayDateKey } from '@/lib/driverOrderScope';
+import { fetchDriverAssignments } from '@/hooks/useDriverAssignments';
 
 export interface AreaGroup {
   area: string | null;
@@ -30,20 +26,13 @@ export function useDriverRouteOptimization(driverId?: string) {
     queryFn: async () => {
       if (!driverId) return null;
 
-      const { data: orders, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_items(*)
-        `)
-        .eq('driver_id', driverId)
-        .in('driver_status', ['ASSIGNED', 'OUT_FOR_DELIVERY'])
-        .order('area', { ascending: true });
-
-      if (error) throw error;
-      const scopedOrders = ((orders || []) as unknown as Order[]).filter((order) =>
-        isVisibleDriverInboxOrder(order, todayDateKey)
-      );
+      const scopedOrders = await fetchDriverAssignments({
+        driverId,
+        dateFrom: todayDateKey,
+        dateTo: todayDateKey,
+        activeOnly: true,
+        includeItems: true,
+      });
       if (scopedOrders.length === 0) return null;
 
       // Group orders by area
@@ -88,26 +77,20 @@ export function useRunnerRouteOverview(runnerId?: string) {
       if (!runnerId) return [];
 
       // Get all orders assigned to drivers under this runner
-      const { data: orders, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          driver:profiles!orders_driver_id_fkey(id, display_name)
-        `)
-        .eq('runner_id', runnerId)
-        .not('driver_id', 'is', null)
-        .in('driver_status', ['ASSIGNED', 'OUT_FOR_DELIVERY']);
-
-      if (error) throw error;
-      if (!orders) return [];
-      const scopedOrders = (orders || []).filter((order) => isDriverWorkloadOrder(order, todayDateKey));
+      const scopedOrders = await fetchDriverAssignments({
+        runnerId,
+        dateFrom: todayDateKey,
+        dateTo: todayDateKey,
+        activeOnly: true,
+        includeItems: false,
+      });
 
       // Group by driver, then by area
       const driverMap = new Map<string, { driverName: string; areas: Map<string, Order[]> }>();
       
       scopedOrders.forEach(order => {
         const driverId = order.driver_id!;
-        const driverName = (order.driver as any)?.display_name || 'Unknown';
+        const driverName = order.driver_name || 'Unknown';
         const area = order.area || 'Unknown Area';
 
         if (!driverMap.has(driverId)) {

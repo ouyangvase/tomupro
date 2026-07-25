@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useOrders, useUpdateOrder } from '@/hooks/useOrders';
+import { useUpdateOrder } from '@/hooks/useOrders';
+import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { useDriverMarkDelivered, useDriverMarkFailed, useDriverParentRunner } from '@/hooks/useDrivers';
 import { useReasons } from '@/hooks/useReasons';
 import { useRouteSuggestion } from '@/hooks/useRouteSuggestion';
@@ -113,7 +114,13 @@ const driverStatusConfig: Record<string, { label: string; className: string }> =
 
 export default function DriverInbox() {
   const { profile } = useAuth();
-  const { data: orders = [], isLoading } = useOrders();
+  const todayDateKey = useMemo(() => getTodayDateKey(), []);
+  const { data: orders = [], isLoading } = useDriverAssignments({
+    driverId: profile?.id,
+    dateFrom: todayDateKey,
+    dateTo: todayDateKey,
+    includeItems: true,
+  });
   const { data: parentRunner } = useDriverParentRunner();
   const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY');
   const markDelivered = useDriverMarkDelivered();
@@ -137,12 +144,9 @@ export default function DriverInbox() {
   const [failedProofFiles, setFailedProofFiles] = useState<File[]>([]);
   const [failedProofPreviews, setFailedProofPreviews] = useState<string[]>([]);
   const [proofUploading, setProofUploading] = useState(false);
-  const todayDateKey = useMemo(() => getTodayDateKey(), []);
-
-  // Filter orders assigned to this driver
   const myOrders = useMemo<DriverInboxOrder[]>(() => {
-    return orders.filter(order => order.driver_id === profile?.id) as DriverInboxOrder[];
-  }, [orders, profile?.id]);
+    return orders as DriverInboxOrder[];
+  }, [orders]);
 
   // Get delivery date for an order (use next_delivery_date if set, else expected_pickup_date, else order_date)
   const getDeliveryDate = useCallback((order: DriverInboxOrder): Date => {

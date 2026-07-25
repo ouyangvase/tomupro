@@ -10,6 +10,7 @@ import {
   History,
   Loader2,
   PackagePlus,
+  Pencil,
   RotateCcw,
   Search,
   Trash2,
@@ -39,6 +40,7 @@ import { CreatePickupDialog } from '@/components/driver/CreatePickupDialog';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import {
   useCancelPickup,
+  useCompletePickup,
   useDeletePickup,
   useDriverAllocatedStock,
   useRunnerDriverPickupNeeds,
@@ -86,6 +88,7 @@ function productLabel(item: { product?: { sku_name?: string | null; sku_code?: s
 
 function pickupStatusLabel(status: DriverPickup['status']) {
   if (status === 'DRIVER_ACKED') return 'Acknowledged';
+  if (status === 'COMPLETED') return 'Completed';
   if (status === 'CANCELLED') return 'Cancelled';
   return 'Pending driver';
 }
@@ -244,7 +247,10 @@ export default function RunnerDriverStockWorkspace({
   const [activeTab, setActiveTab] = useState('pickups');
   const [driverFilter, setDriverFilter] = useState('all');
   const [query, setQuery] = useState('');
+  const [pickupStatusFilter, setPickupStatusFilter] = useState('all');
   const [quickPickupDriverId, setQuickPickupDriverId] = useState<string | null>(null);
+  const [pickupDialogOpen, setPickupDialogOpen] = useState(false);
+  const [editingPickup, setEditingPickup] = useState<DriverPickup | null>(null);
   const [expandedCashDrivers, setExpandedCashDrivers] = useState<Set<string>>(new Set());
   const [settlingDriverId, setSettlingDriverId] = useState<string | null>(null);
   const { data: drivers, isLoading: loadingDrivers } = useMyDrivers(runnerIdOverride);
@@ -258,6 +264,7 @@ export default function RunnerDriverStockWorkspace({
   const { data: cashLiabilities, isLoading: loadingCashLiabilities } = useRunnerCashLiabilities();
   const { data: settlementHistory, isLoading: loadingSettlementHistory } = useRunnerSettlementHistory();
   const cancelPickup = useCancelPickup();
+  const completePickup = useCompletePickup();
   const deletePickup = useDeletePickup();
   const acknowledgeReturn = useAcknowledgeReturn();
   const settleDriverCash = useSettleDriverCash();
@@ -301,6 +308,7 @@ export default function RunnerDriverStockWorkspace({
   const filteredPickups = useMemo(() => {
     return (pickups || []).filter((pickup) => {
       if (driverFilter !== 'all' && pickup.driver_id !== driverFilter) return false;
+      if (pickupStatusFilter !== 'all' && pickup.status !== pickupStatusFilter) return false;
       if (!normalizedQuery) return true;
       const haystack = [
         pickup.driver?.display_name,
@@ -310,7 +318,12 @@ export default function RunnerDriverStockWorkspace({
       ].join(' ').toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [driverFilter, normalizedQuery, pickups]);
+  }, [driverFilter, normalizedQuery, pickupStatusFilter, pickups]);
+
+  const quickPickupNeed = useMemo(
+    () => (pickupNeeds || []).find((need) => need.driver_id === quickPickupDriverId) || null,
+    [pickupNeeds, quickPickupDriverId],
+  );
 
   const filteredReturns = useMemo(() => {
     return (returns || []).filter((item) => {
@@ -400,16 +413,33 @@ export default function RunnerDriverStockWorkspace({
             </p>
           </div>
           <CreatePickupDialog
-            open={quickPickupDriverId !== null}
-            onOpenChange={(open) => setQuickPickupDriverId(open ? (quickPickupDriverId || '') : null)}
+            open={pickupDialogOpen}
+            onOpenChange={(open) => {
+              setPickupDialogOpen(open);
+              if (!open) setQuickPickupDriverId(null);
+            }}
             defaultDriverId={quickPickupDriverId || ''}
+            defaultItems={quickPickupNeed?.items}
+            defaultOrderIds={quickPickupNeed?.order_ids}
+            defaultOrderCodes={quickPickupNeed?.order_codes}
             runnerIdOverride={runnerIdOverride}
             trigger={
-              <Button>
+              <Button onClick={() => {
+                setQuickPickupDriverId(null);
+                setPickupDialogOpen(true);
+              }}>
                 <PackagePlus className="mr-2 h-4 w-4" />
                 Create Pickup
               </Button>
             }
+          />
+          <CreatePickupDialog
+            open={editingPickup !== null}
+            onOpenChange={(open) => {
+              if (!open) setEditingPickup(null);
+            }}
+            pickup={editingPickup}
+            runnerIdOverride={runnerIdOverride}
           />
         </div>
 
@@ -460,6 +490,20 @@ export default function RunnerDriverStockWorkspace({
               ))}
             </SelectContent>
           </Select>
+          {activeTab === 'pickups' && (
+            <Select value={pickupStatusFilter} onValueChange={setPickupStatusFilter}>
+              <SelectTrigger className="h-11 rounded-2xl bg-card">
+                <SelectValue placeholder="All pickup statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All pickup statuses</SelectItem>
+                <SelectItem value="PENDING_DRIVER_ACK">Pending acknowledgement</SelectItem>
+                <SelectItem value="DRIVER_ACKED">Acknowledged</SelectItem>
+                <SelectItem value="COMPLETED">Completed</SelectItem>
+                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -495,7 +539,10 @@ export default function RunnerDriverStockWorkspace({
             <PickupNeedsPanel
               needs={filteredPickupNeeds}
               isLoading={loadingPickupNeeds}
-              onCreatePickup={(driverId) => setQuickPickupDriverId(driverId)}
+              onCreatePickup={(driverId) => {
+                setQuickPickupDriverId(driverId);
+                setPickupDialogOpen(true);
+              }}
             />
 
             <Card className="rounded-3xl border-border/60">
@@ -513,40 +560,60 @@ export default function RunnerDriverStockWorkspace({
                 ) : (
                   <>
                   <div className="space-y-2 md:hidden">
-                    {filteredStock.map((item) => (
-                      <div key={`${item.driver_id}-${item.product_id}`} className="rounded-2xl border border-border/70 bg-card p-3">
+                    {filteredPickups.map((pickup) => (
+                      <div key={pickup.id} className="rounded-2xl border border-border/70 bg-card p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">Driver</p>
                             <p className="mt-1 break-words text-base font-black text-foreground">
-                              {driverNameById.get(item.driver_id) || 'Unassigned driver'}
+                              {pickup.driver?.display_name || 'Unknown driver'}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-muted-foreground">
+                              {format(new Date(pickup.pickup_date), 'dd MMM yyyy')}
                             </p>
                           </div>
-                          <Badge variant="secondary" className="shrink-0 rounded-full">
-                            {item.pending_qty} pending
+                          <Badge
+                            variant={pickup.status === 'COMPLETED' ? 'default' : pickup.status === 'CANCELLED' ? 'destructive' : 'outline'}
+                            className="shrink-0 rounded-full"
+                          >
+                            {pickupStatusLabel(pickup.status)}
                           </Badge>
                         </div>
 
-                        <div className="mt-3 rounded-xl bg-muted/40 p-3">
-                          <p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">Product</p>
-                          <p className="mt-1 break-words text-sm font-bold text-foreground">
-                            {item.sku_code ? `${item.sku_code}/` : ''}{item.sku_name}
-                          </p>
+                        <div className="mt-3 space-y-2 border-y border-border/60 py-3">
+                          {(pickup.items || []).map((item) => (
+                            <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                              <span className="min-w-0 break-words font-semibold">{productLabel(item)}</span>
+                              <span className="shrink-0 text-muted-foreground">
+                                {item.collected_qty ?? 0}/{item.qty} collected
+                              </span>
+                            </div>
+                          ))}
                         </div>
 
-                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                          <div className="rounded-xl bg-muted/40 p-2">
-                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-muted-foreground">Allocated</p>
-                            <p className="mt-1 text-lg font-black">{item.allocated_qty}</p>
-                          </div>
-                          <div className="rounded-xl bg-green-50 p-2">
-                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-green-700">Delivered</p>
-                            <p className="mt-1 text-lg font-black text-green-800">{item.delivered_qty}</p>
-                          </div>
-                          <div className="rounded-xl bg-amber-50 p-2">
-                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-700">Pending</p>
-                            <p className="mt-1 text-lg font-black text-amber-800">{item.pending_qty}</p>
-                          </div>
+                        <div className="mt-3 text-xs text-muted-foreground">
+                          <p>Created {format(new Date(pickup.created_at), 'dd MMM, HH:mm')} by {pickup.creator?.display_name || 'Runner'}</p>
+                          {pickup.completed_at && <p>Completed {format(new Date(pickup.completed_at), 'dd MMM, HH:mm')}</p>}
+                          {pickup.source_order_codes?.length ? <p>Orders: {pickup.source_order_codes.join(', ')}</p> : null}
+                          {pickup.notes && <p className="mt-1 break-words">Notes: {pickup.notes}</p>}
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {(pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED') && (
+                            <Button size="sm" variant="outline" onClick={() => setEditingPickup(pickup)}>
+                              <Pencil className="mr-1 h-4 w-4" /> Edit
+                            </Button>
+                          )}
+                          {pickup.status === 'DRIVER_ACKED' && (
+                            <Button size="sm" onClick={() => completePickup.mutate(pickup.id)}>
+                              <CheckCircle2 className="mr-1 h-4 w-4" /> Complete
+                            </Button>
+                          )}
+                          {pickup.status === 'PENDING_DRIVER_ACK' && (
+                            <Button size="sm" variant="outline" onClick={() => cancelPickup.mutate(pickup.id)}>
+                              <XCircle className="mr-1 h-4 w-4" /> Cancel
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -567,19 +634,33 @@ export default function RunnerDriverStockWorkspace({
                         {filteredPickups.map((pickup) => (
                           <TableRow key={pickup.id}>
                             <TableCell className="font-semibold">{pickup.driver?.display_name || 'Unknown'}</TableCell>
-                            <TableCell>{format(new Date(pickup.pickup_date), 'dd MMM yyyy')}</TableCell>
+                            <TableCell className="min-w-[180px]">
+                              <p className="font-semibold">{format(new Date(pickup.pickup_date), 'dd MMM yyyy')}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Created {format(new Date(pickup.created_at), 'dd MMM, HH:mm')} by {pickup.creator?.display_name || 'Runner'}
+                              </p>
+                              {pickup.completed_at && (
+                                <p className="text-xs text-muted-foreground">
+                                  Completed {format(new Date(pickup.completed_at), 'dd MMM, HH:mm')}
+                                </p>
+                              )}
+                            </TableCell>
                             <TableCell className="min-w-[260px]">
                               {(pickup.items || []).length > 0 ? (
                                 <div className="flex flex-wrap gap-1.5">
                                   {(pickup.items || []).map((item) => (
                                     <Badge key={item.id} variant="secondary" className="rounded-full font-semibold">
-                                      {productLabel(item)}
+                                      {productLabel(item)} · {item.collected_qty ?? 0}/{item.qty} collected
                                     </Badge>
                                   ))}
                                 </div>
                               ) : (
                                 <span className="text-muted-foreground">No items</span>
                               )}
+                              {pickup.source_order_codes?.length ? (
+                                <p className="mt-2 text-xs text-muted-foreground">Orders: {pickup.source_order_codes.join(', ')}</p>
+                              ) : null}
+                              {pickup.notes && <p className="mt-1 text-xs text-muted-foreground">Notes: {pickup.notes}</p>}
                             </TableCell>
                             <TableCell>
                               <Badge variant={pickup.status === 'DRIVER_ACKED' ? 'default' : pickup.status === 'CANCELLED' ? 'destructive' : 'outline'}>
@@ -588,6 +669,16 @@ export default function RunnerDriverStockWorkspace({
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
+                                {(pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED') && (
+                                  <Button size="sm" variant="outline" onClick={() => setEditingPickup(pickup)}>
+                                    <Pencil className="mr-1 h-4 w-4" /> Edit
+                                  </Button>
+                                )}
+                                {pickup.status === 'DRIVER_ACKED' && (
+                                  <Button size="sm" onClick={() => completePickup.mutate(pickup.id)}>
+                                    <CheckCircle2 className="mr-1 h-4 w-4" /> Complete
+                                  </Button>
+                                )}
                                 {pickup.status === 'PENDING_DRIVER_ACK' && (
                                   <Button size="sm" variant="outline" onClick={() => cancelPickup.mutate(pickup.id)}>
                                     <XCircle className="mr-1 h-4 w-4" /> Cancel

@@ -1,211 +1,91 @@
+import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import {
-  Inbox, Navigation, Target, Package, RotateCcw, BarChart3,
-  CheckCircle, XCircle, Truck, Clock, TrendingUp, ArrowRight, Zap
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { MissionSection } from '@/components/dashboard/MissionSection';
-import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
-import { QuickActionTile } from '@/components/dashboard/QuickActionTile';
-import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatBND } from '@/lib/currency';
+import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
+import { CalendarDays, ChevronRight, Navigation, Target } from 'lucide-react';
 
 export function DriverDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: analytics, isLoading } = useDriverAnalytics(user?.id);
-
-  const todayDelivered = analytics?.thisWeek.delivered ?? 0;
-  const todayFailed = analytics?.thisWeek.failed ?? 0;
-  const totalAttempts = todayDelivered + todayFailed;
-  const successRate = totalAttempts > 0 ? Math.round((todayDelivered / totalAttempts) * 100) : 100;
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const { data: analytics, isLoading } = useDriverAnalytics(user?.id, {
+    dateFrom: today,
+    dateTo: today,
+    calendarFrom: today,
+    calendarTo: today,
+  });
+  const summary = analytics?.summary;
 
   return (
-    <div className="space-y-6">
-      {/* Today's Delivery Stats */}
-      <MissionSection icon={Truck} title="This Week's Mission">
-        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-          <Card 
-            className="cursor-pointer hover:shadow-md transition-all border-[hsl(var(--status-success)/0.2)] bg-gradient-to-br from-[hsl(var(--status-success)/0.08)] to-transparent"
-            onClick={() => navigate('/driver/inbox')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-[hsl(var(--status-success)/0.15)]">
-                  <CheckCircle className="h-5 w-5 text-[hsl(var(--status-success))]" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Delivered</p>
-                  {isLoading ? <Skeleton className="h-7 w-10" /> : (
-                    <p className="text-2xl font-bold text-[hsl(var(--status-success))]">
-                      <AnimatedCounter value={todayDelivered} />
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <header className="border-b border-border pb-4">
+        <p className="text-xs font-bold uppercase text-primary">Today</p>
+        <h1 className="mt-1 text-2xl font-bold">{format(new Date(), 'EEEE, dd MMMM')}</h1>
+      </header>
 
-          <Card className={cn(
-            "cursor-pointer hover:shadow-md transition-all",
-            todayFailed > 0 ? "border-destructive/20 bg-gradient-to-br from-destructive/5 to-transparent" : "border-border/40"
-          )}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className={cn("p-2.5 rounded-xl", todayFailed > 0 ? "bg-destructive/10" : "bg-secondary")}>
-                  <XCircle className={cn("h-5 w-5", todayFailed > 0 ? "text-destructive" : "text-muted-foreground")} />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Failed</p>
-                  {isLoading ? <Skeleton className="h-7 w-10" /> : (
-                    <p className={cn("text-2xl font-bold", todayFailed > 0 ? "text-destructive" : "text-muted-foreground")}>
-                      <AnimatedCounter value={todayFailed} />
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-primary/10">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Earnings</p>
-                  {isLoading ? <Skeleton className="h-7 w-20" /> : (
-                    <p className="text-2xl font-bold text-primary">
-                      <AnimatedCounter value={analytics?.thisWeek.totalAmount ?? 0} formatter={(v) => formatBND(v)} />
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/40">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-secondary">
-                  <Clock className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Avg Speed</p>
-                  {isLoading ? <Skeleton className="h-7 w-16" /> : (
-                    <p className="text-2xl font-bold">
-                      {analytics?.thisWeek.avgDeliveryTimeMinutes 
-                        ? `${Math.round(analytics.thisWeek.avgDeliveryTimeMinutes)}m`
-                        : '—'}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      <section className="grid grid-cols-2 gap-x-5 gap-y-5 border-b border-border pb-5">
+        <div>
+          <p className="text-sm text-muted-foreground">Today's jobs</p>
+          {isLoading ? <Skeleton className="mt-2 h-8 w-20" /> : (
+            <p className="mt-1 text-3xl font-bold">{summary?.assigned ?? 0}</p>
+          )}
         </div>
-
-        {/* Success Rate Bar */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Weekly Success Rate</span>
-              {isLoading ? <Skeleton className="h-5 w-12" /> : (
-                <span className={cn("text-sm font-bold",
-                  successRate >= 90 ? "text-[hsl(var(--status-success))]" : successRate >= 70 ? "text-[hsl(var(--status-warning))]" : "text-destructive"
-                )}>
-                  <AnimatedCounter value={successRate} suffix="%" />
-                </span>
-              )}
-            </div>
-            <Progress value={successRate} className="h-2.5" />
-            <p className="text-xs text-muted-foreground mt-1.5">
-              {todayDelivered} delivered, {todayFailed} failed of {totalAttempts} attempts
-            </p>
-          </CardContent>
-        </Card>
-      </MissionSection>
-
-      {/* Navigation Cards */}
-      <MissionSection icon={Zap} title="Start Your Day">
-        <div className="grid gap-3 md:grid-cols-3">
-          <Card 
-            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group border-primary/20 bg-gradient-to-br from-primary/8 to-transparent"
-            onClick={() => navigate('/driver/inbox')}
-          >
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-primary">My Deliveries</p>
-                  <p className="text-xs text-muted-foreground mt-1">View assigned orders</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-primary/15 group-hover:bg-primary/25 transition-colors">
-                  <Inbox className="h-6 w-6 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card 
-            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group"
-            onClick={() => navigate('/driver/route')}
-          >
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold">Optimized Route</p>
-                  <p className="text-xs text-muted-foreground mt-1">Plan your deliveries</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-secondary group-hover:bg-primary/10 transition-colors">
-                  <Navigation className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card 
-            className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group"
-            onClick={() => navigate('/driver/analytics')}
-          >
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold">My Analytics</p>
-                  <p className="text-xs text-muted-foreground mt-1">Track your performance</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-secondary group-hover:bg-primary/10 transition-colors">
-                  <Target className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div>
+          <p className="text-sm text-muted-foreground">Today's cash</p>
+          {isLoading ? <Skeleton className="mt-2 h-8 w-28" /> : (
+            <p className="mt-1 text-2xl font-bold">BND {(summary?.cashCollected ?? 0).toFixed(2)}</p>
+          )}
         </div>
-      </MissionSection>
+        <div className="col-span-2">
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Delivery progress</span>
+            <span className="font-bold">{summary?.delivered ?? 0} / {summary?.assigned ?? 0}</span>
+          </div>
+          <Progress value={summary?.deliveryRate ?? 0} className="h-2" />
+          <p className="mt-2 text-xs text-muted-foreground">
+            {summary?.pending ?? 0} pending · {summary?.failed ?? 0} failed
+          </p>
+        </div>
+      </section>
 
-      {/* Quick Actions */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10">
-              <BarChart3 className="h-4 w-4 text-primary" />
-            </div>
-            Quick Actions
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1.5">
-          <QuickActionTile icon={Inbox} title="View My Deliveries" subtitle="Check assigned orders" href="/driver/inbox" />
-          <QuickActionTile icon={Navigation} title="Plan Optimized Route" subtitle="Efficient delivery paths" href="/driver/route" />
-          <QuickActionTile icon={Package} title="View Pickups" subtitle="Scheduled stock pickups" href="/driver/pickups" />
-          <QuickActionTile icon={RotateCcw} title="Submit Returns" subtitle="Return unsold items" href="/driver/returns" />
-          <QuickActionTile icon={TrendingUp} title="Driver Ranking" subtitle="See how you compare" href="/driver/ranking" iconColor="text-primary" iconBg="bg-primary/10" />
-        </CardContent>
-      </Card>
+      <Button className="h-12 w-full justify-between" onClick={() => navigate('/delivery?tab=inbox')}>
+        <span className="inline-flex items-center gap-2">
+          <Navigation className="h-4 w-4" />
+          Open today's jobs
+        </span>
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+
+      <section className="divide-y divide-border border-y border-border">
+        <button
+          type="button"
+          onClick={() => navigate('/driver/analytics')}
+          className="flex w-full items-center justify-between gap-3 py-4 text-left"
+        >
+          <span className="inline-flex items-center gap-3 font-semibold">
+            <CalendarDays className="h-5 w-5 text-primary" />
+            Delivery calendar
+          </span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/driver/analytics')}
+          className="flex w-full items-center justify-between gap-3 py-4 text-left"
+        >
+          <span className="inline-flex items-center gap-3 font-semibold">
+            <Target className="h-5 w-5 text-primary" />
+            Performance
+          </span>
+          <span className="inline-flex items-center gap-2 text-sm font-bold">
+            {(summary?.deliveryRate ?? 0).toFixed(1)}%
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </span>
+        </button>
+      </section>
     </div>
   );
 }

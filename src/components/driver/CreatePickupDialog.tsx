@@ -7,7 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useCreatePickup, useDriverBlockingOrders } from '@/hooks/useDriverPickups';
+import {
+  useCreatePickup,
+  useDriverBlockingOrders,
+  useUpdatePickup,
+  type DriverPickup,
+  type PickupNeedItem,
+} from '@/hooks/useDriverPickups';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
 import { useSuggestedPickupQty, SuggestedQuantity } from '@/hooks/useSuggestedPickupQty';
@@ -22,7 +28,11 @@ interface CreatePickupDialogProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   defaultDriverId?: string;
+  defaultItems?: PickupNeedItem[];
+  defaultOrderIds?: string[];
+  defaultOrderCodes?: string[];
   runnerIdOverride?: string;
+  pickup?: DriverPickup | null;
   trigger?: ReactNode;
 }
 
@@ -33,7 +43,19 @@ interface PickupItem {
   buffer_qty: number;
 }
 
-export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', runnerIdOverride, trigger }: CreatePickupDialogProps) {
+const EMPTY_PICKUP_ITEMS: PickupNeedItem[] = [];
+
+export function CreatePickupDialog({
+  open,
+  onOpenChange,
+  defaultDriverId = '',
+  defaultItems = EMPTY_PICKUP_ITEMS,
+  defaultOrderIds = [],
+  defaultOrderCodes = [],
+  runnerIdOverride,
+  pickup,
+  trigger,
+}: CreatePickupDialogProps) {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   
@@ -56,12 +78,30 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
   const { data: suggestedQty, isLoading: loadingSuggestion } = useSuggestedPickupQty(selectedDriverId || undefined, pickupDate, runnerIdOverride);
   const { canReceivePickup, returnRequired, mustReturnItems, totalMustReturn, isLoading: loadingReturnCheck } = useCanDriverReceivePickup(selectedDriverId || undefined);
   const createPickup = useCreatePickup();
+  const updatePickup = useUpdatePickup();
+  const isEditing = Boolean(pickup?.id);
 
   useEffect(() => {
-    if (dialogOpen) {
-      setSelectedDriverId(defaultDriverId || '');
+    if (!dialogOpen) return;
+    setSelectedDriverId(pickup?.driver_id || defaultDriverId || '');
+    setPickupDate(pickup?.pickup_date || format(new Date(), 'yyyy-MM-dd'));
+    setNotes(pickup?.notes || '');
+    if (pickup) {
+      setItems((pickup.items || []).map((item) => ({
+        product_id: item.product_id,
+        qty: Number(item.qty || 0),
+        required_qty: Number(item.required_qty || 0),
+        buffer_qty: Number(item.buffer_qty || 0),
+      })));
+    } else if (defaultItems.length > 0) {
+      setItems(defaultItems.map((item) => ({
+        product_id: item.product_id,
+        qty: item.required_qty + 1,
+        required_qty: item.required_qty,
+        buffer_qty: 1,
+      })));
     }
-  }, [defaultDriverId, dialogOpen]);
+  }, [defaultDriverId, defaultItems, dialogOpen, pickup]);
 
   // Reset acknowledgments when driver changes
   useEffect(() => {
@@ -72,18 +112,19 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
 
   // Auto-populate items when driver or date changes
   useEffect(() => {
+    if (isEditing || defaultItems.length > 0) return;
     if (suggestedQty && suggestedQty.length > 0) {
       setItems(suggestedQty.map(s => ({
         product_id: s.product_id,
-        qty: s.required_qty,
+        qty: s.required_qty + 1,
         required_qty: s.required_qty,
-        buffer_qty: 0,
+        buffer_qty: 1,
       })));
       setConfirmLowerQty(false);
     } else if (selectedDriverId) {
       setItems([]);
     }
-  }, [suggestedQty, selectedDriverId]);
+  }, [defaultItems.length, isEditing, selectedDriverId, suggestedQty]);
 
   const addItem = () => {
     setItems([...items, { product_id: '', qty: 1, required_qty: 0, buffer_qty: 1 }]);
@@ -113,24 +154,37 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
     if (hasLowerThanRequired && !confirmLowerQty) return;
 
     // Check acknowledgments unless force creating as admin
-    if (!forceCreate) {
+    if (!forceCreate && !isEditing) {
       if (hasBlockingOrders && !acknowledgeBlocking) return;
       if (hasReturnRequired && !acknowledgeReturn) return;
     }
 
-    await createPickup.mutateAsync({
-      driver_id: selectedDriverId,
-      runner_id: runnerIdOverride,
-      pickup_date: pickupDate,
-      notes: notes || undefined,
-      items: validItems.map(i => ({
-        product_id: i.product_id,
-        qty: i.qty,
-        required_qty: i.required_qty,
-        buffer_qty: i.buffer_qty,
-      })),
-      force: forceCreate || acknowledgeBlocking || acknowledgeReturn,
-    });
+    const pickupItems = validItems.map(i => ({
+      product_id: i.product_id,
+      qty: i.qty,
+      required_qty: i.required_qty,
+      buffer_qty: i.buffer_qty,
+    }));
+
+    if (pickup) {
+      await updatePickup.mutateAsync({
+        pickup_id: pickup.id,
+        pickup_date: pickupDate,
+        notes: notes || undefined,
+        items: pickupItems,
+      });
+    } else {
+      await createPickup.mutateAsync({
+        driver_id: selectedDriverId,
+        runner_id: runnerIdOverride,
+        pickup_date: pickupDate,
+        notes: notes || undefined,
+        items: pickupItems,
+        source_order_ids: defaultOrderIds,
+        source_order_codes: defaultOrderCodes,
+        force: forceCreate || acknowledgeBlocking || acknowledgeReturn,
+      });
+    }
 
     setDialogOpen(false);
     setSelectedDriverId('');
@@ -174,9 +228,11 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-3xl p-4 sm:max-w-3xl sm:p-6">
         <DialogHeader>
-          <DialogTitle>Create Pickup for Driver</DialogTitle>
+          <DialogTitle>{isEditing ? 'Edit Pickup' : 'Create Pickup for Driver'}</DialogTitle>
           <DialogDescription>
-            Schedule a stock pickup for a driver to collect items for deliveries.
+            {isEditing
+              ? 'Update the pickup date, notes, or item quantities.'
+              : 'Review the calculated stock and confirm the pickup task.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -184,7 +240,7 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Driver</Label>
-              <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
+              <Select value={selectedDriverId} onValueChange={setSelectedDriverId} disabled={isEditing}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select driver" />
                 </SelectTrigger>
@@ -210,7 +266,7 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
             </div>
           </div>
 
-          {selectedDriverId && hasBlockingOrders && (
+          {!isEditing && selectedDriverId && hasBlockingOrders && (
             <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-700">Outstanding Orders Warning</AlertTitle>
@@ -242,7 +298,7 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
             </Alert>
           )}
 
-          {selectedDriverId && hasReturnRequired && (
+          {!isEditing && selectedDriverId && hasReturnRequired && (
             <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
               <RotateCcw className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-700">Return Required Warning</AlertTitle>
@@ -271,7 +327,7 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
           )}
 
           {/* Admin Force Create Option */}
-          {isAdmin && (hasBlockingOrders || hasReturnRequired) && (
+          {!isEditing && isAdmin && (hasBlockingOrders || hasReturnRequired) && (
             <Alert variant="default" className="border-primary/50 bg-primary/5">
               <ShieldAlert className="h-4 w-4 text-primary" />
               <AlertTitle className="text-primary">Admin Override</AlertTitle>
@@ -499,13 +555,20 @@ export function CreatePickupDialog({ open, onOpenChange, defaultDriverId = '', r
                 !selectedDriverId ||
                 items.length === 0 ||
                 (hasLowerThanRequired && !confirmLowerQty) ||
-                (!forceCreate && hasBlockingOrders && !acknowledgeBlocking) ||
-                (!forceCreate && hasReturnRequired && !acknowledgeReturn) ||
-                createPickup.isPending
+                (!isEditing && !forceCreate && hasBlockingOrders && !acknowledgeBlocking) ||
+                (!isEditing && !forceCreate && hasReturnRequired && !acknowledgeReturn) ||
+                createPickup.isPending ||
+                updatePickup.isPending
               }
               className="w-full sm:w-auto"
             >
-              {createPickup.isPending ? 'Creating...' : forceCreate ? 'Force Create' : 'Create Pickup'}
+              {createPickup.isPending || updatePickup.isPending
+                ? 'Saving...'
+                : isEditing
+                  ? 'Save Changes'
+                  : forceCreate
+                    ? 'Force Create'
+                    : 'Create Pickup'}
             </Button>
           </div>
         </div>

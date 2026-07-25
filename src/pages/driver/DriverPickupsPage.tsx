@@ -14,6 +14,7 @@ export default function DriverPickupsPage() {
 
   const pendingPickups = pickups?.filter(p => p.status === 'PENDING_DRIVER_ACK') || [];
   const acknowledgedPickups = pickups?.filter(p => p.status === 'DRIVER_ACKED') || [];
+  const completedPickups = pickups?.filter(p => p.status === 'COMPLETED') || [];
 
   if (isLoading) {
     return (
@@ -125,7 +126,7 @@ export default function DriverPickupsPage() {
                   disabled={acknowledgePickup.isPending}
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  {acknowledgePickup.isPending ? 'Acknowledging...' : 'Acknowledge Receipt'}
+                  {acknowledgePickup.isPending ? 'Acknowledging...' : 'Acknowledge Pickup'}
                 </Button>
               </CardContent>
             </Card>
@@ -137,12 +138,12 @@ export default function DriverPickupsPage() {
       <div className="space-y-4">
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <CheckCircle className="h-5 w-5 text-green-500" />
-          Acknowledged Pickups
+          Awaiting Collection
         </h2>
         {acknowledgedPickups.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
-              No acknowledged pickups yet
+              No acknowledged pickups waiting for collection
             </CardContent>
           </Card>
         ) : (
@@ -162,7 +163,7 @@ export default function DriverPickupsPage() {
                   </div>
                   <Badge variant="outline" className="bg-green-50 text-green-700">
                     <CheckCircle className="h-3 w-3 mr-1" />
-                    Received
+                    Acknowledged
                   </Badge>
                 </div>
               </CardHeader>
@@ -199,7 +200,26 @@ export default function DriverPickupsPage() {
         )}
       </div>
 
-      {pendingPickups.length === 0 && acknowledgedPickups.length === 0 && (
+      {completedPickups.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Completed Pickups</h2>
+          <div className="divide-y divide-border border-y border-border">
+            {completedPickups.map((pickup) => (
+              <div key={pickup.id} className="flex items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="font-semibold">{format(new Date(pickup.pickup_date), 'dd MMM yyyy')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(pickup.items || []).reduce((sum, item) => sum + Number(item.collected_qty || 0), 0)} items collected
+                  </p>
+                </div>
+                <Badge variant="outline" className="border-green-600 text-green-700">Completed</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {pendingPickups.length === 0 && acknowledgedPickups.length === 0 && completedPickups.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center">
             <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

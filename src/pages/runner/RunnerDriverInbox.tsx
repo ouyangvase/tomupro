@@ -282,10 +282,6 @@ function isCurrentDayUnassigned(order: RunnerOrder, targetDateKey: string) {
   return getDriverOperationalDateKey(order) === targetDateKey && !isAssignedForAreaSummary(order, targetDateKey);
 }
 
-function isAcceptedDriverWorkloadOrder(order: RunnerOrder) {
-  return isActivelyAssigned(order) && isNormalArea(inferAreaFromOrder(order)) && hasAcceptedDeliveryRecord(order);
-}
-
 function getLocalityLabel(order: RunnerOrder, areaCode: string) {
   const normalized = order.normalized_locality || normalizeText(order.address);
   for (const rule of LOCALITY_RULES.find((candidate) => candidate.code === areaCode)?.terms || []) {
@@ -452,7 +448,11 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const runnerScopeId = runnerIdOverride || profile?.id;
-  const canUseDbDriverWorkloads = !runnerIdOverride;
+  const canUseDbDriverWorkloads = !runnerIdOverride || profile?.role === 'runner_assistant';
+  const hasRunnerScopeAccess =
+    profile?.role === 'runner' ||
+    profile?.role === 'admin' ||
+    (profile?.role === 'runner_assistant' && Boolean(runnerIdOverride));
   const { data: orders = [], isLoading } = useRunnerDriverOrders(runnerIdOverride);
   const { data: myDrivers = [] } = useMyDrivers(runnerIdOverride);
   const { data: dbDeliveryAreas = [] } = useDeliveryAreas();
@@ -715,30 +715,22 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
 
   const teamPerformance = useMemo(() => buildPerformanceStats(performanceOrders), [performanceOrders]);
 
-  const acceptedWorkloadOrdersByDriver = useMemo(() => {
+  const assignmentOrdersByDriver = useMemo(() => {
     const grouped = new Map<string, RunnerOrder[]>();
     dayOrders.forEach((order) => {
-      if (!order.driver_id || !isAcceptedDriverWorkloadOrder(order)) return;
+      if (!order.driver_id || !isDriverWorkloadOrder(order, todayDateKey)) return;
       grouped.set(order.driver_id, [...(grouped.get(order.driver_id) || []), order]);
     });
     return grouped;
-  }, [dayOrders]);
+  }, [dayOrders, todayDateKey]);
 
   const driverWorkloads = useMemo<DriverWorkloadView[]>(() => {
-    const dbDriverWorkloadsHaveAssignments =
-      canUseDbDriverWorkloads && dbDriverWorkloads.some((driver) => Number(driver.assigned_order_count || 0) > 0);
-    if (canUseDbDriverWorkloads && dbDriverWorkloads.length && (dbDriverWorkloadsHaveAssignments || dayOrders.length === 0)) {
+    if (canUseDbDriverWorkloads && dbDriverWorkloads.length) {
       return dbDriverWorkloads.map((driver: DispatchDriverWorkload) => {
-        const acceptedOrders = acceptedWorkloadOrdersByDriver.get(driver.driver_id) || [];
-        const hasLocalOrderScope = dayOrders.length > 0;
         const capacity = driver.capacity ?? null;
-        const orderCount = hasLocalOrderScope ? acceptedOrders.length : Number(driver.assigned_order_count || 0);
-        const collectAmount = hasLocalOrderScope
-          ? acceptedOrders.reduce((sum, order) => sum + getCollectAmount(order), 0)
-          : Number(driver.collect_amount || 0);
-        const areaNames = hasLocalOrderScope
-          ? Array.from(new Set(acceptedOrders.map((order) => getAreaLabel(inferAreaFromOrder(order), deliveryAreas))))
-          : driver.area_names || [];
+        const orderCount = Number(driver.assigned_order_count || 0);
+        const collectAmount = Number(driver.collect_amount || 0);
+        const areaNames = driver.area_names || [];
         const performance = buildPerformanceStats(performanceByDriver.get(driver.driver_id) || []);
         return {
           driver_id: driver.driver_id,
@@ -760,7 +752,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
     }
 
     return myDrivers.map((link) => {
-      const driverOrders = acceptedWorkloadOrdersByDriver.get(link.driver_id) || [];
+      const driverOrders = assignmentOrdersByDriver.get(link.driver_id) || [];
       const collectAmount = driverOrders.reduce((sum, order) => sum + getCollectAmount(order), 0);
       const areaNames = Array.from(new Set(driverOrders.map((order) => getAreaLabel(inferAreaFromOrder(order), deliveryAreas))));
       const performance = buildPerformanceStats(performanceByDriver.get(link.driver_id) || []);
@@ -781,7 +773,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
         deliveryRate: performance.deliveryRate,
       };
     });
-  }, [acceptedWorkloadOrdersByDriver, canUseDbDriverWorkloads, dbDriverWorkloads, deliveryAreas, dayOrders, myDrivers, performanceByDriver]);
+  }, [assignmentOrdersByDriver, canUseDbDriverWorkloads, dbDriverWorkloads, deliveryAreas, myDrivers, performanceByDriver]);
 
   const visibleDriverWorkloads = useMemo(() => {
     const query = driverSearch.trim().toLowerCase();
@@ -1094,7 +1086,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
     );
   }, [handleManualReopen, isAdmin, manualReopen.isPending, navigate, revertDelivery.isPending]);
 
-  if (profile?.role !== 'runner' && profile?.role !== 'admin') {
+  if (!hasRunnerScopeAccess) {
     return (
       <AppLayout>
         <div className="mx-auto flex max-w-lg flex-col items-center justify-center gap-3 py-20 text-center">

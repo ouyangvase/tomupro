@@ -1,12 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  ACTIVE_DRIVER_PICKUP_STATUSES,
   buildPickupNeedItems,
-  isActiveDriverPickupOrder,
   type ActiveDriverDeliveryOrder,
 } from '@/hooks/useDriverPickups';
+import { fetchDriverAssignments } from '@/hooks/useDriverAssignments';
 
 export interface SuggestedQuantity {
   product_id: string;
@@ -34,39 +32,17 @@ export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: 
       if (!driverId) return [];
       if (!runnerScopeId) throw new Error('Not authenticated');
 
-      const { data: orders, error: ordersError } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          order_code,
-          customer_name,
-          driver_id,
-          runner_id,
-          status,
-          driver_status,
-          runner_status,
-          runner_accept_status,
-          order_date,
-          expected_pickup_date,
-          next_delivery_date,
-          runner_assigned_at,
-          created_at,
-          order_items(
-            product_id,
-            qty,
-            sku_label,
-            product:products(sku_name, sku_code)
-          )
-        `)
-        .eq('driver_id', driverId)
-        .eq('runner_id', runnerScopeId)
-        .in('driver_status', [...ACTIVE_DRIVER_PICKUP_STATUSES]);
-
-      if (ordersError) throw ordersError;
+      const orders = await fetchDriverAssignments({
+        runnerId: runnerScopeId,
+        driverId,
+        dateFrom: pickupDate,
+        dateTo: pickupDate,
+        activeOnly: true,
+        includeItems: true,
+      });
       if (!orders || orders.length === 0) return [];
 
-      const activeOrders = ((orders || []) as ActiveDriverDeliveryOrder[]).filter(isActiveDriverPickupOrder);
-      return buildPickupNeedItems(activeOrders) as SuggestedQuantity[];
+      return buildPickupNeedItems(orders as ActiveDriverDeliveryOrder[]) as SuggestedQuantity[];
     },
     enabled: !!driverId && !!pickupDate && !!runnerScopeId,
   });
