@@ -117,8 +117,8 @@ export default function DriverInbox() {
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
   const { data: orders = [], isLoading } = useDriverAssignments({
     driverId: profile?.id,
-    dateFrom: todayDateKey,
     dateTo: todayDateKey,
+    activeOnly: true,
     includeItems: true,
   });
   const { data: parentRunner } = useDriverParentRunner();
@@ -156,7 +156,7 @@ export default function DriverInbox() {
     return new Date();
   }, []);
 
-  // Get ALL assigned driver orders (no date filtering) with search
+  // Keep all active jobs due through today visible until they are completed.
   const filteredOrders = useMemo(() => {
     const statusFiltered = myOrders.filter((order) => isVisibleDriverInboxOrder(order, todayDateKey));
     

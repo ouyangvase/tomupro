@@ -81,6 +81,7 @@ export interface ActiveDriverDeliveryOrder {
   order_code: string | null;
   customer_name: string | null;
   driver_id: string | null;
+  driver_name?: string | null;
   runner_id?: string | null;
   status: string | null;
   driver_status: string | null;
@@ -228,7 +229,6 @@ async function fetchActiveDriverOrders(params: {
   const assignments = await fetchDriverAssignments({
     runnerId: params.runnerId,
     driverId: params.driverId,
-    dateFrom: getTodayDateKey(),
     dateTo: getTodayDateKey(),
     activeOnly: true,
     includeItems: true,
@@ -627,10 +627,7 @@ export function useRunnerDriverPickupNeeds(runnerIdOverride?: string) {
       if (!runnerScopeId) throw new Error('Not authenticated');
 
       const driverLinks = await fetchRunnerDriverLinks(runnerScopeId);
-      const driverIds = (driverLinks || []).map(link => link.driver_id).filter(Boolean);
-      if (driverIds.length === 0) return [];
-
-      const orders = await fetchActiveDriverOrders({ runnerId: runnerScopeId, driverIds });
+      const orders = await fetchActiveDriverOrders({ runnerId: runnerScopeId });
       const ordersByDriver = new Map<string, ActiveDriverDeliveryOrder[]>();
       for (const order of orders) {
         if (!order.driver_id) continue;
@@ -640,11 +637,18 @@ export function useRunnerDriverPickupNeeds(runnerIdOverride?: string) {
       }
 
       const today = getTodayDateKey();
+      const linksByDriver = new Map(driverLinks.map(link => [link.driver_id, link]));
+      const driverIds = new Set([
+        ...driverLinks.map(link => link.driver_id),
+        ...orders.map(order => order.driver_id).filter((id): id is string => Boolean(id)),
+      ]);
 
-      return driverLinks
-        .map((link) => {
-          const driver = Array.isArray(link.driver) ? link.driver[0] : link.driver;
-          const driverOrders = ordersByDriver.get(link.driver_id) || [];
+      return Array.from(driverIds)
+        .map((driverId) => {
+          const link = linksByDriver.get(driverId);
+          const driverRelation = link?.driver;
+          const driver = Array.isArray(driverRelation) ? driverRelation[0] : driverRelation;
+          const driverOrders = ordersByDriver.get(driverId) || [];
           const items = buildPickupNeedItems(driverOrders);
           const overdueOrders = driverOrders.filter((order) => {
             const dateKey = getDriverOperationalDateKey(order);
@@ -652,8 +656,8 @@ export function useRunnerDriverPickupNeeds(runnerIdOverride?: string) {
           });
 
           return {
-            driver_id: link.driver_id,
-            driver_name: driver?.display_name || driver?.email || 'Unknown Driver',
+            driver_id: driverId,
+            driver_name: driver?.display_name || driver?.email || driverOrders[0]?.driver_name || 'Unknown Driver',
             driver_email: driver?.email || null,
             order_count: driverOrders.length,
             overdue_order_count: overdueOrders.length,

@@ -54,7 +54,7 @@ export function useRunnerAssistants(runnerId?: string) {
  * For the logged-in runner_assistant, fetch their binding to find the assigned runner.
  */
 export function useMyAssistantBinding() {
-  const { user, role } = useAuth();
+  const { user } = useAuth();
 
   return useQuery({
     queryKey: ['my-assistant-binding', user?.id],
@@ -81,7 +81,7 @@ export function useMyAssistantBinding() {
         runner: runnerProfile as Profile | undefined,
       } as RunnerAssistant;
     },
-    enabled: !!user?.id && role === 'runner_assistant',
+    enabled: !!user?.id,
   });
 }
 

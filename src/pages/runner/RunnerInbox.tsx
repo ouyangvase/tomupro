@@ -58,24 +58,24 @@ export default function RunnerInbox({
   const { user, role } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  const { data: myDrivers = [] } = useMyDrivers();
+  const { data: assistantBinding, isLoading: assistantLoading } = useMyAssistantBinding();
+  const isAssistant = role === 'runner_assistant' || Boolean(assistantBinding?.runner_id);
+  const effectiveRunnerId = isAssistant ? assistantBinding?.runner_id : user?.id;
+  const { data: myDrivers = [] } = useMyDrivers(isAssistant ? effectiveRunnerId : undefined);
   const { data: validAreas = [] } = useValidAreas();
   const { data: stockBalances = [] } = useStockBalance();
 
   // Build a map of product_id → balance_qty for the current runner's warehouse
   const runnerStockMap = useMemo(() => {
-    if (!user?.id) return new Map<string, number>();
+    if (!effectiveRunnerId) return new Map<string, number>();
     const map = new Map<string, number>();
     stockBalances
-      .filter(b => b.owner_user_id === user.id)
+      .filter(b => b.owner_user_id === effectiveRunnerId)
       .forEach(b => map.set(b.product_id, b.balance_qty));
     return map;
-  }, [stockBalances, user?.id]);
+  }, [stockBalances, effectiveRunnerId]);
 
   // Runner Assistant binding
-  const isAssistant = role === 'runner_assistant';
-  const { data: assistantBinding, isLoading: assistantLoading } = useMyAssistantBinding();
-  const effectiveRunnerId = isAssistant ? assistantBinding?.runner_id : user?.id;
 
   // Permission helpers for assistant (must be defined before useMemo that references them)
   const canDeliver = !isAssistant || !!assistantBinding?.can_deliver;

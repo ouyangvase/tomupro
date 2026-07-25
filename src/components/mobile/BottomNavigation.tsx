@@ -26,6 +26,7 @@ import {
   DrawerDescription,
 } from '@/components/ui/drawer';
 import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
+import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 
 interface NavItem {
   id: string;
@@ -156,6 +157,7 @@ export function BottomNavigation() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const { data: leaderboardSettings } = useLeaderboardSettings();
+  const { data: assistantBinding } = useMyAssistantBinding();
   const [moreOpen, setMoreOpen] = useState(false);
   const hidePerformanceUI = !!(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
 
@@ -165,7 +167,14 @@ export function BottomNavigation() {
       case 'manager': return managerTabs;
       case 'runner': return runnerTabs;
       case 'runner_assistant': return runnerAssistantTabs;
-      case 'driver': return driverTabs;
+      case 'driver':
+        return assistantBinding?.runner_id
+          ? [
+              ...driverTabs.slice(0, -1),
+              { id: 'dispatch', label: 'Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/dispatch' },
+              driverTabs[driverTabs.length - 1],
+            ]
+          : driverTabs;
       case 'finance_viewer': return financeViewerTabs;
       default: return salespersonTabs;
     }
@@ -174,11 +183,17 @@ export function BottomNavigation() {
   const tabs = getTabs();
   const modules = useMemo(() => {
     const roleModules = allModules[role || 'salesperson'] || allModules.salesperson;
-    return roleModules.filter((item) => {
+    const modulesWithAssistantAccess = assistantBinding?.runner_id && !roleModules.some((item) => item.href === '/dispatch')
+      ? [
+          ...roleModules,
+          { id: 'dispatch', label: 'Assistant Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/dispatch' },
+        ]
+      : roleModules;
+    return modulesWithAssistantAccess.filter((item) => {
       if (item.href.startsWith('/performance') && hidePerformanceUI && role !== 'admin') return false;
       return true;
     });
-  }, [hidePerformanceUI, role]);
+  }, [assistantBinding?.runner_id, hidePerformanceUI, role]);
 
   const isActive = (href: string): boolean => {
     if (href === '/') return location.pathname === '/';

@@ -35,7 +35,6 @@ export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: 
       const orders = await fetchDriverAssignments({
         runnerId: runnerScopeId,
         driverId,
-        dateFrom: pickupDate,
         dateTo: pickupDate,
         activeOnly: true,
         includeItems: true,

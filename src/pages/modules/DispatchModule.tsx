@@ -83,7 +83,8 @@ export default function DispatchModule() {
   const highlightOrderId = searchParams.get('highlight') || null;
   const routeSearch = searchParams.get('search') || '';
   const [showDuplicateOrders, setShowDuplicateOrders] = useState(false);
-  const assistantRunnerId = role === 'runner_assistant' ? assistantBinding?.runner_id : undefined;
+  const isAssistantContext = role !== 'runner' && Boolean(assistantBinding?.runner_id);
+  const assistantRunnerId = isAssistantContext ? assistantBinding?.runner_id : undefined;
 
   const runnerTabs = [
     { id: 'inbox', label: 'Runner Inbox' },
@@ -107,13 +108,13 @@ export default function DispatchModule() {
     ...(assistantBinding?.can_deliver ? [{ id: 'delivered', label: 'Delivered Orders' }] : []),
   ];
 
-  const tabs = role === 'runner' ? runnerTabs : role === 'runner_assistant' ? runnerAssistantTabs : adminTabs;
-  const canUseDriverInbox = role === 'runner' || (role === 'runner_assistant' && Boolean(assistantBinding?.can_manage_driver_inbox));
-  const canUseDriverStock = role === 'runner' || (role === 'runner_assistant' && Boolean(assistantBinding?.can_manage_driver_stock));
+  const tabs = role === 'runner' ? runnerTabs : isAssistantContext ? runnerAssistantTabs : adminTabs;
+  const canUseDriverInbox = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_inbox));
+  const canUseDriverStock = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_stock));
 
   // Redirect unknown tabs to inbox (inside useEffect to avoid render-time state updates)
   const validTabIds = tabs.map(t => t.id);
-  const assistantTabsPending = role === 'runner_assistant' && assistantBindingLoading;
+  const assistantTabsPending = role !== 'runner' && assistantBindingLoading;
   const isInvalidTab = !!role && !!activeTab && !assistantTabsPending && !validTabIds.includes(activeTab);
   useEffect(() => {
     if (isInvalidTab) {
@@ -194,12 +195,12 @@ export default function DispatchModule() {
             </TabsList>
           </div>
         </Tabs>
-        {(role === 'runner' || role === 'runner_assistant' || role === 'admin' || role === 'manager' || role === 'operator') && (
+        {(role === 'runner' || isAssistantContext || role === 'admin' || role === 'manager' || role === 'operator') && (
           <SyncNowButton
             variant="ghost"
             size="sm"
             showLabel={false}
-            className={`shrink-0 ${role === 'runner_assistant' ? 'hidden md:inline-flex' : ''}`}
+            className={`shrink-0 ${isAssistantContext ? 'hidden md:inline-flex' : ''}`}
           />
         )}
       </div>
@@ -265,7 +266,7 @@ export default function DispatchModule() {
               <TabErrorBoundary>
                 <RunnerDriverStockWorkspace
                   runnerIdOverride={assistantRunnerId}
-                  hideCashSettlement={role === 'runner_assistant'}
+                  hideCashSettlement={isAssistantContext}
                 />
               </TabErrorBoundary>
             )}
@@ -273,7 +274,7 @@ export default function DispatchModule() {
               <RunnerFailedOrders initialSearch={routeSearch} highlightOrderId={highlightOrderId} />
             )}
             {activeTab === 'map' && <DriverLocationsPage />}
-            {activeTab === 'delivered' && (role === 'runner' || role === 'runner_assistant') && (
+            {activeTab === 'delivered' && (role === 'runner' || isAssistantContext) && (
               <RunnerDeliveredOrders initialSearch={routeSearch} highlightOrderId={highlightOrderId} />
             )}
           </div>

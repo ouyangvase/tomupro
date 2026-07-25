@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { cn } from "@/lib/utils";
 import { useSidebarBadges } from "@/hooks/useSidebarBadges";
 import { useLeaderboardSettings } from "@/hooks/useLeaderboard";
+import { useMyAssistantBinding } from "@/hooks/useRunnerAssistants";
 
 interface NavItem {
   title: string;
@@ -81,6 +82,7 @@ export function AppSidebar() {
 
   const rawBadges = useSidebarBadges();
   const { data: leaderboardSettings } = useLeaderboardSettings();
+  const { data: assistantBinding } = useMyAssistantBinding();
   const hidePerformanceUI = !!(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
 
   // Remap badges to new module paths
@@ -96,12 +98,14 @@ export function AppSidebar() {
   const visibleItems = useMemo(() => {
     if (!userRole) return [];
     return navItems.filter(item => {
-      if (!item.roles.includes(userRole)) return false;
+      const hasRoleAccess = item.roles.includes(userRole);
+      const hasAssistantDispatchAccess = item.url === '/dispatch' && Boolean(assistantBinding?.runner_id);
+      if (!hasRoleAccess && !hasAssistantDispatchAccess) return false;
       // Hide Performance tab for non-admin roles when hide_performance_ui is enabled
       if (item.url === '/performance' && hidePerformanceUI && userRole !== 'admin') return false;
       return true;
     });
-  }, [userRole, hidePerformanceUI]);
+  }, [assistantBinding?.runner_id, userRole, hidePerformanceUI]);
 
   const isActive = (url: string) => {
     if (url === "/") return location.pathname === "/";

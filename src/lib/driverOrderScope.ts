@@ -1,5 +1,6 @@
 export type DriverOrderScopeFields = {
   status?: string | null;
+  operational_status?: string | null;
   driver_status?: string | null;
   runner_status?: string | null;
   runner_accept_status?: string | null;
@@ -16,6 +17,7 @@ const FINAL_DRIVER_HIDDEN_STATUSES = new Set([
   'FAILED_DELIVERY',
   'DRIVER_DELIVERED',
   'DRIVER_FAILED',
+  'DELIVERED_FINAL',
   'CANCELLED',
   'CANCELED',
   'APPROVED',
@@ -76,6 +78,7 @@ export function getDriverOperationalDateKey(order: DriverOrderScopeFields) {
 export function isHiddenFromDriverApps(order: DriverOrderScopeFields) {
   return (
     FINAL_DRIVER_HIDDEN_STATUSES.has(normalizeDriverStatus(order.status))
+    || FINAL_DRIVER_HIDDEN_STATUSES.has(normalizeDriverStatus(order.operational_status))
     || FINAL_DRIVER_HIDDEN_STATUSES.has(normalizeDriverStatus(order.runner_status))
     || FINAL_DRIVER_HIDDEN_STATUSES.has(normalizeDriverStatus(order.driver_status))
   );
@@ -101,18 +104,20 @@ export function isSameDriverOperationalDate(order: DriverOrderScopeFields, targe
 }
 
 export function isVisibleDriverInboxOrder(order: DriverOrderScopeFields, targetDateKey = getTodayDateKey()) {
+  const orderDateKey = getDriverOperationalDateKey(order);
   return (
     hasDriverVisibleActiveStatus(order)
     && !isHiddenFromDriverApps(order)
-    && isSameDriverOperationalDate(order, targetDateKey)
+    && Boolean(orderDateKey && targetDateKey && orderDateKey <= targetDateKey)
   );
 }
 
 export function isDriverWorkloadOrder(order: DriverOrderScopeFields, targetDateKey = getTodayDateKey()) {
+  const orderDateKey = getDriverOperationalDateKey(order);
   return (
     DRIVER_WORKLOAD_STATUSES.includes(normalizeDriverStatus(order.driver_status) as typeof DRIVER_WORKLOAD_STATUSES[number])
     && !isHiddenFromDriverApps(order)
-    && isSameDriverOperationalDate(order, targetDateKey)
+    && Boolean(orderDateKey && targetDateKey && orderDateKey <= targetDateKey)
   );
 }
 

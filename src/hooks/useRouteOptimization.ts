@@ -28,7 +28,6 @@ export function useDriverRouteOptimization(driverId?: string) {
 
       const scopedOrders = await fetchDriverAssignments({
         driverId,
-        dateFrom: todayDateKey,
         dateTo: todayDateKey,
         activeOnly: true,
         includeItems: true,
@@ -79,7 +78,6 @@ export function useRunnerRouteOverview(runnerId?: string) {
       // Get all orders assigned to drivers under this runner
       const scopedOrders = await fetchDriverAssignments({
         runnerId,
-        dateFrom: todayDateKey,
         dateTo: todayDateKey,
         activeOnly: true,
         includeItems: false,
