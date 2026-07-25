@@ -278,8 +278,8 @@ function isAssignedForAreaSummary(order: RunnerOrder, targetDateKey: string) {
   return isActivelyAssigned(order, targetDateKey) || isStaleActiveDriverAssignment(order, targetDateKey);
 }
 
-function isCurrentDayUnassigned(order: RunnerOrder, targetDateKey: string) {
-  return getDriverOperationalDateKey(order) === targetDateKey && !isAssignedForAreaSummary(order, targetDateKey);
+function isActiveQueueUnassigned(order: RunnerOrder, targetDateKey: string) {
+  return !isAssignedForAreaSummary(order, targetDateKey);
 }
 
 function getLocalityLabel(order: RunnerOrder, areaCode: string) {
@@ -309,11 +309,11 @@ function makeEmptySummary(area: DeliveryArea): DispatchAreaSummary {
   };
 }
 
-function buildLocalAreaSummary(dayOrders: RunnerOrder[], areas: DeliveryArea[], targetDateKey: string): DispatchAreaSummary[] {
+function buildLocalAreaSummary(queueOrders: RunnerOrder[], areas: DeliveryArea[], targetDateKey: string): DispatchAreaSummary[] {
   return areas.map((area) => {
-    const areaOrders = dayOrders.filter((order) => inferAreaFromOrder(order) === area.code);
+    const areaOrders = queueOrders.filter((order) => inferAreaFromOrder(order) === area.code);
     const assigned = area.is_special ? [] : areaOrders.filter((order) => isAssignedForAreaSummary(order, targetDateKey));
-    const unassigned = area.is_special ? [] : areaOrders.filter((order) => isCurrentDayUnassigned(order, targetDateKey));
+    const unassigned = area.is_special ? [] : areaOrders.filter((order) => isActiveQueueUnassigned(order, targetDateKey));
     const totalCollect = areaOrders.reduce((sum, order) => sum + getCollectAmount(order), 0);
     const assignedCollect = assigned.reduce((sum, order) => sum + getCollectAmount(order), 0);
     const unassignedCollect = unassigned.reduce((sum, order) => sum + getCollectAmount(order), 0);
@@ -531,12 +531,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
     () => allRunnerOrders.filter((order) => isStaleActiveDriverAssignment(order, todayDateKey)),
     [allRunnerOrders, todayDateKey],
   );
-  const dispatchAreaOrders = useMemo(() => {
-    const byId = new Map<string, RunnerOrder>();
-    dayOrders.forEach((order) => byId.set(order.id, order));
-    staleActiveAssignments.forEach((order) => byId.set(order.id, order));
-    return Array.from(byId.values());
-  }, [dayOrders, staleActiveAssignments]);
+  const dispatchAreaOrders = allRunnerOrders;
   const staleActiveCollect = useMemo(
     () => staleActiveAssignments.reduce((sum, order) => sum + getCollectAmount(order), 0),
     [staleActiveAssignments],
@@ -566,10 +561,10 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
       cancelled: cancelled?.total_orders || 0,
       activeDrivers: canUseDbDriverWorkloads && dbDriverWorkloads.length
         ? dbDriverWorkloads.filter((driver) => driver.is_available).length
-        : new Set(dayOrders.map((order) => order.driver_id).filter(Boolean)).size,
+        : new Set(dispatchAreaOrders.map((order) => order.driver_id).filter(Boolean)).size,
       percentage: total ? Number(((assigned / total) * 100).toFixed(1)) : 0,
     };
-  }, [areaSummary, canUseDbDriverWorkloads, dbDriverWorkloads, dayOrders]);
+  }, [areaSummary, canUseDbDriverWorkloads, dbDriverWorkloads, dispatchAreaOrders]);
 
   const areaOrderPool = useMemo(() => {
     return dispatchAreaOrders.filter((order) => {
@@ -585,7 +580,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
       const code = inferAreaFromOrder(order);
       if (!isNormalArea(code)) return true;
       if (assignmentFilter === 'assigned') return isAssignedForAreaSummary(order, todayDateKey);
-      if (assignmentFilter === 'unassigned') return isCurrentDayUnassigned(order, todayDateKey);
+      if (assignmentFilter === 'unassigned') return isActiveQueueUnassigned(order, todayDateKey);
       return true;
     });
 
@@ -621,13 +616,13 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
       .map(([label, groupOrders]) => ({
         label,
         orders: groupOrders,
-        unassigned: groupOrders.filter((order) => isCurrentDayUnassigned(order, todayDateKey)),
+        unassigned: groupOrders.filter((order) => isActiveQueueUnassigned(order, todayDateKey)),
         totalOrders: groupOrders.length,
         assignedOrders: groupOrders.filter((order) => isAssignedForAreaSummary(order, todayDateKey)).length,
-        unassignedOrders: groupOrders.filter((order) => isCurrentDayUnassigned(order, todayDateKey)).length,
+        unassignedOrders: groupOrders.filter((order) => isActiveQueueUnassigned(order, todayDateKey)).length,
         collectAmount: groupOrders.reduce((sum, order) => sum + getCollectAmount(order), 0),
         assignedCollectAmount: groupOrders.filter((order) => isAssignedForAreaSummary(order, todayDateKey)).reduce((sum, order) => sum + getCollectAmount(order), 0),
-        unassignedCollectAmount: groupOrders.filter((order) => isCurrentDayUnassigned(order, todayDateKey)).reduce((sum, order) => sum + getCollectAmount(order), 0),
+        unassignedCollectAmount: groupOrders.filter((order) => isActiveQueueUnassigned(order, todayDateKey)).reduce((sum, order) => sum + getCollectAmount(order), 0),
       }))
       .sort((a, b) => b.unassignedOrders - a.unassignedOrders || a.label.localeCompare(b.label));
   }, [areaOrderPool, todayDateKey]);
@@ -674,7 +669,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
     if (!isNormalArea(activeAreaCode)) return [];
     return dispatchAreaOrders.filter((order) => (
       inferAreaFromOrder(order) === activeAreaCode
-      && isCurrentDayUnassigned(order, todayDateKey)
+      && isActiveQueueUnassigned(order, todayDateKey)
     ));
   }, [activeAreaCode, dispatchAreaOrders, todayDateKey]);
 
@@ -906,7 +901,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
     setAssignmentFilter('unassigned');
     const remainingOrders = dispatchAreaOrders.filter((order) =>
       inferAreaFromOrder(order) === areaCode
-      && isCurrentDayUnassigned(order, todayDateKey)
+      && isActiveQueueUnassigned(order, todayDateKey)
     );
 
     if (remainingOrders.length === 0) {
@@ -930,7 +925,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
   };
 
   const handleSelectGroup = (ordersToSelect: RunnerOrder[], unassignedOnly = false) => {
-    const selected = (unassignedOnly ? ordersToSelect.filter((order) => isCurrentDayUnassigned(order, todayDateKey)) : ordersToSelect)
+    const selected = (unassignedOnly ? ordersToSelect.filter((order) => isActiveQueueUnassigned(order, todayDateKey)) : ordersToSelect)
       .filter((order) => isNormalArea(inferAreaFromOrder(order)))
       .map((order) => order.id);
     selectOrders(selected);
@@ -1339,7 +1334,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
                         size="sm"
                         onClick={() => {
                           const selected = visibleAssignmentOrders
-                            .filter((order) => isNormalArea(inferAreaFromOrder(order)) && isCurrentDayUnassigned(order, todayDateKey))
+                            .filter((order) => isNormalArea(inferAreaFromOrder(order)) && isActiveQueueUnassigned(order, todayDateKey))
                             .map((order) => order.id);
                           selectOrders(selected);
                         }}
