@@ -15,20 +15,21 @@ export interface RunnerInboxStats {
  *        runner_status IN (ASSIGNED, TAKEN), status != CANCELLED.
  * BOOKING and UNASSIGNED orders are excluded — runners only see READY assigned orders.
  */
-export function useRunnerInboxStats() {
+export function useRunnerInboxStats(runnerId?: string) {
   const { user } = useAuth();
+  const effectiveRunnerId = runnerId || user?.id;
 
   return useQuery({
-    queryKey: ['runner-inbox-stats', user?.id],
+    queryKey: ['runner-inbox-stats', effectiveRunnerId],
     queryFn: async (): Promise<RunnerInboxStats> => {
-      if (!user) throw new Error('Not authenticated');
+      if (!effectiveRunnerId) throw new Error('Not authenticated');
 
       const [totalActiveRes, assignedRes, takenRes, noDriverRes] = await Promise.all([
         // Total active: READY + ASSIGNED/TAKEN only
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('runner_id', user.id)
+          .eq('runner_id', effectiveRunnerId)
           .eq('status', 'READY')
           .in('runner_status', ['ASSIGNED', 'TAKEN'])
           .neq('status', 'CANCELLED'),
@@ -37,7 +38,7 @@ export function useRunnerInboxStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('runner_id', user.id)
+          .eq('runner_id', effectiveRunnerId)
           .eq('status', 'READY')
           .eq('runner_status', 'ASSIGNED')
           .neq('status', 'CANCELLED'),
@@ -46,7 +47,7 @@ export function useRunnerInboxStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('runner_id', user.id)
+          .eq('runner_id', effectiveRunnerId)
           .eq('status', 'READY')
           .eq('runner_status', 'TAKEN')
           .neq('status', 'CANCELLED'),
@@ -55,7 +56,7 @@ export function useRunnerInboxStats() {
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('runner_id', user.id)
+          .eq('runner_id', effectiveRunnerId)
           .eq('status', 'READY')
           .in('runner_status', ['ASSIGNED', 'TAKEN'])
           .neq('status', 'CANCELLED')
@@ -74,7 +75,7 @@ export function useRunnerInboxStats() {
         noDriverCount,
       };
     },
-    enabled: !!user,
+    enabled: !!effectiveRunnerId,
     refetchInterval: 120000,
   });
 }

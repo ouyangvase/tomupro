@@ -113,10 +113,11 @@ const driverStatusConfig: Record<string, { label: string; className: string }> =
 };
 
 export default function DriverInbox() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const effectiveDriverId = profile?.id || user?.id;
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
   const { data: orders = [], isLoading } = useDriverAssignments({
-    driverId: profile?.id,
+    driverId: effectiveDriverId,
     dateTo: todayDateKey,
     activeOnly: true,
     includeItems: true,
@@ -256,8 +257,8 @@ export default function DriverInbox() {
   const pickedProductQty = useMemo(() => {
     const totals = new Map<string, number>();
     driverPickups.forEach((pickup) => {
-      if (pickup.driver_id !== profile?.id) return;
-      if (normalizeDriverStatus(pickup.status) !== 'DRIVER_ACKED') return;
+      if (pickup.driver_id !== effectiveDriverId) return;
+      if (normalizeDriverStatus(pickup.status) !== 'COMPLETED') return;
 
       (pickup.items || []).forEach((item) => {
         const productId = String(item.product_id || '');
@@ -267,7 +268,7 @@ export default function DriverInbox() {
       });
     });
     return totals;
-  }, [driverPickups, profile?.id]);
+  }, [driverPickups, effectiveDriverId]);
 
   const hasPickupForOrder = useCallback((order?: DriverInboxOrder | null) => {
     if (!order) return false;

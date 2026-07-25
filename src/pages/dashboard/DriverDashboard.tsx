@@ -5,7 +5,19 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
-import { CalendarDays, ChevronRight, Navigation, Target } from 'lucide-react';
+import { useDriverAllocatedStock, useDriverPickups } from '@/hooks/useDriverPickups';
+import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
+import {
+  Boxes,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Navigation,
+  PackageCheck,
+  RotateCcw,
+  Target,
+} from 'lucide-react';
 
 export function DriverDashboard() {
   const navigate = useNavigate();
@@ -17,14 +29,83 @@ export function DriverDashboard() {
     calendarFrom: today,
     calendarTo: today,
   });
+  const { data: pickups = [] } = useDriverPickups();
+  const { data: allocatedStock = [] } = useDriverAllocatedStock();
+  const { data: returnRequired } = useDriverReturnRequired();
   const summary = analytics?.summary;
+  const pendingPickup = pickups.find((pickup) => pickup.status === 'PENDING_DRIVER_ACK');
+  const awaitingCollection = pickups.find((pickup) => pickup.status === 'DRIVER_ACKED');
+  const stockQty = allocatedStock.reduce((sum, item) => sum + Number(item.allocated_qty || 0), 0);
+
+  const nextStep = pendingPickup
+    ? {
+        eyebrow: 'Pickup ready',
+        title: 'Review and acknowledge your stock',
+        detail: `${(pendingPickup.items || []).reduce((sum, item) => sum + Number(item.qty || 0), 0)} item(s) prepared by your runner`,
+        action: 'Review pickup',
+        href: '/delivery?tab=pickups',
+        icon: PackageCheck,
+      }
+    : awaitingCollection
+      ? {
+          eyebrow: 'Pickup acknowledged',
+          title: 'Collect stock from your runner',
+          detail: 'Delivery actions unlock after your runner confirms collection.',
+          action: 'View pickup',
+          href: '/delivery?tab=pickups',
+          icon: Clock3,
+        }
+      : returnRequired?.isReturnRequired
+        ? {
+            eyebrow: 'Return required',
+            title: 'Return remaining stock',
+            detail: `${returnRequired.totalMustReturn} item(s) need runner acknowledgement`,
+            action: 'Start return',
+            href: '/delivery?tab=returns',
+            icon: RotateCcw,
+          }
+        : (summary?.pending || 0) > 0
+          ? {
+              eyebrow: 'Ready to deliver',
+              title: `${summary?.pending || 0} job(s) waiting`,
+              detail: 'Open your route and complete the next delivery.',
+              action: 'Open deliveries',
+              href: '/delivery?tab=inbox',
+              icon: Navigation,
+            }
+          : {
+              eyebrow: 'All clear',
+              title: 'Today is complete',
+              detail: 'No pickup, return, or delivery action is waiting.',
+              action: 'View calendar',
+              href: '/delivery?tab=analytics',
+              icon: CheckCircle2,
+            };
+  const NextStepIcon = nextStep.icon;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-5 pb-24">
       <header className="border-b border-border pb-4">
         <p className="text-xs font-bold uppercase text-primary">Today</p>
         <h1 className="mt-1 text-2xl font-bold">{format(new Date(), 'EEEE, dd MMMM')}</h1>
       </header>
+
+      <section className="border-b border-border pb-5">
+        <p className="text-xs font-bold uppercase text-primary">{nextStep.eyebrow}</p>
+        <div className="mt-2 flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <NextStepIcon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold">{nextStep.title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{nextStep.detail}</p>
+          </div>
+        </div>
+        <Button className="mt-4 h-11 w-full justify-between" onClick={() => navigate(nextStep.href)}>
+          {nextStep.action}
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </section>
 
       <section className="grid grid-cols-2 gap-x-5 gap-y-5 border-b border-border pb-5">
         <div>
@@ -51,18 +132,30 @@ export function DriverDashboard() {
         </div>
       </section>
 
-      <Button className="h-12 w-full justify-between" onClick={() => navigate('/delivery?tab=inbox')}>
-        <span className="inline-flex items-center gap-2">
-          <Navigation className="h-4 w-4" />
-          Open today's jobs
-        </span>
-        <ChevronRight className="h-4 w-4" />
-      </Button>
+      <section className="border-b border-border pb-5">
+        <div className="flex items-center justify-between">
+          <span className="inline-flex items-center gap-2 font-semibold">
+            <Boxes className="h-5 w-5 text-primary" />
+            Stock on hand
+          </span>
+          <span className="text-xl font-bold">{stockQty}</span>
+        </div>
+        {allocatedStock.length > 0 && (
+          <div className="mt-3 divide-y divide-border border-y border-border">
+            {allocatedStock.slice(0, 3).map((item) => (
+              <div key={item.product_id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <span className="min-w-0 truncate">{item.sku_code || item.sku_name}</span>
+                <span className="font-bold">{item.allocated_qty}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="divide-y divide-border border-y border-border">
         <button
           type="button"
-          onClick={() => navigate('/driver/analytics')}
+          onClick={() => navigate('/delivery?tab=analytics')}
           className="flex w-full items-center justify-between gap-3 py-4 text-left"
         >
           <span className="inline-flex items-center gap-3 font-semibold">
@@ -73,7 +166,7 @@ export function DriverDashboard() {
         </button>
         <button
           type="button"
-          onClick={() => navigate('/driver/analytics')}
+          onClick={() => navigate('/delivery?tab=analytics')}
           className="flex w-full items-center justify-between gap-3 py-4 text-left"
         >
           <span className="inline-flex items-center gap-3 font-semibold">

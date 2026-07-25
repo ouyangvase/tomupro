@@ -9,6 +9,7 @@ import {
   startOfMonth,
   startOfWeek,
   startOfYear,
+  setMonth,
   subMonths,
   addMonths,
 } from 'date-fns';
@@ -52,10 +53,10 @@ export default function DriverAnalyticsPage() {
         to: dateKey(endOfWeek(now, { weekStartsOn: 1 })),
       };
     }
-    if (period === 'year') return { from: dateKey(startOfYear(now)), to: dateKey(endOfYear(now)) };
+    if (period === 'year') return { from: dateKey(startOfYear(calendarMonth)), to: dateKey(endOfYear(calendarMonth)) };
     if (period === 'custom') return { from: customFrom, to: customTo };
-    return { from: dateKey(startOfMonth(now)), to: dateKey(endOfMonth(now)) };
-  }, [customFrom, customTo, period]);
+    return { from: dateKey(startOfMonth(calendarMonth)), to: dateKey(endOfMonth(calendarMonth)) };
+  }, [calendarMonth, customFrom, customTo, period]);
 
   const calendarFrom = dateKey(startOfMonth(calendarMonth));
   const calendarTo = dateKey(endOfMonth(calendarMonth));
@@ -69,6 +70,18 @@ export default function DriverAnalyticsPage() {
   const selectedDay = analytics?.daily.find((day) => day.date === selectedDate);
   const leadingDays = (getDay(startOfMonth(calendarMonth)) + 6) % 7;
   const summary = analytics?.summary;
+  const yearMonths = useMemo(() => {
+    if (period !== 'year') return [];
+    return Array.from({ length: 12 }, (_, monthIndex) => {
+      const monthOrders = (analytics?.rangeOrders || []).filter(
+        (order) => Number(order.operational_date.slice(5, 7)) === monthIndex + 1,
+      );
+      const assigned = monthOrders.filter((order) => order.assignment_state !== 'INACTIVE').length;
+      const delivered = monthOrders.filter((order) => order.assignment_state === 'DELIVERED').length;
+      const failed = monthOrders.filter((order) => order.assignment_state === 'FAILED').length;
+      return { monthIndex, assigned, delivered, failed };
+    });
+  }, [analytics?.rangeOrders, period]);
 
   return (
     <AppLayout>
@@ -133,6 +146,48 @@ export default function DriverAnalyticsPage() {
           </div>
         </section>
 
+        {period === 'year' ? (
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Previous year"
+                onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear() - 1, 0, 1))}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <h2 className="font-bold">{format(calendarMonth, 'yyyy')}</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Next year"
+                onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear() + 1, 0, 1))}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3">
+              {yearMonths.map((month) => (
+                <button
+                  key={month.monthIndex}
+                  type="button"
+                  className="min-h-24 bg-background p-3 text-left transition-colors hover:bg-muted"
+                  onClick={() => {
+                    const selectedMonth = setMonth(startOfYear(calendarMonth), month.monthIndex);
+                    setCalendarMonth(selectedMonth);
+                    setSelectedDate(dateKey(startOfMonth(selectedMonth)));
+                    setPeriod('month');
+                  }}
+                >
+                  <span className="text-sm font-semibold">{format(setMonth(startOfYear(calendarMonth), month.monthIndex), 'MMM')}</span>
+                  <span className="mt-3 block text-xl font-bold">{month.delivered} / {month.assigned}</span>
+                  <span className="text-xs text-muted-foreground">{month.failed} failed</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : (
         <section>
           <div className="mb-3 flex items-center justify-between">
             <Button
@@ -197,6 +252,7 @@ export default function DriverAnalyticsPage() {
           </div>
           {isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Loading calendar...</p>}
         </section>
+        )}
 
         <section className="border-t border-border pt-5">
           <div className="flex items-center justify-between gap-3">

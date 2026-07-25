@@ -64,7 +64,7 @@ export function useDriverAnalytics(driverId?: string, range: DriverAnalyticsRang
         driverId,
         dateFrom: bounds.queryFrom,
         dateTo: bounds.queryTo,
-        includeItems: true,
+        includeItems: false,
       });
       const rangeOrders = assignments.filter(
         (order) => order.operational_date >= bounds.dateFrom && order.operational_date <= bounds.dateTo,

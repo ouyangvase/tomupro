@@ -62,7 +62,7 @@ const runnerTabs: NavItem[] = [
 const driverTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
   { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery' },
-  { id: 'stats', label: 'Stats', icon: <BarChart3 className="h-5 w-5" />, href: '/performance' },
+  { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery?tab=analytics' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile', isMore: true },
 ];
 
@@ -131,9 +131,12 @@ const allModules: Record<string, NavItem[]> = {
     { id: 'profile', label: 'Profile', icon: <UserCircle className="h-5 w-5" />, href: '/settings/profile' },
   ],
   driver: [
-    { id: 'dashboard', label: 'Dashboard', icon: <Home className="h-5 w-5" />, href: '/' },
+    { id: 'dashboard', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
     { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery' },
-    { id: 'performance', label: 'Performance', icon: <BarChart3 className="h-5 w-5" />, href: '/performance' },
+    { id: 'route', label: 'Route', icon: <Truck className="h-5 w-5" />, href: '/delivery?tab=route' },
+    { id: 'pickups', label: 'Pickups', icon: <Boxes className="h-5 w-5" />, href: '/delivery?tab=pickups' },
+    { id: 'returns', label: 'Returns', icon: <ClipboardList className="h-5 w-5" />, href: '/delivery?tab=returns' },
+    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery?tab=analytics' },
     { id: 'guide', label: 'Guide', icon: <GraduationCap className="h-5 w-5" />, href: '/guide' },
     { id: 'telegram', label: 'Telegram', icon: <Send className="h-5 w-5" />, href: '/settings/telegram' },
     { id: 'profile', label: 'Profile', icon: <UserCircle className="h-5 w-5" />, href: '/settings/profile' },
@@ -195,8 +198,13 @@ export function BottomNavigation() {
     });
   }, [assistantBinding?.runner_id, hidePerformanceUI, role]);
 
-  const isActive = (href: string): boolean => {
+  const isActive = (href: string, id?: string): boolean => {
     if (href === '/') return location.pathname === '/';
+    if (role === 'driver' && location.pathname === '/delivery') {
+      const activeTab = new URLSearchParams(location.search).get('tab') || 'inbox';
+      if (id === 'analytics') return activeTab === 'analytics';
+      if (id === 'delivery') return activeTab !== 'analytics';
+    }
     return location.pathname.startsWith(href);
   };
 
@@ -205,7 +213,7 @@ export function BottomNavigation() {
       <nav className="mobile-bottom-dock fixed bottom-3 left-3 right-3 z-40 rounded-[2rem] p-1 safe-area-pb">
         <div className="mobile-bottom-dock-core flex h-[72px] items-center justify-around px-1">
           {tabs.map((tab) => {
-            const active = tab.isMore ? moreOpen : isActive(tab.href);
+            const active = tab.isMore ? moreOpen : isActive(tab.href, tab.id);
             return (
               <button
                 key={tab.id}

@@ -55,12 +55,12 @@ export default function RunnerInbox({
   duplicateOrdersAction = null,
   duplicateOrdersPanel = null,
 }: RunnerInboxProps) {
-  const { user, role } = useAuth();
+  const { user, profile, role } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { data: assistantBinding, isLoading: assistantLoading } = useMyAssistantBinding();
   const isAssistant = role === 'runner_assistant' || Boolean(assistantBinding?.runner_id);
-  const effectiveRunnerId = isAssistant ? assistantBinding?.runner_id : user?.id;
+  const effectiveRunnerId = isAssistant ? assistantBinding?.runner_id : (profile?.id || user?.id);
   const { data: myDrivers = [] } = useMyDrivers(isAssistant ? effectiveRunnerId : undefined);
   const { data: validAreas = [] } = useValidAreas();
   const { data: stockBalances = [] } = useStockBalance();
@@ -144,7 +144,7 @@ export default function RunnerInbox({
   const { data: orders, isLoading, isFetching, pagination, setPage } = usePaginatedOrders(orderFilters, 50);
 
   // Server-side stats for summary cards (not affected by pagination)
-  const { data: inboxStats } = useRunnerInboxStats();
+  const { data: inboxStats } = useRunnerInboxStats(effectiveRunnerId);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 

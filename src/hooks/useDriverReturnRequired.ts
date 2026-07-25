@@ -27,7 +27,7 @@ export interface ReturnRequiredResult {
 
 /**
  * Hook to get returnable items for a driver.
- * Formula: Available = acknowledged pickup - driver delivered accepted by runner - already returned.
+ * Formula: Available = completed pickup - driver delivered accepted by runner - already returned.
  * No pickup means no return requirement.
  */
 export function useDriverReturnRequired(driverId?: string) {
@@ -54,7 +54,7 @@ export function useDriverReturnRequired(driverId?: string) {
           )
         `)
         .eq('driver_id', targetDriverId)
-        .eq('status', 'DRIVER_ACKED')
+        .eq('status', 'COMPLETED')
         .lt('pickup_date', today);
 
       if (pickupError) throw pickupError;
