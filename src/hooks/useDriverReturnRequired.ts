@@ -32,13 +32,12 @@ export interface ReturnRequiredResult {
  */
 export function useDriverReturnRequired(driverId?: string) {
   const { user } = useAuth();
+  const targetDriverId = driverId || user?.id;
 
   return useQuery({
-    queryKey: ['driver-return-required', driverId],
+    queryKey: ['driver-return-required', targetDriverId],
     queryFn: async (): Promise<ReturnRequiredResult> => {
-      if (!user) throw new Error('Not authenticated');
-
-      const targetDriverId = driverId || user.id;
+      if (!targetDriverId) throw new Error('Not authenticated');
       const today = getTodayDateKey();
 
       const { data: pickupRows, error: pickupError } = await supabase
@@ -185,7 +184,7 @@ export function useDriverReturnRequired(driverId?: string) {
         totalAvailable,
       };
     },
-    enabled: true,
+    enabled: !!targetDriverId,
   });
 }
 

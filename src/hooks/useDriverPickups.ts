@@ -269,7 +269,7 @@ export function useDriverPickups() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['driver-pickups'],
+    queryKey: ['driver-pickups', user?.id],
     queryFn: async () => {
       if (!user?.id) throw new Error('Not authenticated');
 
@@ -285,6 +285,7 @@ export function useDriverPickups() {
       if (error) throw error;
       return data as DriverPickup[];
     },
+    enabled: !!user?.id,
   });
 }
 
