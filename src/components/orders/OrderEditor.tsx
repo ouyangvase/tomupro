@@ -1377,7 +1377,6 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                                 <input
                                   type="file"
                                   accept="image/*"
-                                  capture="environment"
                                   aria-label="Re-upload transfer receipt"
                                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                                   onChange={async (e) => {
@@ -1420,7 +1419,6 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                                 <input
                                   type="file"
                                   accept="image/*"
-                                  capture="environment"
                                   aria-label="Upload transfer receipt"
                                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                                   onChange={(e) => selectReceiptFile(e.target.files?.[0])}
