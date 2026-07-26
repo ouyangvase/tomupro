@@ -20,7 +20,7 @@ export function useRunnerDriverRanking(runnerId?: string) {
   return useQuery({
     queryKey: ['driver-ranking', runnerId],
     queryFn: async () => {
-      const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
+      const currentMonth = `${new Date().toISOString().slice(0, 7)}-01`;
       
       const { data, error } = await supabase
         .from('driver_monthly_ranking')
@@ -44,7 +44,7 @@ export function useMyDriverRanking() {
     queryFn: async () => {
       if (!user?.id) return null;
       
-      const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
+      const currentMonth = `${new Date().toISOString().slice(0, 7)}-01`;
       
       const { data, error } = await supabase
         .from('driver_monthly_ranking')
@@ -166,7 +166,7 @@ export function useTeamRankingForDriver() {
       
       if (!driverData) return [];
 
-      const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
+      const currentMonth = `${new Date().toISOString().slice(0, 7)}-01`;
       
       const { data, error } = await supabase
         .from('driver_monthly_ranking')

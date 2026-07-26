@@ -146,6 +146,10 @@ export default function DriverAnalyticsPage() {
               <p className="text-xs text-muted-foreground">Pending</p>
               <p className="mt-1 text-xl font-bold">{summary?.pending ?? 0}</p>
             </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Pending acceptance</p>
+              <p className="mt-1 text-xl font-bold">{summary?.pendingAcceptance ?? 0}</p>
+            </div>
           </div>
         </section>
 
@@ -293,9 +297,12 @@ export default function DriverAnalyticsPage() {
                   </div>
                   <Badge
                     variant={order.assignment_state === 'FAILED' ? 'destructive' : 'outline'}
-                    className={cn(order.assignment_state === 'DELIVERED' && 'border-emerald-600 text-emerald-700')}
+                    className={cn(
+                      order.assignment_state === 'DELIVERED' && 'border-emerald-600 text-emerald-700',
+                      order.assignment_state === 'PENDING_ACCEPTANCE' && 'border-amber-600 text-amber-700',
+                    )}
                   >
-                    {order.assignment_state.replace('_', ' ')}
+                    {order.assignment_state.replaceAll('_', ' ')}
                   </Badge>
                 </div>
               ))}

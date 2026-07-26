@@ -4,6 +4,7 @@ import { callSupabaseRpc } from '@/lib/supabaseRpc';
 
 export type DriverAssignmentState =
   | 'ACTIVE'
+  | 'PENDING_ACCEPTANCE'
   | 'DELIVERED'
   | 'FAILED'
   | 'INACTIVE';
@@ -89,6 +90,9 @@ export function summarizeDriverAssignments(assignments: DriverAssignment[]) {
   const delivered = assignments.filter((order) => order.assignment_state === 'DELIVERED').length;
   const failed = assignments.filter((order) => order.assignment_state === 'FAILED').length;
   const inactive = assignments.filter((order) => order.assignment_state === 'INACTIVE').length;
+  const pendingAcceptance = assignments.filter(
+    (order) => order.assignment_state === 'PENDING_ACCEPTANCE',
+  ).length;
   const assigned = assignments.filter((order) => order.assignment_state !== 'INACTIVE').length;
   const pending = Math.max(assigned - delivered - failed, 0);
   const cashCollected = assignments
@@ -100,6 +104,7 @@ export function summarizeDriverAssignments(assignments: DriverAssignment[]) {
     delivered,
     failed,
     inactive,
+    pendingAcceptance,
     pending,
     deliveryRate: assigned > 0 ? (delivered / assigned) * 100 : 0,
     cashCollected,

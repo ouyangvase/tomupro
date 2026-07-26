@@ -24,6 +24,11 @@ import {
 } from '@/hooks/useRunnerDispatchAutomation';
 import { useManualReopenOrder } from '@/hooks/useRescheduleHistory';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
+import {
+  fetchDriverAssignments,
+  summarizeDriverAssignments,
+  type DriverAssignment,
+} from '@/hooks/useDriverAssignments';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -105,19 +110,7 @@ type RunnerOrder = Order & {
 type AssignmentAction = 'ASSIGN' | 'REASSIGN';
 type DriverPerformancePeriod = 'day' | 'month' | 'year';
 
-type DriverPerformanceOrder = {
-  id: string;
-  driver_id: string | null;
-  status: string | null;
-  runner_status: string | null;
-  driver_status: string | null;
-  runner_accept_status: string | null;
-  payment_method: string | null;
-  total_amount: number | null;
-  order_date: string | null;
-  runner_assigned_at: string | null;
-  updated_at: string | null;
-};
+type DriverPerformanceOrder = DriverAssignment;
 
 type DriverPerformanceStats = {
   total: number;
@@ -183,13 +176,13 @@ function getDateRange(anchorDate: string, period: DriverPerformancePeriod) {
   const end = new Date(anchor);
 
   if (period === 'day') {
-    end.setDate(start.getDate() + 1);
+    end.setDate(start.getDate());
   } else if (period === 'month') {
     start.setDate(1);
-    end.setMonth(start.getMonth() + 1, 1);
+    end.setMonth(start.getMonth() + 1, 0);
   } else {
     start.setMonth(0, 1);
-    end.setFullYear(start.getFullYear() + 1, 0, 1);
+    end.setFullYear(start.getFullYear(), 11, 31);
   }
 
   return {
@@ -206,35 +199,14 @@ function getPerformanceLabel(anchorDate: string, period: DriverPerformancePeriod
   return format(anchor, 'yyyy');
 }
 
-function hasAcceptedDeliveryRecord(order: { runner_accept_status?: string | null }) {
-  return order.runner_accept_status === 'ACCEPTED';
-}
-
-function isDeliveredForPerformance(order: DriverPerformanceOrder) {
-  return hasAcceptedDeliveryRecord(order) && (
-    order.runner_status === 'DELIVERED' ||
-    order.status === 'DELIVERED' ||
-    order.driver_status === 'DRIVER_DELIVERED'
-  );
-}
-
-function isFailedForPerformance(order: DriverPerformanceOrder) {
-  return order.driver_status === 'DRIVER_FAILED' ||
-    order.runner_status === 'FAILED_DELIVERY' ||
-    order.status === 'FAILED_DELIVERY';
-}
-
 function buildPerformanceStats(orders: DriverPerformanceOrder[]) {
-  const valid = orders.filter((order) => order.status !== 'CANCELLED' && hasAcceptedDeliveryRecord(order));
-  const delivered = valid.filter(isDeliveredForPerformance).length;
-  const failed = valid.filter(isFailedForPerformance).length;
-  const pending = Math.max(valid.length - delivered - failed, 0);
+  const summary = summarizeDriverAssignments(orders);
   return {
-    total: valid.length,
-    delivered,
-    failed,
-    pending,
-    deliveryRate: valid.length ? Number(((delivered / valid.length) * 100).toFixed(1)) : 0,
+    total: summary.assigned,
+    delivered: summary.delivered,
+    failed: summary.failed,
+    pending: summary.pending,
+    deliveryRate: Number(summary.deliveryRate.toFixed(1)),
   };
 }
 
@@ -506,15 +478,12 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
     enabled: Boolean(runnerScopeId),
     queryFn: async () => {
       if (!runnerScopeId) return [];
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id,driver_id,status,runner_status,driver_status,runner_accept_status,payment_method,total_amount,order_date,runner_assigned_at,updated_at')
-        .eq('runner_id', runnerScopeId)
-        .not('driver_id', 'is', null)
-        .gte('order_date', performanceRange.start)
-        .lt('order_date', performanceRange.end);
-      if (error) throw error;
-      return (data || []) as DriverPerformanceOrder[];
+      return fetchDriverAssignments({
+        runnerId: runnerScopeId,
+        dateFrom: performanceRange.start,
+        dateTo: performanceRange.end,
+        includeItems: false,
+      });
     },
   });
 

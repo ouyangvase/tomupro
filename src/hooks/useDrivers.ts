@@ -405,6 +405,7 @@ export function useDriverMarkFailed() {
           driver_failed_reason: reason,
           driver_failed_remark: remark || null,
           driver_next_delivery_date: nextDeliveryDate || null,
+          runner_accept_status: 'PENDING',
         })
         .eq('id', orderId)
         .select()

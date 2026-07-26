@@ -101,6 +101,8 @@ export function useRunnerReviewOrder() {
         // Use provided deliveredAt or default to now
         updateData.delivered_at = params.deliveredAt || new Date().toISOString();
         updateData.runner_accept_status = 'ACCEPTED';
+      } else if (params.outcome === 'CONFIRM_FAILED') {
+        updateData.runner_accept_status = 'ACCEPTED';
       }
 
       const { error } = await supabase
