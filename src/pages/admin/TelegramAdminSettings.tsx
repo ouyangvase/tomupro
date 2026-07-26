@@ -344,75 +344,141 @@ export default function TelegramAdminSettings() {
         </Card>
       </div>
 
-      <Card className="rounded-[1.25rem] border-border/60">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+      <Card className="overflow-hidden rounded-lg border-border/60">
+        <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Users className="h-5 w-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <CardTitle className="text-lg">Connected users</CardTitle>
-                <CardDescription>Read-only status. Users control their own Telegram account and notification toggles.</CardDescription>
+                <CardDescription className="mt-1 text-sm leading-5">
+                  Read-only status. Users manage their own Telegram connection and alerts.
+                </CardDescription>
               </div>
             </div>
-            <Badge variant="outline" className="w-fit">
+            <Badge variant="outline" className="ml-[3.25rem] w-fit sm:ml-0">
               {stats.connectedUsers} connected
             </Badge>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 sm:px-6 sm:pb-6">
           {userRows.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">No active users found.</p>
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">No active users found.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Connection</TableHead>
-                    <TableHead>Chat ID</TableHead>
-                    <TableHead>Reports</TableHead>
-                    <TableHead>Team updates</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {userRows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="min-w-[180px] font-medium">{row.display_name}</TableCell>
-                      <TableCell>{roleLabels[row.role] || row.role}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={row.chatId && row.telegramEnabled
-                            ? 'border-green-200 bg-green-50 text-green-700'
-                            : row.chatId
-                              ? 'border-amber-200 bg-amber-50 text-amber-700'
-                              : 'text-muted-foreground'}
-                        >
-                          {row.chatId && row.telegramEnabled ? 'Enabled' : row.chatId ? 'Connected, off' : 'Not connected'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="min-w-[140px] font-mono text-sm">
-                        {row.chatId || <span className="font-sans text-muted-foreground">-</span>}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1.5">
-                          {row.receiveStock && <Badge variant="secondary">Stock</Badge>}
-                          {row.receiveDelivery && <Badge variant="secondary">Delivery</Badge>}
-                          {row.receiveDriver && <Badge variant="secondary">Driver</Badge>}
-                          {!row.receiveStock && !row.receiveDelivery && !row.receiveDriver && (
-                            <span className="text-sm text-muted-foreground">No reports selected</span>
-                          )}
+            <>
+              <div className="divide-y divide-border/60 border-t border-border/60 sm:hidden">
+                {userRows.map((row) => {
+                  const isEnabled = Boolean(row.chatId && row.telegramEnabled);
+                  const isConnected = Boolean(row.chatId);
+                  const hasReports = row.receiveStock || row.receiveDelivery || row.receiveDriver;
+
+                  return (
+                    <article key={row.id} className="min-w-0 px-4 py-4">
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="break-words text-[15px] font-semibold leading-5 text-foreground">
+                            {row.display_name}
+                          </p>
+                          <p className="mt-1 text-xs font-medium text-muted-foreground">
+                            {roleLabels[row.role] || row.role}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell>{row.receiveTeam ? 'On' : 'Off'}</TableCell>
+
+                        <div
+                          className={isEnabled
+                            ? 'flex shrink-0 items-center gap-1.5 text-xs font-semibold text-green-700'
+                            : isConnected
+                              ? 'flex shrink-0 items-center gap-1.5 text-xs font-semibold text-amber-700'
+                              : 'flex shrink-0 items-center gap-1.5 text-xs font-semibold text-muted-foreground'}
+                        >
+                          {isEnabled
+                            ? <CheckCircle className="h-4 w-4" />
+                            : isConnected
+                              ? <Clock className="h-4 w-4" />
+                              : <XCircle className="h-4 w-4" />}
+                          <span className="whitespace-nowrap">
+                            {isEnabled ? 'Enabled' : isConnected ? 'Connected, off' : 'Not connected'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <dl className="mt-3 grid min-w-0 grid-cols-[5rem_minmax(0,1fr)] gap-x-3 gap-y-2 border-t border-border/50 pt-3 text-sm">
+                        <dt className="text-xs font-medium text-muted-foreground">Chat ID</dt>
+                        <dd className="min-w-0 break-all text-right font-mono text-xs text-foreground">
+                          {row.chatId || <span className="font-sans text-muted-foreground">Not linked</span>}
+                        </dd>
+
+                        <dt className="text-xs font-medium text-muted-foreground">Reports</dt>
+                        <dd className="flex min-w-0 flex-wrap justify-end gap-1.5">
+                          {row.receiveStock && <Badge variant="secondary" className="rounded-md">Stock</Badge>}
+                          {row.receiveDelivery && <Badge variant="secondary" className="rounded-md">Delivery</Badge>}
+                          {row.receiveDriver && <Badge variant="secondary" className="rounded-md">Driver</Badge>}
+                          {!hasReports && (
+                            <span className="text-right text-xs text-muted-foreground">None selected</span>
+                          )}
+                        </dd>
+
+                        <dt className="text-xs font-medium text-muted-foreground">Team updates</dt>
+                        <dd className="text-right text-xs font-semibold text-foreground">
+                          {row.receiveTeam ? 'On' : 'Off'}
+                        </dd>
+                      </dl>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="hidden overflow-x-auto sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>User</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Connection</TableHead>
+                      <TableHead>Chat ID</TableHead>
+                      <TableHead>Reports</TableHead>
+                      <TableHead>Team updates</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {userRows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="min-w-[180px] font-medium">{row.display_name}</TableCell>
+                        <TableCell>{roleLabels[row.role] || row.role}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={row.chatId && row.telegramEnabled
+                              ? 'border-green-200 bg-green-50 text-green-700'
+                              : row.chatId
+                                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                : 'text-muted-foreground'}
+                          >
+                            {row.chatId && row.telegramEnabled ? 'Enabled' : row.chatId ? 'Connected, off' : 'Not connected'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="min-w-[140px] font-mono text-sm">
+                          {row.chatId || <span className="font-sans text-muted-foreground">-</span>}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1.5">
+                            {row.receiveStock && <Badge variant="secondary">Stock</Badge>}
+                            {row.receiveDelivery && <Badge variant="secondary">Delivery</Badge>}
+                            {row.receiveDriver && <Badge variant="secondary">Driver</Badge>}
+                            {!row.receiveStock && !row.receiveDelivery && !row.receiveDriver && (
+                              <span className="text-sm text-muted-foreground">No reports selected</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{row.receiveTeam ? 'On' : 'Off'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
