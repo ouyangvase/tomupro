@@ -37,6 +37,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ClipboardCheck,
+  Download,
   ExternalLink,
   History,
   Loader2,
@@ -56,6 +57,7 @@ import { toast } from 'sonner';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
+import { downloadXlsx } from '@/lib/xlsxExport';
 import {
   getDriverOperationalDateKey,
   getTodayDateKey,
@@ -470,6 +472,10 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
   const [driverSearch, setDriverSearch] = useState('');
   const [driverAvailabilityFilter, setDriverAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all');
   const [driverSort, setDriverSort] = useState<'workload' | 'collect' | 'delivery-rate' | 'capacity' | 'name'>('workload');
+  const [workloadExportOpen, setWorkloadExportOpen] = useState(false);
+  const [workloadExportMonth, setWorkloadExportMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [workloadExportDriverId, setWorkloadExportDriverId] = useState('all');
+  const [workloadExporting, setWorkloadExporting] = useState(false);
 
   const { data: dbDriverWorkloads = [], isFetching: driverWorkloadFetching } = useRunnerDispatchDriverWorkloads(activeQueueScopeDate);
   const performanceRange = useMemo(() => getDateRange(performanceAnchorDate, performancePeriod), [performanceAnchorDate, performancePeriod]);
@@ -782,6 +788,101 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
       return;
     }
     setPerformanceAnchorDate(value);
+  };
+
+  const openWorkloadExport = () => {
+    setWorkloadExportMonth(performanceAnchorDate.slice(0, 7));
+    setWorkloadExportDriverId(driverFilter !== 'all' ? driverFilter : 'all');
+    setWorkloadExportOpen(true);
+  };
+
+  const handleExportWorkload = async () => {
+    if (!runnerScopeId || !workloadExportMonth) return;
+
+    setWorkloadExporting(true);
+    try {
+      const range = getDateRange(`${workloadExportMonth}-01`, 'month');
+      const exportOrders = await fetchDriverAssignments({
+        runnerId: runnerScopeId,
+        driverId: workloadExportDriverId === 'all' ? null : workloadExportDriverId,
+        dateFrom: range.start,
+        dateTo: range.end,
+        includeItems: true,
+      });
+      const includedStates = new Set(['DELIVERED', 'FAILED', 'PENDING_ACCEPTANCE']);
+      const filteredExportOrders = exportOrders.filter((order) => includedStates.has(order.assignment_state));
+
+      if (filteredExportOrders.length === 0) {
+        toast.info('No delivered, failed, or pending accept orders for this selection.');
+        return;
+      }
+
+      const statusLabel: Record<string, string> = {
+        DELIVERED: 'Delivered',
+        FAILED: 'Failed',
+        PENDING_ACCEPTANCE: 'Pending Accept',
+      };
+      const headers = [
+        'Month',
+        'Delivery Date',
+        'Driver',
+        'Order Code',
+        'Customer',
+        'Phone',
+        'Address',
+        'Area',
+        'Products / SKU',
+        'Total Qty',
+        'Payment Method',
+        'Order Amount (BND)',
+        'Collect Amount (BND)',
+        'Status',
+        'Failed Reason',
+        'Runner Reviewed At',
+      ];
+      const rows = filteredExportOrders
+        .sort((left, right) => (
+          left.operational_date.localeCompare(right.operational_date)
+          || left.driver_name.localeCompare(right.driver_name)
+          || (left.order_code || '').localeCompare(right.order_code || '')
+        ))
+        .map((order) => [
+          workloadExportMonth,
+          order.operational_date,
+          order.driver_name || '',
+          order.order_code || '',
+          order.customer_name || '',
+          order.phone || '',
+          order.address || '',
+          order.delivery_area_name || order.area || '',
+          formatOrderItemsDisplay(order.order_items || []).displayText,
+          Number(order.total_qty || 0),
+          order.payment_method || '',
+          Number(order.total_amount || 0),
+          Number(order.collect_amount || 0),
+          statusLabel[order.assignment_state] || order.assignment_state,
+          order.driver_failed_reason || order.failed_reason || '',
+          order.runner_reviewed_at || '',
+        ]);
+      const driverName = workloadExportDriverId === 'all'
+        ? 'all-drivers'
+        : (driverWorkloads.find((driver) => driver.driver_id === workloadExportDriverId)?.name || 'driver')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
+
+      downloadXlsx(
+        [headers, ...rows],
+        `driver-workload_${workloadExportMonth}_${driverName}.xlsx`,
+        'Driver Workload',
+      );
+      setWorkloadExportOpen(false);
+      toast.success(`Exported ${filteredExportOrders.length} orders.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to export Driver workload.');
+    } finally {
+      setWorkloadExporting(false);
+    }
   };
 
   const driverUpdatesOrders = useMemo(() => {
@@ -1411,6 +1512,16 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
                       {(driverWorkloadFetching || performanceFetching) && <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin text-[#c78b2f]" />}
                     </div>
 
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={openWorkloadExport}
+                      className="h-10 w-full rounded-full border-white/15 bg-white/[0.07] text-white hover:bg-white/[0.12] hover:text-white"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Export Excel
+                    </Button>
+
                     <div className="rounded-[1.1rem] border border-white/10 bg-white/[0.065] p-3">
                       <div className="flex items-center gap-2 text-xs text-white/58">
                         <BarChart3 className="h-3.5 w-3.5 text-[#c78b2f]" />
@@ -1582,6 +1693,64 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
               </aside>
             </div>
         </section>
+
+        <Dialog open={workloadExportOpen} onOpenChange={setWorkloadExportOpen}>
+          <DialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Export Driver Workload</DialogTitle>
+              <DialogDescription>
+                Export delivered, failed, and pending accept orders from the shared assignment source.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="workload-export-month">Month</Label>
+                <Input
+                  id="workload-export-month"
+                  type="month"
+                  value={workloadExportMonth}
+                  onChange={(event) => setWorkloadExportMonth(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Driver</Label>
+                <Select value={workloadExportDriverId} onValueChange={setWorkloadExportDriverId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Drivers</SelectItem>
+                    {driverWorkloads.map((driver) => (
+                      <SelectItem key={driver.driver_id} value={driver.driver_id}>
+                        {driver.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setWorkloadExportOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleExportWorkload}
+                disabled={!workloadExportMonth || workloadExporting}
+              >
+                {workloadExporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Export
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={assignmentDialogOpen} onOpenChange={setAssignmentDialogOpen}>
           <DialogContent className="bottom-0 top-auto max-h-[88dvh] w-screen max-w-none translate-y-0 gap-3 overflow-y-auto overflow-x-hidden rounded-b-none rounded-t-[1.5rem] border-[#e2d8c8] bg-white p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] text-[#171717] shadow-[0_-22px_70px_rgba(17,16,14,0.22)] backdrop-blur-0 sm:bottom-auto sm:top-[50%] sm:max-h-[92dvh] sm:w-[min(92vw,32rem)] sm:max-w-lg sm:translate-y-[-50%] sm:rounded-2xl sm:p-6">
