@@ -18,7 +18,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatBND } from '@/lib/currency';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
+import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { cn } from '@/lib/utils';
+import { getTodayDateKey } from '@/lib/driverOrderScope';
 import { GlobalSearchBar } from '@/components/GlobalSearchBar';
 import capybaraAdmin from '@/assets/capybara-admin.png';
 import capybaraRunner from '@/assets/capybara-runner.png';
@@ -247,7 +249,9 @@ function SalespersonMobileDashboard() {
   const { data: dashData, isLoading } = useSalespersonDashboard();
   const { data: actionStats } = useSalespersonActionRequiredStats();
   const { data: leaderboardSettings } = useLeaderboardSettings();
-  const showPerformanceAction = !(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
+  const showPerformanceAction = !(
+    leaderboardSettings?.filters_default as { hide_performance_ui?: boolean } | null
+  )?.hide_performance_ui;
 
   const quickActions: QuickAction[] = [
     { id: 'new-order', label: 'New Order', icon: <ShoppingCart className="h-5 w-5" />, href: '/orders?tab=booking' },
@@ -328,7 +332,9 @@ function ManagerMobileDashboard() {
   const { data: dashData, isLoading } = useManagerDashboard('mtd');
   const { data: actionStats } = useManagerActionRequiredStats();
   const { data: leaderboardSettings } = useLeaderboardSettings();
-  const showPerformanceAction = !(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
+  const showPerformanceAction = !(
+    leaderboardSettings?.filters_default as { hide_performance_ui?: boolean } | null
+  )?.hide_performance_ui;
 
   const quickActions: QuickAction[] = [
     { id: 'team-booking', label: 'Booking', icon: <Package className="h-5 w-5" />, href: '/orders?tab=booking', badge: dashData?.teamOverview.bookingOrders },
@@ -457,10 +463,17 @@ function RunnerMobileDashboard() {
 
 // ===== DRIVER DASHBOARD =====
 function DriverMobileDashboard() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const effectiveDriverId = profile?.id || user?.id;
+  const { data: activeJobs = [], isLoading } = useDriverAssignments({
+    driverId: effectiveDriverId,
+    dateTo: getTodayDateKey(),
+    activeOnly: true,
+    includeItems: false,
+  });
 
   const quickActions: QuickAction[] = [
-    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/delivery?tab=inbox' },
+    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/delivery?tab=inbox', badge: activeJobs.length },
     { id: 'route', label: 'Route', icon: <Navigation className="h-5 w-5" />, href: '/delivery?tab=route' },
     { id: 'pickups', label: 'Pickups', icon: <PackageCheck className="h-5 w-5" />, href: '/delivery?tab=pickups' },
     { id: 'returns', label: 'Returns', icon: <RotateCcw className="h-5 w-5" />, href: '/delivery?tab=returns' },
@@ -472,11 +485,12 @@ function DriverMobileDashboard() {
     <div className="p-4 space-y-6">
       <HeroSummaryCard
         title="Today's Deliveries"
-        value={0}
-        subtitle="Your delivery performance"
+        value={activeJobs.length}
+        subtitle="Active jobs waiting"
         viewAllLink="/delivery?tab=inbox"
         viewAllLabel="Start Delivering"
         icon={<Truck className="h-5 w-5" />}
+        isLoading={isLoading}
         accentColor="gold"
         illustration={capybaraDriver}
         greeting={`Hello, ${profile?.display_name?.split(' ')[0] || 'Driver'}`}

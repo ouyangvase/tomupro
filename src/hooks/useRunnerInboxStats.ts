@@ -1,6 +1,27 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
+
+export interface RunnerOperationalStats {
+  totalActive: number;
+  assignedCount: number;
+  takenCount: number;
+  noDriverCount: number;
+  deliveredToday: number;
+  failedToday: number;
+  totalDelivered: number;
+  totalFailed: number;
+  activeValue: number;
+  deliveredTodayValue: number;
+  pendingClaimCount: number;
+  pendingClaimValue: number;
+  submittedClaimCount: number;
+  submittedClaimValue: number;
+  approvedClaimValue: number;
+  failedOrdersCount: number;
+  missingDeliveryChargesCount: number;
+  driverIssuesCount: number;
+}
 
 export interface RunnerInboxStats {
   totalActive: number;
@@ -9,73 +30,70 @@ export interface RunnerInboxStats {
   noDriverCount: number;
 }
 
-/**
- * Server-side counts for Runner Inbox summary cards.
- * Scope: runner_id = current user, status = READY,
- *        runner_status IN (ASSIGNED, TAKEN), status != CANCELLED.
- * BOOKING and UNASSIGNED orders are excluded — runners only see READY assigned orders.
- */
+const runnerStatKeys: Array<keyof RunnerOperationalStats> = [
+  'totalActive',
+  'assignedCount',
+  'takenCount',
+  'noDriverCount',
+  'deliveredToday',
+  'failedToday',
+  'totalDelivered',
+  'totalFailed',
+  'activeValue',
+  'deliveredTodayValue',
+  'pendingClaimCount',
+  'pendingClaimValue',
+  'submittedClaimCount',
+  'submittedClaimValue',
+  'approvedClaimValue',
+  'failedOrdersCount',
+  'missingDeliveryChargesCount',
+  'driverIssuesCount',
+];
+
+export async function fetchRunnerOperationalStats(runnerId: string): Promise<RunnerOperationalStats> {
+  const result = await callSupabaseRpc<Record<string, unknown>>('get_dashboard_stats_runner', {
+    p_user_id: runnerId,
+  });
+
+  return runnerStatKeys.reduce((stats, key) => {
+    stats[key] = Number(result?.[key] || 0);
+    return stats;
+  }, {} as RunnerOperationalStats);
+}
+
+export function runnerOperationalStatsQueryKey(runnerId?: string) {
+  return ['runner-operational-stats', runnerId] as const;
+}
+
+export function useRunnerOperationalStats(runnerId?: string) {
+  const { user } = useAuth();
+  const effectiveRunnerId = runnerId || user?.id;
+
+  return useQuery({
+    queryKey: runnerOperationalStatsQueryKey(effectiveRunnerId),
+    queryFn: () => fetchRunnerOperationalStats(effectiveRunnerId!),
+    enabled: Boolean(effectiveRunnerId),
+    staleTime: 60000,
+    refetchInterval: 120000,
+  });
+}
+
 export function useRunnerInboxStats(runnerId?: string) {
   const { user } = useAuth();
   const effectiveRunnerId = runnerId || user?.id;
 
   return useQuery({
-    queryKey: ['runner-inbox-stats', effectiveRunnerId],
-    queryFn: async (): Promise<RunnerInboxStats> => {
-      if (!effectiveRunnerId) throw new Error('Not authenticated');
-
-      const [totalActiveRes, assignedRes, takenRes, noDriverRes] = await Promise.all([
-        // Total active: READY + ASSIGNED/TAKEN only
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('runner_id', effectiveRunnerId)
-          .eq('status', 'READY')
-          .in('runner_status', ['ASSIGNED', 'TAKEN'])
-          .neq('status', 'CANCELLED'),
-
-        // Count ASSIGNED orders (READY only)
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('runner_id', effectiveRunnerId)
-          .eq('status', 'READY')
-          .eq('runner_status', 'ASSIGNED')
-          .neq('status', 'CANCELLED'),
-
-        // Count TAKEN orders (READY only)
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('runner_id', effectiveRunnerId)
-          .eq('status', 'READY')
-          .eq('runner_status', 'TAKEN')
-          .neq('status', 'CANCELLED'),
-
-        // Count orders with no driver assigned (READY + ASSIGNED/TAKEN)
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('runner_id', effectiveRunnerId)
-          .eq('status', 'READY')
-          .in('runner_status', ['ASSIGNED', 'TAKEN'])
-          .neq('status', 'CANCELLED')
-          .is('driver_id', null),
-      ]);
-
-      const totalActive = totalActiveRes.count || 0;
-      const assignedCount = assignedRes.count || 0;
-      const takenCount = takenRes.count || 0;
-      const noDriverCount = noDriverRes.count || 0;
-
-      return {
-        totalActive,
-        assignedCount,
-        takenCount,
-        noDriverCount,
-      };
-    },
-    enabled: !!effectiveRunnerId,
+    queryKey: runnerOperationalStatsQueryKey(effectiveRunnerId),
+    queryFn: () => fetchRunnerOperationalStats(effectiveRunnerId!),
+    enabled: Boolean(effectiveRunnerId),
+    staleTime: 60000,
     refetchInterval: 120000,
+    select: (stats): RunnerInboxStats => ({
+      totalActive: stats.totalActive,
+      assignedCount: stats.assignedCount,
+      takenCount: stats.takenCount,
+      noDriverCount: stats.noDriverCount,
+    }),
   });
 }

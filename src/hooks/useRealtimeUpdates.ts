@@ -42,9 +42,8 @@ function debouncedInvalidateStats(queryClient: QueryClient) {
     statsDebounceTimer = null;
     // Stats and badge queries — batched and debounced
     queryClient.invalidateQueries({ queryKey: ['sidebar-badge'] });
-    queryClient.invalidateQueries({ queryKey: ['runner-inbox-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['runner-operational-stats'] });
     queryClient.invalidateQueries({ queryKey: ['ready-order-stats'] });
-    queryClient.invalidateQueries({ queryKey: ['runner-dashboard-stats'] });
     queryClient.invalidateQueries({ queryKey: ['action-required-stats'] });
     queryClient.invalidateQueries({ queryKey: ['salesperson-dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });

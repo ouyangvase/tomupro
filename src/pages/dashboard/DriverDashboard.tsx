@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
+import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { useDriverAllocatedStock, useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
 import {
@@ -28,6 +29,12 @@ export function DriverDashboard() {
     dateTo: today,
     calendarFrom: today,
     calendarTo: today,
+  });
+  const { data: activeJobs = [], isLoading: isLoadingActiveJobs } = useDriverAssignments({
+    driverId: user?.id,
+    dateTo: today,
+    activeOnly: true,
+    includeItems: false,
   });
   const { data: pickups = [] } = useDriverPickups();
   const { data: allocatedStock = [] } = useDriverAllocatedStock();
@@ -64,10 +71,10 @@ export function DriverDashboard() {
             href: '/delivery?tab=returns',
             icon: RotateCcw,
           }
-        : (summary?.pending || 0) > 0
+        : activeJobs.length > 0
           ? {
               eyebrow: 'Ready to deliver',
-              title: `${summary?.pending || 0} job(s) waiting`,
+              title: `${activeJobs.length} job(s) waiting`,
               detail: 'Open your route and complete the next delivery.',
               action: 'Open deliveries',
               href: '/delivery?tab=inbox',
@@ -110,8 +117,8 @@ export function DriverDashboard() {
       <section className="grid grid-cols-2 gap-x-5 gap-y-5 border-b border-border pb-5">
         <div>
           <p className="text-sm text-muted-foreground">Today's jobs</p>
-          {isLoading ? <Skeleton className="mt-2 h-8 w-20" /> : (
-            <p className="mt-1 text-3xl font-bold">{summary?.assigned ?? 0}</p>
+          {isLoadingActiveJobs ? <Skeleton className="mt-2 h-8 w-20" /> : (
+            <p className="mt-1 text-3xl font-bold">{activeJobs.length}</p>
           )}
         </div>
         <div>

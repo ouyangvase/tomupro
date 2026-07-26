@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServerVisibleIds } from '@/hooks/useTeamVisibility';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
 import { startOfDay, endOfDay, startOfMonth } from 'date-fns';
 
 export interface DashboardStats {
@@ -314,85 +315,19 @@ export function useAdminStats() {
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
-      const [
-        bookingRes,
-        readyRes,
-        cancelledRes,
-        pendingDeliveryRes,
-        deliveredRes,
-        productsRes,
-        claimsRes,
-        inboundsRes,
-        usersRes,
-      ] = await Promise.all([
-        // Booking orders
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'BOOKING'),
-        
-        // Ready orders
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'READY')
-          .neq('runner_status', 'DELIVERED')
-          .neq('runner_status', 'FAILED_DELIVERY'),
-        
-        // Cancelled orders
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'CANCELLED'),
-        
-        // Pending delivery
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'READY')
-          .in('runner_status', ['ASSIGNED', 'TAKEN']),
-        
-        // Delivered
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('runner_status', 'DELIVERED'),
-        
-        
-        
-        // Products
-        supabase
-          .from('products')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_active', true),
-        
-        // Total claims
-        supabase
-          .from('claims')
-          .select('id', { count: 'exact', head: true }),
-        
-        // Total inbounds
-        supabase
-          .from('inbound_shipments')
-          .select('id', { count: 'exact', head: true }),
-        
-        // Total users
-        supabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true }),
-      ]);
+      const result = await callSupabaseRpc<Record<string, unknown>>('get_dashboard_stats_admin', {});
+      const numberValue = (key: string) => Number(result?.[key] || 0);
 
       return {
-        bookingOrders: bookingRes.count || 0,
-        readyOrders: readyRes.count || 0,
-        cancelledOrders: cancelledRes.count || 0,
-        pendingDelivery: pendingDeliveryRes.count || 0,
-        deliveredOrders: deliveredRes.count || 0,
-        
-        productsCount: productsRes.count || 0,
-        totalClaims: claimsRes.count || 0,
-        totalInbounds: inboundsRes.count || 0,
-        totalUsers: usersRes.count || 0,
+        bookingOrders: numberValue('bookingOrders'),
+        readyOrders: numberValue('readyOrders'),
+        cancelledOrders: numberValue('cancelledOrders'),
+        pendingDelivery: numberValue('pendingDelivery'),
+        deliveredOrders: numberValue('deliveredOrders'),
+        productsCount: numberValue('productsCount'),
+        totalClaims: numberValue('totalClaims'),
+        totalInbounds: numberValue('totalInbounds'),
+        totalUsers: numberValue('totalUsers'),
       };
     },
     enabled: !!user,

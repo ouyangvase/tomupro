@@ -22,7 +22,7 @@ export function invalidateOrderQueries(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ['delivered-summary'] });
 
   // Runner stats
-  queryClient.invalidateQueries({ queryKey: ['runner-inbox-stats'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-operational-stats'] });
   queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
   queryClient.invalidateQueries({ queryKey: ['driver-assignments'] });
   queryClient.invalidateQueries({ queryKey: ['runner-dispatch-driver-workloads'] });
@@ -73,9 +73,6 @@ export function invalidateOrderQueries(queryClient: QueryClient) {
 
   // Sidebar badges (counts shown in navigation)
   queryClient.invalidateQueries({ queryKey: ['sidebar-badge'] });
-
-  // Runner dashboard stats
-  queryClient.invalidateQueries({ queryKey: ['runner-dashboard-stats'] });
 
   // Team orders (manager views)
   queryClient.invalidateQueries({ queryKey: ['team-orders'] });
