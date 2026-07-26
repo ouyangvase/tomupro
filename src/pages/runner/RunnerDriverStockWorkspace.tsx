@@ -458,14 +458,16 @@ export default function RunnerDriverStockWorkspace({
                   </Button>
                 }
               />
-              <CreatePickupDialog
-                open={editingPickup !== null}
-                onOpenChange={(open) => {
-                  if (!open) setEditingPickup(null);
-                }}
-                pickup={editingPickup}
-                runnerIdOverride={runnerIdOverride}
-              />
+              {editingPickup && (
+                <CreatePickupDialog
+                  open
+                  onOpenChange={(open) => {
+                    if (!open) setEditingPickup(null);
+                  }}
+                  pickup={editingPickup}
+                  runnerIdOverride={runnerIdOverride}
+                />
+              )}
             </>
           )}
         </div>
