@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useOrders } from '@/hooks/useOrders';
 import {
   useRunnerDrivers,
   useAddDriverToRunner,
@@ -12,7 +11,10 @@ import {
   useBulkRunnerAcceptDelivery,
   useGenerateDriverCode,
 } from '@/hooks/useDrivers';
+import { useDriverAssignments } from '@/hooks/useDriverAssignments';
+import { useRunnerReviewOrder } from '@/hooks/useRunnerReview';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -81,15 +83,15 @@ function getOrderSkuText(order: Order) {
     .join(', ');
 }
 
-function getActiveDriverStatus(order: Order) {
-  return ['ASSIGNED', 'OUT_FOR_DELIVERY'].includes(order.driver_status || '') && order.runner_status !== 'DELIVERED';
-}
-
 export default function DriverManagement() {
   const { profile } = useAuth();
+  const isMobile = useIsMobile();
   const { data: drivers = [] } = useRunnerDrivers(profile?.id);
   const { data: users = [] } = useUserDirectory();
-  const { data: orders = [] } = useOrders({ runnerId: profile?.id });
+  const { data: assignments = [] } = useDriverAssignments({
+    runnerId: profile?.id,
+    includeItems: true,
+  });
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
@@ -98,6 +100,7 @@ export default function DriverManagement() {
   const acceptDelivery = useRunnerAcceptDelivery();
   const bulkAcceptDelivery = useBulkRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
+  const reviewOrder = useRunnerReviewOrder();
   const generateCode = useGenerateDriverCode();
 
   const [addDriverOpen, setAddDriverOpen] = useState(false);
@@ -107,6 +110,7 @@ export default function DriverManagement() {
   const [rejectReason, setRejectReason] = useState('');
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [openGroupIds, setOpenGroupIds] = useState<string[]>([]);
+  const [driverSummaryOpen, setDriverSummaryOpen] = useState(false);
 
   const availableDrivers = useMemo(() => {
     const assignedDriverIds = drivers.map((d) => d.driver_id);
@@ -114,22 +118,20 @@ export default function DriverManagement() {
   }, [users, drivers]);
 
   const pendingAcceptanceOrders = useMemo(() => (
-    orders.filter((order) =>
+    assignments.filter((order) =>
+      order.assignment_state === 'PENDING_ACCEPTANCE' &&
       order.driver_status === 'DRIVER_DELIVERED' &&
-      order.runner_accept_status === 'PENDING' &&
-      order.runner_status !== 'DELIVERED' &&
       !!order.driver_id
     )
-  ), [orders]);
+  ), [assignments]);
 
   const failedReviewOrders = useMemo(() => (
-    orders.filter((order) =>
+    assignments.filter((order) =>
+      order.assignment_state === 'PENDING_ACCEPTANCE' &&
       order.driver_status === 'DRIVER_FAILED' &&
-      order.runner_status !== 'DELIVERED' &&
-      order.status !== 'CANCELLED' &&
       !!order.driver_id
     )
-  ), [orders]);
+  ), [assignments]);
 
   const pendingOrderIds = useMemo(
     () => [...pendingAcceptanceOrders, ...failedReviewOrders].map((order) => order.id),
@@ -167,8 +169,8 @@ export default function DriverManagement() {
 
   const activeDriverWorkloads = useMemo(() => {
     const workloads: Record<string, { count: number; amount: number }> = {};
-    orders.forEach((order) => {
-      if (!order.driver_id || !getActiveDriverStatus(order)) return;
+    assignments.forEach((order) => {
+      if (!order.driver_id || order.assignment_state !== 'ACTIVE') return;
       const current = workloads[order.driver_id] || { count: 0, amount: 0 };
       workloads[order.driver_id] = {
         count: current.count + 1,
@@ -176,7 +178,7 @@ export default function DriverManagement() {
       };
     });
     return workloads;
-  }, [orders]);
+  }, [assignments]);
 
   const reviewGroups = useMemo(() => {
     const groups = new Map<string, DriverReviewGroup>();
@@ -259,6 +261,30 @@ export default function DriverManagement() {
     if (detailOrderId && orderIds.includes(detailOrderId)) setDetailOrderId(null);
   };
 
+  const handleAcceptFailedOrders = async (failedOrders: Order[]) => {
+    await Promise.all(failedOrders.map((order) => reviewOrder.mutateAsync({
+      orderId: order.id,
+      outcome: 'CONFIRM_FAILED',
+      comment: order.driver_failed_remark || order.driver_failed_reason || 'Driver failed report accepted',
+      currentRescheduleCycleNo: order.reschedule_cycle_no || 0,
+      currentOperationalStatus: order.operational_status || undefined,
+    })));
+    if (detailOrderId && failedOrders.some((order) => order.id === detailOrderId)) {
+      setDetailOrderId(null);
+    }
+  };
+
+  const handleAcceptReviewGroup = async (deliveredOrders: Order[], failedOrders: Order[]) => {
+    await Promise.all([
+      deliveredOrders.length > 0
+        ? handleAcceptOrders(deliveredOrders.map((order) => order.id))
+        : Promise.resolve(),
+      failedOrders.length > 0
+        ? handleAcceptFailedOrders(failedOrders)
+        : Promise.resolve(),
+    ]);
+  };
+
   const handleOpenRejectDialog = (orderId: string) => {
     setRejectOrderId(orderId);
     setRejectReason('');
@@ -280,7 +306,7 @@ export default function DriverManagement() {
     ));
   };
 
-  const isAccepting = acceptDelivery.isPending || bulkAcceptDelivery.isPending;
+  const isAccepting = acceptDelivery.isPending || bulkAcceptDelivery.isPending || reviewOrder.isPending;
 
   return (
     <AppLayout>
@@ -336,8 +362,8 @@ export default function DriverManagement() {
                   </p>
                 </div>
                 <Button
-                  onClick={() => handleAcceptOrders(pendingAcceptanceOrders.map((order) => order.id))}
-                  disabled={pendingAcceptanceOrders.length === 0 || isAccepting}
+                  onClick={() => handleAcceptReviewGroup(pendingAcceptanceOrders, failedReviewOrders)}
+                  disabled={pendingOrderIds.length === 0 || isAccepting}
                   className="h-10 rounded-full px-4"
                 >
                   <Check className="mr-2 h-4 w-4" />
@@ -404,8 +430,8 @@ export default function DriverManagement() {
                               {isOpen ? 'Hide' : 'Open'}
                             </Button>
                             <Button
-                              onClick={() => handleAcceptOrders(group.deliveredOrders.map((order) => order.id))}
-                              disabled={group.deliveredOrders.length === 0 || isAccepting}
+                              onClick={() => handleAcceptReviewGroup(group.deliveredOrders, group.failedOrders)}
+                              disabled={reviewCount === 0 || isAccepting}
                               className="h-10 rounded-full"
                             >
                               <ClipboardCheck className="mr-2 h-4 w-4" />
@@ -468,10 +494,16 @@ export default function DriverManagement() {
                                         </Button>
                                       </div>
                                     ) : (
-                                      <Button variant="outline" size="sm" onClick={() => setDetailOrderId(order.id)} className="w-full rounded-full md:w-[220px]">
-                                        <Eye className="mr-1.5 h-4 w-4" />
-                                        View Failed Report
-                                      </Button>
+                                      <div className="grid w-full grid-cols-2 gap-2 md:w-[220px]">
+                                        <Button variant="outline" size="sm" onClick={() => setDetailOrderId(order.id)} className="rounded-full">
+                                          <Eye className="mr-1.5 h-4 w-4" />
+                                          View
+                                        </Button>
+                                        <Button size="sm" onClick={() => handleAcceptFailedOrders([order])} disabled={isAccepting} className="rounded-full">
+                                          <Check className="mr-1.5 h-4 w-4" />
+                                          Accept
+                                        </Button>
+                                      </div>
                                     )}
                                   </div>
                                 </div>
@@ -498,13 +530,30 @@ export default function DriverManagement() {
           <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
             <Card className="border shadow-sm">
               <CardContent className="space-y-3 p-4">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Driver summary</p>
-                  <h2 className="mt-1 text-lg font-black">Workload by driver</h2>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Driver summary</p>
+                    <h2 className="mt-1 text-lg font-black">Workload by driver</h2>
+                  </div>
+                  {isMobile && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDriverSummaryOpen((open) => !open)}
+                      className="h-9 rounded-full px-3"
+                      aria-expanded={driverSummaryOpen}
+                    >
+                      {driverSummaryOpen ? 'Hide' : 'Open'}
+                      {driverSummaryOpen
+                        ? <ChevronDown className="ml-1.5 h-4 w-4" />
+                        : <ChevronRight className="ml-1.5 h-4 w-4" />}
+                    </Button>
+                  )}
                 </div>
-                {drivers.length > 0 ? (
+                {(!isMobile || driverSummaryOpen) && (drivers.length > 0 ? (
                   drivers.map((runnerDriver) => {
-                    const driverData = runnerDriver.driver as any;
+                    const driverData = runnerDriver.driver;
                     const driverName = driverData?.display_name || userById.get(runnerDriver.driver_id)?.display_name || 'Unknown';
                     const driverCode = driverData?.driver_code;
                     const email = driverData?.email || userById.get(runnerDriver.driver_id)?.email;
@@ -575,7 +624,7 @@ export default function DriverManagement() {
                   <div className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">
                     No drivers linked yet.
                   </div>
-                )}
+                ))}
               </CardContent>
             </Card>
           </aside>

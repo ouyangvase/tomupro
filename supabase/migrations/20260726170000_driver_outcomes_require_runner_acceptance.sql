@@ -50,6 +50,10 @@ AS $$
         )
         AND COALESCE(o.runner_status::text, '') NOT IN (
           'DELIVERED', 'FAILED_DELIVERY', 'CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'
+        )
+        AND NOT (
+          o.runner_review_status::text = 'REVIEWED'
+          AND o.runner_final_outcome::text = 'NEED_SALESPERSON_FOLLOWUP'
         ) THEN 'ACTIVE'
       WHEN o.driver_status::text IN ('DRIVER_DELIVERED', 'DRIVER_FAILED')
         AND COALESCE(o.runner_accept_status::text, 'PENDING') <> 'ACCEPTED'
@@ -65,6 +69,10 @@ AS $$
       )
       AND COALESCE(o.runner_status::text, '') NOT IN (
         'DELIVERED', 'FAILED_DELIVERY', 'CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'
+      )
+      AND NOT (
+        o.runner_review_status::text = 'REVIEWED'
+        AND o.runner_final_outcome::text = 'NEED_SALESPERSON_FOLLOWUP'
       ),
     public.order_collection_amount(o.payment_method::text, o.total_amount),
     to_jsonb(o)
@@ -123,6 +131,10 @@ AS $$
         )
         AND COALESCE(o.runner_status::text, '') NOT IN (
           'DELIVERED', 'FAILED_DELIVERY', 'CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'
+        )
+        AND NOT (
+          o.runner_review_status::text = 'REVIEWED'
+          AND o.runner_final_outcome::text = 'NEED_SALESPERSON_FOLLOWUP'
         )
       )
     )
