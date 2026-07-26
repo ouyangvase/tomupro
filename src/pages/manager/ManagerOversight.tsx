@@ -43,6 +43,29 @@ interface SalespersonMetrics {
   deliveredToday: number;
 }
 
+function MobileMetric({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: number;
+  tone?: 'default' | 'danger' | 'success';
+}) {
+  const valueClass = tone === 'danger'
+    ? 'text-destructive'
+    : tone === 'success'
+      ? 'text-green-700'
+      : 'text-foreground';
+
+  return (
+    <div className="min-w-0 rounded-md bg-muted/45 px-1.5 py-2">
+      <p className={`text-base font-semibold tabular-nums ${valueClass}`}>{value}</p>
+      <p className="truncate text-[10px] text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
 export default function ManagerOversight() {
   const navigate = useNavigate();
   const { profile, role } = useAuth();
@@ -144,7 +167,7 @@ export default function ManagerOversight() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-4 overflow-x-hidden md:space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">
@@ -160,7 +183,7 @@ export default function ManagerOversight() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <MetricCard 
             title="Action Required" 
             value={totals.actionRequired} 
@@ -184,16 +207,16 @@ export default function ManagerOversight() {
         {/* High Priority Alert */}
         {highPrioritySalespersons.length > 0 && (
           <Card className="border-destructive/50 bg-destructive/5">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-5 w-5" />
+            <CardHeader className="p-4 pb-2 md:p-6 md:pb-2">
+              <CardTitle className="flex items-start gap-2 text-lg text-destructive md:items-center">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 md:mt-0" />
                 High Priority Agents ({highPrioritySalespersons.length})
               </CardTitle>
               <CardDescription>
                 These salespersons have 5 or more unresolved Action Required items
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-2 md:p-6 md:pt-2">
               <div className="flex flex-wrap gap-2">
                 {highPrioritySalespersons.map(sp => (
                   <Badge 
@@ -211,23 +234,25 @@ export default function ManagerOversight() {
         )}
 
         <Tabs defaultValue="performance">
-          <TabsList>
-            <TabsTrigger value="performance">Agent Performance</TabsTrigger>
-            <TabsTrigger value="action-breakdown">Action Required Breakdown</TabsTrigger>
-            <TabsTrigger value="problems">Problem Queue</TabsTrigger>
-          </TabsList>
+          <div className="-mx-4 overflow-x-auto px-4">
+            <TabsList className="h-11 w-max min-w-max justify-start">
+              <TabsTrigger value="performance" className="shrink-0 whitespace-nowrap">Agent Performance</TabsTrigger>
+              <TabsTrigger value="action-breakdown" className="shrink-0 whitespace-nowrap">Action Required Breakdown</TabsTrigger>
+              <TabsTrigger value="problems" className="shrink-0 whitespace-nowrap">Problem Queue</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="performance" className="mt-4">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
+            <Card className="min-w-0 overflow-hidden">
+              <CardHeader className="p-4 md:p-6">
+                <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
                     <CardTitle>Salesperson Performance</CardTitle>
                     <CardDescription>
                       Click on any agent to view their orders
                     </CardDescription>
                   </div>
-                  <div className="relative w-64">
+                  <div className="relative w-full md:w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       placeholder="Search agents..."
@@ -238,8 +263,48 @@ export default function ManagerOversight() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <Table>
+              <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+                <div className="space-y-3 md:hidden">
+                  {isLoading ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">Loading...</div>
+                  ) : filteredMetrics.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      {myMemberIds.length === 0
+                        ? 'No salespersons assigned to your team.'
+                        : 'No salespersons found matching your search.'}
+                    </div>
+                  ) : filteredMetrics.map((sp) => {
+                    const healthScore = Math.max(0, 100 - (sp.actionRequired * 10));
+                    return (
+                      <button
+                        key={sp.userId}
+                        type="button"
+                        className="w-full rounded-lg border bg-card p-3 text-left transition-colors active:bg-muted/60"
+                        onClick={() => navigate(`/sales/booking?salesperson=${sp.userId}`)}
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold">{sp.displayName}</p>
+                            <p className="truncate text-xs text-muted-foreground">{sp.email}</p>
+                          </div>
+                          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </div>
+                        <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+                          <MobileMetric label="Action" value={sp.actionRequired} tone={sp.actionRequired >= 5 ? 'danger' : 'default'} />
+                          <MobileMetric label="Booking" value={sp.bookingOrders} />
+                          <MobileMetric label="Ready" value={sp.readyOrders} />
+                          <MobileMetric label="Today" value={sp.deliveredToday} tone="success" />
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <Progress value={healthScore} className="h-2 flex-1" />
+                          <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{healthScore}%</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="hidden md:block">
+                  <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Salesperson</TableHead>
@@ -340,21 +405,51 @@ export default function ManagerOversight() {
                       })
                     )}
                   </TableBody>
-                </Table>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="action-breakdown" className="mt-4">
-            <Card>
-              <CardHeader>
+            <Card className="min-w-0 overflow-hidden">
+              <CardHeader className="p-4 md:p-6">
                 <CardTitle>Action Required by Agent</CardTitle>
                 <CardDescription>
                   Detailed breakdown of pending actions per salesperson
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <Table>
+              <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+                <div className="space-y-3 md:hidden">
+                  {(actionStats?.bySalesperson || [])
+                    .filter(sp => sp.total > 0)
+                    .map((sp) => (
+                      <button
+                        key={sp.salespersonId}
+                        type="button"
+                        className="w-full rounded-lg border bg-card p-3 text-left transition-colors active:bg-muted/60"
+                        onClick={() => navigate(`/sales/action-required?salesperson=${sp.salespersonId}`)}
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold">{sp.salespersonName}</p>
+                            <p className="truncate text-xs text-muted-foreground">{sp.email}</p>
+                          </div>
+                          <Badge variant={sp.total >= 5 ? 'destructive' : 'secondary'}>{sp.total}</Badge>
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                          <MobileMetric label="Failed" value={sp.failedDelivery} tone="danger" />
+                          <MobileMetric label="Rescheduled" value={sp.rescheduled} />
+                          <MobileMetric label="Flagged" value={sp.runnerFlagged} />
+                        </div>
+                      </button>
+                    ))}
+                  {(actionStats?.bySalesperson || []).filter(sp => sp.total > 0).length === 0 && (
+                    <div className="py-8 text-center text-sm text-muted-foreground">No action required items</div>
+                  )}
+                </div>
+                <div className="hidden md:block">
+                  <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Salesperson</TableHead>
@@ -421,7 +516,8 @@ export default function ManagerOversight() {
                       </TableRow>
                     )}
                   </TableBody>
-                </Table>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -447,14 +543,14 @@ export default function ManagerOversight() {
                         .map(sp => (
                           <div 
                             key={sp.userId} 
-                            className="flex items-center justify-between p-3 bg-destructive/5 rounded-lg cursor-pointer hover:bg-destructive/10"
+                            className="flex min-w-0 flex-col gap-2 rounded-lg bg-destructive/5 p-3 cursor-pointer hover:bg-destructive/10 sm:flex-row sm:items-center sm:justify-between"
                             onClick={() => navigate(`/sales/action-required?salesperson=${sp.userId}`)}
                           >
-                            <div>
-                              <span className="font-medium">{sp.displayName}</span>
-                              <span className="text-sm text-muted-foreground ml-2">{sp.email}</span>
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{sp.displayName}</p>
+                              <p className="truncate text-sm text-muted-foreground">{sp.email}</p>
                             </div>
-                            <Badge variant="destructive">{sp.actionRequired} pending</Badge>
+                            <Badge variant="destructive" className="w-fit shrink-0">{sp.actionRequired} pending</Badge>
                           </div>
                         ))}
                     </div>

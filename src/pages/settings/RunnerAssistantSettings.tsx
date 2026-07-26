@@ -89,12 +89,12 @@ export default function RunnerAssistantSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h3 className="text-lg font-semibold">Runner Assistants</h3>
           <p className="text-sm text-muted-foreground">Assign assistants to runners with specific permissions</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} size="sm" className="rounded-full">
+        <Button onClick={() => setCreateOpen(true)} size="sm" className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-1" /> Assign Assistant
         </Button>
       </div>
@@ -111,11 +111,11 @@ export default function RunnerAssistantSettings() {
       ) : (
         <div className="space-y-3">
           {assistants.map(a => (
-            <Card key={a.id} className="p-4">
-              <div className="flex items-start gap-4 flex-wrap">
+            <Card key={a.id} className="overflow-hidden p-4">
+              <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold text-sm">{a.assistant?.display_name || 'Unknown'}</span>
+                    <span className="truncate font-semibold text-sm">{a.assistant?.display_name || 'Unknown'}</span>
                     <Badge variant="outline" className="text-[10px]">Assistant</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
@@ -123,40 +123,41 @@ export default function RunnerAssistantSettings() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
+                <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-4">
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2 sm:bg-transparent sm:p-0">
                     <Switch
                       checked={a.can_deliver}
                       onCheckedChange={(v) => handleToggle(a, 'can_deliver', v)}
                     />
-                    <Label className="text-xs">Can Deliver</Label>
+                    <Label className="min-w-0 text-xs leading-tight">Can Deliver</Label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2 sm:bg-transparent sm:p-0">
                     <Switch
                       checked={a.can_confirm_receipt}
                       onCheckedChange={(v) => handleToggle(a, 'can_confirm_receipt', v)}
                     />
-                    <Label className="text-xs">Can Confirm Receipt</Label>
+                    <Label className="min-w-0 text-xs leading-tight">Confirm Receipt</Label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2 sm:bg-transparent sm:p-0">
                     <Switch
                       checked={!!a.can_manage_driver_stock}
                       onCheckedChange={(v) => handleToggle(a, 'can_manage_driver_stock', v)}
                     />
-                    <Label className="text-xs">Driver Stock</Label>
+                    <Label className="min-w-0 text-xs leading-tight">Driver Stock</Label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2 sm:bg-transparent sm:p-0">
                     <Switch
                       checked={!!a.can_manage_driver_inbox}
                       onCheckedChange={(v) => handleToggle(a, 'can_manage_driver_inbox', v)}
                     />
-                    <Label className="text-xs">Driver Inbox</Label>
+                    <Label className="min-w-0 text-xs leading-tight">Driver Inbox</Label>
                   </div>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon"
                     onClick={() => handleDeactivate(a)}
-                    className="text-destructive hover:text-destructive"
+                    className="col-span-2 h-9 w-full text-destructive hover:text-destructive sm:h-9 sm:w-9"
+                    aria-label={`Remove ${a.assistant?.display_name || 'assistant'}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>

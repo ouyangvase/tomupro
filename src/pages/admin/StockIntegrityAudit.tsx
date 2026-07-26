@@ -13,7 +13,8 @@ import {
   Database, CheckCircle, AlertCircle, RefreshCw, Package,
   ArrowDownToLine, ArrowUpFromLine, Truck, Settings2,
   Shield, Zap, Eye, Wrench, Search, Activity,
-  AlertTriangle, Filter, TrendingDown, ArrowUpDown
+  AlertTriangle, Filter, TrendingDown, ArrowUpDown,
+  ChevronDown, ChevronRight
 } from 'lucide-react';
 import {
   useInboundSources, useDeliveredSources,
@@ -657,37 +658,37 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
 
   return (
     <Dialog open={!!row} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[92dvh] w-[calc(100vw-1rem)] min-w-0 max-w-5xl gap-4 overflow-x-hidden overflow-y-auto p-3 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Stock Audit: {row.sku_code} / {row.sku_name}
+          <DialogTitle className="flex min-w-0 items-start gap-2 pr-8 text-left text-base leading-snug sm:items-center sm:text-xl">
+            <Package className="mt-0.5 h-5 w-5 shrink-0 sm:mt-0" />
+            <span className="min-w-0 break-words">Stock Audit: {row.sku_code} / {row.sku_name}</span>
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5">
           {/* Owner/Warehouse info */}
-          <div className="flex gap-4 text-sm text-muted-foreground">
+          <div className="grid min-w-0 gap-1 text-sm text-muted-foreground sm:flex sm:flex-wrap sm:gap-4">
             <span>Owner: <strong className="text-foreground">{row.owner_name}</strong></span>
-            <span>Warehouse: <strong className="text-foreground">{row.warehouse_name}</strong></span>
+            <span className="break-words">Warehouse: <strong className="text-foreground">{row.warehouse_name}</strong></span>
           </div>
 
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg bg-primary/10 border border-primary/30">
+            <div className="min-w-0 p-2.5 sm:p-3 rounded-lg bg-primary/10 border border-primary/30">
               <p className="text-xs text-muted-foreground">Inbound</p>
               <p className="text-xl font-bold text-primary">+{anyLoading ? '...' : totals.inbound}</p>
             </div>
-            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+            <div className="min-w-0 p-2.5 sm:p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
               <p className="text-xs text-muted-foreground">Transfer In</p>
               <p className="text-xl font-bold text-blue-600">+{anyLoading ? '...' : totals.transferIn}</p>
             </div>
-            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+            <div className="min-w-0 p-2.5 sm:p-3 rounded-lg bg-destructive/10 border border-destructive/30">
               <p className="text-xs text-muted-foreground">Total Deduct</p>
               <p className="text-xl font-bold text-destructive">-{anyLoading ? '...' : totalDeduct}</p>
             </div>
             <div className={cn(
-              "p-3 rounded-lg border",
+              "min-w-0 p-2.5 sm:p-3 rounded-lg border",
               totals.balance < 0 ? "bg-destructive/10 border-destructive/30" : "bg-primary/10 border-primary/30"
             )}>
               <p className="text-xs text-muted-foreground">Current Balance</p>
@@ -704,18 +705,18 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
                 <CardTitle className="text-sm font-semibold">Balance Calculation</CardTitle>
               </CardHeader>
               <CardContent className="p-3 pt-1">
-                <div className="space-y-1 font-mono text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Inbound</span><span className="text-primary font-medium">+{totals.inbound}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Transfer In</span><span className="text-blue-600 font-medium">+{totals.transferIn}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Positive Adjustment</span><span className="text-primary font-medium">+{totals.positiveAdj}</span></div>
+                <div className="min-w-0 space-y-1 font-mono text-xs sm:text-sm">
+                  <div className="flex min-w-0 justify-between gap-3"><span className="min-w-0 break-words text-muted-foreground">Inbound</span><span className="shrink-0 text-primary font-medium">+{totals.inbound}</span></div>
+                  <div className="flex min-w-0 justify-between gap-3"><span className="min-w-0 break-words text-muted-foreground">Transfer In</span><span className="shrink-0 text-blue-600 font-medium">+{totals.transferIn}</span></div>
+                  <div className="flex min-w-0 justify-between gap-3"><span className="min-w-0 break-words text-muted-foreground">Positive Adjustment</span><span className="shrink-0 text-primary font-medium">+{totals.positiveAdj}</span></div>
                   <div className="border-t my-1" />
-                  <div className="flex justify-between"><span className="text-muted-foreground">Delivered</span><span className="text-destructive font-medium">-{totals.delivered}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Transfer Out</span><span className="text-[hsl(var(--status-warning))] font-medium">-{totals.transferOut}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Negative Adjustment</span><span className="text-destructive font-medium">-{totals.negativeAdj}</span></div>
+                  <div className="flex min-w-0 justify-between gap-3"><span className="min-w-0 break-words text-muted-foreground">Delivered</span><span className="shrink-0 text-destructive font-medium">-{totals.delivered}</span></div>
+                  <div className="flex min-w-0 justify-between gap-3"><span className="min-w-0 break-words text-muted-foreground">Transfer Out</span><span className="shrink-0 text-[hsl(var(--status-warning))] font-medium">-{totals.transferOut}</span></div>
+                  <div className="flex min-w-0 justify-between gap-3"><span className="min-w-0 break-words text-muted-foreground">Negative Adjustment</span><span className="shrink-0 text-destructive font-medium">-{totals.negativeAdj}</span></div>
                   <div className="border-t border-foreground/30 my-1" />
-                  <div className="flex justify-between font-bold">
+                  <div className="flex justify-between gap-3 font-bold">
                     <span>Current Balance</span>
-                    <span className={totals.balance < 0 ? "text-destructive" : "text-primary"}>= {totals.balance}</span>
+                    <span className={cn("shrink-0", totals.balance < 0 ? "text-destructive" : "text-primary")}>= {totals.balance}</span>
                   </div>
                 </div>
               </CardContent>
@@ -735,13 +736,13 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
               ) : (
                 <CheckCircle className="h-5 w-5 text-primary mt-0.5 shrink-0" />
               )}
-              <div className="text-sm">
+              <div className="min-w-0 text-sm">
                 <p className="font-semibold">
                   {hasReconciliationMismatch ? 'Reconciliation Mismatch' : 'Reconciliation OK'}
                 </p>
-                <div className="text-muted-foreground mt-1 space-y-0.5">
-                  <p>Calculated Balance (from source records): <strong className="text-foreground">{totals.balance}</strong></p>
-                  <p>Stored Inventory Balance: <strong className="text-foreground">{row.stored_balance}</strong></p>
+                <div className="mt-1 min-w-0 space-y-0.5 text-muted-foreground">
+                  <p className="break-words">Calculated Balance (from source records): <strong className="text-foreground">{totals.balance}</strong></p>
+                  <p className="break-words">Stored Inventory Balance: <strong className="text-foreground">{row.stored_balance}</strong></p>
                   {hasReconciliationMismatch && (
                     <p className="text-destructive font-semibold mt-1">
                       Variance: {totals.balance - row.stored_balance > 0 ? '+' : ''}{totals.balance - row.stored_balance}
@@ -764,26 +765,40 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
             totalColor="text-primary"
             isLoading={loadingInbound}
           >
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="p-2 text-left">Date</th>
-                  <th className="p-2 text-left">Tracking</th>
-                  <th className="p-2 text-right">Qty</th>
-                  <th className="p-2 text-left">Created By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inboundRecords.map((r) => (
-                  <tr key={r.id} className="border-t">
-                    <td className="p-2 text-muted-foreground">{format(new Date(r.inbound_date), 'MMM dd, HH:mm')}</td>
-                    <td className="p-2 text-muted-foreground">{r.tracking_no}</td>
-                    <td className="p-2 text-right font-mono text-primary">+{r.qty}</td>
-                    <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
+            <div className="divide-y md:hidden">
+              {inboundRecords.map((r) => (
+                <SourceRecordMobile
+                  key={r.id}
+                  title={r.tracking_no || 'No tracking number'}
+                  date={format(new Date(r.inbound_date), 'MMM dd, HH:mm')}
+                  qty={`+${r.qty}`}
+                  qtyClassName="text-primary"
+                  details={[{ label: 'Created by', value: r.created_by_name }]}
+                />
+              ))}
+            </div>
+            <div className="hidden md:block">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="p-2 text-left">Date</th>
+                    <th className="p-2 text-left">Tracking</th>
+                    <th className="p-2 text-right">Qty</th>
+                    <th className="p-2 text-left">Created By</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {inboundRecords.map((r) => (
+                    <tr key={r.id} className="border-t">
+                      <td className="p-2 text-muted-foreground">{format(new Date(r.inbound_date), 'MMM dd, HH:mm')}</td>
+                      <td className="p-2 text-muted-foreground">{r.tracking_no}</td>
+                      <td className="p-2 text-right font-mono text-primary">+{r.qty}</td>
+                      <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </SourceSection>
 
           {/* Delivered Orders Source */}
@@ -796,28 +811,45 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
             totalColor="text-destructive"
             isLoading={loadingDelivered}
           >
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="p-2 text-left">Delivered Date</th>
-                  <th className="p-2 text-left">Order ID</th>
-                  <th className="p-2 text-right">Qty</th>
-                  <th className="p-2 text-left">Customer</th>
-                  <th className="p-2 text-left">Delivered By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deliveredRecords.map((r) => (
-                  <tr key={r.id} className="border-t">
-                    <td className="p-2 text-muted-foreground">{r.delivered_at ? format(new Date(r.delivered_at), 'MMM dd, HH:mm') : '-'}</td>
-                    <td className="p-2 font-medium">{r.order_code}</td>
-                    <td className="p-2 text-right font-mono text-destructive">-{r.qty}</td>
-                    <td className="p-2 text-muted-foreground">{r.customer_name}</td>
-                    <td className="p-2 text-muted-foreground">{r.delivered_by_name}</td>
+            <div className="divide-y md:hidden">
+              {deliveredRecords.map((r) => (
+                <SourceRecordMobile
+                  key={r.id}
+                  title={r.order_code || 'Order'}
+                  date={r.delivered_at ? format(new Date(r.delivered_at), 'MMM dd, HH:mm') : '-'}
+                  qty={`-${r.qty}`}
+                  qtyClassName="text-destructive"
+                  details={[
+                    { label: 'Customer', value: r.customer_name },
+                    { label: 'Delivered by', value: r.delivered_by_name },
+                  ]}
+                />
+              ))}
+            </div>
+            <div className="hidden md:block">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="p-2 text-left">Delivered Date</th>
+                    <th className="p-2 text-left">Order ID</th>
+                    <th className="p-2 text-right">Qty</th>
+                    <th className="p-2 text-left">Customer</th>
+                    <th className="p-2 text-left">Delivered By</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {deliveredRecords.map((r) => (
+                    <tr key={r.id} className="border-t">
+                      <td className="p-2 text-muted-foreground">{r.delivered_at ? format(new Date(r.delivered_at), 'MMM dd, HH:mm') : '-'}</td>
+                      <td className="p-2 font-medium">{r.order_code}</td>
+                      <td className="p-2 text-right font-mono text-destructive">-{r.qty}</td>
+                      <td className="p-2 text-muted-foreground">{r.customer_name}</td>
+                      <td className="p-2 text-muted-foreground">{r.delivered_by_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </SourceSection>
 
           {/* Transfer Source */}
@@ -830,34 +862,51 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
             totalColor=""
             isLoading={loadingTransfers}
           >
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="p-2 text-left">Date</th>
-                  <th className="p-2 text-left">Direction</th>
-                  <th className="p-2 text-right">Qty</th>
-                  <th className="p-2 text-left">From / To</th>
-                  <th className="p-2 text-left">Created By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transferRecords.map((r) => (
-                  <tr key={r.id} className="border-t">
-                    <td className="p-2 text-muted-foreground">{format(new Date(r.transfer_date), 'MMM dd, HH:mm')}</td>
-                    <td className="p-2">
-                      <Badge variant={r.direction === 'IN' ? 'default' : 'secondary'} className="text-xs">
-                        {r.direction === 'IN' ? 'Transfer In' : 'Transfer Out'}
-                      </Badge>
-                    </td>
-                    <td className={cn("p-2 text-right font-mono", r.direction === 'IN' ? "text-blue-600" : "text-[hsl(var(--status-warning))]")}>
-                      {r.direction === 'IN' ? '+' : ''}{r.qty}
-                    </td>
-                    <td className="p-2 text-muted-foreground">{r.counterpart_name}</td>
-                    <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
+            <div className="divide-y md:hidden">
+              {transferRecords.map((r) => (
+                <SourceRecordMobile
+                  key={r.id}
+                  title={r.direction === 'IN' ? 'Transfer In' : 'Transfer Out'}
+                  date={format(new Date(r.transfer_date), 'MMM dd, HH:mm')}
+                  qty={`${r.direction === 'IN' ? '+' : ''}${r.qty}`}
+                  qtyClassName={r.direction === 'IN' ? 'text-blue-600' : 'text-[hsl(var(--status-warning))]'}
+                  details={[
+                    { label: 'From / To', value: r.counterpart_name },
+                    { label: 'Created by', value: r.created_by_name },
+                  ]}
+                />
+              ))}
+            </div>
+            <div className="hidden md:block">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="p-2 text-left">Date</th>
+                    <th className="p-2 text-left">Direction</th>
+                    <th className="p-2 text-right">Qty</th>
+                    <th className="p-2 text-left">From / To</th>
+                    <th className="p-2 text-left">Created By</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {transferRecords.map((r) => (
+                    <tr key={r.id} className="border-t">
+                      <td className="p-2 text-muted-foreground">{format(new Date(r.transfer_date), 'MMM dd, HH:mm')}</td>
+                      <td className="p-2">
+                        <Badge variant={r.direction === 'IN' ? 'default' : 'secondary'} className="text-xs">
+                          {r.direction === 'IN' ? 'Transfer In' : 'Transfer Out'}
+                        </Badge>
+                      </td>
+                      <td className={cn("p-2 text-right font-mono", r.direction === 'IN' ? "text-blue-600" : "text-[hsl(var(--status-warning))]")}>
+                        {r.direction === 'IN' ? '+' : ''}{r.qty}
+                      </td>
+                      <td className="p-2 text-muted-foreground">{r.counterpart_name}</td>
+                      <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </SourceSection>
 
           {/* Adjustment Source */}
@@ -870,34 +919,87 @@ function DrilldownDialog({ row, onClose }: { row: FullStockIntegrityRow | null; 
             totalColor=""
             isLoading={loadingAdjustments}
           >
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="p-2 text-left">Date</th>
-                  <th className="p-2 text-left">Type</th>
-                  <th className="p-2 text-right">Qty</th>
-                  <th className="p-2 text-left">Created By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {adjustmentRecords.map((r) => (
-                  <tr key={r.id} className="border-t">
-                    <td className="p-2 text-muted-foreground">{format(new Date(r.adjustment_date), 'MMM dd, HH:mm')}</td>
-                    <td className="p-2">
-                      <Badge variant="outline" className="text-xs">{r.movement_type}</Badge>
-                    </td>
-                    <td className={cn("p-2 text-right font-mono", r.qty > 0 ? "text-primary" : "text-destructive")}>
-                      {r.qty > 0 ? '+' : ''}{r.qty}
-                    </td>
-                    <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
+            <div className="divide-y md:hidden">
+              {adjustmentRecords.map((r) => (
+                <SourceRecordMobile
+                  key={r.id}
+                  title={r.movement_type}
+                  date={format(new Date(r.adjustment_date), 'MMM dd, HH:mm')}
+                  qty={`${r.qty > 0 ? '+' : ''}${r.qty}`}
+                  qtyClassName={r.qty > 0 ? 'text-primary' : 'text-destructive'}
+                  details={[
+                    { label: 'Remark', value: r.remark || 'No remark recorded' },
+                    { label: 'Created by', value: r.created_by_name },
+                  ]}
+                />
+              ))}
+            </div>
+            <div className="hidden md:block">
+              <table className="w-full table-fixed text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="w-[140px] p-2 text-left">Date</th>
+                    <th className="w-[120px] p-2 text-left">Type</th>
+                    <th className="w-[80px] p-2 text-right">Qty</th>
+                    <th className="p-2 text-left">Remark</th>
+                    <th className="w-[140px] p-2 text-left">Created By</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {adjustmentRecords.map((r) => (
+                    <tr key={r.id} className="border-t">
+                      <td className="p-2 text-muted-foreground">{format(new Date(r.adjustment_date), 'MMM dd, HH:mm')}</td>
+                      <td className="p-2">
+                        <Badge variant="outline" className="text-xs">{r.movement_type}</Badge>
+                      </td>
+                      <td className={cn("p-2 text-right font-mono", r.qty > 0 ? "text-primary" : "text-destructive")}>
+                        {r.qty > 0 ? '+' : ''}{r.qty}
+                      </td>
+                      <td className="break-words p-2 text-foreground">{r.remark || 'No remark recorded'}</td>
+                      <td className="p-2 text-muted-foreground">{r.created_by_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </SourceSection>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SourceRecordMobile({
+  title,
+  date,
+  qty,
+  qtyClassName,
+  details,
+}: {
+  title: string;
+  date: string;
+  qty: string;
+  qtyClassName?: string;
+  details: Array<{ label: string; value: string | null | undefined }>;
+}) {
+  return (
+    <div className="min-w-0 space-y-2 p-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="break-words text-sm font-semibold">{title}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{date}</p>
+        </div>
+        <span className={cn("shrink-0 font-mono text-base font-semibold", qtyClassName)}>{qty}</span>
+      </div>
+      <dl className="grid min-w-0 gap-1 text-xs">
+        {details.map(detail => (
+          <div key={detail.label} className="grid min-w-0 grid-cols-[78px_minmax(0,1fr)] gap-2">
+            <dt className="text-muted-foreground">{detail.label}</dt>
+            <dd className="min-w-0 break-words text-foreground">{detail.value || '-'}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
@@ -917,23 +1019,26 @@ function SourceSection({
   const [open, setOpen] = useState(true);
 
   return (
-    <Card>
+    <Card className="min-w-0 overflow-hidden">
       <button
-        className="w-full flex items-center justify-between p-3 hover:bg-muted/30 transition-colors rounded-t-lg"
+        type="button"
+        className="flex w-full min-w-0 flex-col items-stretch gap-2 rounded-t-lg p-3 text-left transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
         onClick={() => setOpen(!open)}
       >
-        <div className="flex items-center gap-2 text-sm font-semibold">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
           {icon}
-          {title}
-          <Badge variant="outline" className="ml-1 text-xs">{count} records</Badge>
+          <span className="min-w-0 break-words">{title}</span>
+          <Badge variant="outline" className="ml-auto shrink-0 text-xs sm:ml-1">{count}</Badge>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center justify-between gap-3 sm:justify-end">
           {total !== null && (
-            <span className={cn("text-sm font-mono font-bold", totalColor)}>
+            <span className={cn("min-w-0 break-words text-xs font-mono font-bold sm:text-sm", totalColor)}>
               {totalLabel}: {total}
             </span>
           )}
-          <span className="text-xs text-muted-foreground">{open ? '▼' : '▶'}</span>
+          {open
+            ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
         </div>
       </button>
       {open && (
@@ -945,7 +1050,7 @@ function SourceSection({
           ) : count === 0 ? (
             <div className="py-4 text-center text-sm text-muted-foreground">No records</div>
           ) : (
-            <div className="overflow-x-auto">{children}</div>
+            <div className="min-w-0">{children}</div>
           )}
         </CardContent>
       )}

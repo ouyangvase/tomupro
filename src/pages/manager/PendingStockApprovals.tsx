@@ -226,14 +226,14 @@ export default function PendingStockApprovals() {
           <div className="space-y-4">
             {pendingTransfers.map((transfer) => (
               <Card key={transfer.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <CardTitle className="flex items-center gap-2">
-                        <Package className="h-5 w-5" />
-                        Stock Transfer from {transfer.from_owner?.display_name}
+                <CardHeader className="p-4 md:p-6">
+                  <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <CardTitle className="flex min-w-0 items-start gap-2 text-base md:text-lg">
+                        <Package className="mt-0.5 h-5 w-5 shrink-0" />
+                        <span className="min-w-0 break-words">Stock Transfer from {transfer.from_owner?.display_name}</span>
                       </CardTitle>
-                      <CardDescription className="flex items-center gap-4">
+                      <CardDescription className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-4">
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {format(new Date(transfer.created_at), 'MMM d, yyyy h:mm a')}
@@ -244,12 +244,13 @@ export default function PendingStockApprovals() {
                         </Badge>
                       </CardDescription>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:flex">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => openRejectDialog(transfer)}
                         disabled={rejectTransfer.isPending}
+                        className="w-full sm:w-auto"
                       >
                         <X className="h-4 w-4 mr-1" />
                         Reject
@@ -258,6 +259,7 @@ export default function PendingStockApprovals() {
                         size="sm"
                         onClick={() => openApproveConfirm(transfer)}
                         disabled={approveTransfer.isPending}
+                        className="w-full sm:w-auto"
                       >
                         <Check className="h-4 w-4 mr-1" />
                         Approve
@@ -265,18 +267,18 @@ export default function PendingStockApprovals() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-4 pt-0 md:p-6 md:pt-0">
                   {/* Transfer Summary */}
-                  <div className="flex items-center justify-center gap-6 py-4 mb-4 rounded-lg bg-muted/30">
-                    <div className="text-center">
-                      <div className="font-medium">{transfer.from_owner?.display_name}</div>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-lg bg-muted/30 px-2 py-4 mb-4 sm:gap-6">
+                    <div className="min-w-0 text-center">
+                      <div className="break-words font-medium">{transfer.from_owner?.display_name}</div>
                       <div className="text-xs text-muted-foreground">
                         {transfer.from_warehouse?.name}
                       </div>
                     </div>
                     <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                    <div className="text-center">
-                      <div className="font-medium">{transfer.to_owner?.display_name}</div>
+                    <div className="min-w-0 text-center">
+                      <div className="break-words font-medium">{transfer.to_owner?.display_name}</div>
                       <div className="text-xs text-muted-foreground">
                         {transfer.to_warehouse?.name}
                       </div>

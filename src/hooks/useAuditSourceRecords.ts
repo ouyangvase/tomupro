@@ -37,6 +37,7 @@ export interface AdjustmentSourceRow {
   movement_type: string;
   reference_type: string;
   created_by_name: string;
+  remark: string | null;
 }
 
 export function useInboundSources(warehouseId?: string, productId?: string) {
