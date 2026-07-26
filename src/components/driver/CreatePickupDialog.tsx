@@ -219,14 +219,16 @@ export function CreatePickupDialog({
 
   return (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Pickup
-          </Button>
-        )}
-      </DialogTrigger>
+      {(!isEditing || trigger) && (
+        <DialogTrigger asChild>
+          {trigger || (
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Pickup
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-3xl p-4 sm:max-w-3xl sm:p-6">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Pickup' : 'Create Pickup for Driver'}</DialogTitle>
