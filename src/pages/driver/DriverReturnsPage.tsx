@@ -28,6 +28,7 @@ export default function DriverReturnsPage() {
   const { data: returnRequired } = useDriverReturnRequired();
   const { data: parentRunnerId, isLoading: isLoadingRunnerId } = useDriverParentRunnerId();
   const createReturn = useCreateReturn();
+  const pendingReturn = returns.find((driverReturn) => driverReturn.status === 'PENDING_RUNNER_ACK');
 
   const dateGroups = useMemo(() => {
     const groups = new Map<string, DriverReturn[]>();
@@ -62,13 +63,29 @@ export default function DriverReturnsPage() {
             </h1>
             <p className="text-sm text-muted-foreground">Tap a date to view returned items.</p>
           </div>
-          <Button size="sm" className="shrink-0" onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" />
-            New
-          </Button>
+          {pendingReturn ? (
+            <Badge variant="outline" className="shrink-0 border-amber-300 bg-amber-50 text-amber-800">
+              Pending runner
+            </Badge>
+          ) : (
+            <Button size="sm" className="shrink-0" onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="mr-1 h-4 w-4" />
+              New
+            </Button>
+          )}
         </div>
 
-        {returnRequired?.isReturnRequired && returnRequired.mustReturnItems.length > 0 && (
+        {pendingReturn && (
+          <Alert className="border-amber-300 bg-amber-50/70">
+            <Clock className="h-4 w-4 text-amber-700" />
+            <AlertTitle>Return submitted</AlertTitle>
+            <AlertDescription>
+              Waiting for your runner to acknowledge it. You cannot submit another return yet.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!pendingReturn && returnRequired?.isReturnRequired && returnRequired.mustReturnItems.length > 0 && (
           <Card className="border-destructive/40 bg-destructive/5">
             <CardHeader className="p-4 pb-2">
               <CardTitle className="flex items-center gap-2 text-base text-destructive">
@@ -101,7 +118,7 @@ export default function DriverReturnsPage() {
           </Card>
         )}
 
-        {returnRequired && returnRequired.totalAvailable > 0 && !returnRequired.isReturnRequired && (
+        {!pendingReturn && returnRequired && returnRequired.totalAvailable > 0 && !returnRequired.isReturnRequired && (
           <Alert className="border-primary/40 bg-primary/5">
             <PackageCheck className="h-4 w-4" />
             <AlertTitle>No return needed</AlertTitle>
@@ -192,7 +209,7 @@ export default function DriverReturnsPage() {
           </div>
         )}
 
-        <CreateReturnDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+        {!pendingReturn && <CreateReturnDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />}
       </div>
     </AppLayout>
   );

@@ -58,13 +58,14 @@ export function CreatePickupDialog({
 }: CreatePickupDialogProps) {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
+  const todayDate = format(new Date(), 'yyyy-MM-dd');
   
   const [internalOpen, setInternalOpen] = useState(false);
   const dialogOpen = open ?? internalOpen;
   const setDialogOpen = onOpenChange ?? setInternalOpen;
 
   const [selectedDriverId, setSelectedDriverId] = useState(defaultDriverId);
-  const [pickupDate, setPickupDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [pickupDate, setPickupDate] = useState(todayDate);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<PickupItem[]>([]);
   const [confirmLowerQty, setConfirmLowerQty] = useState(false);
@@ -84,7 +85,7 @@ export function CreatePickupDialog({
   useEffect(() => {
     if (!dialogOpen) return;
     setSelectedDriverId(pickup?.driver_id || defaultDriverId || '');
-    setPickupDate(pickup?.pickup_date || format(new Date(), 'yyyy-MM-dd'));
+    setPickupDate(todayDate);
     setNotes(pickup?.notes || '');
     if (pickup) {
       setItems((pickup.items || []).map((item) => ({
@@ -101,7 +102,7 @@ export function CreatePickupDialog({
         buffer_qty: 1,
       })));
     }
-  }, [defaultDriverId, defaultItems, dialogOpen, pickup]);
+  }, [defaultDriverId, defaultItems, dialogOpen, pickup, todayDate]);
 
   // Reset acknowledgments when driver changes
   useEffect(() => {
@@ -231,8 +232,8 @@ export function CreatePickupDialog({
           <DialogTitle>{isEditing ? 'Edit Pickup' : 'Create Pickup for Driver'}</DialogTitle>
           <DialogDescription>
             {isEditing
-              ? 'Update the pickup date, notes, or item quantities.'
-              : 'Review the calculated stock and confirm the pickup task.'}
+              ? 'Update today’s pickup notes or item quantities.'
+              : 'Review today’s calculated stock and confirm the pickup task.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -261,8 +262,11 @@ export function CreatePickupDialog({
               <Input
                 type="date"
                 value={pickupDate}
-                onChange={e => setPickupDate(e.target.value)}
+                min={todayDate}
+                max={todayDate}
+                disabled
               />
+              <p className="text-xs text-muted-foreground">Pickup tasks expire at the end of the day.</p>
             </div>
           </div>
 

@@ -25,6 +25,28 @@ export interface ReturnRequiredResult {
   totalAvailable: number;
 }
 
+type ReturnProduct = {
+  sku_name?: string | null;
+  sku_code?: string | null;
+};
+
+type CompletedPickupRow = {
+  pickup_date?: string | null;
+  items?: Array<{
+    product_id?: string | null;
+    qty?: number | null;
+    product?: ReturnProduct | ReturnProduct[] | null;
+  }> | null;
+};
+
+type SubmittedReturnRow = {
+  items?: Array<{ product_id?: string | null; qty?: number | null }> | null;
+};
+
+type AcceptedDeliveryRow = {
+  order_items?: Array<{ product_id?: string | null; qty?: number | null }> | null;
+};
+
 /**
  * Hook to get returnable items for a driver.
  * Formula: Available = completed pickup - driver delivered accepted by runner - already returned.
@@ -61,7 +83,7 @@ export function useDriverReturnRequired(driverId?: string) {
       const pickedByProduct = new Map<string, ReturnableItem>();
       let earliestPickupDate: string | null = null;
 
-      for (const pickup of (pickupRows || []) as any[]) {
+      for (const pickup of (pickupRows || []) as CompletedPickupRow[]) {
         const pickupDate = String(pickup.pickup_date || '');
         if (pickupDate && (!earliestPickupDate || pickupDate < earliestPickupDate)) {
           earliestPickupDate = pickupDate;
@@ -117,7 +139,7 @@ export function useDriverReturnRequired(driverId?: string) {
 
       if (returnsError) throw returnsError;
 
-      for (const row of (returnRows || []) as any[]) {
+      for (const row of (returnRows || []) as SubmittedReturnRow[]) {
         for (const item of row.items || []) {
           const current = pickedByProduct.get(item.product_id);
           if (!current) continue;
@@ -148,7 +170,7 @@ export function useDriverReturnRequired(driverId?: string) {
 
       if (deliveredError) throw deliveredError;
 
-      for (const order of (deliveredRows || []) as any[]) {
+      for (const order of (deliveredRows || []) as AcceptedDeliveryRow[]) {
         for (const item of order.order_items || []) {
           const current = pickedByProduct.get(item.product_id);
           if (!current) continue;
@@ -185,6 +207,8 @@ export function useDriverReturnRequired(driverId?: string) {
       };
     },
     enabled: !!targetDriverId,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   });
 }
 

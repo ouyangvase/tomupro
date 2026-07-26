@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
 
 export interface DriverReturn {
   id: string;
@@ -95,37 +96,17 @@ export function useCreateReturn() {
     }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
-      // Create return - validation is handled in the dialog
-      // We allow manual returns for flexibility
-      const { data: returnData, error: returnError } = await supabase
-        .from('driver_returns')
-        .insert({
-          driver_id: user.id,
-          runner_id: params.runner_id,
-          related_pickup_id: params.related_pickup_id,
-          notes: params.notes,
-        })
-        .select()
-        .single();
-      if (returnError) throw returnError;
-
-      // Create return items
-      if (params.items.length > 0) {
-        const { error: itemsError } = await supabase
-          .from('driver_return_items')
-          .insert(params.items.map(item => ({
-            return_id: returnData.id,
-            product_id: item.product_id,
-            qty: item.qty,
-          })));
-        if (itemsError) throw itemsError;
-      }
-
-      return returnData;
+      return callSupabaseRpc<string>('create_driver_return_task', {
+        p_runner_id: params.runner_id,
+        p_related_pickup_id: params.related_pickup_id || null,
+        p_notes: params.notes || '',
+        p_items: params.items,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
       toast({ title: 'Return submitted successfully' });
     },
     onError: (error: Error) => {
@@ -151,14 +132,17 @@ export function useAcknowledgeReturn() {
           acknowledged_at: new Date().toISOString(),
           acknowledged_by: user.id,
         })
-        .eq('id', returnId);
+        .eq('id', returnId)
+        .eq('status', 'PENDING_RUNNER_ACK')
+        .select('id')
+        .single();
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
-      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
-      toast({ title: 'Return acknowledged, stock restored' });
+      queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
+      toast({ title: 'Return acknowledged' });
     },
     onError: (error: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
@@ -182,6 +166,7 @@ export function useCancelReturn() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
       toast({ title: 'Return cancelled' });
     },
     onError: (error: Error) => {

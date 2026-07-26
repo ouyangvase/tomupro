@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAcknowledgePickup, useDriverPickups, type DriverPickup } from '@/hooks/useDriverPickups';
+import { getTodayDateKey } from '@/lib/driverOrderScope';
 
 const statusDetails = {
   PENDING_DRIVER_ACK: {
@@ -26,7 +27,11 @@ const statusDetails = {
     label: 'Cancelled',
     className: 'border-border bg-muted text-muted-foreground',
   },
-} satisfies Record<DriverPickup['status'], { label: string; className: string }>;
+  EXPIRED: {
+    label: 'Expired',
+    className: 'border-border bg-muted text-muted-foreground',
+  },
+} satisfies Record<DriverPickup['status'] | 'EXPIRED', { label: string; className: string }>;
 
 function pickupDateKey(pickup: DriverPickup) {
   return pickup.pickup_date.slice(0, 10);
@@ -35,6 +40,7 @@ function pickupDateKey(pickup: DriverPickup) {
 export default function DriverPickupsPage() {
   const { data: pickups = [], isLoading, isError, refetch, isFetching } = useDriverPickups();
   const acknowledgePickup = useAcknowledgePickup();
+  const todayDate = getTodayDateKey();
 
   const dateGroups = useMemo(() => {
     const groups = new Map<string, DriverPickup[]>();
@@ -88,7 +94,10 @@ export default function DriverPickupsPage() {
                   date={format(parseISO(dateKey), 'dd MMM yyyy')}
                 >
                   {group.map((pickup) => {
-                    const status = statusDetails[pickup.status];
+                    const isExpired = pickupDateKey(pickup) < todayDate
+                      && (pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED');
+                    const displayStatus = isExpired ? 'EXPIRED' : pickup.status;
+                    const status = statusDetails[displayStatus];
                     return (
                       <section key={pickup.id} className="rounded-lg border border-border/70 bg-background p-3">
                         <div className="flex items-start justify-between gap-3">
@@ -120,7 +129,7 @@ export default function DriverPickupsPage() {
                           </p>
                         )}
 
-                        {pickup.status === 'PENDING_DRIVER_ACK' && (
+                        {pickup.status === 'PENDING_DRIVER_ACK' && !isExpired && (
                           <Button
                             className="mt-3 w-full"
                             onClick={() => acknowledgePickup.mutate(pickup.id)}
@@ -130,7 +139,7 @@ export default function DriverPickupsPage() {
                             {acknowledgePickup.isPending ? 'Acknowledging...' : 'Acknowledge pickup'}
                           </Button>
                         )}
-                        {pickup.status === 'DRIVER_ACKED' && (
+                        {pickup.status === 'DRIVER_ACKED' && !isExpired && (
                           <p className="mt-3 flex items-center gap-2 text-sm font-medium text-blue-700">
                             <Clock3 className="h-4 w-4" /> Waiting for runner to complete collection
                           </p>
@@ -143,6 +152,11 @@ export default function DriverPickupsPage() {
                         {pickup.status === 'CANCELLED' && (
                           <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                             <XCircle className="h-4 w-4" /> Pickup cancelled
+                          </p>
+                        )}
+                        {isExpired && (
+                          <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                            <XCircle className="h-4 w-4" /> Create a new pickup for today
                           </p>
                         )}
                       </section>

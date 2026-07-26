@@ -230,6 +230,7 @@ async function fetchActiveDriverOrders(params: {
   const assignments = await fetchDriverAssignments({
     runnerId: params.runnerId,
     driverId: params.driverId,
+    dateFrom: today,
     dateTo: today,
     activeOnly: true,
     includeItems: true,
@@ -265,6 +266,8 @@ export function useRunnerPickups(runnerIdOverride?: string) {
       return data as DriverPickup[];
     },
     enabled: !!runnerScopeId,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   });
 }
 
