@@ -418,24 +418,16 @@ export function useCompletePickup() {
   });
 }
 
-// Driver acknowledges pickup
+// Driver accepts and collects today's pickup in one action.
 export function useAcknowledgePickup() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (pickupId: string) => {
-      const { error } = await supabase
-        .from('driver_pickups')
-        .update({ 
-          status: 'DRIVER_ACKED',
-          acknowledged_at: new Date().toISOString(),
-        })
-        .eq('id', pickupId)
-        .eq('status', 'PENDING_DRIVER_ACK')
-        .select('id')
-        .single();
-      if (error) throw error;
+      return callSupabaseRpc<string>('accept_driver_pickup_task', {
+        p_pickup_id: pickupId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
@@ -443,7 +435,8 @@ export function useAcknowledgePickup() {
       queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
       queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
       queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
-      toast({ title: 'Pickup acknowledged' });
+      queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
+      toast({ title: 'Pickup accepted', description: 'The collected quantities are now confirmed.' });
     },
     onError: (error: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: error.message });

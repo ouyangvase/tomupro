@@ -97,9 +97,9 @@ export function CreatePickupDialog({
     } else if (defaultItems.length > 0) {
       setItems(defaultItems.map((item) => ({
         product_id: item.product_id,
-        qty: item.required_qty + 1,
+        qty: item.required_qty,
         required_qty: item.required_qty,
-        buffer_qty: 1,
+        buffer_qty: 0,
       })));
     }
   }, [defaultDriverId, defaultItems, dialogOpen, pickup, todayDate]);
@@ -117,9 +117,9 @@ export function CreatePickupDialog({
     if (suggestedQty && suggestedQty.length > 0) {
       setItems(suggestedQty.map(s => ({
         product_id: s.product_id,
-        qty: s.required_qty + 1,
+        qty: s.required_qty,
         required_qty: s.required_qty,
-        buffer_qty: 1,
+        buffer_qty: 0,
       })));
       setConfirmLowerQty(false);
     } else if (selectedDriverId) {
@@ -128,7 +128,7 @@ export function CreatePickupDialog({
   }, [defaultItems.length, isEditing, selectedDriverId, suggestedQty]);
 
   const addItem = () => {
-    setItems([...items, { product_id: '', qty: 1, required_qty: 0, buffer_qty: 1 }]);
+    setItems([...items, { product_id: '', qty: 1, required_qty: 0, buffer_qty: 0 }]);
   };
 
   const removeItem = (index: number) => {

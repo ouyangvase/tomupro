@@ -76,7 +76,7 @@ export function useDriverReturnRequired(driverId?: string) {
         `)
         .eq('driver_id', targetDriverId)
         .eq('status', 'COMPLETED')
-        .lt('pickup_date', today);
+        .lte('pickup_date', today);
 
       if (pickupError) throw pickupError;
 

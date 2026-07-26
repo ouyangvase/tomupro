@@ -98,7 +98,10 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
     };
   }, [open]);
 
-  const acknowledgedPickups = pickups?.filter(p => p.status === 'DRIVER_ACKED') || [];
+  const acknowledgedPickups = useMemo(
+    () => pickups?.filter(p => p.status === 'COMPLETED' || p.status === 'DRIVER_ACKED') || [],
+    [pickups],
+  );
 
   // Get selected pickup details
   const selectedPickup = useMemo(() => {

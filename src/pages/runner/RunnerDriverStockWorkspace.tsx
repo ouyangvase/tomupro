@@ -37,11 +37,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CreatePickupDialog } from '@/components/driver/CreatePickupDialog';
-import { DriverActivityDateGroup } from '@/components/driver/DriverActivityDateGroup';
+import { DriverActivityHistory } from '@/components/driver/DriverActivityHistory';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import {
   useCancelPickup,
-  useCompletePickup,
   useDeletePickup,
   useDriverAllocatedStock,
   useRunnerDriverPickupNeeds,
@@ -71,6 +70,10 @@ type AllocatedStockItem = {
   allocated_qty: number;
   delivered_qty: number;
   pending_qty: number;
+};
+
+type PickupNeedDisplay = RunnerDriverPickupNeed & {
+  existingPickup?: DriverPickup;
 };
 
 const currency = new Intl.NumberFormat('en-BN', {
@@ -115,9 +118,9 @@ function PickupNeedsPanel({
   isLoading,
   onCreatePickup,
 }: {
-  needs: RunnerDriverPickupNeed[];
+  needs: PickupNeedDisplay[];
   isLoading: boolean;
-  onCreatePickup: (driverId: string) => void;
+  onCreatePickup: (need: PickupNeedDisplay) => void;
 }) {
   return (
     <Card className="mb-3 rounded-3xl border-primary/20 bg-primary/5">
@@ -152,9 +155,9 @@ function PickupNeedsPanel({
                         {need.order_count} active order(s) - {need.total_qty} item qty
                       </p>
                     </div>
-                    <Button size="sm" className="shrink-0 rounded-xl" onClick={() => onCreatePickup(need.driver_id)}>
-                      <Truck className="mr-1 h-4 w-4" />
-                      Pickup
+                    <Button size="sm" className="shrink-0 rounded-xl" onClick={() => onCreatePickup(need)}>
+                      {need.existingPickup ? <Pencil className="mr-1 h-4 w-4" /> : <Truck className="mr-1 h-4 w-4" />}
+                      {need.existingPickup ? 'Edit pickup' : 'Pickup'}
                     </Button>
                   </div>
 
@@ -219,7 +222,6 @@ export default function RunnerDriverStockWorkspace({
   const { data: cashLiabilities, isLoading: loadingCashLiabilities } = useRunnerCashLiabilities();
   const { data: settlementHistory, isLoading: loadingSettlementHistory } = useRunnerSettlementHistory();
   const cancelPickup = useCancelPickup();
-  const completePickup = useCompletePickup();
   const deletePickup = useDeletePickup();
   const acknowledgeReturn = useAcknowledgeReturn();
   const settleDriverCash = useSettleDriverCash();
@@ -276,12 +278,14 @@ export default function RunnerDriverStockWorkspace({
   }, [driverFilter, normalizedQuery, pickupStatusFilter, pickups]);
 
   const todayPickups = useMemo(
-    () => filteredPickups.filter((pickup) => pickup.pickup_date.slice(0, 10) === todayDate),
+    () => filteredPickups.filter((pickup) =>
+      pickup.pickup_date.slice(0, 10) === todayDate
+      && (pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED')),
     [filteredPickups, todayDate],
   );
   const pickupHistory = useMemo(
-    () => filteredPickups.filter((pickup) => pickup.pickup_date.slice(0, 10) < todayDate),
-    [filteredPickups, todayDate],
+    () => filteredPickups.filter((pickup) => pickup.status === 'COMPLETED'),
+    [filteredPickups],
   );
   const pickupHistoryGroups = useMemo(() => {
     const groups = new Map<string, DriverPickup[]>();
@@ -315,7 +319,7 @@ export default function RunnerDriverStockWorkspace({
     [filteredReturns],
   );
   const returnHistory = useMemo(
-    () => filteredReturns.filter((item) => item.status !== 'PENDING_RUNNER_ACK'),
+    () => filteredReturns.filter((item) => item.status === 'RUNNER_ACKED'),
     [filteredReturns],
   );
   const returnHistoryGroups = useMemo(() => {
@@ -350,13 +354,35 @@ export default function RunnerDriverStockWorkspace({
     });
   }, [cashLiabilities?.byDriver, driverFilter, normalizedQuery]);
 
-  const unscheduledPickupNeeds = useMemo(() => {
-    const scheduledDriverIds = new Set(
-      (pickups || [])
-        .filter((pickup) => pickup.pickup_date.slice(0, 10) === todayDate && pickup.status !== 'CANCELLED')
-        .map((pickup) => pickup.driver_id),
-    );
-    return (pickupNeeds || []).filter((need) => !scheduledDriverIds.has(need.driver_id));
+  const unscheduledPickupNeeds = useMemo<PickupNeedDisplay[]>(() => {
+    const activeToday = (pickups || []).filter((pickup) =>
+      pickup.pickup_date.slice(0, 10) === todayDate
+      && pickup.status !== 'CANCELLED');
+
+    return (pickupNeeds || []).flatMap((need) => {
+      const existingPickup = activeToday.find((pickup) => pickup.driver_id === need.driver_id);
+      const coveredByProduct = new Map<string, number>();
+      (existingPickup?.items || []).forEach((item) => {
+        coveredByProduct.set(
+          item.product_id,
+          (coveredByProduct.get(item.product_id) || 0) + Number(item.qty || 0),
+        );
+      });
+      const remainingItems = need.items
+        .map((item) => ({
+          ...item,
+          required_qty: Math.max(item.required_qty - (coveredByProduct.get(item.product_id) || 0), 0),
+        }))
+        .filter((item) => item.required_qty > 0);
+
+      if (remainingItems.length === 0) return [];
+      return [{
+        ...need,
+        items: remainingItems,
+        total_qty: remainingItems.reduce((sum, item) => sum + item.required_qty, 0),
+        existingPickup,
+      }];
+    });
   }, [pickupNeeds, pickups, todayDate]);
 
   const filteredPickupNeeds = useMemo(() => {
@@ -523,9 +549,13 @@ export default function RunnerDriverStockWorkspace({
             <PickupNeedsPanel
               needs={filteredPickupNeeds}
               isLoading={loadingPickupNeeds}
-              onCreatePickup={(driverId) => {
-                setQuickPickupDriverId(driverId);
-                setPickupDialogOpen(true);
+              onCreatePickup={(need) => {
+                if (need.existingPickup) {
+                  setEditingPickup(need.existingPickup);
+                } else {
+                  setQuickPickupDriverId(need.driver_id);
+                  setPickupDialogOpen(true);
+                }
               }}
             />
 
@@ -586,11 +616,6 @@ export default function RunnerDriverStockWorkspace({
                           {(pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED') && (
                             <Button size="sm" variant="outline" onClick={() => setEditingPickup(pickup)}>
                               <Pencil className="mr-1 h-4 w-4" /> Edit
-                            </Button>
-                          )}
-                          {pickup.status === 'DRIVER_ACKED' && (
-                            <Button size="sm" onClick={() => completePickup.mutate(pickup.id)}>
-                              <CheckCircle2 className="mr-1 h-4 w-4" /> Complete
                             </Button>
                           )}
                           {pickup.status === 'PENDING_DRIVER_ACK' && (
@@ -658,11 +683,6 @@ export default function RunnerDriverStockWorkspace({
                                     <Pencil className="mr-1 h-4 w-4" /> Edit
                                   </Button>
                                 )}
-                                {pickup.status === 'DRIVER_ACKED' && (
-                                  <Button size="sm" onClick={() => completePickup.mutate(pickup.id)}>
-                                    <CheckCircle2 className="mr-1 h-4 w-4" /> Complete
-                                  </Button>
-                                )}
                                 {pickup.status === 'PENDING_DRIVER_ACK' && (
                                   <Button size="sm" variant="outline" onClick={() => cancelPickup.mutate(pickup.id)}>
                                     <XCircle className="mr-1 h-4 w-4" /> Cancel
@@ -684,41 +704,33 @@ export default function RunnerDriverStockWorkspace({
             </Card>
 
             {pickupHistoryGroups.length > 0 && (
-              <Card className="mt-3 overflow-hidden rounded-3xl border-border/60">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <History className="h-5 w-5 text-primary" />
-                    Pickup History
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
+              <div className="mt-3">
+                <DriverActivityHistory
+                  title="Pickup history"
+                  summary={`${pickupHistory.length} completed pickup(s)`}
+                >
                   {pickupHistoryGroups.map(([date, group]) => (
-                    <DriverActivityDateGroup
-                      key={date}
-                      date={format(new Date(`${date}T00:00:00`), 'dd MMM yyyy')}
-                    >
-                      {group.map((pickup) => {
-                        const expired = pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED';
-                        return (
-                          <div key={pickup.id} className="rounded-lg border border-border/70 bg-background p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <p className="font-semibold">{pickup.driver?.display_name || 'Unknown driver'}</p>
-                              <Badge variant="outline" className="shrink-0">
-                                {expired ? 'Expired' : pickupStatusLabel(pickup.status)}
-                              </Badge>
-                            </div>
-                            <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                              {(pickup.items || []).map((item) => (
-                                <p key={item.id} className="break-words">{productLabel(item)}</p>
-                              ))}
-                            </div>
+                    <div key={date} className="space-y-2">
+                      <p className="text-sm font-bold text-muted-foreground">
+                        {format(new Date(`${date}T00:00:00`), 'dd MMM yyyy')}
+                      </p>
+                      {group.map((pickup) => (
+                        <div key={pickup.id} className="rounded-lg border border-border/70 bg-background p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="font-semibold">{pickup.driver?.display_name || 'Unknown driver'}</p>
+                            <Badge variant="outline" className="shrink-0">{pickupStatusLabel(pickup.status)}</Badge>
                           </div>
-                        );
-                      })}
-                    </DriverActivityDateGroup>
+                          <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                            {(pickup.items || []).map((item) => (
+                              <p key={item.id} className="break-words">{productLabel(item)}</p>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ))}
-                </CardContent>
-              </Card>
+                </DriverActivityHistory>
+              </div>
             )}
           </TabsContent>
 
@@ -789,26 +801,21 @@ export default function RunnerDriverStockWorkspace({
             </Card>
 
             {returnHistoryGroups.length > 0 && (
-              <Card className="mt-3 overflow-hidden rounded-3xl border-border/60">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <History className="h-5 w-5 text-primary" />
-                    Return History
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
+              <div className="mt-3">
+                <DriverActivityHistory
+                  title="Return history"
+                  summary={`${returnHistory.length} acknowledged return(s)`}
+                >
                   {returnHistoryGroups.map(([date, group]) => (
-                    <DriverActivityDateGroup
-                      key={date}
-                      date={format(new Date(`${date}T00:00:00`), 'dd MMM yyyy')}
-                    >
+                    <div key={date} className="space-y-2">
+                      <p className="text-sm font-bold text-muted-foreground">
+                        {format(new Date(`${date}T00:00:00`), 'dd MMM yyyy')}
+                      </p>
                       {group.map((item) => (
                         <div key={item.id} className="rounded-lg border border-border/70 bg-background p-3">
                           <div className="flex items-start justify-between gap-3">
                             <p className="font-semibold">{item.driver?.display_name || 'Unknown driver'}</p>
-                            <Badge variant="outline" className="shrink-0">
-                              {returnStatusLabel(item.status)}
-                            </Badge>
+                            <Badge variant="outline" className="shrink-0">{returnStatusLabel(item.status)}</Badge>
                           </div>
                           <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                             {(item.items || []).map((returnItem) => (
@@ -817,10 +824,10 @@ export default function RunnerDriverStockWorkspace({
                           </div>
                         </div>
                       ))}
-                    </DriverActivityDateGroup>
+                    </div>
                   ))}
-                </CardContent>
-              </Card>
+                </DriverActivityHistory>
+              </div>
             )}
           </TabsContent>
 

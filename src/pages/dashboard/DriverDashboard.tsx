@@ -8,6 +8,7 @@ import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
 import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { useDriverAllocatedStock, useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
+import { useDriverReturns } from '@/hooks/useDriverReturns';
 import {
   Boxes,
   CalendarDays,
@@ -37,29 +38,32 @@ export function DriverDashboard() {
     includeItems: false,
   });
   const { data: pickups = [] } = useDriverPickups();
+  const { data: returns = [] } = useDriverReturns();
   const { data: allocatedStock = [] } = useDriverAllocatedStock();
   const { data: returnRequired } = useDriverReturnRequired();
   const summary = analytics?.summary;
-  const pendingPickup = pickups.find((pickup) => pickup.status === 'PENDING_DRIVER_ACK');
-  const awaitingCollection = pickups.find((pickup) => pickup.status === 'DRIVER_ACKED');
+  const pendingPickup = pickups.find((pickup) =>
+    pickup.pickup_date.slice(0, 10) === today
+    && (pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED'));
+  const pendingReturn = returns.find((driverReturn) => driverReturn.status === 'PENDING_RUNNER_ACK');
   const stockQty = allocatedStock.reduce((sum, item) => sum + Number(item.allocated_qty || 0), 0);
 
   const nextStep = pendingPickup
     ? {
         eyebrow: 'Pickup ready',
-        title: 'Review and acknowledge your stock',
+        title: 'Collect your stock before delivery',
         detail: `${(pendingPickup.items || []).reduce((sum, item) => sum + Number(item.qty || 0), 0)} item(s) prepared by your runner`,
-        action: 'Review pickup',
+        action: 'Accept pickup',
         href: '/delivery?tab=pickups',
         icon: PackageCheck,
       }
-    : awaitingCollection
+    : pendingReturn
       ? {
-          eyebrow: 'Pickup acknowledged',
-          title: 'Collect stock from your runner',
-          detail: 'Delivery actions unlock after your runner confirms collection.',
-          action: 'View pickup',
-          href: '/delivery?tab=pickups',
+          eyebrow: 'Return submitted',
+          title: 'Waiting for runner acceptance',
+          detail: 'Your return is already submitted. No second driver action is needed.',
+          action: 'View return',
+          href: '/delivery?tab=returns',
           icon: Clock3,
         }
       : returnRequired?.isReturnRequired
