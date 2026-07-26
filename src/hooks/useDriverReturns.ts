@@ -107,6 +107,7 @@ export function useCreateReturn() {
       queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
       queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
       toast({ title: 'Return submitted successfully' });
     },
     onError: (error: Error) => {
@@ -142,6 +143,7 @@ export function useAcknowledgeReturn() {
       queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
       queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
       toast({ title: 'Return acknowledged' });
     },
     onError: (error: Error) => {
@@ -167,6 +169,7 @@ export function useCancelReturn() {
       queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
       queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
       toast({ title: 'Return cancelled' });
     },
     onError: (error: Error) => {

@@ -136,6 +136,7 @@ const allModules: Record<string, NavItem[]> = {
     { id: 'route', label: 'Route', icon: <Truck className="h-5 w-5" />, href: '/delivery?tab=route' },
     { id: 'pickups', label: 'Pickups', icon: <Boxes className="h-5 w-5" />, href: '/delivery?tab=pickups' },
     { id: 'returns', label: 'Returns', icon: <ClipboardList className="h-5 w-5" />, href: '/delivery?tab=returns' },
+    { id: 'stock-on-hand', label: 'Stock on Hand', icon: <Boxes className="h-5 w-5" />, href: '/delivery?tab=stock' },
     { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery?tab=analytics' },
     { id: 'guide', label: 'Guide', icon: <GraduationCap className="h-5 w-5" />, href: '/guide' },
     { id: 'telegram', label: 'Telegram', icon: <Send className="h-5 w-5" />, href: '/settings/telegram' },

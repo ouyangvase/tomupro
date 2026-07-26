@@ -18,7 +18,7 @@ import { ResponsiveLayout } from "@/components/layout/ResponsiveLayout";
 import { lazy, Suspense } from "react";
 
 // Retry dynamic import once on chunk load failure (stale deployment cache)
-function lazyRetry<T extends { default: React.ComponentType<any> }>(
+function lazyRetry<T extends { default: React.ComponentType<never> }>(
   importFn: () => Promise<T>,
 ) {
   return lazy(() =>
@@ -257,6 +257,7 @@ function AppRoutes() {
       <Route path="/driver/route" element={<Navigate to="/delivery?tab=route" replace />} />
       <Route path="/driver/pickups" element={<Navigate to="/delivery?tab=pickups" replace />} />
       <Route path="/driver/returns" element={<Navigate to="/delivery?tab=returns" replace />} />
+      <Route path="/driver/stock" element={<Navigate to="/delivery?tab=stock" replace />} />
       <Route path="/driver/analytics" element={<Navigate to="/delivery?tab=analytics" replace />} />
       <Route path="/leaderboard" element={<Navigate to="/performance?tab=leaderboard" replace />} />
       <Route path="/manager/ranking-board" element={<Navigate to="/performance?tab=ranking" replace />} />

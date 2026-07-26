@@ -7,6 +7,7 @@ const DriverInbox = lazy(() => import('@/pages/driver/DriverInbox'));
 const DriverRoutePage = lazy(() => import('@/pages/driver/DriverRoutePage'));
 const DriverPickupsPage = lazy(() => import('@/pages/driver/DriverPickupsPage'));
 const DriverReturnsPage = lazy(() => import('@/pages/driver/DriverReturnsPage'));
+const DriverStockOnHandPage = lazy(() => import('@/pages/driver/DriverStockOnHandPage'));
 const DriverAnalyticsPage = lazy(() => import('@/pages/driver/DriverAnalyticsPage'));
 
 const Loading = () => (
@@ -20,6 +21,7 @@ const tabs = [
   { id: 'route', label: 'Route' },
   { id: 'pickups', label: 'Pickups' },
   { id: 'returns', label: 'Returns' },
+  { id: 'stock', label: 'Stock on Hand' },
   { id: 'analytics', label: 'Analytics' },
 ];
 
@@ -45,6 +47,7 @@ export default function DeliveryModule() {
             {activeTab === 'route' && <DriverRoutePage />}
             {activeTab === 'pickups' && <DriverPickupsPage />}
             {activeTab === 'returns' && <DriverReturnsPage />}
+            {activeTab === 'stock' && <DriverStockOnHandPage />}
             {activeTab === 'analytics' && <DriverAnalyticsPage />}
           </div>
         </Suspense>

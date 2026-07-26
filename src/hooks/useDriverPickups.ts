@@ -6,6 +6,7 @@ import {
   getDriverOperationalDateKey,
   getTodayDateKey,
   isVisibleDriverInboxOrder,
+  toDateKey,
 } from '@/lib/driverOrderScope';
 import { fetchDriverAssignments } from '@/hooks/useDriverAssignments';
 import { callSupabaseRpc } from '@/lib/supabaseRpc';
@@ -54,8 +55,28 @@ type StockMovementItem = {
 
 type StockMovementRecord = {
   driver_id: string;
+  pickup_date?: string | null;
   items?: StockMovementItem[] | null;
 };
+
+type AcceptedDeliveryRecord = {
+  driver_id: string;
+  driver_delivered_at?: string | null;
+  delivered_at?: string | null;
+  items?: StockMovementItem[] | null;
+};
+
+export interface DriverAllocatedStockItem {
+  driver_id: string;
+  product_id: string;
+  sku_name: string;
+  sku_code: string | null;
+  pickup_qty: number;
+  returned_qty: number;
+  delivered_qty: number;
+  allocated_qty: number;
+  pending_qty: number;
+}
 
 export interface BlockingOrder {
   order_id: string;
@@ -501,7 +522,7 @@ export function useDeletePickup() {
   });
 }
 
-// Stock becomes collected only after the runner completes an acknowledged pickup.
+// Driver custody balance: completed pickups - submitted returns - Runner-accepted deliveries.
 export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: string) {
   const { user } = useAuth();
   const runnerScopeId = runnerIdOverride || (driverId ? user?.id : undefined);
@@ -517,6 +538,7 @@ export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: st
           id,
           driver_id,
           runner_id,
+          pickup_date,
           status,
           items:driver_pickup_items(
             id,
@@ -541,84 +563,123 @@ export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: st
             product:products(id, sku_name, sku_code)
           )
         `)
-        .eq('status', 'RUNNER_ACKED');
+        .neq('status', 'CANCELLED');
+
+      let deliveryQuery = supabase
+        .from('orders')
+        .select(`
+          id,
+          driver_id,
+          runner_id,
+          driver_delivered_at,
+          delivered_at,
+          items:order_items(
+            product_id,
+            qty,
+            product:products(id, sku_name, sku_code)
+          )
+        `)
+        .eq('driver_status', 'DRIVER_DELIVERED')
+        .eq('runner_accept_status', 'ACCEPTED');
 
       if (driverId === 'all') {
         if (!runnerScopeId) return [];
         pickupQuery = pickupQuery.eq('runner_id', runnerScopeId);
         returnQuery = returnQuery.eq('runner_id', runnerScopeId);
+        deliveryQuery = deliveryQuery.eq('runner_id', runnerScopeId);
       } else {
         const targetDriverId = driverId || user.id;
         pickupQuery = pickupQuery.eq('driver_id', targetDriverId);
         returnQuery = returnQuery.eq('driver_id', targetDriverId);
+        deliveryQuery = deliveryQuery.eq('driver_id', targetDriverId);
         if (runnerScopeId) {
           pickupQuery = pickupQuery.eq('runner_id', runnerScopeId);
           returnQuery = returnQuery.eq('runner_id', runnerScopeId);
+          deliveryQuery = deliveryQuery.eq('runner_id', runnerScopeId);
         }
       }
 
-      const [{ data: pickups, error: pickupError }, { data: returns, error: returnError }] = await Promise.all([
-        pickupQuery,
-        returnQuery,
-      ]);
+      const [
+        { data: pickups, error: pickupError },
+        { data: returns, error: returnError },
+        { data: deliveries, error: deliveryError },
+      ] = await Promise.all([pickupQuery, returnQuery, deliveryQuery]);
 
       if (pickupError) throw pickupError;
       if (returnError) throw returnError;
+      if (deliveryError) throw deliveryError;
 
-      const rows = new Map<string, {
-        driver_id: string;
-        product_id: string;
-        sku_name: string;
-        sku_code: string | null;
-        allocated_qty: number;
-        delivered_qty: number;
-        pending_qty: number;
-      }>();
+      const rows = new Map<string, Omit<DriverAllocatedStockItem, 'allocated_qty' | 'pending_qty'>>();
+      const earliestPickupByDriver = new Map<string, string>();
 
-      const addStockDelta = (stockDriverId: string | null | undefined, item: StockMovementItem, delta: number) => {
-        if (!stockDriverId || !item?.product_id) return;
+      const getStockRow = (stockDriverId: string | null | undefined, item: StockMovementItem) => {
+        if (!stockDriverId || !item?.product_id) return null;
         const qty = Number(item.qty || 0);
-        if (qty <= 0) return;
+        if (qty <= 0) return null;
 
         const product = Array.isArray(item.product) ? item.product[0] : item.product;
         const key = `${stockDriverId}:${item.product_id}`;
         const existing = rows.get(key);
-        if (existing) {
-          existing.allocated_qty += delta * qty;
-          existing.pending_qty = existing.allocated_qty;
-          return;
-        }
+        if (existing) return { row: existing, qty };
 
-        rows.set(key, {
+        const row = {
           driver_id: stockDriverId,
           product_id: item.product_id,
           sku_name: product?.sku_name || 'Unlinked product',
           sku_code: product?.sku_code || null,
-          allocated_qty: delta * qty,
+          pickup_qty: 0,
+          returned_qty: 0,
           delivered_qty: 0,
-          pending_qty: delta * qty,
-        });
+        };
+        rows.set(key, row);
+        return { row, qty };
       };
 
       for (const pickup of (pickups || []) as unknown as StockMovementRecord[]) {
+        const pickupDate = toDateKey(pickup.pickup_date);
+        const earliest = earliestPickupByDriver.get(pickup.driver_id);
+        if (pickupDate && (!earliest || pickupDate < earliest)) {
+          earliestPickupByDriver.set(pickup.driver_id, pickupDate);
+        }
         for (const item of pickup.items || []) {
-          addStockDelta(pickup.driver_id, item, 1);
+          const stock = getStockRow(pickup.driver_id, item);
+          if (stock) stock.row.pickup_qty += stock.qty;
         }
       }
 
       for (const driverReturn of (returns || []) as unknown as StockMovementRecord[]) {
         for (const item of driverReturn.items || []) {
-          addStockDelta(driverReturn.driver_id, item, -1);
+          const stock = getStockRow(driverReturn.driver_id, item);
+          if (stock) stock.row.returned_qty += stock.qty;
         }
       }
 
-      return Array.from(rows.values()).sort((a, b) => {
-        if (a.allocated_qty <= 0 && b.allocated_qty > 0) return 1;
-        if (b.allocated_qty <= 0 && a.allocated_qty > 0) return -1;
-        const driverCompare = a.driver_id.localeCompare(b.driver_id);
-        if (driverCompare !== 0) return driverCompare;
-        return a.sku_name.localeCompare(b.sku_name);
-      }).filter(row => row.allocated_qty > 0);
+      for (const delivery of (deliveries || []) as unknown as AcceptedDeliveryRecord[]) {
+        const earliestPickup = earliestPickupByDriver.get(delivery.driver_id);
+        const deliveryDate = toDateKey(delivery.driver_delivered_at || delivery.delivered_at);
+        if (!earliestPickup || !deliveryDate || deliveryDate < earliestPickup) continue;
+
+        for (const item of delivery.items || []) {
+          const stock = getStockRow(delivery.driver_id, item);
+          if (stock) stock.row.delivered_qty += stock.qty;
+        }
+      }
+
+      return Array.from(rows.values())
+        .map((row): DriverAllocatedStockItem => {
+          const onHandQty = Math.max(row.pickup_qty - row.returned_qty - row.delivered_qty, 0);
+          return {
+            ...row,
+            allocated_qty: onHandQty,
+            pending_qty: onHandQty,
+          };
+        })
+        .filter((row) => row.allocated_qty > 0)
+        .sort((a, b) => {
+          const driverCompare = a.driver_id.localeCompare(b.driver_id);
+          if (driverCompare !== 0) return driverCompare;
+          return a.sku_name.localeCompare(b.sku_name);
+        });
     },
     enabled: !!user?.id,
   });
