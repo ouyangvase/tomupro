@@ -160,6 +160,13 @@ export function useRealtimeOrderUpdates(enabled = true) {
     if (!enabled) return;
     if (!profile?.id) return;
 
+    const filter = (() => {
+      if (profile.role === 'driver') return `driver_id=eq.${profile.id}`;
+      if (profile.role === 'runner') return `runner_id=eq.${profile.id}`;
+      if (profile.role === 'salesperson') return `salesperson_id=eq.${profile.id}`;
+      return undefined;
+    })();
+
     const timeoutId = setTimeout(() => {
       const channel = supabase
         .channel(`orders-realtime-${profile.id}`)
@@ -169,6 +176,7 @@ export function useRealtimeOrderUpdates(enabled = true) {
             event: '*',
             schema: 'public',
             table: 'orders',
+            ...(filter ? { filter } : {}),
           },
           (payload) => {
             handleOrderChange(payload as unknown as RealtimePayload);
@@ -186,7 +194,7 @@ export function useRealtimeOrderUpdates(enabled = true) {
         channelRef.current = null;
       }
     };
-  }, [enabled, profile?.id, handleOrderChange]);
+  }, [enabled, profile?.id, profile?.role, handleOrderChange]);
 }
 
 export function useRealtimePickupUpdates(enabled = true) {

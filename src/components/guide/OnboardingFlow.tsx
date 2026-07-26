@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
@@ -104,6 +104,8 @@ export function OnboardingFlow() {
   return (
     <Dialog open={true} onOpenChange={() => {}}>
       <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden [&>button]:hidden" onPointerDownOutside={(e) => e.preventDefault()}>
+        <DialogTitle className="sr-only">{onboarding.welcome}</DialogTitle>
+        <DialogDescription className="sr-only">{onboarding.subtitle}</DialogDescription>
         {/* Progress bar */}
         <div className="h-1 bg-secondary">
           <div

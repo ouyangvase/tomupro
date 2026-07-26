@@ -241,13 +241,16 @@ export function useApplyDriverAssignmentBatch() {
       if (error) throw error;
       return data as AssignmentBatchResult;
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       invalidateOrderQueries(queryClient);
-      queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['runner-dispatch-area-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['runner-dispatch-locality-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['runner-dispatch-driver-workloads'] });
-      queryClient.invalidateQueries({ queryKey: ['driver-order-count'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-area-summary'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-locality-summary'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-driver-workloads'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['driver-assignments'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['driver-order-count'], refetchType: 'active' }),
+      ]);
       toast.success(`${result.assigned_count || 0} orders assigned in one batch`);
     },
     onError: (error: Error) => {

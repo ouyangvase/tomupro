@@ -81,8 +81,8 @@ export default function RunnerInbox({
   const canDeliver = !isAssistant || !!assistantBinding?.can_deliver;
   const canConfirmReceipt = !isAssistant || !!assistantBinding?.can_confirm_receipt;
   const hasNoDeliveryAccess = isAssistant && !assistantBinding?.can_deliver;
-  const isReceiptOnlyAssistant = hasNoDeliveryAccess;
-  const canReviewReceipts = canConfirmReceipt || isReceiptOnlyAssistant;
+  const isReceiptOnlyAssistant = hasNoDeliveryAccess && canConfirmReceipt;
+  const canReviewReceipts = canConfirmReceipt;
 
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);

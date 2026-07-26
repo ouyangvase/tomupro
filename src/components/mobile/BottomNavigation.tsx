@@ -174,7 +174,15 @@ export function BottomNavigation() {
       case 'runner': return runnerTabs;
       case 'runner_assistant': return runnerAssistantTabs;
       case 'driver':
-        return assistantBinding?.runner_id
+        return assistantBinding?.runner_id && (
+          assistantBinding.can_deliver ||
+          assistantBinding.can_confirm_receipt ||
+          assistantBinding.can_manage_driver_inbox ||
+          assistantBinding.can_manage_driver_stock ||
+          assistantBinding.can_manage_cash_settlement ||
+          assistantBinding.can_manage_driver_operations ||
+          assistantBinding.can_view_driver_workload
+        )
           ? [
               ...driverTabs.slice(0, -1),
               { id: 'dispatch', label: 'Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/dispatch' },

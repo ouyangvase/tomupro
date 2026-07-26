@@ -131,7 +131,16 @@ export function useCreateOnboardingSession() {
           if (action === 'finish') updates.finished_at = new Date().toISOString();
           if (action === 'skip') updates.skipped_at = new Date().toISOString();
 
-          await supabase.from('onboarding_sessions').update(updates).eq('id', session.id);
+          const { error } = await supabase.from('onboarding_sessions').update(updates).eq('id', session.id);
+          if (error) throw error;
+        } else if (action === 'skip') {
+          const { error } = await supabase.from('onboarding_sessions').insert({
+            user_id: user.id,
+            role: profile.role,
+            status: 'skipped',
+            skipped_at: new Date().toISOString(),
+          });
+          if (error) throw error;
         }
       }
     },

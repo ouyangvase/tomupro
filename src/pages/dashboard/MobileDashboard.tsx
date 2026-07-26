@@ -16,7 +16,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBND } from '@/lib/currency';
-import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
 import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { cn } from '@/lib/utils';
@@ -506,8 +505,6 @@ function DriverMobileDashboard() {
 export function MobileDashboard() {
   const { role, profileStatus } = useAuth();
   
-  useRealtimeUpdates();
-
   if (profileStatus === 'loading' || profileStatus === 'idle' || !role) {
     return <MobileDashboardLoading />;
   }

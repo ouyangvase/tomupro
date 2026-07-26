@@ -4,7 +4,6 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { MobileDashboard } from '@/pages/dashboard/MobileDashboard';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { RoleHeroBanner } from '@/components/dashboard/RoleHeroBanner';
 import capybaraLoading from '@/assets/capybara-loading.png';
 
@@ -32,8 +31,6 @@ export default function Dashboard() {
   const { profile, role, loading, profileStatus, profileError, retryProfile, resetSession } = useAuth();
   const { isDesktop } = useDevice();
   
-  useRealtimeUpdates();
-
   if (profileStatus === 'loading' || profileStatus === 'idle') {
     return <DashboardLoading />;
   }

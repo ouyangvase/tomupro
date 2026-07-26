@@ -193,6 +193,20 @@ export default function DispatchModule() {
     </Card>
   ) : null;
 
+  if (assistantBindingLoading) {
+    return <Loading />;
+  }
+
+  const canAccessDispatch = role === 'runner'
+    || role === 'admin'
+    || role === 'manager'
+    || role === 'operator'
+    || isAssistantContext;
+
+  if (role && !canAccessDispatch) {
+    return <Navigate to="/" replace />;
+  }
+
   if (activeTab === 'inbound') {
     return <Navigate to="/inventory?tab=inbound" replace />;
   }

@@ -906,20 +906,6 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
     setAssignmentOrderLimit(selectedRows.length);
   }, [selectedRows.length]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel('runner-driver-inbox')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
-        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-area-summary'] });
-        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-locality-summary'] });
-        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-driver-workloads'] });
-        queryClient.invalidateQueries({ queryKey: ['runner-driver-performance-orders'] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [queryClient]);
-
   const clearSelection = () => {
     setSelectedRows([]);
     setSelectedAreaOrderSnapshots([]);

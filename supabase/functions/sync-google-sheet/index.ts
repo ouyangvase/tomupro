@@ -318,7 +318,7 @@ Deno.serve(async (req) => {
   let triggeredBy = "manual";
   try {
     const body = await req.json();
-    triggeredBy = body?.trigger || body?.manual ? "manual" : "auto";
+    triggeredBy = body?.manual === true ? "manual" : "auto";
   } catch {
     // no body is fine
   }
