@@ -58,7 +58,7 @@ export function useDriverReturns() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['driver-returns'],
+    queryKey: ['driver-returns', user?.id],
     queryFn: async () => {
       if (!user?.id) throw new Error('Not authenticated');
 
@@ -74,6 +74,9 @@ export function useDriverReturns() {
       if (error) throw error;
       return data as DriverReturn[];
     },
+    enabled: !!user?.id,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   });
 }
 

@@ -1,277 +1,195 @@
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { useDriverReturns, useCreateReturn } from '@/hooks/useDriverReturns';
-import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
-import { useDriverParentRunnerId } from '@/hooks/useDrivers';
-import { CreateReturnDialog } from '@/components/driver/CreateReturnDialog';
+import { useMemo, useState } from 'react';
+import { format, parseISO } from 'date-fns';
+import { AlertTriangle, ArrowRight, CheckCircle, Clock, PackageCheck, Plus, RotateCcw, XCircle } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import LocationTracker from '@/components/driver/LocationTracker';
-import { RotateCcw, Plus, CheckCircle, Clock, XCircle, AlertTriangle, PackageCheck, ArrowRight } from 'lucide-react';
-import { format } from 'date-fns';
+import { CreateReturnDialog } from '@/components/driver/CreateReturnDialog';
+import { DriverActivityDateGroup } from '@/components/driver/DriverActivityDateGroup';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useDriverParentRunnerId } from '@/hooks/useDrivers';
+import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
+import { useCreateReturn, useDriverReturns, type DriverReturn } from '@/hooks/useDriverReturns';
+
+function statusBadge(status: DriverReturn['status']) {
+  if (status === 'PENDING_RUNNER_ACK') {
+    return <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">Pending runner</Badge>;
+  }
+  if (status === 'RUNNER_ACKED') {
+    return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Acknowledged</Badge>;
+  }
+  return <Badge variant="outline" className="bg-muted text-muted-foreground">Cancelled</Badge>;
+}
 
 export default function DriverReturnsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const { data: returns, isLoading } = useDriverReturns();
-  const { data: returnRequired, isLoading: isLoadingReturn } = useDriverReturnRequired();
+  const { data: returns = [], isLoading, isError, refetch, isFetching } = useDriverReturns();
+  const { data: returnRequired } = useDriverReturnRequired();
   const { data: parentRunnerId, isLoading: isLoadingRunnerId } = useDriverParentRunnerId();
   const createReturn = useCreateReturn();
 
-  const pendingReturns = returns?.filter(r => r.status === 'PENDING_RUNNER_ACK') || [];
-  const acknowledgedReturns = returns?.filter(r => r.status === 'RUNNER_ACKED') || [];
+  const dateGroups = useMemo(() => {
+    const groups = new Map<string, DriverReturn[]>();
+    returns.forEach((driverReturn) => {
+      const key = driverReturn.created_at.slice(0, 10);
+      groups.set(key, [...(groups.get(key) || []), driverReturn]);
+    });
+    return Array.from(groups.entries());
+  }, [returns]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'PENDING_RUNNER_ACK':
-        return <Badge variant="outline" className="bg-amber-50 text-amber-700"><Clock className="h-3 w-3 mr-1" />Pending Runner</Badge>;
-      case 'RUNNER_ACKED':
-        return <Badge variant="outline" className="bg-green-50 text-green-700"><CheckCircle className="h-3 w-3 mr-1" />Acknowledged</Badge>;
-      case 'CANCELLED':
-        return <Badge variant="outline" className="bg-muted text-muted-foreground"><XCircle className="h-3 w-3 mr-1" />Cancelled</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
-  // One-click accept to submit all must-return items
   const handleQuickAccept = async () => {
     if (!parentRunnerId || !returnRequired?.mustReturnItems.length) return;
 
     await createReturn.mutateAsync({
       runner_id: parentRunnerId,
       notes: 'Auto-suggested return for failed/undelivered items',
-      items: returnRequired.mustReturnItems.map(item => ({
+      items: returnRequired.mustReturnItems.map((item) => ({
         product_id: item.product_id,
         qty: item.suggested_return_qty,
       })),
     });
   };
 
-  if (isLoading) {
-    return (
-      <AppLayout>
-        <div className="text-center py-12 text-muted-foreground">Loading returns...</div>
-      </AppLayout>
-    );
-  }
-
   return (
     <AppLayout>
-      <div className="mx-auto w-full min-w-0 max-w-2xl space-y-5 overflow-x-hidden pb-24">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mx-auto w-full min-w-0 max-w-2xl space-y-4 overflow-x-hidden pb-24">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2">
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
               <RotateCcw className="h-6 w-6" />
               My Returns
             </h1>
-            <p className="text-muted-foreground">Submit and track stock returns to your runner</p>
+            <p className="text-sm text-muted-foreground">Tap a date to view returned items.</p>
           </div>
-          <Button className="w-full sm:w-auto" onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Return
+          <Button size="sm" className="shrink-0" onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            New
           </Button>
         </div>
 
-        {/* Action Required - One-Click Accept */}
         {returnRequired?.isReturnRequired && returnRequired.mustReturnItems.length > 0 && (
-          <Card className="border-2 border-destructive bg-destructive/5">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-                <CardTitle className="text-lg text-destructive">Action Required</CardTitle>
-              </div>
-              <CardDescription>
-                You have undelivered/failed items that need to be returned to your runner
-              </CardDescription>
+          <Card className="border-destructive/40 bg-destructive/5">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                Return required
+              </CardTitle>
+              <CardDescription>These items are not needed for upcoming deliveries.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Must Return Items with Breakdown */}
-              <div className="bg-background rounded-lg p-3 border border-destructive/30">
-                <p className="text-sm font-medium mb-2 text-destructive">Must Return (Not Needed Tomorrow):</p>
-                <div className="space-y-3">
-                  {returnRequired.mustReturnItems.map(item => (
-                    <div key={item.product_id} className="min-w-0 rounded border bg-muted/30 p-2">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <span className="break-words text-sm font-medium">
-                          {item.sku_code || 'N/A'} / {item.sku_name}
-                        </span>
-                        <Badge variant="destructive" className="font-mono">
-                          Return: {item.suggested_return_qty}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span>Picked: <strong className="text-foreground">{item.pickup_qty}</strong></span>
-                        <span>−</span>
-                        <span>Delivered: <strong className="text-foreground">{item.delivered_qty}</strong></span>
-                        <span>−</span>
-                        <span>Returned: <strong className="text-foreground">{item.returned_qty}</strong></span>
-                        <span>=</span>
-                        <span className="text-destructive font-medium">Available: {item.available_qty}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t mt-3 pt-3 flex justify-between items-center">
-                  <span className="font-medium">Total to Return</span>
-                  <Badge variant="destructive" className="font-mono">{returnRequired.totalMustReturn}</Badge>
-                </div>
-              </div>
-
-              {/* Keep for Tomorrow Items */}
-              {returnRequired.keepForTomorrowItems.length > 0 && (
-                <div className="bg-amber-50/50 dark:bg-amber-900/10 rounded-lg p-3 border border-amber-300">
-                  <p className="text-sm font-medium mb-2 text-amber-700 dark:text-amber-400">Keep for Tomorrow (Excluded):</p>
-                  <div className="space-y-2">
-                    {returnRequired.keepForTomorrowItems.map(item => (
-                      <div key={item.product_id} className="flex min-w-0 items-start justify-between gap-3 text-sm">
-                        <span className="min-w-0 break-words text-muted-foreground">
-                          {item.sku_code || 'N/A'} / {item.sku_name}
-                        </span>
-                        <Badge variant="outline" className="font-mono border-amber-500 text-amber-700">
-                          × {item.needed_tomorrow_qty} needed
-                        </Badge>
-                      </div>
-                    ))}
+            <CardContent className="space-y-3 p-4 pt-2">
+              <div className="space-y-2 rounded-lg border border-destructive/20 bg-background p-3">
+                {returnRequired.mustReturnItems.map((item) => (
+                  <div key={item.product_id} className="flex items-start justify-between gap-3 text-sm">
+                    <span className="min-w-0 break-words font-medium">
+                      {item.sku_code || 'N/A'} / {item.sku_name}
+                    </span>
+                    <Badge variant="destructive" className="shrink-0">x {item.suggested_return_qty}</Badge>
                   </div>
-                </div>
-              )}
-
-              {/* One-click accept button */}
-              <Button 
-                className="w-full" 
-                size="lg"
+                ))}
+              </div>
+              <Button
+                className="w-full"
                 onClick={handleQuickAccept}
                 disabled={createReturn.isPending || isLoadingRunnerId || !parentRunnerId}
               >
-                {createReturn.isPending ? (
-                  'Submitting...'
-                ) : (
-                  <>
-                    <PackageCheck className="h-5 w-5 mr-2" />
-                    Accept & Submit Return
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </>
-                )}
+                <PackageCheck className="mr-2 h-4 w-4" />
+                {createReturn.isPending ? 'Submitting...' : 'Submit suggested return'}
+                {!createReturn.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
-              
-              <p className="text-xs text-muted-foreground text-center">
-                Click to submit all items for return. Your runner will acknowledge receipt.
-              </p>
             </CardContent>
           </Card>
         )}
 
-        {/* All Available Stock Info */}
         {returnRequired && returnRequired.totalAvailable > 0 && !returnRequired.isReturnRequired && (
-          <Alert className="border-primary/50 bg-primary/5">
+          <Alert className="border-primary/40 bg-primary/5">
             <PackageCheck className="h-4 w-4" />
-            <AlertTitle>Your Allocated Stock</AlertTitle>
+            <AlertTitle>No return needed</AlertTitle>
             <AlertDescription>
-              You have {returnRequired.totalAvailable} item(s) in allocated stock, all needed for upcoming deliveries.
+              Your {returnRequired.totalAvailable} allocated item(s) are needed for upcoming deliveries.
             </AlertDescription>
           </Alert>
         )}
 
-        {/* Pending Returns - Waiting for Runner */}
-        {pendingReturns.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Clock className="h-5 w-5 text-amber-600" />
-              Pending Runner Acknowledgement
-            </h2>
-            {pendingReturns.map(ret => (
-              <Card key={ret.id} className="border-amber-200 bg-amber-50/50">
-                <CardHeader className="pb-2">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <CardTitle className="text-base">
-                      Return - {format(new Date(ret.created_at), 'dd MMM yyyy HH:mm')}
-                    </CardTitle>
-                    {getStatusBadge(ret.status)}
-                  </div>
-                  <CardDescription>
-                    Waiting for runner to acknowledge receipt
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {ret.items?.map(item => (
-                      <div key={item.id} className="flex min-w-0 justify-between gap-3 text-sm">
-                        <span className="min-w-0 break-words font-medium">
-                          {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
-                        </span>
-                        <span className="font-medium">× {item.qty}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {ret.notes && (
-                    <p className="text-sm text-muted-foreground mt-2">
-                      <strong>Notes:</strong> {ret.notes}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Acknowledged Returns */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            Acknowledged Returns
-          </h2>
-          {acknowledgedReturns.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                No acknowledged returns yet
-              </CardContent>
-            </Card>
-          ) : (
-            acknowledgedReturns.map(ret => (
-              <Card key={ret.id}>
-                <CardHeader className="pb-2">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <CardTitle className="text-base">
-                      {format(new Date(ret.created_at), 'dd MMM yyyy')}
-                    </CardTitle>
-                    {getStatusBadge(ret.status)}
-                  </div>
-                  <CardDescription>
-                    Acknowledged at {ret.acknowledged_at 
-                      ? format(new Date(ret.acknowledged_at), 'dd MMM HH:mm')
-                      : '-'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-1">
-                    {ret.items?.map(item => (
-                      <div key={item.id} className="flex min-w-0 justify-between gap-3 text-sm">
-                        <span className="min-w-0 break-words font-medium">
-                          {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
-                        </span>
-                        <span className="font-medium">× {item.qty}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
-
-        {returns?.length === 0 && !returnRequired?.isReturnRequired && (
+        {isLoading ? (
           <Card>
-            <CardContent className="py-12 text-center">
-              <RotateCcw className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No returns submitted yet</p>
-              <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Submit Your First Return
-              </Button>
+            <CardContent className="py-10 text-center text-muted-foreground">Loading returns...</CardContent>
+          </Card>
+        ) : isError ? (
+          <Card>
+            <CardContent className="space-y-3 py-8 text-center">
+              <p className="text-muted-foreground">Return records could not be loaded.</p>
+              <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>Try again</Button>
             </CardContent>
           </Card>
+        ) : dateGroups.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center">
+              <RotateCcw className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+              <p className="font-semibold">No return history</p>
+              <p className="mt-1 text-sm text-muted-foreground">Submitted returns will appear here.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div>
+            <h2 className="mb-3 text-lg font-semibold">Return history</h2>
+            <Card className="overflow-hidden">
+              {dateGroups.map(([dateKey, group]) => {
+                return (
+                  <DriverActivityDateGroup
+                    key={dateKey}
+                    date={format(parseISO(dateKey), 'dd MMM yyyy')}
+                  >
+                    {group.map((driverReturn) => (
+                      <section key={driverReturn.id} className="rounded-lg border border-border/70 bg-background p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold">{driverReturn.runner?.display_name || 'Runner'}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              Submitted {format(new Date(driverReturn.created_at), 'HH:mm')}
+                            </p>
+                          </div>
+                          {statusBadge(driverReturn.status)}
+                        </div>
+
+                        <div className="mt-3 space-y-2 border-y border-border/60 py-3">
+                          {(driverReturn.items || []).map((item) => (
+                            <div key={item.id} className="flex items-start justify-between gap-3 text-sm">
+                              <span className="min-w-0 break-words font-medium">
+                                {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
+                              </span>
+                              <span className="shrink-0 font-bold">x {item.qty}</span>
+                            </div>
+                          ))}
+                          {!driverReturn.items?.length && <p className="text-sm text-muted-foreground">No items listed</p>}
+                        </div>
+
+                        {driverReturn.status === 'PENDING_RUNNER_ACK' && (
+                          <p className="mt-3 flex items-center gap-2 text-sm font-medium text-amber-700">
+                            <Clock className="h-4 w-4" /> Waiting for runner acknowledgement
+                          </p>
+                        )}
+                        {driverReturn.status === 'RUNNER_ACKED' && driverReturn.acknowledged_at && (
+                          <p className="mt-3 flex items-center gap-2 text-sm font-medium text-emerald-700">
+                            <CheckCircle className="h-4 w-4" />
+                            Acknowledged {format(new Date(driverReturn.acknowledged_at), 'dd MMM, HH:mm')}
+                          </p>
+                        )}
+                        {driverReturn.status === 'CANCELLED' && (
+                          <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                            <XCircle className="h-4 w-4" /> Return cancelled
+                          </p>
+                        )}
+                        {driverReturn.notes && (
+                          <p className="mt-2 break-words text-sm text-muted-foreground">Notes: {driverReturn.notes}</p>
+                        )}
+                      </section>
+                    ))}
+                  </DriverActivityDateGroup>
+                );
+              })}
+            </Card>
+          </div>
         )}
 
         <CreateReturnDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />

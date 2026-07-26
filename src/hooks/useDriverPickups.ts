@@ -290,6 +290,8 @@ export function useDriverPickups() {
       return data as DriverPickup[];
     },
     enabled: !!user?.id,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   });
 }
 
@@ -350,6 +352,7 @@ export function useCreatePickup() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
       queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
       queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
       queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
@@ -425,7 +428,10 @@ export function useAcknowledgePickup() {
           status: 'DRIVER_ACKED',
           acknowledged_at: new Date().toISOString(),
         })
-        .eq('id', pickupId);
+        .eq('id', pickupId)
+        .eq('status', 'PENDING_DRIVER_ACK')
+        .select('id')
+        .single();
       if (error) throw error;
     },
     onSuccess: () => {
