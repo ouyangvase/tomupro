@@ -109,6 +109,9 @@ const actionFilterOptions = [
   { value: 'receipt_force_confirmed', label: 'Force Confirmed' },
   { value: 'status_changed', label: 'Status Changed' },
   { value: 'DELIVERY_FAILED', label: 'Failed Delivery' },
+  { value: 'DRIVER_DELIVERY_ACCEPTED', label: 'Driver Delivery Accepted' },
+  { value: 'DRIVER_FAILURE_ACCEPTED', label: 'Driver Failure Accepted' },
+  { value: 'DRIVER_REPORT_REJECTED', label: 'Driver Report Rejected' },
   { value: 'CANCELLED', label: 'Cancelled' },
 ];
 

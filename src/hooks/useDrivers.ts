@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { RunnerDriver, Profile } from '@/types/database';
-import { createDriverCashLiability } from '@/hooks/useCashLiabilities';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { DRIVER_WORKLOAD_STATUSES, isDriverWorkloadOrder } from '@/lib/driverOrderScope';
 import { useAuth } from '@/contexts/AuthContext';
@@ -346,23 +345,6 @@ export function useDriverMarkDelivered() {
       
       if (error) throw error;
 
-      // Cash liability is only for the cash portion; transfer balance is not collected from driver.
-      if (collectedCash > 0 && order.runner_id) {
-        try {
-          await createDriverCashLiability({
-            driverId: user.id,
-            runnerId: order.runner_id,
-            orderId,
-            orderCode: order.order_code,
-            customerName: order.customer_name,
-            cashAmount: collectedCash,
-          });
-        } catch (liabilityError) {
-          // Log but don't fail the main operation
-          console.warn('Failed to create cash liability:', liabilityError);
-        }
-      }
-      
       return data;
     },
     onSuccess: (_, { orderId, paymentMethod }) => {
@@ -425,8 +407,7 @@ export function useDriverMarkFailed() {
   });
 }
 
-// Runner accepts driver delivery
-// Note: Cash liability is now created by the driver at delivery time, not on runner acceptance
+// Runner accepts driver delivery. The RPC creates any cash liability atomically.
 export function useRunnerAcceptDelivery() {
   const queryClient = useQueryClient();
   const { user } = useAuth();

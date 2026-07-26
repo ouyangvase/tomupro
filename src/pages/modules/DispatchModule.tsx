@@ -108,7 +108,12 @@ export default function DispatchModule() {
     ...(assistantBinding?.can_manage_driver_inbox ? [{ id: 'driver-inbox', label: 'Driver Inbox' }] : []),
     ...(assistantBinding?.can_view_driver_workload ? [{ id: 'driver-workload', label: 'Driver Workload' }] : []),
     ...(assistantBinding?.can_manage_driver_operations ? [{ id: 'drivers', label: 'Driver Operations' }] : []),
-    ...(assistantBinding?.can_manage_driver_stock ? [{ id: 'driver-stock', label: 'Driver Stock' }] : []),
+    ...((assistantBinding?.can_manage_driver_stock || assistantBinding?.can_manage_cash_settlement)
+      ? [{
+          id: 'driver-stock',
+          label: assistantBinding?.can_manage_driver_stock ? 'Driver Stock' : 'Cash Settlement',
+        }]
+      : []),
     ...(assistantBinding?.can_deliver ? [{ id: 'delivered', label: 'Delivered Orders' }] : []),
   ];
 
@@ -116,7 +121,9 @@ export default function DispatchModule() {
   const canUseDriverInbox = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_inbox));
   const canUseDriverWorkload = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_view_driver_workload));
   const canUseDriverOperations = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_operations));
-  const canUseDriverStock = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_stock));
+  const canUseDriverStock = role === 'runner' || (isAssistantContext && Boolean(
+    assistantBinding?.can_manage_driver_stock || assistantBinding?.can_manage_cash_settlement
+  ));
   const canUseCashSettlement = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_cash_settlement));
 
   // Redirect unknown tabs to inbox (inside useEffect to avoid render-time state updates)
@@ -279,6 +286,7 @@ export default function DispatchModule() {
                 <RunnerDriverStockWorkspace
                   runnerIdOverride={assistantRunnerId}
                   hideCashSettlement={!canUseCashSettlement}
+                  hideDriverStock={isAssistantContext && !assistantBinding?.can_manage_driver_stock}
                 />
               </TabErrorBoundary>
             )}

@@ -123,6 +123,7 @@ export function useRunnerAcceptedDriverDeliveries(runnerIdOverride?: string) {
         .from('orders')
         .select('id, order_code, total_amount, delivered_at, driver_id, driver:profiles!orders_driver_id_fkey(display_name), order_items(qty)')
         .eq('runner_id', runnerScopeId!)
+        .eq('driver_status', 'DRIVER_DELIVERED')
         .eq('runner_accept_status', 'ACCEPTED')
         .not('driver_id', 'is', null)
         .order('delivered_at', { ascending: false })
@@ -479,43 +480,6 @@ export async function createCashLiability(params: {
   const { data, error } = await supabase
     .from('cash_liabilities')
     .insert({
-      runner_id: params.runnerId,
-      order_id: params.orderId,
-      order_code: params.orderCode,
-      customer_name: params.customerName,
-      cash_amount: params.cashAmount,
-      delivered_at: new Date().toISOString(),
-      status: 'OPEN',
-    })
-    .select()
-    .single();
-
-  if (error) {
-    // Ignore duplicate key errors (order already has liability)
-    if (error.code === '23505') {
-      console.warn('Cash liability already exists for order:', params.orderId);
-      return null;
-    }
-    throw error;
-  }
-
-  return data;
-}
-
-// Create cash liability for driver-to-runner flow
-// Called when driver marks delivered with CASH payment
-export async function createDriverCashLiability(params: {
-  driverId: string;
-  runnerId: string;
-  orderId: string;
-  orderCode: string;
-  customerName: string | null;
-  cashAmount: number;
-}) {
-  const { data, error } = await supabase
-    .from('cash_liabilities')
-    .insert({
-      driver_id: params.driverId,
       runner_id: params.runnerId,
       order_id: params.orderId,
       order_code: params.orderCode,

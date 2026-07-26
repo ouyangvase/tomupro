@@ -197,13 +197,15 @@ function PickupNeedsPanel({
 type RunnerDriverStockWorkspaceProps = {
   runnerIdOverride?: string;
   hideCashSettlement?: boolean;
+  hideDriverStock?: boolean;
 };
 
 export default function RunnerDriverStockWorkspace({
   runnerIdOverride,
   hideCashSettlement = false,
+  hideDriverStock = false,
 }: RunnerDriverStockWorkspaceProps = {}) {
-  const [activeTab, setActiveTab] = useState('pickups');
+  const [activeTab, setActiveTab] = useState(hideDriverStock ? 'cash' : 'pickups');
   const [driverFilter, setDriverFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [pickupStatusFilter, setPickupStatusFilter] = useState('all');
@@ -232,8 +234,10 @@ export default function RunnerDriverStockWorkspace({
   useEffect(() => {
     if (hideCashSettlement && activeTab === 'cash') {
       setActiveTab('pickups');
+    } else if (hideDriverStock && activeTab !== 'cash') {
+      setActiveTab('cash');
     }
-  }, [activeTab, hideCashSettlement]);
+  }, [activeTab, hideCashSettlement, hideDriverStock]);
 
   const handleSettleDriver = async (driverId: string) => {
     setSettlingDriverId(driverId);
@@ -419,65 +423,75 @@ export default function RunnerDriverStockWorkspace({
       <div className="rounded-3xl border border-border/60 bg-card p-4 shadow-sm md:p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">Driver Stock Desk</p>
-            <h1 className="mt-2 text-2xl font-black leading-tight text-foreground md:text-3xl">Pickups, Returns, Stock and Cash</h1>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">
+              {hideDriverStock ? 'Cash Settlement' : 'Driver Stock Desk'}
+            </p>
+            <h1 className="mt-2 text-2xl font-black leading-tight text-foreground md:text-3xl">
+              {hideDriverStock ? 'Driver Cash Reconciliation' : 'Pickups, Returns, Stock and Cash'}
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              One workspace for driver pickup scheduling, return acknowledgement, allocated stock and cash settlement.
+              {hideDriverStock
+                ? 'Reconcile cash from Driver deliveries after Runner acceptance.'
+                : 'One workspace for driver pickup scheduling, return acknowledgement, allocated stock and cash settlement.'}
             </p>
           </div>
-          <CreatePickupDialog
-            open={pickupDialogOpen}
-            onOpenChange={(open) => {
-              setPickupDialogOpen(open);
-              if (!open) setQuickPickupDriverId(null);
-            }}
-            defaultDriverId={quickPickupDriverId || ''}
-            defaultItems={quickPickupNeed?.items}
-            defaultOrderIds={quickPickupNeed?.order_ids}
-            defaultOrderCodes={quickPickupNeed?.order_codes}
-            runnerIdOverride={runnerIdOverride}
-            trigger={
-              <Button onClick={() => {
-                setQuickPickupDriverId(null);
-                setPickupDialogOpen(true);
-              }}>
-                <PackagePlus className="mr-2 h-4 w-4" />
-                Create Pickup
-              </Button>
-            }
-          />
-          <CreatePickupDialog
-            open={editingPickup !== null}
-            onOpenChange={(open) => {
-              if (!open) setEditingPickup(null);
-            }}
-            pickup={editingPickup}
-            runnerIdOverride={runnerIdOverride}
-          />
+          {!hideDriverStock && (
+            <>
+              <CreatePickupDialog
+                open={pickupDialogOpen}
+                onOpenChange={(open) => {
+                  setPickupDialogOpen(open);
+                  if (!open) setQuickPickupDriverId(null);
+                }}
+                defaultDriverId={quickPickupDriverId || ''}
+                defaultItems={quickPickupNeed?.items}
+                defaultOrderIds={quickPickupNeed?.order_ids}
+                defaultOrderCodes={quickPickupNeed?.order_codes}
+                runnerIdOverride={runnerIdOverride}
+                trigger={
+                  <Button onClick={() => {
+                    setQuickPickupDriverId(null);
+                    setPickupDialogOpen(true);
+                  }}>
+                    <PackagePlus className="mr-2 h-4 w-4" />
+                    Create Pickup
+                  </Button>
+                }
+              />
+              <CreatePickupDialog
+                open={editingPickup !== null}
+                onOpenChange={(open) => {
+                  if (!open) setEditingPickup(null);
+                }}
+                pickup={editingPickup}
+                runnerIdOverride={runnerIdOverride}
+              />
+            </>
+          )}
         </div>
 
-        <div className={`mt-4 grid grid-cols-2 gap-2 ${hideCashSettlement ? 'md:grid-cols-3' : 'md:grid-cols-4'}`}>
-          <Card className="rounded-2xl border-border/60">
+        <div className={`mt-4 grid grid-cols-2 gap-2 ${hideDriverStock ? 'md:grid-cols-1' : hideCashSettlement ? 'md:grid-cols-3' : 'md:grid-cols-4'}`}>
+          {!hideDriverStock && <Card className="rounded-2xl border-border/60">
             <CardContent className="p-3">
               <PackagePlus className="mb-2 h-4 w-4 text-primary" />
               <p className="text-2xl font-black">{pendingPickups}</p>
               <p className="text-xs font-semibold text-muted-foreground">{activePickupOrderCount} active order(s)</p>
             </CardContent>
-          </Card>
-          <Card className="rounded-2xl border-border/60">
+          </Card>}
+          {!hideDriverStock && <Card className="rounded-2xl border-border/60">
             <CardContent className="p-3">
               <Undo2 className="mb-2 h-4 w-4 text-primary" />
               <p className="text-2xl font-black">{pendingReturns}</p>
               <p className="text-xs font-semibold text-muted-foreground">Pending returns</p>
             </CardContent>
-          </Card>
-          <Card className="rounded-2xl border-border/60">
+          </Card>}
+          {!hideDriverStock && <Card className="rounded-2xl border-border/60">
             <CardContent className="p-3">
               <Boxes className="mb-2 h-4 w-4 text-primary" />
               <p className="text-2xl font-black">{totalPendingStock}</p>
               <p className="text-xs font-semibold text-muted-foreground">{totalAllocated} allocated</p>
             </CardContent>
-          </Card>
+          </Card>}
           {!hideCashSettlement && (
             <Card className="rounded-2xl border-border/60">
               <CardContent className="p-3">
@@ -531,15 +545,15 @@ export default function RunnerDriverStockWorkspace({
         <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0">
           <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TabsList className="inline-flex h-11 w-max min-w-max justify-start rounded-2xl bg-secondary/40">
-              <TabsTrigger value="pickups" className="shrink-0 gap-2 rounded-xl px-3 whitespace-nowrap">
+              {!hideDriverStock && <TabsTrigger value="pickups" className="shrink-0 gap-2 rounded-xl px-3 whitespace-nowrap">
                 <Truck className="h-4 w-4" /> Pickups
-              </TabsTrigger>
-              <TabsTrigger value="returns" className="shrink-0 gap-2 rounded-xl px-3 whitespace-nowrap">
+              </TabsTrigger>}
+              {!hideDriverStock && <TabsTrigger value="returns" className="shrink-0 gap-2 rounded-xl px-3 whitespace-nowrap">
                 <RotateCcw className="h-4 w-4" /> Returns
-              </TabsTrigger>
-              <TabsTrigger value="stock" className="shrink-0 gap-2 rounded-xl px-3 whitespace-nowrap">
+              </TabsTrigger>}
+              {!hideDriverStock && <TabsTrigger value="stock" className="shrink-0 gap-2 rounded-xl px-3 whitespace-nowrap">
                 <Archive className="h-4 w-4" /> Allocated Stock
-              </TabsTrigger>
+              </TabsTrigger>}
               {!hideCashSettlement && (
                 <TabsTrigger value="cash" className="shrink-0 gap-2 rounded-xl px-3 whitespace-nowrap">
                   <Banknote className="h-4 w-4" /> Cash Settlement
