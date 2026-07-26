@@ -2,38 +2,98 @@ import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  useManagerRankingData, useAllManagersForRanking,
-  useToggleManagerRankingParticipant, useBulkUpdateManagerRankingParticipants,
-  type RankingPeriod, type RankingMetric, type ManagerRankingData
+  useManagerRankingData,
+  useAllManagersForRanking,
+  useToggleManagerRankingParticipant,
+  useBulkUpdateManagerRankingParticipants,
+  type RankingPeriod,
+  type RankingMetric,
+  type ManagerRankingData,
 } from '@/hooks/useManagerRanking';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { PageHero } from '@/components/dashboard/PageHero';
-import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { CapybaraState } from '@/components/dashboard/CapybaraState';
 import {
-  Trophy, TrendingUp, TrendingDown, Users, Crown, Medal, Settings, Search,
-  Award, Target, Zap, User, Sparkles, ChevronRight, Star, Flame, BarChart3, GitCompare
+  Award,
+  CalendarDays,
+  ChevronRight,
+  Crown,
+  Flame,
+  GitCompare,
+  Medal,
+  Search,
+  Settings,
+  Sparkles,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  Trophy,
+  User,
+  Users,
+  Zap,
 } from 'lucide-react';
 import { formatBND } from '@/lib/currency';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import capybaraManager from '@/assets/capybara-manager.png';
+
+const periodOptions: Array<{ value: RankingPeriod; label: string }> = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'yearly', label: 'Yearly' },
+];
+
+const metricOptions: Array<{
+  value: RankingMetric;
+  label: string;
+  icon: typeof Award;
+}> = [
+  { value: 'leadership_score', label: 'Leadership', icon: Award },
+  { value: 'team_gmv', label: 'Team GMV', icon: Sparkles },
+  { value: 'team_delivered', label: 'Delivered', icon: Target },
+];
 
 function getInitials(name: string) {
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function getMetricValue(manager: ManagerRankingData, metric: RankingMetric) {
+  if (metric === 'team_gmv') return formatBND(manager.team_realized_gmv);
+  if (metric === 'team_delivered') return manager.team_delivered_orders.toString();
+  return manager.leadership_score.toFixed(0);
+}
+
+function getMetricLabel(metric: RankingMetric) {
+  if (metric === 'team_gmv') return 'Team GMV';
+  if (metric === 'team_delivered') return 'Delivered';
+  return 'Leadership';
 }
 
 export default function ManagerRankingBoard() {
@@ -49,307 +109,308 @@ export default function ManagerRankingBoard() {
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState<'enable' | 'disable' | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
 
-  const { data: rankingData, isLoading } = useManagerRankingData(period, metric);
+  const { data: rankingData, isLoading, isFetching } = useManagerRankingData(period, metric);
   const { data: allManagers, isLoading: loadingManagers } = useAllManagersForRanking();
   const toggleParticipant = useToggleManagerRankingParticipant();
   const bulkUpdate = useBulkUpdateManagerRankingParticipants();
 
-  const filteredManagers = allManagers?.filter(m =>
-    m.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.email.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredManagers =
+    allManagers?.filter(
+      (manager) =>
+        manager.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        manager.email.toLowerCase().includes(searchQuery.toLowerCase()),
+    ) || [];
 
   const handleToggle = async (managerId: string, currentEnabled: boolean) => {
     try {
       await toggleParticipant.mutateAsync({ managerId, isEnabled: !currentEnabled });
       toast.success(!currentEnabled ? 'Manager added to ranking' : 'Manager removed from ranking');
-    } catch { toast.error('Failed to update participant'); }
+    } catch {
+      toast.error('Failed to update participant');
+    }
   };
 
   const handleBulkUpdate = async (enable: boolean) => {
-    const managerIds = allManagers?.map(m => m.id) || [];
     try {
-      await bulkUpdate.mutateAsync({ managerIds, isEnabled: enable });
+      await bulkUpdate.mutateAsync({
+        managerIds: allManagers?.map((manager) => manager.id) || [],
+        isEnabled: enable,
+      });
       toast.success(enable ? 'All managers enabled' : 'All managers disabled');
       setBulkConfirmOpen(null);
-    } catch { toast.error('Failed to update participants'); }
+    } catch {
+      toast.error('Failed to update participants');
+    }
   };
 
   const toggleCompare = (id: string) => {
-    setCompareIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 3 ? [...prev, id] : prev);
+    setCompareIds((current) =>
+      current.includes(id)
+        ? current.filter((managerId) => managerId !== id)
+        : current.length < 3
+          ? [...current, id]
+          : current,
+    );
   };
 
-  const topThree = rankingData?.slice(0, 3) || [];
-  const restOfList = rankingData?.slice(3) || [];
-  const podiumOrder = topThree.length >= 3
-    ? [topThree[1], topThree[0], topThree[2]]
-    : topThree.length === 2 ? [topThree[1], topThree[0]] : topThree;
-
-  const getMetricValue = (manager: ManagerRankingData) => {
-    switch (metric) {
-      case 'leadership_score': return manager.leadership_score.toFixed(0);
-      case 'team_gmv': return formatBND(manager.team_realized_gmv);
-      case 'team_delivered': return manager.team_delivered_orders.toString();
-    }
-  };
-
-  const getMetricLabel = () => {
-    switch (metric) {
-      case 'leadership_score': return 'Score';
-      case 'team_gmv': return 'GMV';
-      case 'team_delivered': return 'Delivered';
-    }
-  };
-
-  const totalGmv = rankingData?.reduce((s, m) => s + m.team_realized_gmv, 0) || 0;
-  const totalDelivered = rankingData?.reduce((s, m) => s + m.team_delivered_orders, 0) || 0;
-  const avgGrowth = rankingData && rankingData.length > 0
-    ? rankingData.reduce((s, m) => s + m.growth_pct, 0) / rankingData.length : 0;
-
-  const comparedManagers = (rankingData || []).filter(m => compareIds.includes(m.manager_id));
+  const rankings = rankingData || [];
+  const topThree = rankings.slice(0, 3);
+  const comparedManagers = rankings.filter((manager) => compareIds.includes(manager.manager_id));
+  const totalGmv = rankings.reduce((sum, manager) => sum + manager.team_realized_gmv, 0);
+  const totalDelivered = rankings.reduce((sum, manager) => sum + manager.team_delivered_orders, 0);
+  const avgGrowth = rankings.length
+    ? rankings.reduce((sum, manager) => sum + manager.growth_pct, 0) / rankings.length
+    : 0;
+  const periodLabel = periodOptions.find((option) => option.value === period)?.label || 'Monthly';
+  const metricLabel = getMetricLabel(metric);
 
   return (
     <AppLayout>
-      <div className="space-y-6 pb-8 max-w-6xl mx-auto">
-        {/* Hero */}
-        <PageHero
-          icon={<Trophy className="h-6 w-6 text-primary" />}
-          title="Leadership Arena"
-          subtitle="Lead your team to the top"
-          image={capybaraManager}
-          imageAlt="Strategy Capybara"
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex rounded-full border border-border/50 bg-card/80 backdrop-blur-sm p-1 shadow-sm">
-                {([
-                  { value: 'monthly' as const, label: 'Monthly' },
-                  { value: 'quarterly' as const, label: 'Quarterly' },
-                  { value: 'yearly' as const, label: 'Yearly' },
-                ]).map(tab => (
-                  <Button key={tab.value} variant={period === tab.value ? 'default' : 'ghost'} size="sm" onClick={() => setPeriod(tab.value)}
-                    className={cn("rounded-full text-xs px-4 transition-all", period === tab.value && "bg-primary text-primary-foreground shadow-md")}>
-                    {tab.label}
-                  </Button>
-                ))}
-              </div>
-              {isAdmin && (
-                <Sheet open={participantsOpen} onOpenChange={setParticipantsOpen}>
-                  <SheetTrigger asChild>
-                    <Button variant="outline" size="sm" className="rounded-full">
-                      <Settings className="h-4 w-4 mr-2" />Participants
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side={isMobile ? 'bottom' : 'right'} className={isMobile ? 'h-[90vh]' : ''}>
-                    <SheetHeader><SheetTitle>Manage Participants</SheetTitle></SheetHeader>
-                    <div className="py-4 space-y-4">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Search managers..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="flex-1" onClick={() => setBulkConfirmOpen('enable')}>Enable All</Button>
-                        <Button variant="outline" size="sm" className="flex-1" onClick={() => setBulkConfirmOpen('disable')}>Disable All</Button>
-                      </div>
-                      <ScrollArea className="h-[calc(100vh-280px)] md:h-[calc(100vh-220px)]">
-                        <div className="space-y-2">
-                          {loadingManagers ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />) : (
-                            filteredManagers.map((manager) => (
-                              <div key={manager.id} className="flex items-center justify-between p-3 rounded-xl border bg-card/50">
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium truncate">{manager.display_name}</p>
-                                  <p className="text-xs text-muted-foreground truncate">{manager.email}</p>
-                                  {!manager.is_active && <Badge variant="secondary" className="mt-1 text-xs">Inactive</Badge>}
-                                </div>
-                                <Switch checked={manager.is_enabled} onCheckedChange={() => handleToggle(manager.id, manager.is_enabled)} disabled={toggleParticipant.isPending} />
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </ScrollArea>
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              )}
+      <div className="mx-auto max-w-7xl space-y-5 pb-8">
+        <header className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Trophy className="h-5 w-5" />
             </div>
-          }
-        />
-
-        {/* Metric Selector */}
-        <div className="flex justify-center">
-          <div className="inline-flex rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5 gap-1 shadow-sm">
-            {([
-              { value: 'leadership_score', label: 'Leadership', icon: Award },
-              { value: 'team_gmv', label: 'Team GMV', icon: Sparkles },
-              { value: 'team_delivered', label: 'Delivered', icon: Target },
-            ] as const).map((item) => (
-              <Button key={item.value} variant={metric === item.value ? 'default' : 'ghost'} size="sm"
-                onClick={() => setMetric(item.value)}
-                className={cn("rounded-xl text-xs px-4 gap-2 transition-all", metric === item.value && "bg-primary text-primary-foreground shadow-md")}>
-                <item.icon className="h-4 w-4" />{item.label}
-              </Button>
-            ))}
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+                Performance
+              </p>
+              <h1 className="text-2xl font-black leading-tight sm:text-3xl">Manager ranking</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Compare leadership, team sales, and delivered orders.
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Summary Insight Cards */}
-        {rankingData && rankingData.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: "Managers", value: rankingData.length, icon: <Users className="h-4 w-4" />, isNum: true },
-              { label: "Total GMV", value: formatBND(totalGmv), icon: <Flame className="h-4 w-4" />, isNum: false },
-              { label: "Total Delivered", value: totalDelivered, icon: <Target className="h-4 w-4" />, isNum: true },
-              { label: "Avg Growth", value: `${avgGrowth >= 0 ? '+' : ''}${avgGrowth.toFixed(1)}%`, icon: <TrendingUp className="h-4 w-4" />, isNum: false },
-            ].map(item => (
-              <Card key={item.label} className="border-border/50 hover:shadow-md transition-shadow">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary">{item.icon}</div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{item.label}</p>
-                    <p className="font-bold text-lg">{item.isNum ? <AnimatedCounter value={item.value as number} /> : item.value}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="rounded-full border-primary/30 px-3 py-1 text-xs font-medium">
+              <CalendarDays className="mr-1.5 h-3 w-3" />
+              {periodLabel}
+            </Badge>
+            <div
+              className={cn(
+                'flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium',
+                isFetching
+                  ? 'bg-[hsl(var(--status-pending))]/20 text-[hsl(var(--status-pending))]'
+                  : 'bg-[hsl(var(--status-success))]/20 text-[hsl(var(--status-success))]',
+              )}
+            >
+              <span
+                className={cn(
+                  'h-2 w-2 rounded-full',
+                  isFetching
+                    ? 'animate-pulse bg-[hsl(var(--status-pending))]'
+                    : 'bg-[hsl(var(--status-success))]',
+                )}
+              />
+              Live
+            </div>
+            {isAdmin && (
+              <Sheet open={participantsOpen} onOpenChange={setParticipantsOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="rounded-full">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Participants
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side={isMobile ? 'bottom' : 'right'} className={isMobile ? 'h-[90dvh]' : ''}>
+                  <SheetHeader>
+                    <SheetTitle>Manage participants</SheetTitle>
+                  </SheetHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search managers..."
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setBulkConfirmOpen('enable')}
+                      >
+                        Enable all
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setBulkConfirmOpen('disable')}
+                      >
+                        Disable all
+                      </Button>
+                    </div>
+                    <ScrollArea className="h-[calc(90dvh-190px)] md:h-[calc(100vh-220px)]">
+                      <div className="space-y-2 pr-3">
+                        {loadingManagers
+                          ? Array.from({ length: 5 }).map((_, index) => (
+                              <Skeleton key={index} className="h-16 w-full" />
+                            ))
+                          : filteredManagers.map((manager) => (
+                              <div
+                                key={manager.id}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card/50 p-3"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate font-medium">{manager.display_name}</p>
+                                  <p className="truncate text-xs text-muted-foreground">{manager.email}</p>
+                                  {!manager.is_active && (
+                                    <Badge variant="secondary" className="mt-1 text-xs">
+                                      Inactive
+                                    </Badge>
+                                  )}
+                                </div>
+                                <Switch
+                                  checked={manager.is_enabled}
+                                  onCheckedChange={() => handleToggle(manager.id, manager.is_enabled)}
+                                  disabled={toggleParticipant.isPending}
+                                />
+                              </div>
+                            ))}
+                      </div>
+                    </ScrollArea>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                </SheetContent>
+              </Sheet>
+            )}
           </div>
-        )}
+        </header>
+
+        <section className="rounded-2xl border border-border/60 bg-card/70 p-2 shadow-sm">
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid grid-cols-3 rounded-xl bg-muted/40 p-1">
+              {periodOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPeriod(option.value)}
+                  className={cn(
+                    'h-9 rounded-lg px-2 text-xs transition-all sm:text-sm',
+                    period === option.value && 'bg-primary text-primary-foreground shadow-sm hover:bg-primary',
+                  )}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+            <div className="grid grid-cols-3 rounded-xl bg-muted/40 p-1">
+              {metricOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setMetric(option.value)}
+                  className={cn(
+                    'h-9 min-w-0 rounded-lg px-1.5 text-xs transition-all sm:px-3 sm:text-sm',
+                    metric === option.value && 'bg-primary text-primary-foreground shadow-sm hover:bg-primary',
+                  )}
+                >
+                  <option.icon className="mr-1.5 hidden h-3.5 w-3.5 sm:block" />
+                  <span className="truncate">{option.label}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        </section>
 
         {isLoading ? (
-          <div className="space-y-4">
-            <div className="flex justify-center gap-4 py-8">{[1, 2, 3].map(i => <Skeleton key={i} className="h-48 w-28 rounded-2xl" />)}</div>
-            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-2xl" />)}
-          </div>
-        ) : !rankingData?.length ? (
-          <CapybaraState type="empty" title="No Rankings Yet" description={isAdmin ? 'Add participants to get started.' : 'No managers are on the ranking board yet.'} />
+          <RankingSkeleton />
+        ) : !rankings.length ? (
+          <CapybaraState
+            type="empty"
+            title="No rankings yet"
+            description={isAdmin ? 'Add participants to start the board.' : 'No managers are on the board yet.'}
+          />
         ) : (
           <>
-            {/* Podium */}
-            {topThree.length > 0 && (
-              <div className="py-6">
-                <div className="flex items-end justify-center gap-3 md:gap-6">
-                  {podiumOrder.map((manager) => {
-                    if (!manager) return null;
-                    return (
-                      <PodiumCard key={manager.manager_id} manager={manager} metricValue={getMetricValue(manager)} onClick={() => setSelectedManager(manager)} />
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            <ManagerAwardStage
+              rankings={rankings}
+              topThree={topThree}
+              metric={metric}
+              metricLabel={metricLabel}
+              periodLabel={periodLabel}
+              onSelect={setSelectedManager}
+            />
 
-            {/* Awards */}
-            {topThree.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
-                  <Medal className="h-4 w-4 text-primary" /> Current Awards
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <AwardBadge title="Top Performer" manager={topThree[0]} icon={<Crown className="h-4 w-4" />} variant="gold" />
-                  <AwardBadge title="Best Growth" manager={rankingData.reduce((prev, curr) => (curr.growth_pct > prev.growth_pct) ? curr : prev)} icon={<TrendingUp className="h-4 w-4" />} variant="green" />
-                  <AwardBadge title="Most Delivered" manager={rankingData.reduce((prev, curr) => (curr.team_delivered_orders > prev.team_delivered_orders) ? curr : prev)} icon={<Target className="h-4 w-4" />} variant="orange" />
-                  <AwardBadge title="Rising Star" manager={rankingData[Math.min(2, rankingData.length - 1)]} icon={<Flame className="h-4 w-4" />} variant="gold" />
-                </div>
+            <section className="overflow-hidden rounded-2xl border border-border/60 bg-card/70 shadow-sm">
+              <div className="grid grid-cols-2 divide-x divide-y divide-border/50 sm:grid-cols-4 sm:divide-y-0">
+                <SnapshotMetric icon={Users} label="Managers" value={rankings.length} />
+                <SnapshotMetric icon={Flame} label="Total GMV" value={formatBND(totalGmv)} />
+                <SnapshotMetric icon={Target} label="Delivered" value={totalDelivered} />
+                <SnapshotMetric
+                  icon={TrendingUp}
+                  label="Avg growth"
+                  value={`${avgGrowth >= 0 ? '+' : ''}${avgGrowth.toFixed(1)}%`}
+                />
               </div>
-            )}
+            </section>
 
-            {/* Comparison Panel */}
             {comparedManagers.length >= 2 && (
-              <Card className="border-primary/20 overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-primary/10 to-transparent pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <GitCompare className="h-4 w-4 text-primary" /> Manager Comparison
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border/30">
-                          <th className="text-left p-2 text-muted-foreground font-medium text-xs">Metric</th>
-                          {comparedManagers.map(m => (
-                            <th key={m.manager_id} className="text-center p-2">
-                              <div className="flex flex-col items-center gap-1">
-                                <Avatar className="h-8 w-8">
-                                  <AvatarImage src={m.manager_avatar_url || undefined} />
-                                  <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(m.manager_name)}</AvatarFallback>
-                                </Avatar>
-                                <span className="font-semibold text-xs">{m.manager_name}</span>
-                              </div>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          { label: 'Rank', get: (m: ManagerRankingData) => `#${m.rank}` },
-                          { label: 'Team GMV', get: (m: ManagerRankingData) => formatBND(m.team_realized_gmv) },
-                          { label: 'Delivered', get: (m: ManagerRankingData) => m.team_delivered_orders.toString() },
-                          { label: 'Growth', get: (m: ManagerRankingData) => `${m.growth_pct >= 0 ? '+' : ''}${m.growth_pct.toFixed(1)}%` },
-                          { label: 'Leadership', get: (m: ManagerRankingData) => m.leadership_score.toFixed(0) },
-                        ].map(row => (
-                          <tr key={row.label} className="border-b border-border/20">
-                            <td className="p-2 text-muted-foreground text-xs font-medium">{row.label}</td>
-                            {comparedManagers.map(m => (
-                              <td key={m.manager_id} className="p-2 text-center font-semibold">{row.get(m)}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => setCompareIds([])}>
-                    Clear Comparison
-                  </Button>
-                </CardContent>
-              </Card>
+              <ComparisonPanel managers={comparedManagers} onClear={() => setCompareIds([])} />
             )}
 
-            {/* Rest of Rankings */}
-            {restOfList.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Star className="h-4 w-4" /> All Rankings
-                  </h3>
-                  {compareIds.length > 0 && compareIds.length < 2 && (
-                    <span className="text-xs text-muted-foreground">Select {2 - compareIds.length} more to compare</span>
-                  )}
+            <section className="space-y-3">
+              <div className="flex items-end justify-between gap-3 px-1">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Full board</p>
+                  <h2 className="text-lg font-bold">All manager rankings</h2>
                 </div>
-                {restOfList.map((manager) => (
-                  <RankingCard key={manager.manager_id} data={manager} metricValue={getMetricValue(manager)}
-                    metricLabel={getMetricLabel()} onClick={() => setSelectedManager(manager)}
+                <Badge variant="outline" className="rounded-full">
+                  {rankings.length} managers
+                </Badge>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/70 shadow-sm">
+                {rankings.map((manager) => (
+                  <RankingRow
+                    key={manager.manager_id}
+                    data={manager}
+                    metric={metric}
                     isComparing={compareIds.includes(manager.manager_id)}
-                    onToggleCompare={() => toggleCompare(manager.manager_id)} />
+                    onToggleCompare={() => toggleCompare(manager.manager_id)}
+                    onClick={() => setSelectedManager(manager)}
+                  />
                 ))}
               </div>
-            )}
 
-            {/* Compare hint for top 3 */}
-            {rankingData && rankingData.length >= 2 && compareIds.length === 0 && (
-              <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-muted/30 border border-border/30">
-                <GitCompare className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Click the compare icon on ranking cards to compare managers side by side</span>
-              </div>
-            )}
+              {compareIds.length === 1 && (
+                <p className="px-1 text-xs text-muted-foreground">Select one more manager to compare.</p>
+              )}
+            </section>
           </>
         )}
 
-        {/* Details Drawer */}
-        <Sheet open={!!selectedManager} onOpenChange={() => setSelectedManager(null)}>
-          <SheetContent side={isMobile ? 'bottom' : 'right'} className={isMobile ? 'h-[90vh]' : ''}>
-            {selectedManager && <ManagerDetailsDrawer data={selectedManager} metric={metric} />}
+        <Sheet open={!!selectedManager} onOpenChange={(open) => !open && setSelectedManager(null)}>
+          <SheetContent side={isMobile ? 'bottom' : 'right'} className={isMobile ? 'h-[90dvh]' : ''}>
+            {selectedManager && <ManagerDetailsDrawer data={selectedManager} />}
           </SheetContent>
         </Sheet>
 
-        {/* Bulk Confirm */}
         <AlertDialog open={!!bulkConfirmOpen} onOpenChange={() => setBulkConfirmOpen(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>{bulkConfirmOpen === 'enable' ? 'Enable All Managers?' : 'Disable All Managers?'}</AlertDialogTitle>
-              <AlertDialogDescription>{bulkConfirmOpen === 'enable' ? 'All managers will appear on the ranking board.' : 'All managers will be removed from the ranking board.'}</AlertDialogDescription>
+              <AlertDialogTitle>
+                {bulkConfirmOpen === 'enable' ? 'Enable all managers?' : 'Disable all managers?'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {bulkConfirmOpen === 'enable'
+                  ? 'All managers will appear on the ranking board.'
+                  : 'All managers will be removed from the ranking board.'}
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => handleBulkUpdate(bulkConfirmOpen === 'enable')} disabled={bulkUpdate.isPending} className="bg-primary text-primary-foreground">
+              <AlertDialogAction
+                onClick={() => handleBulkUpdate(bulkConfirmOpen === 'enable')}
+                disabled={bulkUpdate.isPending}
+              >
                 Confirm
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -360,138 +421,317 @@ export default function ManagerRankingBoard() {
   );
 }
 
-// ─── Podium Card ────────────────────────────────────────
-function PodiumCard({ manager, metricValue, onClick }: { manager: ManagerRankingData; metricValue: string; onClick: () => void }) {
-  const isFirst = manager.rank === 1;
-  const isSecond = manager.rank === 2;
-
-  const getPodiumHeight = () => isFirst ? 'h-40 md:h-48' : isSecond ? 'h-32 md:h-40' : 'h-28 md:h-36';
-  const getAvatarSize = () => isFirst ? 'h-20 w-20 md:h-24 md:w-24' : 'h-16 w-16 md:h-20 md:w-20';
-  const getAvatarRing = () => isFirst ? 'ring-4 ring-primary shadow-lg shadow-primary/30' : isSecond ? 'ring-4 ring-muted-foreground/40 shadow-lg shadow-muted-foreground/20' : 'ring-4 ring-[hsl(25,80%,55%)]/40 shadow-lg shadow-[hsl(25,80%,55%)]/20';
-  const getCrownColor = () => isFirst ? 'text-primary' : isSecond ? 'text-muted-foreground' : 'text-[hsl(25,80%,55%)]';
-  const getPodiumBg = () => isFirst ? 'bg-gradient-to-b from-primary/15 to-primary/5 border-primary/30' : isSecond ? 'bg-gradient-to-b from-muted/60 to-muted/20 border-muted-foreground/30' : 'bg-gradient-to-b from-[hsl(25,80%,55%)]/15 to-[hsl(25,80%,55%)]/5 border-[hsl(25,80%,55%)]/30';
-  const getRankColor = () => isFirst ? 'text-primary' : isSecond ? 'text-muted-foreground' : 'text-[hsl(25,80%,55%)]';
-
+function RankingSkeleton() {
   return (
-    <div className={cn("flex flex-col items-center cursor-pointer transition-all duration-300 hover:scale-105 group", isFirst && "order-2", isSecond && "order-1", !isFirst && !isSecond && "order-3")} onClick={onClick}>
-      <div className="relative mb-3">
-        <div className={cn("absolute -top-4 left-1/2 -translate-x-1/2 z-10 transition-transform duration-300 group-hover:-translate-y-1", getCrownColor())}>
-          <Crown className={cn("drop-shadow-md", isFirst ? "h-7 w-7 md:h-8 md:w-8" : "h-5 w-5 md:h-6 md:w-6")} fill="currentColor" />
-        </div>
-        <Avatar className={cn(getAvatarSize(), getAvatarRing(), "border-4 border-background transition-all duration-300")}>
-          <AvatarImage src={manager.manager_avatar_url || undefined} alt={manager.manager_name} />
-          <AvatarFallback className={cn("text-lg md:text-xl font-bold", isFirst ? "bg-primary/20 text-primary" : isSecond ? "bg-muted text-muted-foreground" : "bg-[hsl(25,80%,55%)]/20 text-[hsl(25,80%,55%)]")}>
-            {getInitials(manager.manager_name)}
-          </AvatarFallback>
-        </Avatar>
-      </div>
-      <div className={cn("w-28 md:w-36 rounded-t-2xl flex flex-col items-center justify-start pt-4 px-3 border-t-2 border-x-2 transition-all duration-300", getPodiumHeight(), getPodiumBg())}>
-        <div className={cn("text-3xl md:text-4xl font-bold mb-1 transition-transform duration-300 group-hover:scale-110", getRankColor())}>#{manager.rank}</div>
-        <p className="text-sm md:text-base font-semibold text-center truncate w-full">{manager.manager_name.split(' ')[0]}</p>
-        <p className="text-xs text-muted-foreground mt-1">{metricValue}</p>
-        {manager.growth_pct !== 0 && (
-          <div className={cn("flex items-center gap-0.5 text-xs mt-2 px-2 py-0.5 rounded-full",
-            manager.growth_pct > 0 ? "text-[hsl(var(--status-success))] bg-[hsl(var(--status-success))]/10" : "text-[hsl(var(--status-error))] bg-[hsl(var(--status-error))]/10"
-          )}>
-            {manager.growth_pct > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            {Math.abs(manager.growth_pct).toFixed(0)}%
-          </div>
-        )}
-      </div>
+    <div className="space-y-4">
+      <Skeleton className="h-[380px] w-full rounded-[28px]" />
+      <Skeleton className="h-24 w-full rounded-2xl" />
+      <Skeleton className="h-64 w-full rounded-2xl" />
     </div>
   );
 }
 
-// ─── Award Badge ────────────────────────────────────────
-function AwardBadge({ title, manager, icon, variant }: { title: string; manager: ManagerRankingData | null; icon: React.ReactNode; variant: 'gold' | 'green' | 'orange' }) {
-  const styles = {
-    gold: "bg-gradient-to-br from-primary/15 to-primary/5 border-primary/30",
-    green: "bg-gradient-to-br from-[hsl(var(--status-success))]/15 to-[hsl(var(--status-success))]/5 border-[hsl(var(--status-success))]/30",
-    orange: "bg-gradient-to-br from-[hsl(25,80%,55%)]/15 to-[hsl(25,80%,55%)]/5 border-[hsl(25,80%,55%)]/30",
-  }[variant];
-
-  return (
-    <div className={cn("flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-md hover:-translate-y-0.5", styles)}>
-      <div className="p-2 rounded-lg bg-card shadow-sm">{icon}</div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{title}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          {manager && (
-            <Avatar className="h-5 w-5">
-              <AvatarImage src={manager.manager_avatar_url || undefined} />
-              <AvatarFallback className="text-[10px] bg-muted">{getInitials(manager.manager_name)}</AvatarFallback>
-            </Avatar>
-          )}
-          <p className="font-semibold truncate text-sm">{manager?.manager_name || 'TBD'}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Ranking Card ────────────────────────────────────────
-function RankingCard({ data, metricValue, metricLabel, onClick, isComparing, onToggleCompare }: {
-  data: ManagerRankingData; metricValue: string; metricLabel: string; onClick: () => void;
-  isComparing: boolean; onToggleCompare: () => void;
+function SnapshotMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Users;
+  label: string;
+  value: React.ReactNode;
 }) {
   return (
-    <Card className={cn(
-      "transition-all duration-200 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] border-border/50 hover:border-primary/30",
-      isComparing && "ring-2 ring-primary border-primary/40"
-    )}>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" className={cn("h-8 w-8 p-0 rounded-full shrink-0", isComparing && "bg-primary/20")}
-            onClick={(e) => { e.stopPropagation(); onToggleCompare(); }}>
-            <GitCompare className={cn("h-3.5 w-3.5", isComparing ? "text-primary" : "text-muted-foreground")} />
-          </Button>
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary border border-primary/20 cursor-pointer" onClick={onClick}>
-            #{data.rank}
-          </div>
-          <Avatar className="h-12 w-12 border-2 border-border/30 cursor-pointer" onClick={onClick}>
-            <AvatarImage src={data.manager_avatar_url || undefined} alt={data.manager_name} />
-            <AvatarFallback className="bg-primary/10 text-primary font-medium">{getInitials(data.manager_name)}</AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0 cursor-pointer" onClick={onClick}>
-            <p className="font-semibold truncate">{data.manager_name}</p>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{data.team_delivered_orders} delivered</span>
-              {data.growth_pct !== 0 && (
-                <span className={cn("flex items-center px-1.5 py-0.5 rounded-full text-xs",
-                  data.growth_pct > 0 ? "text-[hsl(var(--status-success))] bg-[hsl(var(--status-success))]/10" : "text-[hsl(var(--status-error))] bg-[hsl(var(--status-error))]/10"
-                )}>
-                  {data.growth_pct > 0 ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
-                  {Math.abs(data.growth_pct).toFixed(1)}%
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex-shrink-0 text-right cursor-pointer" onClick={onClick}>
-            <span className="text-lg font-bold text-primary">{metricValue}</span>
-            <p className="text-xs text-muted-foreground">{metricLabel}</p>
-          </div>
-          <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0 cursor-pointer" onClick={onClick} />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex min-w-0 items-center gap-3 p-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+        <p className="truncate text-base font-bold tabular-nums sm:text-lg">{value}</p>
+      </div>
+    </div>
   );
 }
 
-// ─── Manager Details Drawer ────────────────────────────────────────
-function ManagerDetailsDrawer({ data, metric }: { data: ManagerRankingData; metric: RankingMetric }) {
-  const scoreBreakdown = data.score_breakdown || { team_growth_score: 0, improvement_score: 0, ops_score: 0, personal_score: 0 };
-  const insights = [
-    data.growth_pct > 10 ? "🚀 Strong growth momentum this period!" : data.growth_pct < -10 ? "⚠️ GMV declining - consider intervention" : null,
-    data.dependency_ratio > 0.5 ? "⚠️ High dependency on top performer" : null,
-    data.bottom30_improve_pct > 0.5 ? "✅ Bottom performers improving well" : data.bottom30_improve_pct < 0.2 ? "💡 Focus coaching on bottom 30%" : null,
-  ].filter(Boolean);
+function ManagerAwardStage({
+  rankings,
+  topThree,
+  metric,
+  metricLabel,
+  periodLabel,
+  onSelect,
+}: {
+  rankings: ManagerRankingData[];
+  topThree: ManagerRankingData[];
+  metric: RankingMetric;
+  metricLabel: string;
+  periodLabel: string;
+  onSelect: (manager: ManagerRankingData) => void;
+}) {
+  const champion = topThree[0];
+  if (!champion) return null;
 
-  const getRankBadge = () => {
-    if (data.rank === 1) return 'bg-primary text-primary-foreground';
-    if (data.rank === 2) return 'bg-muted-foreground text-background';
-    if (data.rank === 3) return 'bg-[hsl(25,80%,55%)] text-background';
-    return 'bg-muted text-muted-foreground';
+  return (
+    <section className="relative overflow-hidden rounded-[28px] border border-[#d49a2f]/40 bg-[#17130d] text-white shadow-[0_22px_70px_-42px_rgba(0,0,0,0.9)]">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#f4bd57] to-transparent" />
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_38%,rgba(212,154,47,0.10))]" />
+      <div className="relative grid gap-5 p-5 sm:p-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="rounded-full border border-[#d49a2f]/35 bg-[#d49a2f]/20 text-[#f7d18a]">
+              Manager board
+            </Badge>
+            <Badge className="rounded-full border border-white/10 bg-white/[0.07] text-white/70">
+              {periodLabel}
+            </Badge>
+            <Badge className="rounded-full border border-white/10 bg-white/[0.07] text-white/70">
+              Ranked by {metricLabel}
+            </Badge>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onSelect(champion)}
+            className="w-full rounded-[24px] border border-[#d49a2f]/35 bg-white/[0.08] p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f4bd57] sm:p-5"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="relative shrink-0 self-start">
+                <Avatar className="h-20 w-20 border-4 border-[#f4bd57] shadow-[0_0_0_7px_rgba(212,154,47,0.16)] sm:h-24 sm:w-24">
+                  <AvatarImage src={champion.manager_avatar_url || undefined} alt={champion.manager_name} />
+                  <AvatarFallback className="bg-[#f4bd57] text-xl font-black text-[#17130d]">
+                    {getInitials(champion.manager_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="absolute -right-2 -top-2 flex h-9 w-9 items-center justify-center rounded-full bg-[#f4bd57] text-[#17130d]">
+                  <Crown className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#f4bd57]">Current leader</p>
+                <h2 className="mt-1 truncate text-3xl font-black sm:text-4xl">{champion.manager_name}</h2>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  <DarkMetric label={metricLabel} value={getMetricValue(champion, metric)} />
+                  <DarkMetric label="Delivered" value={champion.team_delivered_orders} />
+                  <DarkMetric
+                    label="Growth"
+                    value={`${champion.growth_pct >= 0 ? '+' : ''}${champion.growth_pct.toFixed(1)}%`}
+                  />
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <p className="text-sm leading-6 text-white/60">
+            {rankings.length} managers ranked from confirmed team results.
+          </p>
+        </div>
+
+        <aside className="min-w-0 rounded-[24px] border border-white/10 bg-black/20 p-4">
+          <div className="mb-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#f4bd57]">Top contenders</p>
+            <h3 className="mt-1 text-xl font-black">Leading three</h3>
+          </div>
+          <div className="space-y-2">
+            {topThree.map((manager) => (
+              <button
+                type="button"
+                key={manager.manager_id}
+                onClick={() => onSelect(manager)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.07] p-3 text-left transition-colors hover:bg-white/[0.11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f4bd57]"
+              >
+                <RankMark rank={manager.rank} dark />
+                <Avatar className="h-10 w-10 border border-white/10">
+                  <AvatarImage src={manager.manager_avatar_url || undefined} alt={manager.manager_name} />
+                  <AvatarFallback className="bg-white/10 font-bold text-white">
+                    {getInitials(manager.manager_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold">{manager.manager_name}</p>
+                  <p className="text-xs text-white/50">{manager.team_delivered_orders} delivered</p>
+                </div>
+                <p className="max-w-[35%] truncate text-sm font-black tabular-nums">
+                  {getMetricValue(manager, metric)}
+                </p>
+              </button>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function DarkMetric({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-white/10 bg-black/20 px-2.5 py-2.5 sm:px-3">
+      <p className="truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-white/45">{label}</p>
+      <p className="truncate text-sm font-black tabular-nums sm:text-base">{value}</p>
+    </div>
+  );
+}
+
+function RankMark({ rank, dark = false }: { rank: number; dark?: boolean }) {
+  const className = cn(
+    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-black',
+    rank === 1 && 'bg-[#f4bd57] text-[#17130d]',
+    rank === 2 && (dark ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground'),
+    rank === 3 && 'bg-[#c7772f]/25 text-[#d98235]',
+    rank > 3 && (dark ? 'bg-white/10 text-white/65' : 'bg-muted/60 text-muted-foreground'),
+  );
+
+  if (rank === 1) return <div className={className}><Crown className="h-4 w-4" /></div>;
+  if (rank === 2) return <div className={className}><Medal className="h-4 w-4" /></div>;
+  if (rank === 3) return <div className={className}><Award className="h-4 w-4" /></div>;
+  return <div className={className}>{rank}</div>;
+}
+
+function RankingRow({
+  data,
+  metric,
+  isComparing,
+  onToggleCompare,
+  onClick,
+}: {
+  data: ManagerRankingData;
+  metric: RankingMetric;
+  isComparing: boolean;
+  onToggleCompare: () => void;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 border-b border-border/40 p-3 transition-colors last:border-b-0 hover:bg-muted/25 sm:gap-3 sm:p-4',
+        isComparing && 'bg-primary/10',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onToggleCompare}
+        className={cn(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+          isComparing && 'bg-primary text-primary-foreground hover:bg-primary',
+        )}
+        aria-label={`${isComparing ? 'Remove' : 'Add'} ${data.manager_name} ${isComparing ? 'from' : 'to'} comparison`}
+        title="Compare manager"
+      >
+        <GitCompare className="h-3.5 w-3.5" />
+      </button>
+      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-2 text-left sm:gap-3">
+        <RankMark rank={data.rank} />
+        <Avatar className="h-10 w-10 shrink-0 border border-border/50 sm:h-11 sm:w-11">
+          <AvatarImage src={data.manager_avatar_url || undefined} alt={data.manager_name} />
+          <AvatarFallback className="bg-primary/10 font-bold text-primary">
+            {getInitials(data.manager_name)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">{data.manager_name}</p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{data.team_delivered_orders} delivered</span>
+            {data.growth_pct !== 0 && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-0.5 font-medium',
+                  data.growth_pct > 0
+                    ? 'text-[hsl(var(--status-success))]'
+                    : 'text-[hsl(var(--status-error))]',
+                )}
+              >
+                {data.growth_pct > 0 ? (
+                  <TrendingUp className="h-3 w-3" />
+                ) : (
+                  <TrendingDown className="h-3 w-3" />
+                )}
+                {Math.abs(data.growth_pct).toFixed(1)}%
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="max-w-[32%] shrink-0 text-right">
+          <p className="truncate text-sm font-black tabular-nums text-primary sm:text-base">
+            {getMetricValue(data, metric)}
+          </p>
+          <p className="truncate text-[10px] text-muted-foreground">{getMetricLabel(metric)}</p>
+        </div>
+        <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" />
+      </button>
+    </div>
+  );
+}
+
+function ComparisonPanel({
+  managers,
+  onClear,
+}: {
+  managers: ManagerRankingData[];
+  onClear: () => void;
+}) {
+  const rows = [
+    { label: 'Rank', getValue: (manager: ManagerRankingData) => `#${manager.rank}` },
+    { label: 'Team GMV', getValue: (manager: ManagerRankingData) => formatBND(manager.team_realized_gmv) },
+    { label: 'Delivered', getValue: (manager: ManagerRankingData) => manager.team_delivered_orders.toString() },
+    {
+      label: 'Growth',
+      getValue: (manager: ManagerRankingData) =>
+        `${manager.growth_pct >= 0 ? '+' : ''}${manager.growth_pct.toFixed(1)}%`,
+    },
+    { label: 'Leadership', getValue: (manager: ManagerRankingData) => manager.leadership_score.toFixed(0) },
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-primary/25 bg-card/70 shadow-sm">
+      <div className="flex items-center justify-between border-b border-border/50 p-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Comparison</p>
+          <h2 className="font-bold">Manager metrics</h2>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClear}>Clear</Button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[500px] text-sm">
+          <thead>
+            <tr className="border-b border-border/40 bg-muted/20">
+              <th className="p-3 text-left text-xs font-medium text-muted-foreground">Metric</th>
+              {managers.map((manager) => (
+                <th key={manager.manager_id} className="p-3 text-center">
+                  <span className="font-semibold">{manager.manager_name}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label} className="border-b border-border/30 last:border-b-0">
+                <td className="p-3 text-xs font-medium text-muted-foreground">{row.label}</td>
+                {managers.map((manager) => (
+                  <td key={manager.manager_id} className="p-3 text-center font-semibold tabular-nums">
+                    {row.getValue(manager)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ManagerDetailsDrawer({ data }: { data: ManagerRankingData }) {
+  const breakdown = data.score_breakdown || {
+    team_growth_score: 0,
+    improvement_score: 0,
+    ops_score: 0,
+    personal_score: 0,
   };
+  const scoreRows = [
+    { label: 'Team growth', value: breakdown.team_growth_score, max: 40, icon: TrendingUp },
+    { label: 'Bottom 30% improvement', value: breakdown.improvement_score, max: 30, icon: Target },
+    { label: 'Ops interventions', value: breakdown.ops_score, max: 20, icon: Zap },
+    { label: 'Personal contribution', value: breakdown.personal_score, max: 10, icon: User },
+  ];
 
   return (
     <>
@@ -499,95 +739,76 @@ function ManagerDetailsDrawer({ data, metric }: { data: ManagerRankingData; metr
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16 ring-4 ring-primary/20">
             <AvatarImage src={data.manager_avatar_url || undefined} alt={data.manager_name} />
-            <AvatarFallback className="bg-primary/10 text-primary font-bold text-xl">{getInitials(data.manager_name)}</AvatarFallback>
+            <AvatarFallback className="bg-primary/10 text-xl font-bold text-primary">
+              {getInitials(data.manager_name)}
+            </AvatarFallback>
           </Avatar>
-          <div>
-            <SheetTitle className="text-left">{data.manager_name}</SheetTitle>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge className={cn("font-bold", getRankBadge())}>Rank #{data.rank}</Badge>
-              {data.growth_pct !== 0 && (
-                <Badge variant="outline" className={cn("text-xs",
-                  data.growth_pct > 0 ? "border-[hsl(var(--status-success))]/50 text-[hsl(var(--status-success))]" : "border-[hsl(var(--status-error))]/50 text-[hsl(var(--status-error))]"
-                )}>
-                  {data.growth_pct > 0 ? '+' : ''}{data.growth_pct.toFixed(1)}%
-                </Badge>
-              )}
+          <div className="min-w-0">
+            <SheetTitle className="truncate text-left">{data.manager_name}</SheetTitle>
+            <div className="mt-1 flex items-center gap-2">
+              <Badge>Rank #{data.rank}</Badge>
+              <Badge variant="outline">
+                {data.growth_pct >= 0 ? '+' : ''}{data.growth_pct.toFixed(1)}%
+              </Badge>
             </div>
           </div>
         </div>
       </SheetHeader>
-      <ScrollArea className="h-[calc(100vh-180px)] mt-2">
-        <div className="space-y-4 pb-6">
-          {/* Leadership Score */}
-          <Card className="overflow-hidden border-primary/20">
-            <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-primary text-primary-foreground"><Award className="h-4 w-4" /></div>
-                  <span className="font-semibold">Leadership Score</span>
-                </div>
-                <div className="text-3xl font-bold text-primary">
-                  {data.leadership_score.toFixed(0)}<span className="text-sm text-muted-foreground font-normal">/100</span>
-                </div>
+      <ScrollArea className="h-[calc(90dvh-120px)] md:h-[calc(100vh-120px)]">
+        <div className="space-y-4 pr-3">
+          <section className="rounded-2xl bg-[#17130d] p-4 text-white">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f4bd57]">
+                  Leadership score
+                </p>
+                <p className="mt-1 text-4xl font-black tabular-nums">
+                  {data.leadership_score.toFixed(0)}
+                  <span className="text-sm font-medium text-white/45"> / 100</span>
+                </p>
               </div>
+              <Award className="h-7 w-7 text-[#f4bd57]" />
             </div>
-            <CardContent className="p-4 pt-3 space-y-3">
-              {[
-                { label: "Team Growth", value: scoreBreakdown.team_growth_score, max: 40, icon: <TrendingUp className="h-4 w-4" />, color: "bg-[hsl(var(--chart-1))]" },
-                { label: "Bottom 30% Improvement", value: scoreBreakdown.improvement_score, max: 30, icon: <Target className="h-4 w-4" />, color: "bg-[hsl(var(--status-success))]" },
-                { label: "Ops Interventions", value: scoreBreakdown.ops_score, max: 20, icon: <Zap className="h-4 w-4" />, color: "bg-primary" },
-                { label: "Personal Contribution", value: scoreBreakdown.personal_score, max: 10, icon: <User className="h-4 w-4" />, color: "bg-[hsl(var(--chart-4))]" },
-              ].map(bar => (
-                <div key={bar.label} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 text-muted-foreground">{bar.icon}{bar.label}</span>
-                    <span className="font-medium tabular-nums">{bar.value.toFixed(1)}/{bar.max}</span>
+            <div className="mt-5 space-y-3">
+              {scoreRows.map((row) => (
+                <div key={row.label}>
+                  <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                    <span className="flex items-center gap-2 text-white/65">
+                      <row.icon className="h-3.5 w-3.5" />
+                      {row.label}
+                    </span>
+                    <span className="font-semibold tabular-nums">{row.value.toFixed(1)}/{row.max}</span>
                   </div>
-                  <div className="h-2 bg-muted/50 rounded-full overflow-hidden">
-                    <div className={cn("h-full rounded-full transition-all", bar.color)} style={{ width: `${Math.min((bar.value / bar.max) * 100, 100)}%` }} />
+                  <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-[#f4bd57]"
+                      style={{ width: `${Math.min((row.value / row.max) * 100, 100)}%` }}
+                    />
                   </div>
                 </div>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
-          {/* Key Metrics */}
-          <Card className="border-border/50">
-            <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" />Key Metrics</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: "Realized GMV", value: formatBND(data.team_realized_gmv) },
-                  { label: "Pipeline GMV", value: formatBND(data.team_pipeline_gmv) },
-                  { label: "Delivered", value: data.team_delivered_orders.toString() },
-                  { label: "Booking", value: data.team_booking_orders.toString() },
-                  { label: "Growth", value: `${data.growth_pct >= 0 ? '+' : ''}${data.growth_pct.toFixed(1)}%`, cls: data.growth_pct >= 0 ? 'text-[hsl(var(--status-success))]' : 'text-[hsl(var(--status-error))]' },
-                  { label: "Dependency", value: `${(data.dependency_ratio * 100).toFixed(0)}%`, cls: data.dependency_ratio > 0.5 ? 'text-primary' : '' },
-                ].map(m => (
-                  <div key={m.label} className="p-3 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs text-muted-foreground">{m.label}</p>
-                    <p className={cn("text-lg font-semibold", (m as any).cls)}>{m.value}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Insights */}
-          {insights.length > 0 && (
-            <Card className="border-border/50">
-              <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Zap className="h-4 w-4 text-primary" />Insights</CardTitle></CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {insights.map((insight, i) => (
-                    <li key={i} className="text-sm bg-muted/30 rounded-lg p-2.5 border border-border/30">{insight}</li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
+          <section className="grid grid-cols-2 gap-2">
+            <DetailMetric label="Realized GMV" value={formatBND(data.team_realized_gmv)} />
+            <DetailMetric label="Pipeline GMV" value={formatBND(data.team_pipeline_gmv)} />
+            <DetailMetric label="Delivered" value={data.team_delivered_orders} />
+            <DetailMetric label="Booking" value={data.team_booking_orders} />
+            <DetailMetric label="Growth" value={`${data.growth_pct >= 0 ? '+' : ''}${data.growth_pct.toFixed(1)}%`} />
+            <DetailMetric label="Dependency" value={`${(data.dependency_ratio * 100).toFixed(0)}%`} />
+          </section>
         </div>
       </ScrollArea>
     </>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-border/50 bg-muted/25 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-lg font-bold tabular-nums">{value}</p>
+    </div>
   );
 }
