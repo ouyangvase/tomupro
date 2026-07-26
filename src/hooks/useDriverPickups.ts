@@ -226,15 +226,19 @@ async function fetchActiveDriverOrders(params: {
   driverIds?: string[];
   driverId?: string;
 }) {
+  const today = getTodayDateKey();
   const assignments = await fetchDriverAssignments({
     runnerId: params.runnerId,
     driverId: params.driverId,
-    dateTo: getTodayDateKey(),
+    dateTo: today,
     activeOnly: true,
     includeItems: true,
   });
   const allowedDrivers = params.driverIds?.length ? new Set(params.driverIds) : null;
-  return assignments.filter((order) => !allowedDrivers || allowedDrivers.has(order.driver_id)) as ActiveDriverDeliveryOrder[];
+  return assignments.filter((order) => (
+    isActiveDriverPickupOrder(order, today)
+    && (!allowedDrivers || allowedDrivers.has(order.driver_id))
+  )) as ActiveDriverDeliveryOrder[];
 }
 
 // Fetch pickups for a runner (all their drivers)

@@ -448,11 +448,15 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const runnerScopeId = runnerIdOverride || profile?.id;
-  const canUseDbDriverWorkloads = !runnerIdOverride || profile?.role === 'runner_assistant';
+  const hasDelegatedRunnerScope = Boolean(runnerIdOverride);
+  const canUseDbDriverWorkloads =
+    profile?.role === 'runner' ||
+    profile?.role === 'admin' ||
+    hasDelegatedRunnerScope;
   const hasRunnerScopeAccess =
     profile?.role === 'runner' ||
     profile?.role === 'admin' ||
-    (profile?.role === 'runner_assistant' && Boolean(runnerIdOverride));
+    hasDelegatedRunnerScope;
   const { data: orders = [], isLoading } = useRunnerDriverOrders(runnerIdOverride);
   const { data: myDrivers = [] } = useMyDrivers(runnerIdOverride);
   const { data: dbDeliveryAreas = [] } = useDeliveryAreas();
