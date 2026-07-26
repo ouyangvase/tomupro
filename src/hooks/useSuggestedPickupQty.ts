@@ -13,6 +13,12 @@ export interface SuggestedQuantity {
   required_qty: number;
 }
 
+export interface SuggestedPickup {
+  items: SuggestedQuantity[];
+  orderIds: string[];
+  orderCodes: string[];
+}
+
 /**
  * Calculate suggested pickup quantities for a driver based on active orders visible in the driver app.
  * 
@@ -29,7 +35,7 @@ export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: 
   return useQuery({
     queryKey: ['suggested-pickup-qty', driverId, pickupDate, runnerScopeId],
     queryFn: async () => {
-      if (!driverId) return [];
+      if (!driverId) return { items: [], orderIds: [], orderCodes: [] } satisfies SuggestedPickup;
       if (!runnerScopeId) throw new Error('Not authenticated');
 
       const orders = await fetchDriverAssignments({
@@ -39,9 +45,15 @@ export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: 
         activeOnly: true,
         includeItems: true,
       });
-      if (!orders || orders.length === 0) return [];
+      if (!orders || orders.length === 0) {
+        return { items: [], orderIds: [], orderCodes: [] } satisfies SuggestedPickup;
+      }
 
-      return buildPickupNeedItems(orders as ActiveDriverDeliveryOrder[]) as SuggestedQuantity[];
+      return {
+        items: buildPickupNeedItems(orders as ActiveDriverDeliveryOrder[]) as SuggestedQuantity[],
+        orderIds: orders.map((order) => order.id).filter(Boolean),
+        orderCodes: orders.map((order) => order.order_code || '-').filter(Boolean),
+      } satisfies SuggestedPickup;
     },
     enabled: !!driverId && !!pickupDate && !!runnerScopeId,
   });

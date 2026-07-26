@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Layers, X } from 'lucide-react';
 
 // Retry dynamic import once on chunk load failure (stale deployment cache)
-function lazyRetry<T extends { default: React.ComponentType<any> }>(
+function lazyRetry<T extends { default: React.ComponentType<never> }>(
   importFn: () => Promise<T>,
 ) {
   return lazy(() =>
@@ -102,15 +102,22 @@ export default function DispatchModule() {
   ];
 
   const runnerAssistantTabs = [
-    { id: 'inbox', label: assistantBinding?.can_deliver ? 'Runner Inbox' : 'Receipt Inbox' },
+    ...((assistantBinding?.can_deliver || assistantBinding?.can_confirm_receipt)
+      ? [{ id: 'inbox', label: assistantBinding?.can_deliver ? 'Runner Inbox' : 'Receipt Inbox' }]
+      : []),
     ...(assistantBinding?.can_manage_driver_inbox ? [{ id: 'driver-inbox', label: 'Driver Inbox' }] : []),
+    ...(assistantBinding?.can_view_driver_workload ? [{ id: 'driver-workload', label: 'Driver Workload' }] : []),
+    ...(assistantBinding?.can_manage_driver_operations ? [{ id: 'drivers', label: 'Driver Operations' }] : []),
     ...(assistantBinding?.can_manage_driver_stock ? [{ id: 'driver-stock', label: 'Driver Stock' }] : []),
     ...(assistantBinding?.can_deliver ? [{ id: 'delivered', label: 'Delivered Orders' }] : []),
   ];
 
   const tabs = role === 'runner' ? runnerTabs : isAssistantContext ? runnerAssistantTabs : adminTabs;
   const canUseDriverInbox = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_inbox));
+  const canUseDriverWorkload = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_view_driver_workload));
+  const canUseDriverOperations = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_operations));
   const canUseDriverStock = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_stock));
+  const canUseCashSettlement = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_cash_settlement));
 
   // Redirect unknown tabs to inbox (inside useEffect to avoid render-time state updates)
   const validTabIds = tabs.map(t => t.id);
@@ -118,9 +125,9 @@ export default function DispatchModule() {
   const isInvalidTab = !!role && !!activeTab && !assistantTabsPending && !validTabIds.includes(activeTab);
   useEffect(() => {
     if (isInvalidTab) {
-      setSearchParams({ tab: 'inbox' }, { replace: true });
+      setSearchParams({ tab: tabs[0]?.id || 'inbox' }, { replace: true });
     }
-  }, [isInvalidTab, setSearchParams]);
+  }, [isInvalidTab, setSearchParams, tabs]);
 
   useEffect(() => {
     setShowDuplicateOrders(false);
@@ -261,12 +268,17 @@ export default function DispatchModule() {
                 <RunnerDriverInbox runnerIdOverride={assistantRunnerId} />
               </TabErrorBoundary>
             )}
-            {activeTab === 'drivers' && role === 'runner' && <DriverManagement />}
+            {activeTab === 'driver-workload' && canUseDriverWorkload && (
+              <TabErrorBoundary>
+                <RunnerDriverInbox runnerIdOverride={assistantRunnerId} workloadOnly />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'drivers' && canUseDriverOperations && <DriverManagement runnerIdOverride={assistantRunnerId} />}
             {activeTab === 'driver-stock' && canUseDriverStock && (
               <TabErrorBoundary>
                 <RunnerDriverStockWorkspace
                   runnerIdOverride={assistantRunnerId}
-                  hideCashSettlement={isAssistantContext}
+                  hideCashSettlement={!canUseCashSettlement}
                 />
               </TabErrorBoundary>
             )}

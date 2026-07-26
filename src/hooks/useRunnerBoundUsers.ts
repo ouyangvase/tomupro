@@ -15,20 +15,21 @@ export interface BoundUser {
  * Uses the v_runner_target_users view which unifies salesperson and manager bindings.
  * Returns BOTH salespersons and managers with proper warehouse resolution.
  */
-export function useRunnerBoundUsers() {
+export function useRunnerBoundUsers(runnerIdOverride?: string) {
   const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
 
   return useQuery({
-    queryKey: ['runner-bound-users', user?.id],
-    enabled: Boolean(user?.id),
+    queryKey: ['runner-bound-users', runnerScopeId],
+    enabled: Boolean(runnerScopeId),
     queryFn: async () => {
-      if (!user?.id) return [] as BoundUser[];
+      if (!runnerScopeId) return [] as BoundUser[];
 
       // Use the unified view that combines salesperson and manager bindings
       const { data, error } = await supabase
         .from('v_runner_target_users')
         .select('*')
-        .eq('runner_id', user.id)
+        .eq('runner_id', runnerScopeId)
         .order('name', { ascending: true });
 
       if (error) {

@@ -150,9 +150,14 @@ export interface RunnerAssistant {
   runner_id: string;
   assistant_id: string;
   can_deliver: boolean;
-  can_confirm_receipt: boolean;
-  can_manage_driver_stock: boolean;
-  can_manage_driver_inbox: boolean;
+    can_confirm_receipt: boolean;
+    can_manage_driver_stock: boolean;
+    can_manage_driver_inbox: boolean;
+    can_manage_cash_settlement: boolean;
+    can_manage_driver_operations: boolean;
+    can_view_stock_audit: boolean;
+    can_manage_inbound_stock: boolean;
+    can_view_driver_workload: boolean;
   is_active: boolean;
   created_by: string | null;
   created_at: string;

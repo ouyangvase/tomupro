@@ -34,6 +34,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useVisibleUserIds } from '@/hooks/useTeamVisibility';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 
 /* ════════════════════════════════════════════════════════════════════
    MAIN COMPONENT — combined Stock Audit + Rebuild
@@ -43,8 +44,13 @@ export default function StockIntegrityAudit() {
   const isMobile = useIsMobile();
   const isAdmin = profile?.role === 'admin';
   const role = profile?.role;
+  const { data: assistantBinding } = useMyAssistantBinding();
   const isScopedStockRole = role === 'manager' || role === 'salesperson';
-  const canAccessStockAudit = role === 'admin' || role === 'runner' || isScopedStockRole;
+  const canAccessStockAudit =
+    role === 'admin' ||
+    role === 'runner' ||
+    isScopedStockRole ||
+    Boolean(assistantBinding?.runner_id && assistantBinding.can_view_stock_audit);
   const { data: users = [] } = useUsers();
   const { visibleUserIds, isLoading: visibilityLoading } = useVisibleUserIds('stock');
 

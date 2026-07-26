@@ -83,7 +83,9 @@ export function AppSidebar() {
   const rawBadges = useSidebarBadges();
   const { data: leaderboardSettings } = useLeaderboardSettings();
   const { data: assistantBinding } = useMyAssistantBinding();
-  const hidePerformanceUI = !!(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
+  const hidePerformanceUI = !!(
+    leaderboardSettings?.filters_default as { hide_performance_ui?: boolean } | null
+  )?.hide_performance_ui;
 
   // Remap badges to new module paths
   const badges = useMemo(() => {
@@ -99,13 +101,40 @@ export function AppSidebar() {
     if (!userRole) return [];
     return navItems.filter(item => {
       const hasRoleAccess = item.roles.includes(userRole);
-      const hasAssistantDispatchAccess = item.url === '/dispatch' && Boolean(assistantBinding?.runner_id);
-      if (!hasRoleAccess && !hasAssistantDispatchAccess) return false;
+      const hasAssistantDispatchAccess = item.url === '/dispatch' && Boolean(
+        assistantBinding?.runner_id && (
+          assistantBinding.can_deliver ||
+          assistantBinding.can_confirm_receipt ||
+          assistantBinding.can_manage_driver_inbox ||
+          assistantBinding.can_manage_driver_stock ||
+          assistantBinding.can_manage_cash_settlement ||
+          assistantBinding.can_manage_driver_operations ||
+          assistantBinding.can_view_driver_workload
+        )
+      );
+      const hasAssistantInventoryAccess = item.url === '/inventory' && Boolean(
+        assistantBinding?.runner_id &&
+        (assistantBinding.can_view_stock_audit || assistantBinding.can_manage_inbound_stock)
+      );
+      if (!hasRoleAccess && !hasAssistantDispatchAccess && !hasAssistantInventoryAccess) return false;
       // Hide Performance tab for non-admin roles when hide_performance_ui is enabled
       if (item.url === '/performance' && hidePerformanceUI && userRole !== 'admin') return false;
       return true;
     });
-  }, [assistantBinding?.runner_id, userRole, hidePerformanceUI]);
+  }, [
+    assistantBinding?.can_manage_inbound_stock,
+    assistantBinding?.can_confirm_receipt,
+    assistantBinding?.can_deliver,
+    assistantBinding?.can_manage_cash_settlement,
+    assistantBinding?.can_manage_driver_inbox,
+    assistantBinding?.can_manage_driver_operations,
+    assistantBinding?.can_manage_driver_stock,
+    assistantBinding?.can_view_driver_workload,
+    assistantBinding?.can_view_stock_audit,
+    assistantBinding?.runner_id,
+    userRole,
+    hidePerformanceUI,
+  ]);
 
   const isActive = (url: string) => {
     if (url === "/") return location.pathname === "/";

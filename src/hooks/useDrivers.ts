@@ -429,28 +429,27 @@ export function useDriverMarkFailed() {
 // Note: Cash liability is now created by the driver at delivery time, not on runner acceptance
 export function useRunnerAcceptDelivery() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   return useMutation({
     mutationFn: async (orderId: string) => {
-      // Update order status
-      const { data, error } = await supabase
-        .from('orders')
-        .update({
-          runner_accept_status: 'ACCEPTED',
-          runner_status: 'DELIVERED',
-          delivered_at: new Date().toISOString(),
-        })
-        .eq('id', orderId)
-        .select()
-        .single();
-      
+      if (!user?.id) throw new Error('Not authenticated');
+      const { data, error } = await supabase.rpc('review_driver_delivery', {
+        p_order_id: orderId,
+        p_actor_id: user.id,
+        p_accept: true,
+        p_reason: null,
+      });
       if (error) throw error;
-      
+      if (!(data as { success?: boolean; error?: string })?.success) {
+        throw new Error((data as { error?: string })?.error || 'Unable to accept Driver report');
+      }
       return data;
     },
     onSuccess: () => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-accepted-driver-deliveries'] });
       toast.success('Delivery accepted');
     },
     onError: (error: Error) => {
@@ -462,27 +461,31 @@ export function useRunnerAcceptDelivery() {
 // Runner bulk accepts multiple driver deliveries
 export function useBulkRunnerAcceptDelivery() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   return useMutation({
     mutationFn: async (orderIds: string[]) => {
       if (orderIds.length === 0) throw new Error('No orders selected');
-      
-      const { data, error } = await supabase
-        .from('orders')
-        .update({
-          runner_accept_status: 'ACCEPTED',
-          runner_status: 'DELIVERED',
-          delivered_at: new Date().toISOString(),
-        })
-        .in('id', orderIds)
-        .select();
-      
-      if (error) throw error;
-      return data;
+      if (!user?.id) throw new Error('Not authenticated');
+      const results = await Promise.all(orderIds.map(async (orderId) => {
+        const { data, error } = await supabase.rpc('review_driver_delivery', {
+          p_order_id: orderId,
+          p_actor_id: user.id,
+          p_accept: true,
+          p_reason: null,
+        });
+        if (error) throw error;
+        if (!(data as { success?: boolean; error?: string })?.success) {
+          throw new Error((data as { error?: string })?.error || 'Unable to accept Driver report');
+        }
+        return data;
+      }));
+      return results;
     },
     onSuccess: (data) => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-accepted-driver-deliveries'] });
       toast.success(`${data.length} deliveries accepted`);
     },
     onError: (error: Error) => {
@@ -494,21 +497,21 @@ export function useBulkRunnerAcceptDelivery() {
 // Runner rejects driver delivery
 export function useRunnerRejectDelivery() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   return useMutation({
     mutationFn: async ({ orderId, reason }: { orderId: string; reason: string }) => {
-      const { data, error } = await supabase
-        .from('orders')
-        .update({
-          runner_accept_status: 'REJECTED',
-          driver_status: 'OUT_FOR_DELIVERY',
-          driver_failed_remark: reason,
-        })
-        .eq('id', orderId)
-        .select()
-        .single();
-      
+      if (!user?.id) throw new Error('Not authenticated');
+      const { data, error } = await supabase.rpc('review_driver_delivery', {
+        p_order_id: orderId,
+        p_actor_id: user.id,
+        p_accept: false,
+        p_reason: reason,
+      });
       if (error) throw error;
+      if (!(data as { success?: boolean; error?: string })?.success) {
+        throw new Error((data as { error?: string })?.error || 'Unable to reject Driver report');
+      }
       return data;
     },
     onSuccess: () => {

@@ -101,14 +101,48 @@ export interface GroupedLiabilities {
   driverCount: number;
 }
 
-// Get open cash liabilities for current runner, grouped by driver
-export function useRunnerCashLiabilities() {
+export interface AcceptedDriverDelivery {
+  id: string;
+  order_code: string;
+  total_amount: number;
+  delivered_at: string | null;
+  driver_id: string | null;
+  driver: { display_name: string } | null;
+  order_items: Array<{ qty: number }>;
+}
+
+export function useRunnerAcceptedDriverDeliveries(runnerIdOverride?: string) {
   const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
 
   return useQuery({
-    queryKey: ['runner-cash-liabilities'],
+    queryKey: ['runner-accepted-driver-deliveries', runnerScopeId],
+    enabled: Boolean(runnerScopeId),
     queryFn: async () => {
-      if (!user?.id) return { byDriver: [], totalOpen: 0, totalOpenAmount: 0, driverCount: 0 } as GroupedLiabilities;
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_code, total_amount, delivered_at, driver_id, driver:profiles!orders_driver_id_fkey(display_name), order_items(qty)')
+        .eq('runner_id', runnerScopeId!)
+        .eq('runner_accept_status', 'ACCEPTED')
+        .not('driver_id', 'is', null)
+        .order('delivered_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      return (data || []) as AcceptedDriverDelivery[];
+    },
+  });
+}
+
+// Get open cash liabilities for current runner, grouped by driver
+export function useRunnerCashLiabilities(runnerIdOverride?: string) {
+  const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
+
+  return useQuery({
+    queryKey: ['runner-cash-liabilities', runnerScopeId],
+    queryFn: async () => {
+      if (!runnerScopeId) return { byDriver: [], totalOpen: 0, totalOpenAmount: 0, driverCount: 0 } as GroupedLiabilities;
 
       const { data, error } = await supabase
         .from('cash_liabilities')
@@ -116,7 +150,7 @@ export function useRunnerCashLiabilities() {
           *,
           driver:profiles!cash_liabilities_driver_id_fkey(display_name)
         `)
-        .eq('runner_id', user.id)
+        .eq('runner_id', runnerScopeId)
         .eq('status', 'OPEN')
         .order('delivered_at', { ascending: false });
 
@@ -160,18 +194,19 @@ export function useRunnerCashLiabilities() {
 }
 
 // Get settlement history for current runner
-export function useRunnerSettlementHistory() {
+export function useRunnerSettlementHistory(runnerIdOverride?: string) {
   const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
 
   return useQuery({
-    queryKey: ['runner-settlement-history'],
+    queryKey: ['runner-settlement-history', runnerScopeId],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!runnerScopeId) return [];
 
       const { data, error } = await supabase
         .from('cash_settlement_batches')
         .select('*')
-        .eq('runner_id', user.id)
+        .eq('runner_id', runnerScopeId)
         .order('settled_at', { ascending: false })
         .limit(50);
 
@@ -182,19 +217,20 @@ export function useRunnerSettlementHistory() {
 }
 
 // Settle open cash liabilities for a specific driver
-export function useSettleDriverCash() {
+export function useSettleDriverCash(runnerIdOverride?: string) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
 
   return useMutation({
     mutationFn: async ({ driverId, note }: { driverId: string; note?: string }) => {
-      if (!user?.id) throw new Error('Not authenticated');
+      if (!user?.id || !runnerScopeId) throw new Error('Not authenticated');
 
       // Get all open liabilities for this runner from specific driver
       const { data: openLiabilities, error: fetchError } = await supabase
         .from('cash_liabilities')
         .select('*')
-        .eq('runner_id', user.id)
+        .eq('runner_id', runnerScopeId)
         .eq('driver_id', driverId)
         .eq('status', 'OPEN');
 
@@ -210,7 +246,7 @@ export function useSettleDriverCash() {
       const { data: batch, error: batchError } = await supabase
         .from('cash_settlement_batches')
         .insert({
-          runner_id: user.id,
+          runner_id: runnerScopeId,
           total_amount: totalAmount,
           order_count: orderCount,
           settled_by: user.id,

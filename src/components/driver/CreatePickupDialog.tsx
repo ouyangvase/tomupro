@@ -61,6 +61,7 @@ export function CreatePickupDialog({
   const todayDate = format(new Date(), 'yyyy-MM-dd');
   
   const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = open !== undefined;
   const dialogOpen = open ?? internalOpen;
   const setDialogOpen = onOpenChange ?? setInternalOpen;
 
@@ -76,7 +77,7 @@ export function CreatePickupDialog({
   const { data: drivers } = useMyDrivers(runnerIdOverride);
   const { data: products } = useProducts();
   const { data: blockingOrders, isLoading: loadingBlocking } = useDriverBlockingOrders(selectedDriverId || undefined);
-  const { data: suggestedQty, isLoading: loadingSuggestion } = useSuggestedPickupQty(selectedDriverId || undefined, pickupDate, runnerIdOverride);
+  const { data: suggestedPickup, isLoading: loadingSuggestion } = useSuggestedPickupQty(selectedDriverId || undefined, pickupDate, runnerIdOverride);
   const { canReceivePickup, returnRequired, mustReturnItems, totalMustReturn, isLoading: loadingReturnCheck } = useCanDriverReceivePickup(selectedDriverId || undefined);
   const createPickup = useCreatePickup();
   const updatePickup = useUpdatePickup();
@@ -114,8 +115,9 @@ export function CreatePickupDialog({
   // Auto-populate items when driver or date changes
   useEffect(() => {
     if (isEditing || defaultItems.length > 0) return;
-    if (suggestedQty && suggestedQty.length > 0) {
-      setItems(suggestedQty.map(s => ({
+    const suggestedItems = suggestedPickup?.items || [];
+    if (suggestedItems.length > 0) {
+      setItems(suggestedItems.map(s => ({
         product_id: s.product_id,
         qty: s.required_qty,
         required_qty: s.required_qty,
@@ -125,7 +127,7 @@ export function CreatePickupDialog({
     } else if (selectedDriverId) {
       setItems([]);
     }
-  }, [defaultItems.length, isEditing, selectedDriverId, suggestedQty]);
+  }, [defaultItems.length, isEditing, selectedDriverId, suggestedPickup]);
 
   const addItem = () => {
     setItems([...items, { product_id: '', qty: 1, required_qty: 0, buffer_qty: 0 }]);
@@ -181,8 +183,8 @@ export function CreatePickupDialog({
         pickup_date: pickupDate,
         notes: notes || undefined,
         items: pickupItems,
-        source_order_ids: defaultOrderIds,
-        source_order_codes: defaultOrderCodes,
+        source_order_ids: defaultOrderIds.length > 0 ? defaultOrderIds : suggestedPickup?.orderIds,
+        source_order_codes: defaultOrderCodes.length > 0 ? defaultOrderCodes : suggestedPickup?.orderCodes,
         force: forceCreate || acknowledgeBlocking || acknowledgeReturn,
       });
     }
@@ -199,12 +201,14 @@ export function CreatePickupDialog({
 
   const hasBlockingOrders = blockingOrders && blockingOrders.length > 0;
   const hasReturnRequired = selectedDriverId && returnRequired;
-  const hasSuggestions = suggestedQty && suggestedQty.length > 0;
+  const suggestedItems = useMemo(() => suggestedPickup?.items || [], [suggestedPickup]);
+  const suggestedOrderCount = suggestedPickup?.orderIds.length || defaultOrderIds.length;
+  const hasSuggestions = suggestedItems.length > 0;
   const suggestedByProductId = useMemo(() => {
     const map = new Map<string, SuggestedQuantity>();
-    (suggestedQty || []).forEach((suggestion) => map.set(suggestion.product_id, suggestion));
+    suggestedItems.forEach((suggestion) => map.set(suggestion.product_id, suggestion));
     return map;
-  }, [suggestedQty]);
+  }, [suggestedItems]);
 
   const getProductName = (productId: string) => {
     const suggestion = suggestedByProductId.get(productId);
@@ -219,7 +223,7 @@ export function CreatePickupDialog({
 
   return (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      {(!isEditing || trigger) && (
+      {(trigger || (!isControlled && !isEditing)) && (
         <DialogTrigger asChild>
           {trigger || (
             <Button>
@@ -364,7 +368,7 @@ export function CreatePickupDialog({
               <Sparkles className="h-4 w-4 text-primary" />
               <AlertTitle className="text-primary">Smart Suggestion</AlertTitle>
               <AlertDescription>
-                Based on {suggestedQty.length} product(s) from today's assigned orders. You can adjust quantities as needed.
+                Based on {suggestedItems.length} product(s) from {suggestedOrderCount} assigned order(s). You can adjust quantities as needed.
               </AlertDescription>
             </Alert>
           )}

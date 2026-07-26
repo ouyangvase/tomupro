@@ -50,15 +50,16 @@ interface InboundItemDraft {
   photo_preview: string | null;
 }
 
-export default function RunnerInbound() {
+export default function RunnerInbound({ runnerIdOverride }: { runnerIdOverride?: string } = {}) {
   const { user } = useAuth();
+  const runnerScopeId = runnerIdOverride || user?.id;
   const { toast } = useToast();
-  const { data: boundUsers = [], isLoading: boundUsersLoading } = useRunnerBoundUsers();
+  const { data: boundUsers = [], isLoading: boundUsersLoading } = useRunnerBoundUsers(runnerScopeId);
   const createShipment = useCreateInboundShipment();
   const createItem = useCreateInboundItem();
 
   // Fetch inbound stats
-  const { data: allShipments = [] } = useInboundShipments({ runnerId: user?.id });
+  const { data: allShipments = [] } = useInboundShipments({ runnerId: runnerScopeId });
 
   const [targetUserId, setTargetUserId] = useState('');
   const [trackingNo, setTrackingNo] = useState('');
@@ -75,7 +76,7 @@ export default function RunnerInbound() {
   const pendingShipments = allShipments.filter(s => s.status === 'PENDING_SP_ACK');
   const totalItemsWaiting = allShipments
     .filter(s => s.status === 'PENDING_SP_ACK')
-    .reduce((acc, s) => acc + ((s as any).inbound_items?.length || 0), 0);
+    .reduce((acc, s) => acc + (s.inbound_items?.length || 0), 0);
 
   // Duplicate detection: check if there's already a pending shipment for the same target user
   const existingPendingForUser = useMemo(() => {
@@ -112,7 +113,7 @@ export default function RunnerInbound() {
   };
 
   const handleSubmit = async () => {
-    if (!user || !targetUserId || items.length === 0) {
+    if (!user || !runnerScopeId || !targetUserId || items.length === 0) {
       toast({ variant: 'destructive', title: 'Please fill all required fields and add at least one item' });
       return;
     }
@@ -147,7 +148,7 @@ export default function RunnerInbound() {
       // Clean tracking number: strip dashes-only and whitespace
       const finalTracking = trackingNo.trim().replace(/^-+$/, '') || '';
       const shipment = await createShipment.mutateAsync({
-        runner_id: user!.id,
+        runner_id: runnerScopeId,
         salesperson_id: targetUserId,
         tracking_no: finalTracking,
         arrival_date: arrivalDate,

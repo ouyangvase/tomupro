@@ -24,9 +24,11 @@ export function useRunnerAssistants(runnerId?: string) {
       const { data, error } = await query;
       if (error) throw error;
 
+      const assistants = (data || []) as RunnerAssistant[];
+
       // Enrich with profile names
       const userIds = new Set<string>();
-      (data || []).forEach((ra: any) => {
+      assistants.forEach((ra) => {
         if (ra.runner_id) userIds.add(ra.runner_id);
         if (ra.assistant_id) userIds.add(ra.assistant_id);
       });
@@ -41,7 +43,7 @@ export function useRunnerAssistants(runnerId?: string) {
       }
 
       const profileMap = new Map(profiles.map(p => [p.id, p]));
-      return (data || []).map((ra: any) => ({
+      return assistants.map((ra) => ({
         ...ra,
         runner: profileMap.get(ra.runner_id),
         assistant: profileMap.get(ra.assistant_id),
@@ -101,6 +103,11 @@ export function useCreateRunnerAssistant() {
       can_confirm_receipt: boolean;
       can_manage_driver_stock?: boolean;
       can_manage_driver_inbox?: boolean;
+      can_manage_cash_settlement?: boolean;
+      can_manage_driver_operations?: boolean;
+      can_view_stock_audit?: boolean;
+      can_manage_inbound_stock?: boolean;
+      can_view_driver_workload?: boolean;
     }) => {
 
       // Check if binding already exists (maybe inactive)
@@ -120,6 +127,11 @@ export function useCreateRunnerAssistant() {
             can_confirm_receipt: input.can_confirm_receipt,
             can_manage_driver_stock: input.can_manage_driver_stock ?? false,
             can_manage_driver_inbox: input.can_manage_driver_inbox ?? false,
+            can_manage_cash_settlement: input.can_manage_cash_settlement ?? false,
+            can_manage_driver_operations: input.can_manage_driver_operations ?? false,
+            can_view_stock_audit: input.can_view_stock_audit ?? false,
+            can_manage_inbound_stock: input.can_manage_inbound_stock ?? false,
+            can_view_driver_workload: input.can_view_driver_workload ?? false,
             is_active: true,
             created_by: user?.id,
           })
@@ -139,6 +151,11 @@ export function useCreateRunnerAssistant() {
           can_confirm_receipt: input.can_confirm_receipt,
           can_manage_driver_stock: input.can_manage_driver_stock ?? false,
           can_manage_driver_inbox: input.can_manage_driver_inbox ?? false,
+          can_manage_cash_settlement: input.can_manage_cash_settlement ?? false,
+          can_manage_driver_operations: input.can_manage_driver_operations ?? false,
+          can_view_stock_audit: input.can_view_stock_audit ?? false,
+          can_manage_inbound_stock: input.can_manage_inbound_stock ?? false,
+          can_view_driver_workload: input.can_view_driver_workload ?? false,
           created_by: user?.id,
         })
         .select()
@@ -150,7 +167,7 @@ export function useCreateRunnerAssistant() {
       queryClient.invalidateQueries({ queryKey: ['runner-assistants'] });
       toast({ title: 'Runner assistant assigned' });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
     },
   });
@@ -170,13 +187,23 @@ export function useUpdateRunnerAssistant() {
       can_confirm_receipt?: boolean;
       can_manage_driver_stock?: boolean;
       can_manage_driver_inbox?: boolean;
+      can_manage_cash_settlement?: boolean;
+      can_manage_driver_operations?: boolean;
+      can_view_stock_audit?: boolean;
+      can_manage_inbound_stock?: boolean;
+      can_view_driver_workload?: boolean;
       is_active?: boolean;
     }) => {
-      const updates: Record<string, any> = {};
+      const updates: Record<string, boolean> = {};
       if (input.can_deliver !== undefined) updates.can_deliver = input.can_deliver;
       if (input.can_confirm_receipt !== undefined) updates.can_confirm_receipt = input.can_confirm_receipt;
       if (input.can_manage_driver_stock !== undefined) updates.can_manage_driver_stock = input.can_manage_driver_stock;
       if (input.can_manage_driver_inbox !== undefined) updates.can_manage_driver_inbox = input.can_manage_driver_inbox;
+      if (input.can_manage_cash_settlement !== undefined) updates.can_manage_cash_settlement = input.can_manage_cash_settlement;
+      if (input.can_manage_driver_operations !== undefined) updates.can_manage_driver_operations = input.can_manage_driver_operations;
+      if (input.can_view_stock_audit !== undefined) updates.can_view_stock_audit = input.can_view_stock_audit;
+      if (input.can_manage_inbound_stock !== undefined) updates.can_manage_inbound_stock = input.can_manage_inbound_stock;
+      if (input.can_view_driver_workload !== undefined) updates.can_view_driver_workload = input.can_view_driver_workload;
       if (input.is_active !== undefined) updates.is_active = input.is_active;
 
       const { data, error } = await supabase
@@ -192,7 +219,7 @@ export function useUpdateRunnerAssistant() {
       queryClient.invalidateQueries({ queryKey: ['runner-assistants'] });
       toast({ title: 'Runner assistant updated' });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
     },
   });

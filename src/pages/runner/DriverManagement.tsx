@@ -83,13 +83,14 @@ function getOrderSkuText(order: Order) {
     .join(', ');
 }
 
-export default function DriverManagement() {
+export default function DriverManagement({ runnerIdOverride }: { runnerIdOverride?: string } = {}) {
   const { profile } = useAuth();
+  const runnerScopeId = runnerIdOverride || profile?.id;
   const isMobile = useIsMobile();
-  const { data: drivers = [] } = useRunnerDrivers(profile?.id);
+  const { data: drivers = [] } = useRunnerDrivers(runnerScopeId);
   const { data: users = [] } = useUserDirectory();
   const { data: assignments = [] } = useDriverAssignments({
-    runnerId: profile?.id,
+    runnerId: runnerScopeId,
     includeItems: true,
   });
 

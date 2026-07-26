@@ -24,6 +24,29 @@ import { useToast } from '@/hooks/use-toast';
 import { Plus, Loader2, UserCheck, Trash2 } from 'lucide-react';
 import type { RunnerAssistant } from '@/types/database';
 
+type PermissionField =
+  | 'can_deliver'
+  | 'can_confirm_receipt'
+  | 'can_manage_driver_stock'
+  | 'can_manage_driver_inbox'
+  | 'can_manage_cash_settlement'
+  | 'can_manage_driver_operations'
+  | 'can_view_stock_audit'
+  | 'can_manage_inbound_stock'
+  | 'can_view_driver_workload';
+
+const permissionOptions: Array<{ field: PermissionField; label: string; description: string }> = [
+  { field: 'can_deliver', label: 'Can Click Delivered', description: 'Mark orders delivered for the assigned Runner' },
+  { field: 'can_confirm_receipt', label: 'Confirm Receipt', description: 'Confirm or reject transfer receipts' },
+  { field: 'can_manage_driver_stock', label: 'Driver Stock', description: 'Manage pickups, returns and allocated stock' },
+  { field: 'can_manage_driver_inbox', label: 'Driver Inbox', description: 'Assign orders in the shared Driver Inbox' },
+  { field: 'can_manage_cash_settlement', label: 'Cash Settlement', description: 'View accepted delivery amounts and reconcile cash' },
+  { field: 'can_manage_driver_operations', label: 'Driver Operations', description: 'Review and accept Driver delivery or failure reports' },
+  { field: 'can_view_stock_audit', label: 'Stock Balance & Audit', description: 'View the shared stock balance and audit pages' },
+  { field: 'can_manage_inbound_stock', label: 'Inbound Stock', description: 'Create and review Runner inbound stock' },
+  { field: 'can_view_driver_workload', label: 'Driver Workload', description: 'View performance and export Driver workload' },
+];
+
 export default function RunnerAssistantSettings() {
   const { toast } = useToast();
   const { data: assistants = [], isLoading } = useRunnerAssistants();
@@ -34,13 +57,11 @@ export default function RunnerAssistantSettings() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAssistantId, setSelectedAssistantId] = useState('');
   const [selectedRunnerId, setSelectedRunnerId] = useState('');
-  const [canDeliver, setCanDeliver] = useState(false);
-  const [canConfirmReceipt, setCanConfirmReceipt] = useState(false);
-  const [canManageDriverStock, setCanManageDriverStock] = useState(false);
-  const [canManageDriverInbox, setCanManageDriverInbox] = useState(false);
+  const [permissions, setPermissions] = useState<Record<PermissionField, boolean>>(
+    () => Object.fromEntries(permissionOptions.map(({ field }) => [field, false])) as Record<PermissionField, boolean>,
+  );
 
-  // Filter users by role for dropdowns
-  const assistantUsers = allUsers.filter(u => u.role === 'runner_assistant' && u.is_active);
+  const assistantUsers = allUsers.filter(u => u.is_active && u.id !== selectedRunnerId);
   const runnerUsers = allUsers.filter(u => u.role === 'runner' && u.is_active);
 
   // Already assigned assistant IDs
@@ -51,13 +72,14 @@ export default function RunnerAssistantSettings() {
       toast({ variant: 'destructive', title: 'Please select both a runner assistant and a runner' });
       return;
     }
+    if (selectedAssistantId === selectedRunnerId) {
+      toast({ variant: 'destructive', title: 'A Runner cannot be assigned as their own assistant' });
+      return;
+    }
     createAssistant.mutate({
       runner_id: selectedRunnerId,
       assistant_id: selectedAssistantId,
-      can_deliver: canDeliver,
-      can_confirm_receipt: canConfirmReceipt,
-      can_manage_driver_stock: canManageDriverStock,
-      can_manage_driver_inbox: canManageDriverInbox,
+      ...permissions,
     }, {
       onSuccess: () => {
         setCreateOpen(false);
@@ -69,15 +91,12 @@ export default function RunnerAssistantSettings() {
   const resetForm = () => {
     setSelectedAssistantId('');
     setSelectedRunnerId('');
-    setCanDeliver(false);
-    setCanConfirmReceipt(false);
-    setCanManageDriverStock(false);
-    setCanManageDriverInbox(false);
+    setPermissions(Object.fromEntries(permissionOptions.map(({ field }) => [field, false])) as Record<PermissionField, boolean>);
   };
 
   const handleToggle = (
     assistant: RunnerAssistant,
-    field: 'can_deliver' | 'can_confirm_receipt' | 'can_manage_driver_stock' | 'can_manage_driver_inbox',
+    field: PermissionField,
     value: boolean,
   ) => {
     updateAssistant.mutate({ id: assistant.id, [field]: value });
@@ -123,40 +142,18 @@ export default function RunnerAssistantSettings() {
                   </p>
                 </div>
 
-                <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-4">
-                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2 sm:bg-transparent sm:p-0">
-                    <Switch
-                      checked={a.can_deliver}
-                      onCheckedChange={(v) => handleToggle(a, 'can_deliver', v)}
-                    />
-                    <Label className="min-w-0 text-xs leading-tight">Can Deliver</Label>
-                  </div>
-                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2 sm:bg-transparent sm:p-0">
-                    <Switch
-                      checked={a.can_confirm_receipt}
-                      onCheckedChange={(v) => handleToggle(a, 'can_confirm_receipt', v)}
-                    />
-                    <Label className="min-w-0 text-xs leading-tight">Confirm Receipt</Label>
-                  </div>
-                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2 sm:bg-transparent sm:p-0">
-                    <Switch
-                      checked={!!a.can_manage_driver_stock}
-                      onCheckedChange={(v) => handleToggle(a, 'can_manage_driver_stock', v)}
-                    />
-                    <Label className="min-w-0 text-xs leading-tight">Driver Stock</Label>
-                  </div>
-                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2 sm:bg-transparent sm:p-0">
-                    <Switch
-                      checked={!!a.can_manage_driver_inbox}
-                      onCheckedChange={(v) => handleToggle(a, 'can_manage_driver_inbox', v)}
-                    />
-                    <Label className="min-w-0 text-xs leading-tight">Driver Inbox</Label>
-                  </div>
+                <div className="grid min-w-0 flex-[2] grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {permissionOptions.map(({ field, label }) => (
+                    <div key={field} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/40 p-2">
+                      <Label className="min-w-0 text-xs leading-tight">{label}</Label>
+                      <Switch checked={Boolean(a[field])} onCheckedChange={(v) => handleToggle(a, field, v)} />
+                    </div>
+                  ))}
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => handleDeactivate(a)}
-                    className="col-span-2 h-9 w-full text-destructive hover:text-destructive sm:h-9 sm:w-9"
+                    className="h-9 w-full text-destructive hover:text-destructive sm:col-span-2 lg:col-span-3"
                     aria-label={`Remove ${a.assistant?.display_name || 'assistant'}`}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -177,7 +174,7 @@ export default function RunnerAssistantSettings() {
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm">Runner Assistant User</Label>
+              <Label className="text-sm">Assistant User</Label>
               <Select value={selectedAssistantId} onValueChange={setSelectedAssistantId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select assistant user..." />
@@ -190,7 +187,7 @@ export default function RunnerAssistantSettings() {
                     ))}
                   {assistantUsers.filter(u => !assignedAssistantIds.has(u.id)).length === 0 && (
                     <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                      No unassigned runner_assistant users found. Create a user with the "runner_assistant" role first.
+                      No unassigned active users are available.
                     </div>
                   )}
                 </SelectContent>
@@ -211,36 +208,20 @@ export default function RunnerAssistantSettings() {
               </Select>
             </div>
 
-            <div className="space-y-3 pt-2">
+            <div className="max-h-[46vh] space-y-2 overflow-y-auto pr-1 pt-2">
               <Label className="text-sm font-semibold">Permissions</Label>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Access A: Can Click Delivered</p>
-                  <p className="text-xs text-muted-foreground">Can mark orders as delivered for the assigned runner</p>
+              {permissionOptions.map(({ field, label, description }) => (
+                <div key={field} className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 p-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{label}</p>
+                    <p className="text-xs text-muted-foreground">{description}</p>
+                  </div>
+                  <Switch
+                    checked={permissions[field]}
+                    onCheckedChange={(checked) => setPermissions((current) => ({ ...current, [field]: checked }))}
+                  />
                 </div>
-                <Switch checked={canDeliver} onCheckedChange={setCanDeliver} />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Access B: Can Confirm Receipt</p>
-                  <p className="text-xs text-muted-foreground">Can confirm or reject transfer receipts</p>
-                </div>
-                <Switch checked={canConfirmReceipt} onCheckedChange={setCanConfirmReceipt} />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Access C: Driver Stock</p>
-                  <p className="text-xs text-muted-foreground">Can help the assigned runner with pickups, returns, and allocated stock</p>
-                </div>
-                <Switch checked={canManageDriverStock} onCheckedChange={setCanManageDriverStock} />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Access D: Driver Inbox</p>
-                  <p className="text-xs text-muted-foreground">Can use the assigned runner's Driver Inbox assignment workspace</p>
-                </div>
-                <Switch checked={canManageDriverInbox} onCheckedChange={setCanManageDriverInbox} />
-              </div>
+              ))}
             </div>
           </div>
 

@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle2,
+  ClipboardCheck,
   History,
   Loader2,
   PackagePlus,
@@ -51,6 +52,7 @@ import {
 import { useAcknowledgeReturn, useRunnerReturns, type DriverReturn } from '@/hooks/useDriverReturns';
 import {
   useRunnerCashLiabilities,
+  useRunnerAcceptedDriverDeliveries,
   useRunnerSettlementHistory,
   useSettleDriverCash,
   type DriverGroupedLiabilities,
@@ -219,12 +221,13 @@ export default function RunnerDriverStockWorkspace({
     runnerIdOverride,
   );
   const { data: pickupNeeds, isLoading: loadingPickupNeeds } = useRunnerDriverPickupNeeds(runnerIdOverride);
-  const { data: cashLiabilities, isLoading: loadingCashLiabilities } = useRunnerCashLiabilities();
-  const { data: settlementHistory, isLoading: loadingSettlementHistory } = useRunnerSettlementHistory();
+  const { data: cashLiabilities, isLoading: loadingCashLiabilities } = useRunnerCashLiabilities(runnerIdOverride);
+  const { data: acceptedDeliveries = [], isLoading: loadingAcceptedDeliveries } = useRunnerAcceptedDriverDeliveries(runnerIdOverride);
+  const { data: settlementHistory, isLoading: loadingSettlementHistory } = useRunnerSettlementHistory(runnerIdOverride);
   const cancelPickup = useCancelPickup();
   const deletePickup = useDeletePickup();
   const acknowledgeReturn = useAcknowledgeReturn();
-  const settleDriverCash = useSettleDriverCash();
+  const settleDriverCash = useSettleDriverCash(runnerIdOverride);
 
   useEffect(() => {
     if (hideCashSettlement && activeTab === 'cash') {
@@ -898,6 +901,51 @@ export default function RunnerDriverStockWorkspace({
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Recent settlements</p>
                       <p className="mt-1 text-2xl font-black">{settlementHistory?.length || 0}</p>
                     </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-3xl border-border/60">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <ClipboardCheck className="h-5 w-5 text-primary" />
+                      Runner Accepted Deliveries
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingAcceptedDeliveries ? (
+                      <EmptyState title="Loading accepted deliveries" description="Checking the shared Driver acceptance records." />
+                    ) : acceptedDeliveries.length === 0 ? (
+                      <EmptyState title="No accepted deliveries" description="Driver deliveries appear here after Runner acceptance." />
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Driver</TableHead>
+                              <TableHead>Order</TableHead>
+                              <TableHead className="text-right">Qty</TableHead>
+                              <TableHead className="text-right">Amount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {acceptedDeliveries.map((order) => (
+                              <TableRow key={order.id}>
+                                <TableCell className="whitespace-nowrap">
+                                  {order.delivered_at ? format(new Date(order.delivered_at), 'dd MMM yyyy') : '-'}
+                                </TableCell>
+                                <TableCell className="font-semibold">{order.driver?.display_name || 'Unknown Driver'}</TableCell>
+                                <TableCell>{order.order_code}</TableCell>
+                                <TableCell className="text-right">
+                                  {order.order_items.reduce((sum, item) => sum + Number(item.qty || 0), 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-bold">{formatBND(Number(order.total_amount || 0))}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 

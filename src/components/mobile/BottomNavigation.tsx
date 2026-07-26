@@ -162,7 +162,9 @@ export function BottomNavigation() {
   const { data: leaderboardSettings } = useLeaderboardSettings();
   const { data: assistantBinding } = useMyAssistantBinding();
   const [moreOpen, setMoreOpen] = useState(false);
-  const hidePerformanceUI = !!(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
+  const hidePerformanceUI = !!(
+    leaderboardSettings?.filters_default as { hide_performance_ui?: boolean } | null
+  )?.hide_performance_ui;
 
   const getTabs = (): NavItem[] => {
     switch (role) {
@@ -186,17 +188,37 @@ export function BottomNavigation() {
   const tabs = getTabs();
   const modules = useMemo(() => {
     const roleModules = allModules[role || 'salesperson'] || allModules.salesperson;
-    const modulesWithAssistantAccess = assistantBinding?.runner_id && !roleModules.some((item) => item.href === '/dispatch')
-      ? [
-          ...roleModules,
-          { id: 'dispatch', label: 'Assistant Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/dispatch' },
-        ]
-      : roleModules;
+    const modulesWithAssistantAccess = [...roleModules];
+    const hasAssistantDispatchAccess = Boolean(
+      assistantBinding?.runner_id && (
+        assistantBinding.can_deliver ||
+        assistantBinding.can_confirm_receipt ||
+        assistantBinding.can_manage_driver_inbox ||
+        assistantBinding.can_manage_driver_stock ||
+        assistantBinding.can_manage_cash_settlement ||
+        assistantBinding.can_manage_driver_operations ||
+        assistantBinding.can_view_driver_workload
+      )
+    );
+    if (hasAssistantDispatchAccess && !modulesWithAssistantAccess.some((item) => item.href === '/dispatch')) {
+      modulesWithAssistantAccess.push(
+        { id: 'dispatch', label: 'Assistant Dispatch', icon: <Inbox className="h-5 w-5" />, href: '/dispatch' },
+      );
+    }
+    if (
+      assistantBinding?.runner_id &&
+      (assistantBinding.can_view_stock_audit || assistantBinding.can_manage_inbound_stock) &&
+      !modulesWithAssistantAccess.some((item) => item.href === '/inventory')
+    ) {
+      modulesWithAssistantAccess.push(
+        { id: 'inventory', label: 'Assistant Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory' },
+      );
+    }
     return modulesWithAssistantAccess.filter((item) => {
       if (item.href.startsWith('/performance') && hidePerformanceUI && role !== 'admin') return false;
       return true;
     });
-  }, [assistantBinding?.runner_id, hidePerformanceUI, role]);
+  }, [assistantBinding, hidePerformanceUI, role]);
 
   const isActive = (href: string, id?: string): boolean => {
     if (href === '/') return location.pathname === '/';

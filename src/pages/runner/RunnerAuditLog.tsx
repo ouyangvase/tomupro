@@ -30,6 +30,13 @@ interface AuditEntry {
   order?: { order_code: string; customer_name: string; runner?: { display_name: string } | null } | null;
 }
 
+interface AuditOrderLookup {
+  id: string;
+  order_code: string;
+  customer_name: string;
+  runner: { display_name: string } | null;
+}
+
 const PAGE_SIZE = 30;
 
 const actionLabels: Record<string, string> = {
@@ -43,6 +50,9 @@ const actionLabels: Record<string, string> = {
   delivered: 'Marked Delivered',
   taken: 'Taken Order',
   DELIVERY_FAILED: 'Failed Delivery',
+  DRIVER_DELIVERY_ACCEPTED: 'Driver Delivery Accepted',
+  DRIVER_FAILURE_ACCEPTED: 'Driver Failure Accepted',
+  DRIVER_REPORT_REJECTED: 'Driver Report Rejected',
   // Status changes
   status_changed: 'Status Changed',
   order_created: 'Order Created',
@@ -70,6 +80,9 @@ const actionColors: Record<string, string> = {
   driver_assigned: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400',
   status_changed: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400',
   DELIVERY_FAILED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400',
+  DRIVER_DELIVERY_ACCEPTED: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400',
+  DRIVER_FAILURE_ACCEPTED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400',
+  DRIVER_REPORT_REJECTED: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400',
   CANCELLED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400',
   CLAIM_BATCH_APPROVED: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400',
   CLAIM_BATCH_REJECTED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400',
@@ -111,7 +124,7 @@ export default function RunnerAuditLog() {
     queryKey: ['runner-audit-log', user?.id, page, actionFilter, orderSearch, dateFrom, dateTo],
     queryFn: async () => {
       // Step 1: Fetch audit logs with actor profile (FK exists for actor_id)
-      let query = (supabase as any)
+      let query = supabase
         .from('audit_logs')
         .select('*, actor:profiles!actor_id(display_name, role)', { count: 'exact' })
         .eq('entity_type', 'order')
@@ -133,16 +146,20 @@ export default function RunnerAuditLog() {
       if (error) throw error;
 
       // Step 2: Batch-fetch order details for the entity_ids (no FK on entity_id)
-      const entityIds = [...new Set((logs || []).map((l: any) => l.entity_id))];
-      let orderMap: Record<string, { order_code: string; customer_name: string; runner?: { display_name: string } | null }> = {};
+      const entityIds = [...new Set((logs || []).map((log) => log.entity_id))];
+      const orderMap: Record<string, { order_code: string; customer_name: string; runner?: { display_name: string } | null }> = {};
       if (entityIds.length > 0) {
-        const { data: orders } = await (supabase as any)
+        const { data: orders } = await supabase
           .from('orders')
           .select('id, order_code, customer_name, runner_id, runner:profiles!runner_id(display_name)')
           .in('id', entityIds);
         if (orders) {
-          for (const o of orders) {
-            orderMap[o.id] = { order_code: o.order_code, customer_name: o.customer_name, runner: o.runner };
+          for (const order of orders as AuditOrderLookup[]) {
+            orderMap[order.id] = {
+              order_code: order.order_code,
+              customer_name: order.customer_name,
+              runner: order.runner,
+            };
           }
         }
       }

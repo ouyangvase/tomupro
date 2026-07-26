@@ -26,8 +26,10 @@ import { useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
 import {
   Plus,
+  Minus,
   Trash2,
   Package,
+  PackageCheck,
   Sparkles,
   AlertCircle,
   AlertTriangle,
@@ -336,15 +338,15 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Submit Daily Return</DialogTitle>
+      <DialogContent className="left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-background p-0 [&>button]:right-4 [&>button]:top-[max(1rem,env(safe-area-inset-top))] sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-h-[92dvh] sm:w-full sm:max-w-2xl sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl sm:border sm:[&>button]:right-6 sm:[&>button]:top-6">
+        <DialogHeader className="border-b px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] text-left sm:px-6 sm:pt-4">
+          <DialogTitle className="pr-10">Create return</DialogTitle>
           <DialogDescription>
-            Return items that you haven't delivered. Select which items to return.
+            Review the items and confirm the quantity handed back to your runner.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="space-y-2">
             <Label>Related Pickup (Optional)</Label>
             <Select value={relatedPickupId} onValueChange={setRelatedPickupId}>
@@ -364,7 +366,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
           {/* Show pickup items summary */}
           {selectedPickup && pickupItems.length > 0 && (
-            <Alert className="border-primary/50 bg-primary/5">
+            <Alert className="hidden border-primary/50 bg-primary/5 sm:block">
               <Package className="h-4 w-4" />
               <AlertTitle>Pickup Items</AlertTitle>
               <AlertDescription>
@@ -381,7 +383,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
           {/* Section 1: Must Return Items */}
           {mustReturnItems.length > 0 && (
-            <Alert className="border-destructive/50 bg-destructive/5">
+            <Alert className="hidden border-destructive/50 bg-destructive/5 sm:block">
               <AlertTriangle className="h-4 w-4 text-destructive" />
               <AlertTitle className="text-destructive">Must Return (Not Needed Tomorrow)</AlertTitle>
               <AlertDescription className="text-destructive/80">
@@ -398,7 +400,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
           {/* Section 2: Keep for Tomorrow Items */}
           {keepForTomorrowItems.length > 0 && (
-            <Alert className="bg-muted/30">
+            <Alert className="hidden bg-muted/30 sm:block">
               <Clock className="h-4 w-4" />
               <AlertTitle>Keep for Tomorrow (Excluded)</AlertTitle>
               <AlertDescription>
@@ -415,7 +417,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
 
           {/* Show auto-suggestion info */}
           {hasItemsToReturn && items.length > 0 && (
-            <Alert className="bg-muted/30">
+            <Alert className="hidden bg-muted/30 sm:block">
               <Sparkles className="h-4 w-4" />
               <AlertTitle>Auto-Suggested Return Items</AlertTitle>
               <AlertDescription>
@@ -441,6 +443,7 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="Reason for return, condition notes, etc."
+              className="min-h-24 resize-none"
             />
           </div>
 
@@ -458,7 +461,8 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
             </div>
 
             {items.length > 0 && (
-              <Table>
+              <div className="hidden md:block">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
@@ -572,7 +576,128 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
                     );
                   })}
                 </TableBody>
-              </Table>
+                </Table>
+              </div>
+            )}
+
+            {items.length > 0 && (
+              <div className="space-y-3 md:hidden">
+                {items.map((item, index) => {
+                  const fullItem = allReturnableItems.find(r => r.product_id === item.product_id);
+                  const pickupQty = fullItem?.pickup_qty || 0;
+                  const deliveredQty = fullItem?.delivered_qty || 0;
+                  const returnedQty = fullItem?.returned_qty || 0;
+
+                  return (
+                    <article key={item.product_id || index} className="rounded-lg border bg-card p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          {item.product_id ? (
+                            <>
+                              <p className="break-words text-sm font-semibold">
+                                {item.sku_code || 'N/A'} / {item.product_name}
+                              </p>
+                              {item.must_return && (
+                                <Badge variant="destructive" className="mt-2 text-xs">Must Return</Badge>
+                              )}
+                            </>
+                          ) : (
+                            <Select
+                              value={item.product_id}
+                              onValueChange={v => updateItemProduct(index, v)}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select product" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allReturnableItems
+                                  .filter(r => !items.some((i, idx) => idx !== index && i.product_id === r.product_id))
+                                  .map(product => (
+                                    <SelectItem key={product.product_id} value={product.product_id}>
+                                      {product.sku_code || 'N/A'} / {product.product_name}
+                                    </SelectItem>
+                                  ))}
+                                {allProducts
+                                  .filter(p =>
+                                    !items.some((i, idx) => idx !== index && i.product_id === p.id) &&
+                                    !allReturnableItems.some(r => r.product_id === p.id)
+                                  )
+                                  .map(product => (
+                                    <SelectItem key={product.id} value={product.id}>
+                                      {product.sku_code || 'N/A'} / {product.sku_name}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label="Remove return item"
+                          className="h-11 w-11 shrink-0"
+                          onClick={() => removeItem(index)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-4 gap-2">
+                        {[
+                          ['Picked', pickupQty],
+                          ['Delivered', deliveredQty],
+                          ['Returned', returnedQty],
+                          ['Available', item.max_qty],
+                        ].map(([label, value]) => (
+                          <div key={label} className="min-w-0 rounded-md bg-muted/60 px-1 py-2.5 text-center">
+                            <p className="truncate text-[10px] font-medium text-muted-foreground">{label}</p>
+                            <p className="mt-0.5 text-sm font-bold tabular-nums">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between gap-3 border-t pt-4">
+                        <Label htmlFor={`return-qty-${index}`} className="text-sm font-semibold">Return quantity</Label>
+                        <div className="flex h-11 items-center overflow-hidden rounded-lg border bg-background">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-11 w-11 rounded-none"
+                            aria-label={`Decrease ${item.product_name} return quantity`}
+                            disabled={item.qty <= 1}
+                            onClick={() => updateItemQty(index, item.qty - 1)}
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <Input
+                            id={`return-qty-${index}`}
+                            type="number"
+                            inputMode="numeric"
+                            min="1"
+                            max={item.max_qty}
+                            value={item.qty}
+                            aria-label={`${item.product_name} return quantity`}
+                            onChange={e => updateItemQty(index, parseInt(e.target.value) || 1)}
+                            className="h-11 w-14 rounded-none border-y-0 px-1 text-center text-base font-bold tabular-nums focus-visible:ring-0"
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-11 w-11 rounded-none"
+                            aria-label={`Increase ${item.product_name} return quantity`}
+                            disabled={item.qty >= item.max_qty}
+                            onClick={() => updateItemQty(index, item.qty + 1)}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             )}
 
             {items.length === 0 && hasItemsToReturn && (
@@ -582,11 +707,16 @@ export function CreateReturnDialog({ open, onOpenChange }: CreateReturnDialogPro
             )}
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <div className="sticky bottom-0 -mx-4 flex items-center gap-3 border-t bg-background/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:-mx-6 sm:px-6">
+            <div className="min-w-0 flex-1 sm:hidden">
+              <p className="text-xs text-muted-foreground">Total return</p>
+              <p className="text-lg font-bold tabular-nums">{totalReturnQty} pcs</p>
+            </div>
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="hidden sm:inline-flex">
               Cancel
             </Button>
-            <Button onClick={handleSubmitClick} disabled={createReturn.isPending}>
+            <Button onClick={handleSubmitClick} disabled={!canSubmit} className="h-11 min-w-40 flex-1 sm:flex-none">
+              <PackageCheck className="mr-2 h-4 w-4" />
               {createReturn.isPending ? 'Submitting...' : 'Submit Return'}
             </Button>
           </div>

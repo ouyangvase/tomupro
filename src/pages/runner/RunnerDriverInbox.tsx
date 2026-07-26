@@ -414,9 +414,10 @@ function UserDotLabel({ name }: { name: string }) {
 
 type RunnerDriverInboxProps = {
   runnerIdOverride?: string;
+  workloadOnly?: boolean;
 };
 
-export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInboxProps = {}) {
+export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = false }: RunnerDriverInboxProps = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile } = useAuth();
@@ -1187,7 +1188,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-[#17120c] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                    Driver Inbox
+                    {workloadOnly ? 'Driver Workload' : 'Driver Inbox'}
                   </span>
                   <span className="rounded-full border border-[#decfb7] bg-[#fbf6ee] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9b6420]">
                     Active queue
@@ -1198,10 +1199,12 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
                   </span>
                 </div>
                 <h1 className="mt-2 text-2xl font-black leading-tight text-[#171717] md:text-3xl">
-                  Driver Inbox
+                  {workloadOnly ? 'Driver Workload' : 'Driver Inbox'}
                 </h1>
                 <p className="mt-1 max-w-3xl text-sm font-medium leading-6 text-[#6f6a62]">
-                  Assign delivery orders by area, balance Driver workloads, and monitor delivery performance.
+                  {workloadOnly
+                    ? 'Monitor Driver workload and delivery performance from the shared assignment source.'
+                    : 'Assign delivery orders by area, balance Driver workloads, and monitor delivery performance.'}
                 </p>
               </div>
 
@@ -1225,8 +1228,8 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
         </section>
 
         <section className="space-y-4" aria-label="Area-based driver assignment workspace">
-            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_330px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="min-w-0 space-y-4">
+            <div className={cn('grid min-w-0 gap-4', workloadOnly ? 'mx-auto max-w-3xl' : 'xl:grid-cols-[minmax(0,1fr)_330px] 2xl:grid-cols-[minmax(0,1fr)_360px]')}>
+              {!workloadOnly && <div className="min-w-0 space-y-4">
                 <div className="rounded-[1.5rem] border border-[#1f2937]/8 bg-[#f2eee7] p-1 shadow-[0_18px_46px_rgba(17,16,14,0.06)]">
                   <div className="rounded-[calc(1.5rem-0.25rem)] bg-white p-3 shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] md:p-4">
                     <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -1498,7 +1501,7 @@ export default function RunnerDriverInbox({ runnerIdOverride }: RunnerDriverInbo
                     })
                   )}
                 </div>
-              </div>
+              </div>}
 
               <aside className="min-w-0 space-y-3">
                 <div className="rounded-[1.5rem] border border-[#1f2937]/8 bg-[#11100e] p-1 text-white shadow-[0_18px_52px_rgba(17,16,14,0.16)] xl:sticky xl:top-4">

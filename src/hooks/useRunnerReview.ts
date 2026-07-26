@@ -98,11 +98,23 @@ export function useRunnerReviewOrder() {
 
       // If confirming delivered, also set delivered_at
       if (params.outcome === 'CONFIRM_DELIVERED') {
-        // Use provided deliveredAt or default to now
         updateData.delivered_at = params.deliveredAt || new Date().toISOString();
-        updateData.runner_accept_status = 'ACCEPTED';
-      } else if (params.outcome === 'CONFIRM_FAILED') {
-        updateData.runner_accept_status = 'ACCEPTED';
+      }
+
+      if (params.outcome === 'CONFIRM_DELIVERED' || params.outcome === 'CONFIRM_FAILED') {
+        const { data: reviewResult, error: reviewError } = await supabase.rpc('review_driver_delivery', {
+          p_order_id: params.orderId,
+          p_actor_id: user.id,
+          p_accept: true,
+          p_reason: params.comment || null,
+        });
+
+        if (reviewError) throw reviewError;
+        if (!(reviewResult as { success?: boolean; error?: string })?.success) {
+          throw new Error(
+            (reviewResult as { error?: string })?.error || 'Unable to accept Driver report',
+          );
+        }
       }
 
       const { error } = await supabase

@@ -1,8 +1,9 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
+import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 
 const InventoryBalance = lazy(() => import('@/pages/InventoryBalance'));
 const InboundPending = lazy(() => import('@/pages/inbound/InboundPending'));
@@ -23,6 +24,9 @@ export default function InventoryModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const role = profile?.role;
+  const { data: assistantBinding } = useMyAssistantBinding();
+  const isAssistantContext = role !== 'runner' && Boolean(assistantBinding?.runner_id);
+  const assistantRunnerId = isAssistantContext ? assistantBinding?.runner_id : undefined;
 
   const allTabs = [
     { id: 'balance', label: 'Stock Balance', roles: ['admin', 'manager', 'salesperson', 'runner'] },
@@ -34,8 +38,15 @@ export default function InventoryModule() {
     { id: 'data-sharing', label: 'Data Sharing', roles: ['admin'] },
   ];
 
-  const tabs = useMemo(() => allTabs.filter(t => role && t.roles.includes(role)), [role]);
-  const activeTab = searchParams.get('tab') || 'balance';
+  const tabs = allTabs.filter((tab) => {
+    if (role && tab.roles.includes(role)) return true;
+    if (!isAssistantContext) return false;
+    if (tab.id === 'balance' || tab.id === 'stock-audit') return Boolean(assistantBinding?.can_view_stock_audit);
+    if (tab.id === 'inbound' || tab.id === 'inbound-history') return Boolean(assistantBinding?.can_manage_inbound_stock);
+    return false;
+  });
+  const requestedTab = searchParams.get('tab');
+  const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab! : (tabs[0]?.id || 'balance');
 
   return (
     <div className="space-y-4">
@@ -52,7 +63,9 @@ export default function InventoryModule() {
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
             {activeTab === 'balance' && <InventoryBalance />}
-            {activeTab === 'inbound' && (role === 'runner' ? <RunnerInbound /> : <InboundPending />)}
+            {activeTab === 'inbound' && ((role === 'runner' || (isAssistantContext && assistantBinding?.can_manage_inbound_stock))
+              ? <RunnerInbound runnerIdOverride={assistantRunnerId} />
+              : <InboundPending />)}
             {activeTab === 'inbound-history' && <InboundHistory />}
             {activeTab === 'stock-audit' && <StockIntegrityAudit />}
             {activeTab === 'adjustments' && <StockAdjustment />}
