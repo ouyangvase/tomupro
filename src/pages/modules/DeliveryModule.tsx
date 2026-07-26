@@ -28,19 +28,19 @@ export default function DeliveryModule() {
   const activeTab = searchParams.get('tab') || 'inbox';
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
       <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-          <TabsList className="w-full justify-start bg-secondary/30 h-11">
+          <TabsList className="h-11 w-max min-w-max justify-start bg-secondary/30">
             {tabs.map(t => (
-              <TabsTrigger key={t.id} value={t.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{t.label}</TabsTrigger>
+              <TabsTrigger key={t.id} value={t.id} className="shrink-0 whitespace-nowrap px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground md:px-4 md:text-sm">{t.label}</TabsTrigger>
             ))}
           </TabsList>
         </div>
       </Tabs>
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
-          <div className="mt-4">
+          <div className="mt-4 min-w-0">
             {activeTab === 'inbox' && <DriverInbox />}
             {activeTab === 'route' && <DriverRoutePage />}
             {activeTab === 'pickups' && <DriverPickupsPage />}

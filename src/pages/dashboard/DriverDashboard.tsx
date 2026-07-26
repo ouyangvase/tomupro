@@ -84,7 +84,7 @@ export function DriverDashboard() {
   const NextStepIcon = nextStep.icon;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 pb-24">
+    <div className="mx-auto w-full min-w-0 max-w-2xl space-y-5 overflow-x-hidden pb-24">
       <header className="border-b border-border pb-4">
         <p className="text-xs font-bold uppercase text-primary">Today</p>
         <h1 className="mt-1 text-2xl font-bold">{format(new Date(), 'EEEE, dd MMMM')}</h1>

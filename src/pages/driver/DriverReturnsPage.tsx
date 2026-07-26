@@ -59,16 +59,16 @@ export default function DriverReturnsPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-6 max-w-2xl mx-auto">
-        <div className="flex justify-between items-start">
-          <div>
+      <div className="mx-auto w-full min-w-0 max-w-2xl space-y-5 overflow-x-hidden pb-24">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <RotateCcw className="h-6 w-6" />
               My Returns
             </h1>
             <p className="text-muted-foreground">Submit and track stock returns to your runner</p>
           </div>
-          <Button onClick={() => setCreateDialogOpen(true)}>
+          <Button className="w-full sm:w-auto" onClick={() => setCreateDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             New Return
           </Button>
@@ -92,16 +92,16 @@ export default function DriverReturnsPage() {
                 <p className="text-sm font-medium mb-2 text-destructive">Must Return (Not Needed Tomorrow):</p>
                 <div className="space-y-3">
                   {returnRequired.mustReturnItems.map(item => (
-                    <div key={item.product_id} className="rounded border p-2 bg-muted/30">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-sm">
+                    <div key={item.product_id} className="min-w-0 rounded border bg-muted/30 p-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <span className="break-words text-sm font-medium">
                           {item.sku_code || 'N/A'} / {item.sku_name}
                         </span>
                         <Badge variant="destructive" className="font-mono">
                           Return: {item.suggested_return_qty}
                         </Badge>
                       </div>
-                      <div className="flex gap-3 mt-1.5 text-xs text-muted-foreground">
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span>Picked: <strong className="text-foreground">{item.pickup_qty}</strong></span>
                         <span>−</span>
                         <span>Delivered: <strong className="text-foreground">{item.delivered_qty}</strong></span>
@@ -125,8 +125,8 @@ export default function DriverReturnsPage() {
                   <p className="text-sm font-medium mb-2 text-amber-700 dark:text-amber-400">Keep for Tomorrow (Excluded):</p>
                   <div className="space-y-2">
                     {returnRequired.keepForTomorrowItems.map(item => (
-                      <div key={item.product_id} className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground">
+                      <div key={item.product_id} className="flex min-w-0 items-start justify-between gap-3 text-sm">
+                        <span className="min-w-0 break-words text-muted-foreground">
                           {item.sku_code || 'N/A'} / {item.sku_name}
                         </span>
                         <Badge variant="outline" className="font-mono border-amber-500 text-amber-700">
@@ -184,7 +184,7 @@ export default function DriverReturnsPage() {
             {pendingReturns.map(ret => (
               <Card key={ret.id} className="border-amber-200 bg-amber-50/50">
                 <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <CardTitle className="text-base">
                       Return - {format(new Date(ret.created_at), 'dd MMM yyyy HH:mm')}
                     </CardTitle>
@@ -197,8 +197,8 @@ export default function DriverReturnsPage() {
                 <CardContent>
                   <div className="space-y-2">
                     {ret.items?.map(item => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span className="font-medium">
+                      <div key={item.id} className="flex min-w-0 justify-between gap-3 text-sm">
+                        <span className="min-w-0 break-words font-medium">
                           {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
                         </span>
                         <span className="font-medium">× {item.qty}</span>
@@ -232,7 +232,7 @@ export default function DriverReturnsPage() {
             acknowledgedReturns.map(ret => (
               <Card key={ret.id}>
                 <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <CardTitle className="text-base">
                       {format(new Date(ret.created_at), 'dd MMM yyyy')}
                     </CardTitle>
@@ -247,8 +247,8 @@ export default function DriverReturnsPage() {
                 <CardContent>
                   <div className="space-y-1">
                     {ret.items?.map(item => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span className="font-medium">
+                      <div key={item.id} className="flex min-w-0 justify-between gap-3 text-sm">
+                        <span className="min-w-0 break-words font-medium">
                           {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
                         </span>
                         <span className="font-medium">× {item.qty}</span>

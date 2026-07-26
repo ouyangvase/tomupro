@@ -39,7 +39,7 @@ export default function DriverRoutePage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-2xl space-y-5 pb-24">
+      <div className="mx-auto w-full min-w-0 max-w-2xl space-y-5 overflow-x-hidden pb-24">
         <header className="border-b border-border pb-4">
           <div className="flex items-start justify-between gap-4">
             <div>

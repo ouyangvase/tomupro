@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
 import { cn } from '@/lib/utils';
-import { CalendarDays, ChevronLeft, ChevronRight, Target } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
 
 type Period = 'today' | 'week' | 'month' | 'year' | 'custom';
 
@@ -43,6 +43,7 @@ export default function DriverAnalyticsPage() {
   const [customFrom, setCustomFrom] = useState(dateKey(startOfMonth(new Date())));
   const [customTo, setCustomTo] = useState(dateKey(new Date()));
   const [selectedDate, setSelectedDate] = useState(dateKey(new Date()));
+  const [inactiveOpen, setInactiveOpen] = useState(false);
 
   const range = useMemo(() => {
     const now = new Date();
@@ -68,6 +69,8 @@ export default function DriverAnalyticsPage() {
   });
 
   const selectedDay = analytics?.daily.find((day) => day.date === selectedDate);
+  const selectedActiveOrders = selectedDay?.orders.filter((order) => order.assignment_state !== 'INACTIVE') || [];
+  const selectedInactiveOrders = selectedDay?.orders.filter((order) => order.assignment_state === 'INACTIVE') || [];
   const leadingDays = (getDay(startOfMonth(calendarMonth)) + 6) % 7;
   const summary = analytics?.summary;
   const yearMonths = useMemo(() => {
@@ -85,7 +88,7 @@ export default function DriverAnalyticsPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-3xl space-y-5 pb-24">
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-4 overflow-x-hidden pb-24">
         <header className="border-b border-border pb-4">
           <p className="text-xs font-bold uppercase text-primary">Performance</p>
           <h1 className="mt-1 text-2xl font-bold">Delivery calendar</h1>
@@ -121,19 +124,19 @@ export default function DriverAnalyticsPage() {
           </div>
         )}
 
-        <section className="border-b border-border pb-5">
-          <div className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
+        <section className="border-b border-border pb-4">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
             <div>
               <p className="text-xs text-muted-foreground">Delivered</p>
-              <p className="mt-1 text-2xl font-bold">{summary?.delivered ?? 0} / {summary?.assigned ?? 0}</p>
+              <p className="mt-1 text-xl font-bold sm:text-2xl">{summary?.delivered ?? 0} / {summary?.assigned ?? 0}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Delivery rate</p>
-              <p className="mt-1 text-2xl font-bold">{(summary?.deliveryRate ?? 0).toFixed(1)}%</p>
+              <p className="mt-1 text-xl font-bold sm:text-2xl">{(summary?.deliveryRate ?? 0).toFixed(1)}%</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Cash collected</p>
-              <p className="mt-1 text-xl font-bold">BND {(summary?.cashCollected ?? 0).toFixed(2)}</p>
+              <p className="mt-1 break-words text-lg font-bold sm:text-xl">BND {(summary?.cashCollected ?? 0).toFixed(2)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Failed</p>
@@ -188,7 +191,7 @@ export default function DriverAnalyticsPage() {
             </div>
           </section>
         ) : (
-        <section>
+        <section className="min-w-0">
           <div className="mb-3 flex items-center justify-between">
             <Button
               variant="ghost"
@@ -217,30 +220,36 @@ export default function DriverAnalyticsPage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-7 text-center text-xs font-semibold text-muted-foreground">
+          <div className="grid grid-cols-7 text-center text-[10px] font-semibold text-muted-foreground sm:text-xs">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
-              <div key={day} className="py-2">{day}</div>
+              <div key={day} className="min-w-0 py-2">
+                <span className="sm:hidden">{day.slice(0, 1)}</span>
+                <span className="hidden sm:inline">{day}</span>
+              </div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 border-l border-t border-border">
+          <div className="grid w-full min-w-0 grid-cols-7 border-l border-t border-border">
             {Array.from({ length: leadingDays }).map((_, index) => (
-              <div key={`blank-${index}`} className="aspect-square border-b border-r border-border bg-muted/30" />
+              <div key={`blank-${index}`} className="h-14 min-w-0 border-b border-r border-border bg-muted/30 sm:aspect-square sm:h-auto" />
             ))}
             {(analytics?.daily || []).map((day) => (
               <button
                 key={day.date}
                 type="button"
-                onClick={() => setSelectedDate(day.date)}
+                onClick={() => {
+                  setSelectedDate(day.date);
+                  setInactiveOpen(false);
+                }}
                 className={cn(
-                  'aspect-square min-w-0 border-b border-r border-border p-1 text-left transition-colors hover:bg-muted',
+                  'h-14 min-w-0 overflow-hidden border-b border-r border-border p-1 text-left transition-colors hover:bg-muted sm:aspect-square sm:h-auto',
                   selectedDate === day.date && 'bg-primary/10 ring-2 ring-inset ring-primary',
                 )}
               >
                 <span className="block text-xs font-semibold">{format(parseISO(day.date), 'd')}</span>
                 <span
                   className={cn(
-                    'mt-1 block text-center text-xs font-bold sm:text-sm',
+                    'mt-1 block whitespace-nowrap text-center text-[10px] font-bold sm:text-sm',
                     day.failed > 0 && 'text-destructive',
                     day.assigned > 0 && day.delivered === day.assigned && 'text-emerald-700',
                   )}
@@ -260,7 +269,7 @@ export default function DriverAnalyticsPage() {
               <p className="text-xs font-bold uppercase text-muted-foreground">Selected day</p>
               <h2 className="mt-1 font-bold">{format(parseISO(selectedDate), 'dd MMMM yyyy')}</h2>
             </div>
-            <Badge variant="secondary">{selectedDay?.assigned ?? 0} assigned</Badge>
+            <Badge variant="secondary" className="shrink-0">{selectedDay?.assigned ?? 0} assigned</Badge>
           </div>
 
           {!selectedDay || selectedDay.orders.length === 0 ? (
@@ -269,8 +278,14 @@ export default function DriverAnalyticsPage() {
               No assigned orders on this day.
             </div>
           ) : (
-            <div className="mt-3 divide-y divide-border border-y border-border">
-              {selectedDay.orders.map((order) => (
+            <div className="mt-3">
+              {selectedActiveOrders.length === 0 && (
+                <p className="border-y border-border py-5 text-center text-sm text-muted-foreground">
+                  No active assignments on this day.
+                </p>
+              )}
+              <div className="divide-y divide-border border-y border-border">
+              {selectedActiveOrders.map((order) => (
                 <div key={order.id} className="flex items-center justify-between gap-3 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold">{order.order_code}</p>
@@ -284,6 +299,39 @@ export default function DriverAnalyticsPage() {
                   </Badge>
                 </div>
               ))}
+              </div>
+
+              {selectedInactiveOrders.length > 0 && (
+                <div className="mt-3 border-y border-border">
+                  <button
+                    type="button"
+                    aria-expanded={inactiveOpen}
+                    onClick={() => setInactiveOpen((open) => !open)}
+                    className="flex min-h-12 w-full items-center justify-between gap-3 py-3 text-left"
+                  >
+                    <span>
+                      <span className="block text-sm font-bold">Inactive orders</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {selectedInactiveOrders.length} hidden
+                      </span>
+                    </span>
+                    <ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', inactiveOpen && 'rotate-180')} />
+                  </button>
+                  {inactiveOpen && (
+                    <div className="divide-y divide-border border-t border-border">
+                      {selectedInactiveOrders.map((order) => (
+                        <div key={order.id} className="flex items-center justify-between gap-3 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold">{order.order_code}</p>
+                            <p className="truncate text-xs text-muted-foreground">{order.customer_name}</p>
+                          </div>
+                          <Badge variant="outline" className="shrink-0 text-muted-foreground">INACTIVE</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </section>

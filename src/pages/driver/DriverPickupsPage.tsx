@@ -26,7 +26,7 @@ export default function DriverPickupsPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-6 max-w-2xl mx-auto">
+      <div className="mx-auto w-full min-w-0 max-w-2xl space-y-5 overflow-x-hidden pb-24">
       <LocationTracker />
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -44,10 +44,10 @@ export default function DriverPickupsPage() {
             Pending Acknowledgement
           </h2>
           {pendingPickups.map(pickup => (
-            <Card key={pickup.id} className="border-amber-200 bg-amber-50/50">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <div>
+            <Card key={pickup.id} className="min-w-0 border-amber-200 bg-amber-50/50">
+              <CardHeader className="p-4 pb-2 sm:p-6 sm:pb-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <CardTitle className="text-lg">
                       Pickup - {format(new Date(pickup.pickup_date), 'dd MMM yyyy')}
                     </CardTitle>
@@ -55,16 +55,33 @@ export default function DriverPickupsPage() {
                       From: {pickup.runner?.display_name || 'Runner'}
                     </CardDescription>
                   </div>
-                  <Badge variant="outline" className="bg-amber-100 text-amber-700">
+                  <Badge variant="outline" className="w-fit shrink-0 bg-amber-100 text-amber-700">
                     <Clock className="h-3 w-3 mr-1" />
                     Pending
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-4 pt-2 sm:p-6 sm:pt-2">
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Items to receive:</p>
-                  <div className="bg-background rounded-lg overflow-hidden">
+                  <div className="space-y-2 rounded-lg bg-background p-2 md:hidden">
+                    {pickup.items?.map(item => (
+                      <div key={item.id} className="min-w-0 rounded-md border border-border p-3">
+                        <p className="break-words text-sm font-semibold">
+                          {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
+                        </p>
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                          <div><p className="text-[10px] uppercase text-muted-foreground">Required</p><p className="mt-1 font-bold">{item.required_qty ?? '-'}</p></div>
+                          <div><p className="text-[10px] uppercase text-muted-foreground">Buffer</p><p className="mt-1 font-bold">{item.buffer_qty > 0 ? `+${item.buffer_qty}` : '0'}</p></div>
+                          <div><p className="text-[10px] uppercase text-muted-foreground">Total</p><p className="mt-1 font-bold text-primary">{item.qty}</p></div>
+                        </div>
+                      </div>
+                    ))}
+                    {(!pickup.items || pickup.items.length === 0) && (
+                      <p className="py-4 text-center text-sm text-muted-foreground">No items specified</p>
+                    )}
+                  </div>
+                  <div className="hidden overflow-hidden rounded-lg bg-background md:block">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -148,10 +165,10 @@ export default function DriverPickupsPage() {
           </Card>
         ) : (
           acknowledgedPickups.map(pickup => (
-            <Card key={pickup.id}>
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <div>
+            <Card key={pickup.id} className="min-w-0">
+              <CardHeader className="p-4 pb-2 sm:p-6 sm:pb-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <CardTitle className="text-lg">
                       {format(new Date(pickup.pickup_date), 'dd MMM yyyy')}
                     </CardTitle>
@@ -161,13 +178,28 @@ export default function DriverPickupsPage() {
                         : '-'}
                     </CardDescription>
                   </div>
-                  <Badge variant="outline" className="bg-green-50 text-green-700">
+                  <Badge variant="outline" className="w-fit shrink-0 bg-green-50 text-green-700">
                     <CheckCircle className="h-3 w-3 mr-1" />
                     Acknowledged
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
+                <div className="space-y-2 md:hidden">
+                  {pickup.items?.map(item => (
+                    <div key={item.id} className="min-w-0 rounded-md border border-border p-3">
+                      <p className="break-words text-sm font-semibold">
+                        {item.product?.sku_code || 'N/A'} / {item.product?.sku_name || 'Unknown'}
+                      </p>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                        <div><p className="text-[10px] uppercase text-muted-foreground">Required</p><p className="mt-1 font-bold">{item.required_qty ?? '-'}</p></div>
+                        <div><p className="text-[10px] uppercase text-muted-foreground">Buffer</p><p className="mt-1 font-bold">{item.buffer_qty > 0 ? `+${item.buffer_qty}` : '0'}</p></div>
+                        <div><p className="text-[10px] uppercase text-muted-foreground">Received</p><p className="mt-1 font-bold text-primary">{item.qty}</p></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -194,6 +226,7 @@ export default function DriverPickupsPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           ))

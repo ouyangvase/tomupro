@@ -6,7 +6,6 @@ export type DriverAssignmentState =
   | 'ACTIVE'
   | 'DELIVERED'
   | 'FAILED'
-  | 'PENDING_REVIEW'
   | 'INACTIVE';
 
 export type DriverAssignment = Order & {
@@ -89,6 +88,7 @@ export function useDriverAssignments(query: DriverAssignmentQuery = {}) {
 export function summarizeDriverAssignments(assignments: DriverAssignment[]) {
   const delivered = assignments.filter((order) => order.assignment_state === 'DELIVERED').length;
   const failed = assignments.filter((order) => order.assignment_state === 'FAILED').length;
+  const inactive = assignments.filter((order) => order.assignment_state === 'INACTIVE').length;
   const assigned = assignments.filter((order) => order.assignment_state !== 'INACTIVE').length;
   const pending = Math.max(assigned - delivered - failed, 0);
   const cashCollected = assignments
@@ -99,6 +99,7 @@ export function summarizeDriverAssignments(assignments: DriverAssignment[]) {
     assigned,
     delivered,
     failed,
+    inactive,
     pending,
     deliveryRate: assigned > 0 ? (delivered / assigned) * 100 : 0,
     cashCollected,

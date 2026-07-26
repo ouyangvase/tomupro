@@ -62,7 +62,7 @@ export default function DriverRankingPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-5 overflow-x-hidden pb-24">
         {/* Hero */}
         <PageHero
           icon={<Trophy className="h-6 w-6 text-primary" />}
@@ -97,8 +97,8 @@ export default function DriverRankingPage() {
               </div>
             </div>
             <CardContent className="p-5">
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="p-3 rounded-xl bg-muted/30 border border-border/30">
+              <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-3 sm:gap-4">
+                <div className="col-span-2 rounded-xl border border-border/30 bg-muted/30 p-3 sm:col-span-1">
                   <p className="text-xs text-muted-foreground">Total Amount</p>
                   <p className="font-bold text-lg">BND {myRanking.total_amount?.toLocaleString() || '0'}</p>
                 </div>
@@ -178,6 +178,35 @@ export default function DriverRankingPage() {
             {currentMonthTeam.length === 0 ? (
               <CapybaraState type="empty" title="No team data" description="No rankings available for this month" />
             ) : (
+              <>
+              <div className="divide-y divide-border sm:hidden">
+                {currentMonthTeam.map((ranking) => {
+                  const isMe = myRanking?.driver_id === ranking.driver_id;
+                  return (
+                    <div
+                      key={ranking.driver_id}
+                      className={cn('flex min-w-0 items-center gap-3 py-3', isMe && 'bg-primary/5')}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-sm font-bold">
+                        #{ranking.rank_in_team}
+                      </span>
+                      <Avatar className="h-9 w-9 shrink-0">
+                        <AvatarFallback className="bg-muted text-xs font-medium">
+                          {getInitials(ranking.driver_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className={cn('truncate text-sm font-semibold', isMe && 'text-primary')}>
+                          {ranking.driver_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{ranking.delivered_count} delivered</p>
+                      </div>
+                      {isMe && <Badge variant="outline" className="shrink-0 text-[10px]">You</Badge>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="hidden sm:block">
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/30 bg-muted/30 hover:bg-muted/30">
@@ -232,6 +261,8 @@ export default function DriverRankingPage() {
                   })}
                 </TableBody>
               </Table>
+              </div>
+              </>
             )}
           </CardContent>
         </Card>
