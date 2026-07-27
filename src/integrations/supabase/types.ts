@@ -5035,6 +5035,25 @@ export type Database = {
           total_delivered: number
         }[]
       }
+      get_cash_settlement_details: {
+        Args: { p_runner_id: string }
+        Returns: {
+          cash_amount: number
+          created_at: string
+          customer_name: string
+          delivered_at: string
+          driver_id: string
+          driver_name: string
+          id: string
+          order_code: string
+          order_id: string
+          order_qty: number
+          runner_id: string
+          settled_at: string
+          settlement_batch_id: string
+          status: string
+        }[]
+      }
       get_delivery_charge: {
         Args: { p_area: string; p_runner_id: string }
         Returns: number

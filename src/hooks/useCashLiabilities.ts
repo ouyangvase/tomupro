@@ -69,6 +69,8 @@ export interface CashLiability {
   settlement_batch_id: string | null;
   created_at: string;
   settled_at: string | null;
+  driver_name: string | null;
+  order_qty: number;
   driver?: { display_name: string };
   order?: { order_items: Array<{ qty: number }> } | null;
 }
@@ -170,20 +172,16 @@ export function useRunnerCashLiabilities(runnerIdOverride?: string) {
         } as GroupedLiabilities;
       }
 
-      const { data, error } = await supabase
-        .from('cash_liabilities')
-        .select(`
-          *,
-          driver:profiles!cash_liabilities_driver_id_fkey(display_name),
-          order:orders!cash_liabilities_order_id_fkey(order_items(qty))
-        `)
-        .eq('runner_id', runnerScopeId)
-        .in('status', ['OPEN', 'PENDING_HANDOVER'])
-        .order('delivered_at', { ascending: false });
+      const { data, error } = await supabase.rpc('get_cash_settlement_details', {
+        p_runner_id: runnerScopeId,
+      });
 
       if (error) throw error;
 
-      const liabilities = (data || []) as unknown as CashLiability[];
+      const liabilities = (data || []).map((liability) => ({
+        ...liability,
+        driver: { display_name: liability.driver_name || 'Unknown Driver' },
+      })) as CashLiability[];
       const openLiabilities = liabilities.filter((liability) => liability.status === 'OPEN');
       const pendingHandover = liabilities.filter((liability) => liability.status === 'PENDING_HANDOVER');
       

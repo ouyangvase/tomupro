@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format, isToday, parseISO } from 'date-fns';
 import {
+  AlertCircle,
   Banknote,
   CalendarDays,
   CheckCircle2,
@@ -48,7 +49,7 @@ function formatBND(value: number) {
 }
 
 function orderQty(liability: CashLiability) {
-  return liability.order?.order_items?.reduce((sum, item) => sum + Number(item.qty || 0), 0) || 0;
+  return Number(liability.order_qty || 0);
 }
 
 function dateLabel(date: string | null) {
@@ -108,7 +109,7 @@ export function CashSettlementWorkspace({ runnerIdOverride }: { runnerIdOverride
   const { user } = useAuth();
   const runnerScopeId = runnerIdOverride || user?.id;
   const isAssistantView = Boolean(runnerIdOverride);
-  const { data: cash, isLoading: loadingCash } = useRunnerCashLiabilities(runnerIdOverride);
+  const { data: cash, isLoading: loadingCash, isError: cashLoadFailed } = useRunnerCashLiabilities(runnerIdOverride);
   const { data: batches = [], isLoading: loadingBatches } = useRunnerSettlementHistory(runnerIdOverride);
   const { data: assistants = [], isLoading: loadingAssistants } = useCashSettlementAssistants(
     isAssistantView ? undefined : runnerScopeId,
@@ -161,6 +162,22 @@ export function CashSettlementWorkspace({ runnerIdOverride }: { runnerIdOverride
       return next;
     });
   };
+
+  if (cashLoadFailed) {
+    return (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-5">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+          <div>
+            <h2 className="font-black text-foreground">Cash records could not be loaded</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Refresh this page. If the problem continues, confirm that Cash Settlement access is still enabled.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isAssistantView) {
     return (
