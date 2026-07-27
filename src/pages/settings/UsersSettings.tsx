@@ -574,14 +574,15 @@ export default function UsersSettings() {
           <AlertDialogHeader>
             <AlertDialogTitle>Force Password Reset</AlertDialogTitle>
             <AlertDialogDescription>
-              This will require <strong>{selectedUser?.display_name}</strong> to set a new password on their next login.
-              They will not be able to access the application until they change their password.
+              This immediately changes <strong>{selectedUser?.display_name}</strong>'s password to the temporary
+              password <strong>Tomu@12345678</strong>. They must log in with it and set their own new password
+              before they can access the application.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handlePasswordReset} disabled={forcePasswordReset.isPending}>
-              {forcePasswordReset.isPending ? 'Processing...' : 'Require Password Reset'}
+              {forcePasswordReset.isPending ? 'Resetting...' : 'Reset to Temporary Password'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

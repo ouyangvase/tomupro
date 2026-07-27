@@ -2,11 +2,24 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { logAudit } from './useAuditLogs';
+
+async function getFunctionError(error: unknown) {
+  const context = (error as { context?: unknown })?.context;
+  if (context instanceof Response) {
+    const body = await context.clone().json().catch(() => null);
+    return new Error(
+      body?.error ||
+      body?.message ||
+      (error instanceof Error ? error.message : 'Failed to force password reset')
+    );
+  }
+
+  return error instanceof Error ? error : new Error('Failed to force password reset');
+}
 
 /**
  * Hook to force a password reset for a user.
- * Sets a flag on the user's profile so they must change password on next login.
+ * Replaces the password with the temporary password and requires a change on next login.
  */
 export function useForcePasswordReset() {
   const queryClient = useQueryClient();
@@ -21,39 +34,23 @@ export function useForcePasswordReset() {
       // Get current admin user
       if (!adminUser) throw new Error('Not authenticated');
 
-      // Set the force_password_reset flag on the user's profile
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          force_password_reset: true,
-          force_password_reset_at: new Date().toISOString(),
-          force_password_reset_by: adminUser.id,
-        })
-        .eq('id', userId);
-      
-      if (error) {
-        throw error;
-      }
-      
-      // Log the audit entry
-      await logAudit({
-        entity_type: 'user',
-        entity_id: userId,
-        action: 'FORCE_PASSWORD_RESET',
-        after_json: {
-          email,
-          display_name: displayName,
-          triggered_at: new Date().toISOString(),
-          triggered_by: adminUser.id,
-        },
+      const { data, error } = await supabase.functions.invoke('approve-password-reset', {
+        body: { user_id: userId },
       });
-      
-      return { email, displayName };
+
+      if (error) throw await getFunctionError(error);
+      if (data?.error) throw new Error(data.error);
+
+      return {
+        email,
+        displayName,
+        temporaryPassword: data?.temporary_password || 'Tomu@12345678',
+      };
     },
-    onSuccess: ({ displayName }) => {
+    onSuccess: ({ displayName, temporaryPassword }) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      toast.success(`Password reset required for ${displayName}`, {
-        description: 'They will need to set a new password on their next login.',
+      toast.success(`Password reset for ${displayName}`, {
+        description: `Temporary password: ${temporaryPassword}. They must set a new password after login.`,
       });
     },
     onError: (error) => {

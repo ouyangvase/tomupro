@@ -59,39 +59,59 @@ Deno.serve(async (req) => {
     }
 
     let requestId: string | undefined;
+    let directUserId: string | undefined;
     try {
       const body = await req.json();
       requestId = body?.request_id;
+      directUserId = body?.user_id;
     } catch {
       return jsonResponse({ error: 'Invalid request body' }, 400);
     }
 
-    if (!requestId) {
-      return jsonResponse({ error: 'Missing request_id' }, 400);
+    if (!requestId && !directUserId) {
+      return jsonResponse({ error: 'Missing request_id or user_id' }, 400);
     }
 
-    const { data: resetRequest, error: fetchError } = await supabase
-      .from('password_reset_requests')
-      .select('*')
-      .eq('id', requestId)
-      .maybeSingle();
+    let targetUserId: string;
+    let targetEmail: string | null = null;
 
-    if (fetchError || !resetRequest) {
-      console.error('Failed to fetch password reset request:', fetchError);
-      return jsonResponse({ error: 'Request not found' }, 404);
-    }
+    if (requestId) {
+      const { data: resetRequest, error: fetchError } = await supabase
+        .from('password_reset_requests')
+        .select('*')
+        .eq('id', requestId)
+        .maybeSingle();
 
-    if (resetRequest.status !== 'pending') {
-      return jsonResponse({
-        success: true,
-        already_processed: true,
-        status: resetRequest.status,
-        temporary_password: temporaryPassword,
-      });
+      if (fetchError || !resetRequest) {
+        console.error('Failed to fetch password reset request:', fetchError);
+        return jsonResponse({ error: 'Request not found' }, 404);
+      }
+
+      if (resetRequest.status !== 'pending') {
+        return jsonResponse({
+          success: true,
+          already_processed: true,
+          status: resetRequest.status,
+          temporary_password: temporaryPassword,
+        });
+      }
+
+      targetUserId = resetRequest.user_id;
+      targetEmail = resetRequest.email;
+    } else {
+      const { data: targetUser, error: targetUserError } = await supabase.auth.admin.getUserById(directUserId!);
+
+      if (targetUserError || !targetUser.user) {
+        console.error('Failed to fetch target user:', targetUserError);
+        return jsonResponse({ error: 'User not found' }, 404);
+      }
+
+      targetUserId = targetUser.user.id;
+      targetEmail = targetUser.user.email || null;
     }
 
     const { error: updateAuthError } = await supabase.auth.admin.updateUserById(
-      resetRequest.user_id,
+      targetUserId,
       { password: temporaryPassword }
     );
 
@@ -107,30 +127,32 @@ Deno.serve(async (req) => {
         force_password_reset_at: new Date().toISOString(),
         force_password_reset_by: caller.id,
       })
-      .eq('id', resetRequest.user_id);
+      .eq('id', targetUserId);
 
     if (profileError) {
       console.error('Failed to set force_password_reset:', profileError);
       return jsonResponse({ error: 'Password was reset, but the profile reset flag could not be saved' }, 500);
     }
 
-    const { error: resolveError } = await supabase
-      .from('password_reset_requests')
-      .update({
-        status: 'approved',
-        resolved_by: caller.id,
-        resolved_at: new Date().toISOString(),
-      })
-      .eq('id', requestId);
+    if (requestId) {
+      const { error: resolveError } = await supabase
+        .from('password_reset_requests')
+        .update({
+          status: 'approved',
+          resolved_by: caller.id,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', requestId);
 
-    if (resolveError) {
-      console.error('Failed to update request status:', resolveError);
-      return jsonResponse({ error: 'Password was reset, but the request status could not be saved' }, 500);
+      if (resolveError) {
+        console.error('Failed to update request status:', resolveError);
+        return jsonResponse({ error: 'Password was reset, but the request status could not be saved' }, 500);
+      }
     }
 
     await supabase.from('notifications').insert({
-      user_id: resetRequest.user_id,
-      title: 'Password Reset Approved',
+      user_id: targetUserId,
+      title: requestId ? 'Password Reset Approved' : 'Password Reset Required',
       message: `Your password has been reset. Please log in with the temporary password (${temporaryPassword}) and set a new one.`,
       type: 'SYSTEM',
       priority: 'HIGH',
@@ -141,13 +163,19 @@ Deno.serve(async (req) => {
     await supabase.from('audit_logs').insert({
       actor_id: caller.id,
       entity_type: 'user',
-      entity_id: resetRequest.user_id,
-      action: 'PASSWORD_RESET_APPROVED',
-      after_json: {
-        email: resetRequest.email,
-        approved_by: caller.id,
-        approved_at: new Date().toISOString(),
-      },
+      entity_id: targetUserId,
+      action: requestId ? 'PASSWORD_RESET_APPROVED' : 'FORCE_PASSWORD_RESET',
+      after_json: requestId
+        ? {
+            email: targetEmail,
+            approved_by: caller.id,
+            approved_at: new Date().toISOString(),
+          }
+        : {
+            email: targetEmail,
+            triggered_by: caller.id,
+            triggered_at: new Date().toISOString(),
+          },
     });
 
     return jsonResponse({
