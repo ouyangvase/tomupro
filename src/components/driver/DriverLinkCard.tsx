@@ -16,10 +16,12 @@ const DriverLinkCard: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (code.trim().length < 4) return;
-    await linkToRunner.mutateAsync(code);
-    setCode("");
-    setShowForm(false);
+    if (code.trim().length !== 6) return;
+    const result = await linkToRunner.mutateAsync(code);
+    if (result.success) {
+      setCode("");
+      setShowForm(false);
+    }
   };
 
   return (
@@ -72,7 +74,7 @@ const DriverLinkCard: React.FC = () => {
             <div className="flex gap-2">
               <Button
                 type="submit"
-                disabled={code.trim().length < 4 || linkToRunner.isPending}
+                disabled={code.trim().length !== 6 || linkToRunner.isPending}
                 className="flex-1"
               >
                 {linkToRunner.isPending ? (

@@ -8,6 +8,8 @@ interface LinkResult {
   error?: string;
   runner_id?: string;
   runner_name?: string;
+  already_linked?: boolean;
+  relinked?: boolean;
 }
 
 export const useDriverOnboarding = () => {
@@ -47,12 +49,18 @@ export const useDriverOnboarding = () => {
       if (error) throw error;
       return data as unknown as LinkResult;
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (result.success) {
-        toast.success(`Successfully linked to ${result.runner_name}`);
-        queryClient.invalidateQueries({ queryKey: ["driver-runner-link"] });
-        queryClient.invalidateQueries({ queryKey: ["driver-parent-runner"] });
-        queryClient.invalidateQueries({ queryKey: ["driver-parent-runner-id"] });
+        toast.success(
+          result.already_linked
+            ? `Already linked to ${result.runner_name}`
+            : `Successfully linked to ${result.runner_name}`,
+        );
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["driver-runner-link"] }),
+          queryClient.invalidateQueries({ queryKey: ["driver-parent-runner"] }),
+          queryClient.invalidateQueries({ queryKey: ["driver-parent-runner-id"] }),
+        ]);
       } else {
         toast.error(result.error || "Failed to link to runner");
       }

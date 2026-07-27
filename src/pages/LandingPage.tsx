@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { z } from 'zod';
+import type { AppRole } from '@/types/database';
 
 /* ─── Schemas ─────────────────────────────────────────────────────── */
 const loginSchema = z.object({
@@ -1531,7 +1532,7 @@ function LoginModal({
 }: {
   open: boolean; initialTab: 'login' | 'signup'; onClose: () => void;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, displayName: string, role: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string) => Promise<{ error: any }>;
   navigate: (path: string) => void; toast: (opts: any) => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -1583,14 +1584,39 @@ function LoginModal({
     const result = signupSchema.safeParse({ email: signupEmail, password: signupPassword, displayName });
     if (!result.success) { toast({ variant: 'destructive', title: 'Validation Error', description: result.error.errors[0].message }); return; }
     setLoading(true);
-    let assignedRole: string = 'driver';
+    let assignedRole: AppRole = 'driver';
+    let runnerCode: string | undefined;
     if (inviteCode.trim()) {
       setCodeStatus('validating');
-      const validatedRole = await validateInviteCode(inviteCode.trim());
-      if (validatedRole) { assignedRole = validatedRole; setCodeStatus('valid'); toast({ title: 'Code Applied', description: `Role: ${assignedRole}` }); }
-      else { setCodeStatus('invalid'); toast({ variant: 'destructive', title: 'Invalid Code', description: 'Invalid or expired.' }); }
+      const normalizedCode = inviteCode.trim().toUpperCase();
+      const { data: runnerCodeResult, error: runnerCodeError } = await supabase.rpc('validate_runner_code', {
+        p_code: normalizedCode,
+      });
+      const runnerValidation = runnerCodeResult as {
+        success?: boolean;
+        runner_name?: string;
+        runner_code?: string;
+      } | null;
+
+      if (!runnerCodeError && runnerValidation?.success) {
+        runnerCode = runnerValidation.runner_code || normalizedCode;
+        setCodeStatus('valid');
+        toast({ title: 'Runner Code Applied', description: `Linked to ${runnerValidation.runner_name || 'runner'} after signup.` });
+      } else {
+        const validatedRole = await validateInviteCode(normalizedCode);
+        if (validatedRole) {
+          assignedRole = validatedRole as AppRole;
+          setCodeStatus('valid');
+          toast({ title: 'Admin Code Applied', description: `Role: ${assignedRole}` });
+        } else {
+          setCodeStatus('invalid');
+          setLoading(false);
+          toast({ variant: 'destructive', title: 'Invalid Code', description: 'Enter a valid Runner Code or Admin Code.' });
+          return;
+        }
+      }
     }
-    const { error } = await signUp(signupEmail, signupPassword, displayName, assignedRole);
+    const { error } = await signUp(signupEmail, signupPassword, displayName, assignedRole, runnerCode);
     setLoading(false);
     if (error) {
       toast({ variant: 'destructive', title: 'Signup Failed', description: friendlyError(error.message) });
@@ -1728,10 +1754,10 @@ function LoginModal({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="m-code" className="text-xs font-medium text-[#475569] flex items-center gap-1.5">
-                    <Ticket className="h-3.5 w-3.5" /> Admin Code <span className="text-[#94A3B8]">(Optional)</span>
+                    <Ticket className="h-3.5 w-3.5" /> Runner or Admin Code <span className="text-[#94A3B8]">(Optional)</span>
                   </Label>
                   <Input
-                    id="m-code" type="text" placeholder="TOMU-SP-XXXX"
+                    id="m-code" type="text" placeholder="Runner code or TOMU-SP-XXXX"
                     value={inviteCode} onChange={(e) => { setInviteCode(e.target.value.toUpperCase()); setCodeStatus('idle'); }}
                     className={cn(inputCls, 'font-mono uppercase', codeStatus === 'valid' && 'border-[#22C55E] bg-[#22C55E]/5', codeStatus === 'invalid' && 'border-[#EF4444] bg-[#EF4444]/5')}
                   />

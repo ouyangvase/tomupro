@@ -33,7 +33,7 @@ interface AuthContextType {
   retryProfile: () => Promise<void>;
   resetSession: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, displayName: string, role: AppRole) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -499,7 +499,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: error as Error | null };
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string, displayName: string, role: AppRole) => {
+  const signUp = useCallback(async (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string) => {
     const redirectUrl = `${window.location.origin}/`;
 
     const { error } = await supabase.auth.signUp({
@@ -510,6 +510,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: {
           display_name: displayName,
           role: role,
+          ...(runnerCode ? { runner_code: runnerCode } : {}),
         },
       },
     });

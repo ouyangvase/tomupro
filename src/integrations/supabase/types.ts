@@ -5338,6 +5338,7 @@ export type Database = {
         }[]
       }
       validate_invite_code: { Args: { code_text: string }; Returns: string }
+      validate_runner_code: { Args: { p_code: string }; Returns: Json }
     }
     Enums: {
       app_role:
