@@ -1,6 +1,11 @@
 import { cn } from '@/lib/utils';
-import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import {
+  DRIVER_TAB_CHANGE_EVENT,
+  driverTabPath,
+  type DriverTabId,
+} from '@/lib/driverTabs';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
 const DriverInbox = lazy(() => import('@/pages/driver/DriverInbox'));
@@ -15,7 +20,7 @@ const Loading = () => (
   </div>
 );
 
-const tabs = [
+const tabs: Array<{ id: DriverTabId; label: string }> = [
   { id: 'inbox', label: 'My Deliveries' },
   { id: 'pickups', label: 'Pickups' },
   { id: 'returns', label: 'Returns' },
@@ -24,14 +29,39 @@ const tabs = [
 ];
 
 export default function DeliveryModule() {
+  const navigate = useNavigate();
   const { tab: routeTab } = useParams<{ tab?: string }>();
   const [searchParams] = useSearchParams();
   const requestedTab = routeTab || searchParams.get('tab') || 'inbox';
-  const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : 'inbox';
+  const validRequestedTab = tabs.some((tab) => tab.id === requestedTab)
+    ? requestedTab as DriverTabId
+    : 'inbox';
+  const [activeTab, setActiveTab] = useState<DriverTabId>(validRequestedTab);
 
-  if (requestedTab !== activeTab) {
+  useEffect(() => {
+    setActiveTab(validRequestedTab);
+  }, [validRequestedTab]);
+
+  useEffect(() => {
+    const handleTabChange = (event: Event) => {
+      const tab = (event as CustomEvent<DriverTabId>).detail;
+      if (tabs.some((item) => item.id === tab)) {
+        setActiveTab(tab);
+      }
+    };
+
+    window.addEventListener(DRIVER_TAB_CHANGE_EVENT, handleTabChange);
+    return () => window.removeEventListener(DRIVER_TAB_CHANGE_EVENT, handleTabChange);
+  }, []);
+
+  if (requestedTab !== validRequestedTab) {
     return <Navigate to="/delivery" replace />;
   }
+
+  const selectTab = (tab: DriverTabId) => {
+    setActiveTab(tab);
+    navigate(driverTabPath(tab));
+  };
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
@@ -41,9 +71,10 @@ export default function DeliveryModule() {
           className="inline-flex h-11 w-max min-w-max items-center justify-start gap-1 rounded-xl bg-secondary/30 p-1.5"
         >
           {tabs.map((tab) => (
-            <Link
+            <button
               key={tab.id}
-              to={tab.id === 'inbox' ? '/delivery' : `/delivery/${tab.id}`}
+              type="button"
+              onClick={() => selectTab(tab.id)}
               aria-current={activeTab === tab.id ? 'page' : undefined}
               className={cn(
                 "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors md:px-4 md:text-sm",
@@ -53,7 +84,7 @@ export default function DeliveryModule() {
               )}
             >
               {tab.label}
-            </Link>
+            </button>
           ))}
         </nav>
       </div>

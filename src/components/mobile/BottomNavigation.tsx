@@ -17,6 +17,10 @@ import {
   UserCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  emitDriverTabChange,
+  type DriverTabId,
+} from '@/lib/driverTabs';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Drawer,
@@ -240,6 +244,12 @@ export function BottomNavigation() {
     return location.pathname.startsWith(href);
   };
 
+  const syncVisibleDriverTab = (tab: DriverTabId) => {
+    if (role === 'driver' && location.pathname.startsWith('/delivery')) {
+      emitDriverTabChange(tab);
+    }
+  };
+
   return (
     <>
       <nav className="mobile-bottom-dock fixed bottom-3 left-3 right-3 z-40 rounded-[2rem] p-1 safe-area-pb">
@@ -285,6 +295,10 @@ export function BottomNavigation() {
               <Link
                 key={tab.id}
                 to={tab.href}
+                onClick={() => {
+                  if (tab.id === 'delivery') syncVisibleDriverTab('inbox');
+                  if (tab.id === 'analytics') syncVisibleDriverTab('analytics');
+                }}
                 className={className}
               >
                 {content}
@@ -308,6 +322,10 @@ export function BottomNavigation() {
                 key={item.id}
                 onClick={() => {
                   setMoreOpen(false);
+                  if (role === 'driver' && item.href.startsWith('/delivery')) {
+                    const tab = item.href.split('/')[2] as DriverTabId | undefined;
+                    syncVisibleDriverTab(tab || 'inbox');
+                  }
                   navigate(item.href);
                 }}
                 className={cn(
