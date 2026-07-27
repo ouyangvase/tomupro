@@ -285,8 +285,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const isAuthError = lastError?.message?.includes('JWT') || lastError?.code === 'PGRST301';
         if (isAuthError) {
-          console.error('[Auth] Profile fetch failed because the session is invalid:', lastError);
-          clearAuthState();
+          console.warn('[Auth] Profile request rejected; preserving the session until Supabase confirms sign-out:', lastError);
+          if (isBackgroundRefresh) {
+            return;
+          }
+          setProfileStatus('error');
+          setProfileError('Your session could not be verified. Please retry.');
           setLoading(false);
           return;
         }
@@ -310,7 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isFetchingRef.current = false;
       }
     }
-  }, [handleAccountDisabled, clearAuthState]); // Stable deps — no previousRole state
+  }, [handleAccountDisabled]); // Stable deps — no previousRole state
 
   const refreshProfile = useCallback(async () => {
     if (user?.id) {
@@ -377,10 +381,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (event, newSession) => {
         if (!mounted) return;
 
-        // Handle token refresh failure
+        // Supabase owns the persisted session. A transient null refresh/update event
+        // is not an authoritative logout and must not erase otherwise valid tokens.
         if (event === 'TOKEN_REFRESHED' && !newSession) {
-          console.warn('[Auth] Token refresh failed - clearing stale tokens');
-          clearAuthState();
+          console.warn('[Auth] Token refresh returned no session; waiting for an explicit sign-out event');
           setLoading(false);
           return;
         }
@@ -392,10 +396,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        // Handle user deleted scenarios
         if (event === 'USER_UPDATED' && !newSession) {
-          console.warn('[Auth] User updated but no session - clearing state');
-          clearAuthState();
+          console.warn('[Auth] User update returned no session; waiting for an explicit sign-out event');
           setLoading(false);
           return;
         }
