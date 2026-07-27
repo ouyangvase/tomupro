@@ -280,7 +280,12 @@ export function BottomNavigation() {
                 {content}
               </button>
             ) : (
-              <Link key={tab.id} to={tab.href} className={className}>
+              <Link
+                key={tab.id}
+                to={tab.href}
+                reloadDocument={tab.href.includes('?')}
+                className={className}
+              >
                 {content}
               </Link>
             );
