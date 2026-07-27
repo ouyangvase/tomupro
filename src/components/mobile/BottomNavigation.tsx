@@ -286,7 +286,6 @@ export function BottomNavigation() {
               <Link
                 key={tab.id}
                 to={tab.href}
-                reloadDocument={role === 'driver' && tab.href.startsWith('/delivery')}
                 className={className}
               >
                 {content}
@@ -310,10 +309,6 @@ export function BottomNavigation() {
                 key={item.id}
                 onClick={() => {
                   setMoreOpen(false);
-                  if (role === 'driver' && item.href.startsWith('/delivery')) {
-                    window.location.assign(item.href);
-                    return;
-                  }
                   navigate(item.href);
                 }}
                 className={cn(

@@ -50,7 +50,6 @@ export default function DeliveryModule() {
             <Link
               key={tab.id}
               to={driverTabPath(tab.id)}
-              reloadDocument
               aria-current={activeTab === tab.id ? 'page' : undefined}
               className={cn(
                 "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors md:px-4 md:text-sm",

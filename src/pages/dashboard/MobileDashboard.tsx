@@ -472,10 +472,10 @@ function DriverMobileDashboard() {
   });
 
   const quickActions: QuickAction[] = [
-    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/delivery?tab=inbox', badge: activeJobs.length },
-    { id: 'pickups', label: 'Pickups', icon: <PackageCheck className="h-5 w-5" />, href: '/delivery?tab=pickups' },
-    { id: 'returns', label: 'Returns', icon: <RotateCcw className="h-5 w-5" />, href: '/delivery?tab=returns' },
-    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery?tab=analytics' },
+    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/delivery/inbox', badge: activeJobs.length },
+    { id: 'pickups', label: 'Pickups', icon: <PackageCheck className="h-5 w-5" />, href: '/delivery/pickups' },
+    { id: 'returns', label: 'Returns', icon: <RotateCcw className="h-5 w-5" />, href: '/delivery/returns' },
+    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery/analytics' },
     { id: 'profile', label: 'Profile', icon: <Settings className="h-5 w-5" />, href: '/settings/profile' },
   ];
 
@@ -485,7 +485,7 @@ function DriverMobileDashboard() {
         title="Today's Deliveries"
         value={activeJobs.length}
         subtitle="Active jobs waiting"
-        viewAllLink="/delivery?tab=inbox"
+        viewAllLink="/delivery/inbox"
         viewAllLabel="Start Delivering"
         icon={<Truck className="h-5 w-5" />}
         isLoading={isLoading}

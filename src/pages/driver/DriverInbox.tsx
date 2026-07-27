@@ -52,6 +52,8 @@ type DriverOrderItem = OrderItem & {
   product?: Product | Product[] | null;
 };
 
+const EMPTY_DRIVER_INBOX_ORDERS: DriverInboxOrder[] = [];
+
 function firstText(...values: Array<string | null | undefined>) {
   for (const value of values) {
     const text = value?.trim();
@@ -117,11 +119,12 @@ export default function DriverInbox() {
   const { profile, user } = useAuth();
   const effectiveDriverId = profile?.id || user?.id;
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
-  const { data: orders = [], isLoading } = useDriverAssignments({
+  const { data: assignmentOrders, isLoading } = useDriverAssignments({
     driverId: effectiveDriverId,
     activeOnly: true,
     includeItems: true,
   });
+  const orders = assignmentOrders ?? EMPTY_DRIVER_INBOX_ORDERS;
   const { data: parentRunner } = useDriverParentRunner();
   const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY');
   const markDelivered = useDriverMarkDelivered();
@@ -185,10 +188,10 @@ export default function DriverInbox() {
     });
   }, [myOrders, searchQuery]);
 
-  const pendingOrders = filteredOrders.filter((o) => {
-    const status = normalizeDriverStatus(o.driver_status);
+  const pendingOrders = useMemo(() => filteredOrders.filter((order) => {
+    const status = normalizeDriverStatus(order.driver_status);
     return status === 'ASSIGNED' || status === 'OUT_FOR_DELIVERY';
-  });
+  }), [filteredOrders]);
   const acceptedDeliveredOrders = useMemo(
     () => myOrders.filter((order) => isCompletedDriverDeliveryAccepted(order) && isSameDriverOperationalDate(order, todayDateKey)),
     [myOrders, todayDateKey],

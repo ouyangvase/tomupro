@@ -54,7 +54,7 @@ export function DriverDashboard() {
         title: 'Collect your stock before delivery',
         detail: `${(pendingPickup.items || []).reduce((sum, item) => sum + Number(item.qty || 0), 0)} item(s) prepared by your runner`,
         action: 'Accept pickup',
-        href: '/delivery?tab=pickups',
+        href: '/delivery/pickups',
         icon: PackageCheck,
       }
     : pendingReturn
@@ -63,7 +63,7 @@ export function DriverDashboard() {
           title: 'Waiting for runner acceptance',
           detail: 'Your return is already submitted. No second driver action is needed.',
           action: 'View return',
-          href: '/delivery?tab=returns',
+          href: '/delivery/returns',
           icon: Clock3,
         }
       : returnRequired?.isReturnRequired
@@ -72,7 +72,7 @@ export function DriverDashboard() {
             title: 'Return remaining stock',
             detail: `${returnRequired.totalMustReturn} item(s) need runner acknowledgement`,
             action: 'Start return',
-            href: '/delivery?tab=returns',
+            href: '/delivery/returns',
             icon: RotateCcw,
           }
         : activeJobs.length > 0
@@ -81,7 +81,7 @@ export function DriverDashboard() {
               title: `${activeJobs.length} job(s) waiting`,
               detail: 'Open your route and complete the next delivery.',
               action: 'Open deliveries',
-              href: '/delivery?tab=inbox',
+              href: '/delivery/inbox',
               icon: Navigation,
             }
           : {
@@ -89,7 +89,7 @@ export function DriverDashboard() {
               title: 'Today is complete',
               detail: 'No pickup, return, or delivery action is waiting.',
               action: 'View calendar',
-              href: '/delivery?tab=analytics',
+              href: '/delivery/analytics',
               icon: CheckCircle2,
             };
   const NextStepIcon = nextStep.icon;
@@ -166,7 +166,7 @@ export function DriverDashboard() {
       <section className="divide-y divide-border border-y border-border">
         <button
           type="button"
-          onClick={() => navigate('/delivery?tab=analytics')}
+          onClick={() => navigate('/delivery/analytics')}
           className="flex w-full items-center justify-between gap-3 py-4 text-left"
         >
           <span className="inline-flex items-center gap-3 font-semibold">
@@ -177,7 +177,7 @@ export function DriverDashboard() {
         </button>
         <button
           type="button"
-          onClick={() => navigate('/delivery?tab=analytics')}
+          onClick={() => navigate('/delivery/analytics')}
           className="flex w-full items-center justify-between gap-3 py-4 text-left"
         >
           <span className="inline-flex items-center gap-3 font-semibold">
