@@ -84,6 +84,7 @@ export default function GoogleSheetSettings() {
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingEnabled, setSavingEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const [sheetId, setSheetId] = useState('');
@@ -116,6 +117,26 @@ export default function GoogleSheetSettings() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const handleEnabledChange = async (enabled: boolean) => {
+    const previousValue = syncEnabled;
+    setSyncEnabled(enabled);
+    setSavingEnabled(true);
+
+    const { error } = await supabase.rpc('set_google_sheet_sync_enabled', {
+      p_enabled: enabled,
+    });
+
+    if (error) {
+      setSyncEnabled(previousValue);
+      toast.error('Failed to update Google Sheet sync');
+    } else {
+      toast.success(enabled ? 'Google Sheet sync enabled' : 'Google Sheet sync disabled');
+      await fetchData();
+    }
+
+    setSavingEnabled(false);
+  };
+
   const handleSave = async () => {
     if (!settings) return;
     setSaving(true);
@@ -123,7 +144,6 @@ export default function GoogleSheetSettings() {
       .from('integration_settings')
       .update({
         webhook_url: sheetId.trim(),
-        webhook_enabled: syncEnabled,
         updated_at: new Date().toISOString(),
       })
       .eq('id', settings.id);
@@ -202,7 +222,11 @@ export default function GoogleSheetSettings() {
                 When enabled, dispatch data will be synced to the configured Google Sheet
               </p>
             </div>
-            <Switch checked={syncEnabled} onCheckedChange={setSyncEnabled} />
+            <Switch
+              checked={syncEnabled}
+              onCheckedChange={handleEnabledChange}
+              disabled={savingEnabled}
+            />
           </div>
 
           {/* Sheet ID */}

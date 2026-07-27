@@ -323,31 +323,29 @@ Deno.serve(async (req) => {
     // no body is fine
   }
 
-  // Create log entry
-  const { data: logEntry } = await supabase
-    .from("gsheet_sync_logs")
-    .insert({ triggered_by: triggeredBy, status: "pending" })
-    .select("id")
-    .single();
-  const logId = logEntry?.id;
+  let logId: string | undefined;
 
   try {
     // 1. Check settings
-    const { data: settings } = await supabase
+    const { data: settings, error: settingsError } = await supabase
       .from("integration_settings")
       .select("*")
       .eq("integration_name", "google_sheet")
       .maybeSingle();
 
+    if (settingsError) throw settingsError;
+
     if (!settings?.webhook_enabled || !settings?.webhook_url) {
-      if (logId) {
-        await supabase
-          .from("gsheet_sync_logs")
-          .update({ status: "skipped", error_message: "Sync disabled or no Sheet ID", completed_at: new Date().toISOString() })
-          .eq("id", logId);
-      }
       return jsonResponse({ success: false, skipped: true, reason: "Sync disabled or no Sheet ID configured" });
     }
+
+    // Disabled syncs return before this point, so the cron cannot create log churn.
+    const { data: logEntry } = await supabase
+      .from("gsheet_sync_logs")
+      .insert({ triggered_by: triggeredBy, status: "pending" })
+      .select("id")
+      .single();
+    logId = logEntry?.id;
 
     const spreadsheetId = settings.webhook_url.trim();
 

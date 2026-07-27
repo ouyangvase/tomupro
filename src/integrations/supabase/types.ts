@@ -5367,6 +5367,10 @@ export type Database = {
         Args: { p_email: string }
         Returns: string
       }
+      set_google_sheet_sync_enabled: {
+        Args: { p_enabled: boolean }
+        Returns: boolean
+      }
       validate_invite_code: { Args: { code_text: string }; Returns: string }
       validate_runner_code: { Args: { p_code: string }; Returns: Json }
     }
