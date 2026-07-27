@@ -73,7 +73,8 @@ export default function InventoryBalance() {
   const { data: users = [] } = useUsers();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: userDirectory = [] } = useUserDirectory();
-  const { visibleUserIds } = useVisibleUserIds();
+  const { visibleUserIds: productVisibleUserIds } = useVisibleUserIds('products');
+  const { sharedSubjects: sharedStockSubjects } = useVisibleUserIds('stock');
   const { data: salespersonRunnerBindings = [] } = useBindings(
     role === 'salesperson' && profile?.id ? { salespersonId: profile.id } : undefined
   );
@@ -95,7 +96,7 @@ export default function InventoryBalance() {
   // Shared state
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [stockTab, setStockTab] = useState<'my' | 'team'>('my');
+  const [stockTab, setStockTab] = useState<'my' | 'team'>('team');
 
   // Stock-specific state
   const [hideZeroBalance, setHideZeroBalance] = useState(true);
@@ -220,6 +221,10 @@ export default function InventoryBalance() {
       });
     }
 
+    sharedStockSubjects.forEach((subject) => {
+      addFilterOption(subject.id, subject.displayName);
+    });
+
     inventoryOrderSources.forEach((source) => {
       addFilterOption(
         source.owner_user_id,
@@ -245,6 +250,7 @@ export default function InventoryBalance() {
     teamMembers,
     salespersonRunnerBindings,
     managerRunnerBindings,
+    sharedStockSubjects,
     inventoryOrderSources,
     userLookup,
   ]);
@@ -280,9 +286,9 @@ export default function InventoryBalance() {
         .filter(u => ownerIds.has(u.id))
         .map(u => ({ id: u.id, name: u.display_name, role: u.role }));
     }
-    if (role === 'manager' && visibleUserIds) {
+    if (role === 'manager' && productVisibleUserIds) {
       return userDirectory
-        .filter(u => visibleUserIds.includes(u.id))
+        .filter(u => productVisibleUserIds.includes(u.id))
         .map(u => ({
           id: u.id,
           name: u.id === profile?.id ? `${u.display_name} (Me)` : u.display_name,
@@ -290,7 +296,7 @@ export default function InventoryBalance() {
         }));
     }
     return [];
-  }, [role, products, userDirectory, visibleUserIds, profile?.id]);
+  }, [role, products, userDirectory, productVisibleUserIds, profile?.id]);
 
   // Filtered products
   const filteredProducts = useMemo(() => {
@@ -645,7 +651,7 @@ export default function InventoryBalance() {
                   <User className="h-4 w-4" /> My Stock
                 </TabsTrigger>
                 <TabsTrigger value="team" className="flex-1 flex items-center gap-2">
-                  <UsersRound className="h-4 w-4" /> Team Stock
+                  <UsersRound className="h-4 w-4" /> Accessible Stock
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -972,7 +978,7 @@ export default function InventoryBalance() {
                   <User className="h-4 w-4" /> My Stock
                 </TabsTrigger>
                 <TabsTrigger value="team" className="flex items-center gap-2">
-                  <UsersRound className="h-4 w-4" /> Team Stock
+                  <UsersRound className="h-4 w-4" /> Accessible Stock
                 </TabsTrigger>
               </TabsList>
             </Tabs>
