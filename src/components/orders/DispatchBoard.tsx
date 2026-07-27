@@ -113,7 +113,7 @@ export function DispatchBoard({
       )}
 
       <div className="overflow-x-auto pb-1">
-        <div className="min-w-[1180px]">
+        <div className="min-w-[1204px]">
           {/* Column labels */}
           <div className="flex items-center gap-3 px-4 py-2 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
             {selectable && <div className="w-4 shrink-0" />}
@@ -123,7 +123,7 @@ export function DispatchBoard({
             <div className="w-[130px] shrink-0">Runner</div>
             <div className="w-[120px] shrink-0 text-right">Status</div>
             {showStockStatus && <div className="w-[132px] shrink-0 text-right">Stock</div>}
-            {renderKitaniAction && <div className="w-[160px] shrink-0 text-right">KITANI</div>}
+            {renderKitaniAction && <div className="w-[184px] shrink-0 text-right">KITANI</div>}
             <div className="w-[72px] shrink-0 text-right hidden xl:block">Date</div>
           </div>
 

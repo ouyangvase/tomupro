@@ -167,7 +167,7 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
           )}
 
           {kitaniAction && (
-            <div className="w-[160px] shrink-0 text-right">
+            <div className="w-[184px] shrink-0 text-right">
               {kitaniAction}
             </div>
           )}
