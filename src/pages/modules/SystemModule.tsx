@@ -41,8 +41,8 @@ const tabs = [
 
 // Tabs that moved from System to Inventory — redirect old URLs
 const REDIRECTED_TABS: Record<string, string> = {
-  'stock-audit': '/inventory?tab=stock-audit',
-  'stock-rebuild': '/inventory?tab=stock-rebuild',
+  'stock-audit': '/inventory?tab=balance',
+  'stock-rebuild': '/inventory?tab=balance',
   'data-sharing': '/inventory?tab=data-sharing',
 };
 

@@ -75,7 +75,7 @@ export const onboardingFlows: RoleOnboarding[] = [
     steps: [
       { title: 'Dashboard', description: 'Your command center shows operations pipeline, action alerts, and live activity across all roles.', actions: ['View pipeline metrics', 'Check action required'] },
       { title: 'Operations', description: 'Monitor booking, ready, delivered, and cancelled orders across all salespersons.', actions: ['View all orders', 'Handle disputes'] },
-      { title: 'Stock Integrity', description: 'Audit and repair stock balances. Use Quick Repair for missing deductions or Full Rebuild for complete recalculation.', actions: ['Run audit', 'Apply repairs'] },
+      { title: 'Stock Integrity', description: 'Open Stock Balance to inspect source records and run the unified integrity preview before any repair.', actions: ['Preview check', 'Review source records'] },
       { title: 'Events & Announcements', description: 'Create targeted popups and announcements for specific roles, users, or teams.', actions: ['Create event', 'Track responses'] },
     ],
   },
@@ -165,9 +165,9 @@ export const guides: Guide[] = [
     { title: 'Take action', description: 'You can reschedule, cancel, or reassign orders. Bulk actions are available for multiple selections.' },
   ]},
   { id: 'admin-stock-integrity', role: 'admin', type: 'page-guide', title: 'Stock Integrity Audit', summary: 'Audit and repair stock balances across all warehouses.', icon: '🔧', tags: ['stock', 'integrity', 'audit', 'repair', 'balance'], steps: [
-    { title: 'Health Overview', description: 'Check the health score. Green = 90%+, Yellow = 70-89%, Red = below 70%.' },
-    { title: 'Quick Repair', description: 'Click Preview Fix to see missing deductions without changing anything. Then Apply Repair to fix them.' },
-    { title: 'SKU Explorer', description: 'Use filters to find problem SKUs. Expand rows to see detailed movement breakdowns.' },
+    { title: 'Preview Check', description: 'Run Preview Check to see affected order lines, orders, and total item quantity without changing stock.' },
+    { title: 'Review a SKU', description: 'Click a Stock Balance row to compare inbound, delivered, transfer, and adjustment source records.' },
+    { title: 'Verified Repair', description: 'Only administrators can confirm a repair after preview. Recognized historical deductions are skipped.' },
   ]},
   { id: 'admin-events', role: 'admin', type: 'core-task', title: 'Events & Announcements', summary: 'Create targeted popups and announcements for users.', icon: '📣', tags: ['events', 'announcements', 'popup', 'targeting'], steps: [
     { title: 'Create Event', description: 'Go to Events Admin → Create. Choose Event or Announcement type.', targetPage: '/admin/events/create' },
@@ -268,7 +268,7 @@ export const faqItems: { question: string; answer: string; roles: GuideRole[] }[
   { question: 'How do I change my password?', answer: 'Go to Profile settings and use the Change Password section.', roles: ['admin', 'manager', 'salesperson', 'runner', 'driver'] },
   { question: 'What happens when an order is cancelled?', answer: 'Cancelled orders return stock to inventory and record a cancel reason. They appear on the Cancelled Sales page.', roles: ['admin', 'salesperson', 'manager'] },
   { question: 'How do I check my commission?', answer: 'Visit the Leaderboard page. Your commission is calculated based on delivered orders and admin-configured rates.', roles: ['salesperson'] },
-  { question: 'What if my stock balance is negative?', answer: 'Use Stock Integrity Audit to diagnose the issue. Quick Repair can fix most missing deductions automatically.', roles: ['admin'] },
+  { question: 'What if my stock balance is negative?', answer: 'Open Stock Balance and click the SKU to inspect its source records. Run Preview Check before considering a verified repair.', roles: ['admin'] },
   { question: 'How do I assign a driver?', answer: 'In Runner Inbox, select orders and click Assign. Choose from your registered drivers.', roles: ['runner'] },
   { question: 'How do I report a failed delivery?', answer: 'In My Deliveries, tap the order, select a failure reason, add notes, and submit.', roles: ['driver'] },
   { question: 'Can I see orders from other salespersons?', answer: 'Only if your manager or admin has enabled data sharing for those users via the Data Sharing settings.', roles: ['salesperson', 'manager'] },

@@ -289,8 +289,8 @@ function AppRoutes() {
       <Route path="/inventory/adjustment" element={<Navigate to="/inventory?tab=adjustments" replace />} />
       <Route path="/admin/warehouses" element={<Navigate to="/inventory?tab=warehouses" replace />} />
       <Route path="/products" element={<Navigate to="/inventory?tab=products" replace />} />
-      <Route path="/admin/stock-audit" element={<Navigate to="/system?tab=stock-audit" replace />} />
-      <Route path="/admin/stock-integrity" element={<Navigate to="/system?tab=stock-rebuild" replace />} />
+      <Route path="/admin/stock-audit" element={<Navigate to="/inventory?tab=balance" replace />} />
+      <Route path="/admin/stock-integrity" element={<Navigate to="/inventory?tab=balance" replace />} />
       <Route path="/admin/events" element={<Navigate to="/system?tab=events" replace />} />
       <Route path="/settings/bindings" element={<Navigate to="/system?tab=bindings" replace />} />
       <Route path="/admin/invite-codes" element={<Navigate to="/system?tab=invite-codes" replace />} />

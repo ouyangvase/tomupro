@@ -49,6 +49,7 @@ import { StockTransferDialog } from '@/components/inventory/StockTransferDialog'
 import { VisibilityManagementDialog } from '@/components/inventory/VisibilityManagementDialog';
 import { ManagerGroupsDialog } from '@/components/inventory/ManagerGroupsDialog';
 import { WarehouseSharingDialog } from '@/components/inventory/WarehouseSharingDialog';
+import { StockIntegrityPanel } from '@/components/inventory/StockIntegrityPanel';
 import { MobileStockCard } from '@/components/mobile/MobileStockCard';
 import { MobileProductCard } from '@/components/mobile/MobileProductCard';
 import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
@@ -60,6 +61,10 @@ import { cn } from '@/lib/utils';
 import type { StockBalance } from '@/types/database';
 import type { Product } from '@/types/database';
 import { useInventoryOrderSources } from '@/hooks/useWarehouseSharing';
+import {
+  StockAuditDetailDialog,
+} from '@/components/inventory/StockAuditDetailDialog';
+import type { FullStockIntegrityRow } from '@/hooks/useFullStockIntegrity';
 
 // placeholder: StockBalanceRow type
 interface StockBalanceRow extends StockBalance {
@@ -107,6 +112,7 @@ export default function InventoryBalance() {
   const [stockLocationOpen, setStockLocationOpen] = useState(false);
   const [editingStockLocation, setEditingStockLocation] = useState<StockBalanceRow | null>(null);
   const [stockLocationRemark, setStockLocationRemark] = useState('');
+  const [selectedStockAudit, setSelectedStockAudit] = useState<FullStockIntegrityRow | null>(null);
 
   // Products-specific state
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -328,6 +334,31 @@ export default function InventoryBalance() {
       _key: `${s.warehouse_id}-${s.product_id || idx}`,
     }));
   }, [stockRows]);
+
+  const openStockAudit = (stock: StockBalanceRow) => {
+    const balance = Number(stock.balance_qty) || 0;
+    setSelectedStockAudit({
+      owner_user_id: stock.owner_user_id,
+      owner_name: stock.owner_name,
+      warehouse_id: stock.warehouse_id,
+      warehouse_name: stock.warehouse_name,
+      product_id: stock.product_id,
+      sku_code: stock.sku_code,
+      sku_name: stock.sku_name,
+      inbound_qty: 0,
+      adjustment_qty: 0,
+      transfer_in_qty: 0,
+      transfer_out_qty: 0,
+      delivered_qty: 0,
+      driver_allocate_qty: 0,
+      driver_return_qty: 0,
+      computed_balance: balance,
+      stored_balance: balance,
+      delta: 0,
+      status: balance < 0 ? 'NEGATIVE' : 'OK',
+      issue_label: balance < 0 ? 'Negative stock balance' : null,
+    });
+  };
 
   const { data: stockLocationByKey = {} } = useRunnerStockLocations(stockData);
   const upsertStockLocation = useUpsertRunnerStockLocation();
@@ -640,6 +671,8 @@ export default function InventoryBalance() {
           {/* Section tabs */}
           <SectionTabs />
 
+          {activeSection === 'stock' && isAdmin && <StockIntegrityPanel />}
+
           {/* Manager stock tabs */}
           {activeSection === 'stock' && isManager && (
             <Tabs value={stockTab} onValueChange={(v) => {
@@ -753,6 +786,7 @@ export default function InventoryBalance() {
                     stockLocationRemark={stockLocationByKey[getRunnerStockLocationKey(stock)]?.remark || null}
                     canEditStockLocation={canEditStockLocation}
                     onEditStockLocation={() => openStockLocationEditor(stock)}
+                    onClick={() => openStockAudit(stock)}
                   />
                 ))}
               </div>
@@ -834,6 +868,10 @@ export default function InventoryBalance() {
         </div>
 
         {stockLocationDialog}
+        <StockAuditDetailDialog
+          row={selectedStockAudit}
+          onClose={() => setSelectedStockAudit(null)}
+        />
         <WarehouseSharingDialog
           open={warehouseSharingOpen}
           onOpenChange={setWarehouseSharingOpen}
@@ -964,6 +1002,8 @@ export default function InventoryBalance() {
           </Card>
         </div>
 
+        {activeSection === 'stock' && isAdmin && <StockIntegrityPanel />}
+
         {/* Section tabs + manager stock tabs */}
         <div className="flex items-center gap-4 flex-wrap">
           <SectionTabs />
@@ -1079,6 +1119,7 @@ export default function InventoryBalance() {
               isFetching: stockFetching,
             }}
             onSearchChange={setSearchQuery}
+            onRowClick={openStockAudit}
           />
         ) : (
           <DataGrid
@@ -1095,6 +1136,10 @@ export default function InventoryBalance() {
       </div>
 
       {stockLocationDialog}
+      <StockAuditDetailDialog
+        row={selectedStockAudit}
+        onClose={() => setSelectedStockAudit(null)}
+      />
       <WarehouseSharingDialog
         open={warehouseSharingOpen}
         onOpenChange={setWarehouseSharingOpen}

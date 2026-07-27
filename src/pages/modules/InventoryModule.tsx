@@ -1,6 +1,6 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
@@ -11,7 +11,6 @@ const RunnerInbound = lazy(() => import('@/pages/runner/RunnerInbound'));
 const InboundHistory = lazy(() => import('@/pages/inbound/InboundHistory'));
 const StockAdjustment = lazy(() => import('@/pages/inventory/StockAdjustment'));
 const WarehouseManagement = lazy(() => import('@/pages/admin/WarehouseManagement'));
-const StockIntegrityAudit = lazy(() => import('@/pages/admin/StockIntegrityAudit'));
 const DataSharingAdmin = lazy(() => import('@/pages/admin/DataSharingAdmin'));
 
 const Loading = () => (
@@ -32,7 +31,6 @@ export default function InventoryModule() {
     { id: 'balance', label: 'Stock Balance', roles: ['admin', 'manager', 'salesperson', 'runner'] },
     { id: 'inbound', label: role === 'runner' ? 'Inbound Stock' : 'Inbound Pending', roles: ['admin', 'salesperson', 'manager', 'runner'] },
     { id: 'inbound-history', label: 'Inbound History', roles: ['admin', 'runner'] },
-    { id: 'stock-audit', label: 'Stock Audit', roles: ['admin', 'runner', 'manager', 'salesperson'] },
     { id: 'adjustments', label: 'Adjustments', roles: ['admin'] },
     { id: 'warehouses', label: 'Warehouses', roles: ['admin'] },
     { id: 'data-sharing', label: 'Data Sharing', roles: ['admin'] },
@@ -41,12 +39,21 @@ export default function InventoryModule() {
   const tabs = allTabs.filter((tab) => {
     if (role && tab.roles.includes(role)) return true;
     if (!isAssistantContext) return false;
-    if (tab.id === 'balance' || tab.id === 'stock-audit') return Boolean(assistantBinding?.can_view_stock_audit);
+    if (tab.id === 'balance') return Boolean(assistantBinding?.can_view_stock_audit);
     if (tab.id === 'inbound' || tab.id === 'inbound-history') return Boolean(assistantBinding?.can_manage_inbound_stock);
     return false;
   });
-  const requestedTab = searchParams.get('tab');
+  const rawRequestedTab = searchParams.get('tab');
+  const requestedTab = rawRequestedTab === 'stock-audit' || rawRequestedTab === 'stock-rebuild'
+    ? 'balance'
+    : rawRequestedTab;
   const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab! : (tabs[0]?.id || 'balance');
+
+  useEffect(() => {
+    if (rawRequestedTab === 'stock-audit' || rawRequestedTab === 'stock-rebuild') {
+      setSearchParams({ tab: 'balance' }, { replace: true });
+    }
+  }, [rawRequestedTab, setSearchParams]);
 
   return (
     <div className="space-y-4">
@@ -67,7 +74,6 @@ export default function InventoryModule() {
               ? <RunnerInbound runnerIdOverride={assistantRunnerId} />
               : <InboundPending />)}
             {activeTab === 'inbound-history' && <InboundHistory runnerIdOverride={assistantRunnerId} />}
-            {activeTab === 'stock-audit' && <StockIntegrityAudit />}
             {activeTab === 'adjustments' && <StockAdjustment />}
             {activeTab === 'warehouses' && <WarehouseManagement />}
             {activeTab === 'data-sharing' && <DataSharingAdmin />}

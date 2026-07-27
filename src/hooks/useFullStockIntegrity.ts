@@ -32,21 +32,22 @@ export interface StockIntegritySummary {
   health_percentage: number;
 }
 
-export interface RebuildResult {
+export interface StockIntegrityRepairResult {
   success: boolean;
   dry_run: boolean;
   total_skus_scanned: number;
   ok_count: number;
   mismatch_count: number;
   negative_count: number;
-  missing_deductions_fixed: number;
-}
-
-export interface QuickRepairResult {
-  success: boolean;
-  dry_run: boolean;
   missing_deductions: number;
+  repairable_deductions: number;
+  affected_orders: number;
+  missing_units: number;
+  legacy_deductions_recognized: number;
+  unresolved_warehouses: number;
   fixed_deductions: number;
+  missing_deductions_fixed: number;
+  queue_items: number;
   queue_cleared: number;
   errors: string[];
   fixed_orders: string[];
@@ -115,48 +116,22 @@ export function useStockIntegritySummary(enabled = true) {
   });
 }
 
-// Quick Repair mutation
-export function useQuickRepair() {
+// Canonical integrity preview and repair mutation.
+export function useStockIntegrityRepair() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (dryRun: boolean): Promise<QuickRepairResult> => {
-      const { data, error } = await supabase.rpc('repair_missing_stock_deductions', {
-        p_dry_run: dryRun
-      });
-      
-      if (error) throw new Error(error.message);
-      return data as unknown as QuickRepairResult;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['full-stock-integrity-audit'] });
-      queryClient.invalidateQueries({ queryKey: ['stock-integrity-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
-      
-      if (data.dry_run) {
-        toast.info(`Preview: Found ${data.missing_deductions} missing deductions`);
-      } else {
-        toast.success(`Repair complete! Fixed ${data.fixed_deductions} deductions, cleared ${data.queue_cleared} queue items`);
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(`Quick repair failed: ${error.message}`);
-    },
-  });
-}
-
-// Full Rebuild mutation
-export function useFullStockRebuild() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (dryRun: boolean): Promise<RebuildResult> => {
+    mutationFn: async (dryRun: boolean): Promise<StockIntegrityRepairResult> => {
       const { data, error } = await supabase.rpc('apply_full_stock_rebuild', {
         p_dry_run: dryRun
       });
       
       if (error) throw new Error(error.message);
-      return data as unknown as RebuildResult;
+      const result = data as unknown as StockIntegrityRepairResult;
+      if (!result.success) {
+        throw new Error(result.errors?.[0] || 'Stock integrity operation failed');
+      }
+      return result;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['full-stock-integrity-audit'] });
@@ -164,13 +139,17 @@ export function useFullStockRebuild() {
       queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
       
       if (data.dry_run) {
-        toast.info(`Preview: ${data.total_skus_scanned} SKUs scanned. ${data.mismatch_count} mismatches, ${data.negative_count} negative balances`);
+        toast.info(
+          `Preview ready: ${data.repairable_deductions} repairable order lines across ${data.affected_orders} orders`
+        );
       } else {
-        toast.success(`Rebuild complete! Fixed ${data.missing_deductions_fixed} missing deductions. ${data.ok_count}/${data.total_skus_scanned} SKUs now healthy.`);
+        toast.success(
+          `Repair complete: ${data.fixed_deductions} deductions added and ${data.queue_cleared} queue records cleared`
+        );
       }
     },
     onError: (error: Error) => {
-      toast.error(`Full rebuild failed: ${error.message}`);
+      toast.error(`Stock integrity operation failed: ${error.message}`);
     },
   });
 }
