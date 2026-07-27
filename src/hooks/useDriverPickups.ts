@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   getDriverOperationalDateKey,
   getTodayDateKey,
-  isVisibleDriverInboxOrder,
+  isHiddenFromDriverApps,
   toDateKey,
 } from '@/lib/driverOrderScope';
 import { fetchDriverAssignments } from '@/hooks/useDriverAssignments';
@@ -188,7 +188,7 @@ function getPickupItemLabel(item: ActiveDriverOrderItem) {
   };
 }
 
-export function isActiveDriverPickupOrder(order: ActiveDriverDeliveryOrder, targetDateKey = getTodayDateKey()) {
+export function isActiveDriverPickupOrder(order: ActiveDriverDeliveryOrder) {
   const driverStatus = normalizeStatus(order.driver_status);
   if (!ACTIVE_DRIVER_PICKUP_STATUSES.includes(driverStatus as typeof ACTIVE_DRIVER_PICKUP_STATUSES[number])) {
     return false;
@@ -196,7 +196,7 @@ export function isActiveDriverPickupOrder(order: ActiveDriverDeliveryOrder, targ
 
   return (
     Boolean(order.driver_id)
-    && isVisibleDriverInboxOrder(order, targetDateKey)
+    && !isHiddenFromDriverApps(order)
   );
 }
 
@@ -247,18 +247,15 @@ async function fetchActiveDriverOrders(params: {
   driverIds?: string[];
   driverId?: string;
 }) {
-  const today = getTodayDateKey();
   const assignments = await fetchDriverAssignments({
     runnerId: params.runnerId,
     driverId: params.driverId,
-    dateFrom: today,
-    dateTo: today,
     activeOnly: true,
     includeItems: true,
   });
   const allowedDrivers = params.driverIds?.length ? new Set(params.driverIds) : null;
   return assignments.filter((order) => (
-    isActiveDriverPickupOrder(order, today)
+    isActiveDriverPickupOrder(order)
     && (!allowedDrivers || allowedDrivers.has(order.driver_id))
   )) as ActiveDriverDeliveryOrder[];
 }

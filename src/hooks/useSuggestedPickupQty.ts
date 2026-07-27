@@ -26,6 +26,7 @@ export interface SuggestedPickup {
  * - orders.driver_id = selected driver
  * - orders.runner_id = current runner
  * - orders.driver_status IN (ASSIGNED, OUT_FOR_DELIVERY)
+ * - includes every active assignment visible in the driver inbox, regardless of delivery date
  * - excludes delivered, cancelled, missing, returned, accepted and completed orders
  */
 export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: string, runnerIdOverride?: string) {
@@ -41,7 +42,6 @@ export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: 
       const orders = await fetchDriverAssignments({
         runnerId: runnerScopeId,
         driverId,
-        dateTo: pickupDate,
         activeOnly: true,
         includeItems: true,
       });
