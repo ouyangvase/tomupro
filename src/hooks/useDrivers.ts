@@ -6,6 +6,38 @@ import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { DRIVER_WORKLOAD_STATUSES, isDriverWorkloadOrder } from '@/lib/driverOrderScope';
 import { useAuth } from '@/contexts/AuthContext';
 
+type AssignmentBatchResult = {
+  success: boolean;
+  assigned_count?: number;
+};
+
+type DriverAssignmentRpcClient = {
+  rpc: <T = unknown>(
+    fn: string,
+    args?: Record<string, unknown>,
+  ) => Promise<{ data: T | null; error: Error | null }>;
+};
+
+const driverAssignmentSupabase = supabase as unknown as DriverAssignmentRpcClient;
+
+async function assignOrdersToDriver(orderIds: string[], driverId: string) {
+  const { data, error } = await driverAssignmentSupabase.rpc<AssignmentBatchResult>(
+    'apply_driver_assignment_batch',
+    {
+      p_order_ids: orderIds,
+      p_driver_id: driverId,
+      p_operational_date: null,
+      p_action: 'ASSIGN',
+    },
+  );
+
+  if (error) throw error;
+  if (!data?.success || Number(data.assigned_count || 0) !== orderIds.length) {
+    throw new Error('The assignment was not fully saved. Please retry.');
+  }
+  return data;
+}
+
 function flushTelegramEventQueue(body?: Record<string, unknown>) {
   supabase.functions.invoke('send-telegram-event', { body: body || { limit: 3 } }).catch((error) => {
     console.warn('Failed to flush Telegram event queue:', error);
@@ -240,18 +272,7 @@ export function useAssignOrderToDriver() {
   
   return useMutation({
     mutationFn: async ({ orderId, driverId }: { orderId: string; driverId: string }) => {
-      const { data, error } = await supabase
-        .from('orders')
-        .update({
-          driver_id: driverId,
-          driver_status: 'ASSIGNED',
-        })
-        .eq('id', orderId)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      return assignOrdersToDriver([orderId], driverId);
     },
     onSuccess: () => {
       invalidateOrderQueries(queryClient);
@@ -269,15 +290,7 @@ export function useBulkAssignOrdersToDriver() {
   
   return useMutation({
     mutationFn: async ({ orderIds, driverId }: { orderIds: string[]; driverId: string }) => {
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          driver_id: driverId,
-          driver_status: 'ASSIGNED',
-        })
-        .in('id', orderIds);
-      
-      if (error) throw error;
+      return assignOrdersToDriver(orderIds, driverId);
     },
     onSuccess: (_, { orderIds }) => {
       invalidateOrderQueries(queryClient);

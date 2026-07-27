@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils';
 import {
   DRIVER_TAB_CHANGE_EVENT,
   driverTabPath,
+  emitDriverTabChange,
   type DriverTabId,
 } from '@/lib/driverTabs';
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -41,6 +42,10 @@ export default function DeliveryModule() {
   useEffect(() => {
     setActiveTab(validRequestedTab);
   }, [validRequestedTab]);
+
+  useEffect(() => {
+    emitDriverTabChange(activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     const handleTabChange = (event: Event) => {

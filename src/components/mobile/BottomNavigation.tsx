@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
+  DRIVER_TAB_CHANGE_EVENT,
   emitDriverTabChange,
   type DriverTabId,
 } from '@/lib/driverTabs';
@@ -166,9 +167,37 @@ export function BottomNavigation() {
   const { data: leaderboardSettings } = useLeaderboardSettings();
   const { data: assistantBinding } = useMyAssistantBinding();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [driverModuleActive, setDriverModuleActive] = useState(
+    () => window.location.pathname.startsWith('/delivery'),
+  );
+  const [visibleDriverTab, setVisibleDriverTab] = useState<DriverTabId>(() => {
+    const pathTab = window.location.pathname.split('/')[2];
+    const queryTab = new URLSearchParams(window.location.search).get('tab');
+    return (pathTab || queryTab || 'inbox') as DriverTabId;
+  });
   const hidePerformanceUI = !!(
     leaderboardSettings?.filters_default as { hide_performance_ui?: boolean } | null
   )?.hide_performance_ui;
+
+  useEffect(() => {
+    const handleDriverTabChange = (event: Event) => {
+      setVisibleDriverTab((event as CustomEvent<DriverTabId>).detail);
+      setDriverModuleActive(true);
+    };
+
+    window.addEventListener(DRIVER_TAB_CHANGE_EVENT, handleDriverTabChange);
+    return () => window.removeEventListener(DRIVER_TAB_CHANGE_EVENT, handleDriverTabChange);
+  }, []);
+
+  useEffect(() => {
+    const isDriverModule = location.pathname.startsWith('/delivery');
+    setDriverModuleActive(isDriverModule);
+    if (isDriverModule) {
+      const pathTab = location.pathname.split('/')[2];
+      const queryTab = new URLSearchParams(location.search).get('tab');
+      setVisibleDriverTab((pathTab || queryTab || 'inbox') as DriverTabId);
+    }
+  }, [location.pathname, location.search]);
 
   const getTabs = (): NavItem[] => {
     switch (role) {
@@ -233,19 +262,18 @@ export function BottomNavigation() {
   }, [assistantBinding, hidePerformanceUI, role]);
 
   const isActive = (href: string, id?: string): boolean => {
-    if (href === '/') return location.pathname === '/';
-    if (role === 'driver' && location.pathname.startsWith('/delivery')) {
-      const activeTab = location.pathname.split('/')[2]
-        || new URLSearchParams(location.search).get('tab')
-        || 'inbox';
-      if (id === 'analytics') return activeTab === 'analytics';
-      if (id === 'delivery') return activeTab !== 'analytics';
+    if (role === 'driver' && driverModuleActive) {
+      if (id === 'analytics') return visibleDriverTab === 'analytics';
+      if (id === 'delivery') return visibleDriverTab !== 'analytics';
+      if (id === 'home') return false;
     }
+    if (href === '/') return location.pathname === '/';
     return location.pathname.startsWith(href);
   };
 
   const syncVisibleDriverTab = (tab: DriverTabId) => {
-    if (role === 'driver' && location.pathname.startsWith('/delivery')) {
+    if (role === 'driver' && driverModuleActive) {
+      setVisibleDriverTab(tab);
       emitDriverTabChange(tab);
     }
   };
@@ -296,6 +324,7 @@ export function BottomNavigation() {
                 key={tab.id}
                 to={tab.href}
                 onClick={() => {
+                  if (tab.id === 'home') setDriverModuleActive(false);
                   if (tab.id === 'delivery') syncVisibleDriverTab('inbox');
                   if (tab.id === 'analytics') syncVisibleDriverTab('analytics');
                 }}
@@ -325,6 +354,8 @@ export function BottomNavigation() {
                   if (role === 'driver' && item.href.startsWith('/delivery')) {
                     const tab = item.href.split('/')[2] as DriverTabId | undefined;
                     syncVisibleDriverTab(tab || 'inbox');
+                  } else if (role === 'driver') {
+                    setDriverModuleActive(false);
                   }
                   navigate(item.href);
                 }}

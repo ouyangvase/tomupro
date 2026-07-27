@@ -45,11 +45,6 @@ export function AssignToDriverDialog({
       { orderIds: ids, driverId },
       {
         onSuccess: () => {
-          import('@/hooks/useAuditLogs').then(({ logAudit }) => {
-            for (const id of ids) {
-              logAudit({ entity_type: 'order', entity_id: id, action: 'driver_assigned', after_json: { driver_id: driverId, driver_status: 'ASSIGNED' } });
-            }
-          });
           setSelectedDriver('');
           onOpenChange(false);
           onSuccess();

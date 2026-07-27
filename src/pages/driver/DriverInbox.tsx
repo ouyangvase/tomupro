@@ -35,9 +35,10 @@ import { compressImage } from '@/lib/imageCompression';
 import { downloadXlsx } from '@/lib/xlsxExport';
 import {
   getTodayDateKey,
+  hasDriverVisibleActiveStatus,
+  isHiddenFromDriverApps,
   isCompletedDriverDeliveryAccepted,
   isSameDriverOperationalDate,
-  isVisibleDriverInboxOrder,
   normalizeDriverStatus,
 } from '@/lib/driverOrderScope';
 import { toast } from 'sonner';
@@ -118,7 +119,6 @@ export default function DriverInbox() {
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
   const { data: orders = [], isLoading } = useDriverAssignments({
     driverId: effectiveDriverId,
-    dateTo: todayDateKey,
     activeOnly: true,
     includeItems: true,
   });
@@ -157,9 +157,11 @@ export default function DriverInbox() {
     return new Date();
   }, []);
 
-  // Keep all active jobs due through today visible until they are completed.
+  // Keep every active assignment visible as soon as the runner assigns it.
   const filteredOrders = useMemo(() => {
-    const statusFiltered = myOrders.filter((order) => isVisibleDriverInboxOrder(order, todayDateKey));
+    const statusFiltered = myOrders.filter(
+      (order) => hasDriverVisibleActiveStatus(order) && !isHiddenFromDriverApps(order),
+    );
     
     if (!searchQuery.trim()) return statusFiltered;
     
@@ -181,7 +183,7 @@ export default function DriverInbox() {
         || itemText.includes(query)
       );
     });
-  }, [myOrders, searchQuery, todayDateKey]);
+  }, [myOrders, searchQuery]);
 
   const pendingOrders = filteredOrders.filter((o) => {
     const status = normalizeDriverStatus(o.driver_status);

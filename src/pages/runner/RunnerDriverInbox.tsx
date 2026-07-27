@@ -61,6 +61,8 @@ import { downloadXlsx } from '@/lib/xlsxExport';
 import {
   getDriverOperationalDateKey,
   getTodayDateKey,
+  hasDriverVisibleActiveStatus,
+  isHiddenFromDriverApps,
   isDriverWorkloadOrder,
   isStaleActiveDriverAssignment,
 } from '@/lib/driverOrderScope';
@@ -244,12 +246,14 @@ function isNormalArea(areaCode: string) {
   return !['NEEDS_REVIEW', 'SELF_PICKUP', 'CANCELLED'].includes(areaCode);
 }
 
-function isActivelyAssigned(order: RunnerOrder, targetDateKey = getTodayDateKey()) {
-  return isDriverWorkloadOrder(order, targetDateKey);
+function isActivelyAssigned(order: RunnerOrder) {
+  return Boolean(order.driver_id)
+    && hasDriverVisibleActiveStatus(order)
+    && !isHiddenFromDriverApps(order);
 }
 
-function isAssignedForAreaSummary(order: RunnerOrder, targetDateKey: string) {
-  return isActivelyAssigned(order, targetDateKey) || isStaleActiveDriverAssignment(order, targetDateKey);
+function isAssignedForAreaSummary(order: RunnerOrder, _targetDateKey?: string) {
+  return isActivelyAssigned(order);
 }
 
 function isActiveQueueUnassigned(order: RunnerOrder, targetDateKey: string) {
@@ -444,7 +448,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
   const correctArea = useCorrectOrderDeliveryArea();
 
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
-  const activeQueueScopeDate = todayDateKey;
+  const activeQueueScopeDate: string | null = null;
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedAreaOrderSnapshots, setSelectedAreaOrderSnapshots] = useState<DispatchAreaOrderId[]>([]);
   const [selectedPendingRows, setSelectedPendingRows] = useState<string[]>([]);
