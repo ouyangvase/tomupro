@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   ClipboardList,
@@ -244,18 +244,8 @@ export function BottomNavigation() {
         <div className="mobile-bottom-dock-core flex h-[72px] items-center justify-around px-1">
           {tabs.map((tab) => {
             const active = tab.isMore ? moreOpen : isActive(tab.href, tab.id);
-            return (
-              <button
-                key={tab.id}
-                onClick={() => tab.isMore ? setMoreOpen(true) : navigate(tab.href)}
-                className={cn(
-                  "group flex min-w-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-1.5",
-                  "mobile-motion transition-all duration-500 active:scale-[0.96]",
-                  active
-                    ? "text-[#b97823]"
-                    : "text-[#766f66] hover:text-[#171512]"
-                )}
-              >
+            const content = (
+              <>
                 <div className={cn(
                   "mobile-motion flex h-9 w-9 items-center justify-center rounded-2xl transition-all duration-500",
                   active
@@ -270,7 +260,29 @@ export function BottomNavigation() {
                 )}>
                   {tab.label}
                 </span>
+              </>
+            );
+            const className = cn(
+              "group flex min-w-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-1.5",
+              "mobile-motion transition-all duration-500 active:scale-[0.96]",
+              active
+                ? "text-[#b97823]"
+                : "text-[#766f66] hover:text-[#171512]"
+            );
+
+            return tab.isMore ? (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setMoreOpen(true)}
+                className={className}
+              >
+                {content}
               </button>
+            ) : (
+              <Link key={tab.id} to={tab.href} className={className}>
+                {content}
+              </Link>
             );
           })}
         </div>

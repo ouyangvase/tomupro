@@ -1,5 +1,5 @@
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { cn } from '@/lib/utils';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
@@ -24,7 +24,7 @@ const tabs = [
 ];
 
 export default function DeliveryModule() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab') || 'inbox';
   const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : 'inbox';
 
@@ -34,15 +34,28 @@ export default function DeliveryModule() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
-      <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
-        <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-          <TabsList className="h-11 w-max min-w-max justify-start bg-secondary/30">
-            {tabs.map(t => (
-              <TabsTrigger key={t.id} value={t.id} className="shrink-0 whitespace-nowrap px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground md:px-4 md:text-sm">{t.label}</TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-      </Tabs>
+      <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+        <nav
+          aria-label="Driver delivery sections"
+          className="inline-flex h-11 w-max min-w-max items-center justify-start gap-1 rounded-xl bg-secondary/30 p-1.5"
+        >
+          {tabs.map((tab) => (
+            <Link
+              key={tab.id}
+              to={`/delivery?tab=${tab.id}`}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+              className={cn(
+                "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors md:px-4 md:text-sm",
+                activeTab === tab.id
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-foreground/70 hover:text-foreground"
+              )}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4 min-w-0">
