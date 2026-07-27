@@ -222,6 +222,7 @@ function AppRoutes() {
       <Route path="/orders" element={<ProtectedModule><OrdersModule /></ProtectedModule>} />
       <Route path="/dispatch" element={<ProtectedModule><DispatchModule /></ProtectedModule>} />
       <Route path="/delivery" element={<ProtectedModule><DeliveryModule /></ProtectedModule>} />
+      <Route path="/delivery/:tab" element={<ProtectedModule><DeliveryModule /></ProtectedModule>} />
       <Route path="/performance" element={<ProtectedModule><PerformanceModule /></ProtectedModule>} />
       <Route path="/team" element={<ProtectedModule><TeamModule /></ProtectedModule>} />
       <Route path="/finance" element={<ProtectedModule><FinanceModule /></ProtectedModule>} />
@@ -255,10 +256,10 @@ function AppRoutes() {
       <Route path="/runner/driver-locations" element={<Navigate to="/dispatch?tab=map" replace />} />
       <Route path="/driver/inbox" element={<Navigate to="/delivery?tab=inbox" replace />} />
       <Route path="/driver/route" element={<Navigate to="/delivery?tab=inbox" replace />} />
-      <Route path="/driver/pickups" element={<Navigate to="/delivery?tab=pickups" replace />} />
-      <Route path="/driver/returns" element={<Navigate to="/delivery?tab=returns" replace />} />
-      <Route path="/driver/stock" element={<Navigate to="/delivery?tab=stock" replace />} />
-      <Route path="/driver/analytics" element={<Navigate to="/delivery?tab=analytics" replace />} />
+      <Route path="/driver/pickups" element={<Navigate to="/delivery/pickups" replace />} />
+      <Route path="/driver/returns" element={<Navigate to="/delivery/returns" replace />} />
+      <Route path="/driver/stock" element={<Navigate to="/delivery/stock" replace />} />
+      <Route path="/driver/analytics" element={<Navigate to="/delivery/analytics" replace />} />
       <Route path="/leaderboard" element={<Navigate to="/performance?tab=leaderboard" replace />} />
       <Route path="/manager/ranking-board" element={<Navigate to="/performance?tab=ranking" replace />} />
       <Route path="/manager/impact-board" element={<Navigate to="/performance?tab=impact" replace />} />

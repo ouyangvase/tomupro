@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
@@ -24,12 +24,13 @@ const tabs = [
 ];
 
 export default function DeliveryModule() {
+  const { tab: routeTab } = useParams<{ tab?: string }>();
   const [searchParams] = useSearchParams();
-  const requestedTab = searchParams.get('tab') || 'inbox';
+  const requestedTab = routeTab || searchParams.get('tab') || 'inbox';
   const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : 'inbox';
 
   if (requestedTab !== activeTab) {
-    return <Navigate to="/delivery?tab=inbox" replace />;
+    return <Navigate to="/delivery" replace />;
   }
 
   return (
@@ -42,8 +43,7 @@ export default function DeliveryModule() {
           {tabs.map((tab) => (
             <Link
               key={tab.id}
-              to={`/delivery?tab=${tab.id}`}
-              reloadDocument
+              to={tab.id === 'inbox' ? '/delivery' : `/delivery/${tab.id}`}
               aria-current={activeTab === tab.id ? 'page' : undefined}
               className={cn(
                 "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors md:px-4 md:text-sm",

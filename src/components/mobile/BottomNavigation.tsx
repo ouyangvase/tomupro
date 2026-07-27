@@ -62,7 +62,7 @@ const runnerTabs: NavItem[] = [
 const driverTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
   { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery' },
-  { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery?tab=analytics' },
+  { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery/analytics' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile', isMore: true },
 ];
 
@@ -133,10 +133,10 @@ const allModules: Record<string, NavItem[]> = {
   driver: [
     { id: 'dashboard', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
     { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery' },
-    { id: 'pickups', label: 'Pickups', icon: <Boxes className="h-5 w-5" />, href: '/delivery?tab=pickups' },
-    { id: 'returns', label: 'Returns', icon: <ClipboardList className="h-5 w-5" />, href: '/delivery?tab=returns' },
-    { id: 'stock-on-hand', label: 'Stock on Hand', icon: <Boxes className="h-5 w-5" />, href: '/delivery?tab=stock' },
-    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery?tab=analytics' },
+    { id: 'pickups', label: 'Pickups', icon: <Boxes className="h-5 w-5" />, href: '/delivery/pickups' },
+    { id: 'returns', label: 'Returns', icon: <ClipboardList className="h-5 w-5" />, href: '/delivery/returns' },
+    { id: 'stock-on-hand', label: 'Stock on Hand', icon: <Boxes className="h-5 w-5" />, href: '/delivery/stock' },
+    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery/analytics' },
     { id: 'guide', label: 'Guide', icon: <GraduationCap className="h-5 w-5" />, href: '/guide' },
     { id: 'telegram', label: 'Telegram', icon: <Send className="h-5 w-5" />, href: '/settings/telegram' },
     { id: 'profile', label: 'Profile', icon: <UserCircle className="h-5 w-5" />, href: '/settings/profile' },
@@ -230,8 +230,10 @@ export function BottomNavigation() {
 
   const isActive = (href: string, id?: string): boolean => {
     if (href === '/') return location.pathname === '/';
-    if (role === 'driver' && location.pathname === '/delivery') {
-      const activeTab = new URLSearchParams(location.search).get('tab') || 'inbox';
+    if (role === 'driver' && location.pathname.startsWith('/delivery')) {
+      const activeTab = location.pathname.split('/')[2]
+        || new URLSearchParams(location.search).get('tab')
+        || 'inbox';
       if (id === 'analytics') return activeTab === 'analytics';
       if (id === 'delivery') return activeTab !== 'analytics';
     }
@@ -283,7 +285,6 @@ export function BottomNavigation() {
               <Link
                 key={tab.id}
                 to={tab.href}
-                reloadDocument={tab.href.includes('?')}
                 className={className}
               >
                 {content}
