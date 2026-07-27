@@ -22,7 +22,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
-import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useInventoryOrderSources } from '@/hooks/useWarehouseSharing';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { toUpperLatin } from '@/lib/uppercase';
 import { ColumnMappingStep, areRequiredFieldsMapped, applyColumnMapping } from './ColumnMappingStep';
@@ -80,30 +80,17 @@ function StepIndicator({ current }: { current: ImportStep }) {
 }
 
 export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKING' }: ImportOrdersDialogProps) {
-  const { profile, role } = useAuth();
+  const { profile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: teamMembers = [] } = useTeamMembers();
   const { data: validAreas = [] } = useValidAreas();
+  const { data: inventorySources = [] } = useInventoryOrderSources();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
+  const [fulfillmentWarehouseId, setFulfillmentWarehouseId] = useState('');
   const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
-
-  const ownerOptions = useMemo(() => {
-    if (role === 'salesperson') return [];
-    if (role === 'manager' && profile) {
-      return [
-        { id: profile.id, display_name: `${profile.display_name} (My Orders)` },
-        ...teamMembers.map(m => ({ id: m.id, display_name: m.display_name })),
-      ];
-    }
-    if (role === 'admin' && profile) {
-      return [{ id: profile.id, display_name: `${profile.display_name} (Me)` }];
-    }
-    return [];
-  }, [role, profile, teamMembers]);
 
   const [file, setFile] = useState<File | null>(null);
   const [rawData, setRawData] = useState<{ headers: string[]; rows: Record<string, string>[] } | null>(null);
@@ -117,8 +104,19 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   useEffect(() => {
     if (open && profile?.id) {
       setOrderOwnerId(profile.id);
+      setFulfillmentWarehouseId('');
     }
   }, [open, profile?.id]);
+
+  useEffect(() => {
+    if (!open || fulfillmentWarehouseId || inventorySources.length === 0) return;
+    const defaultSource = inventorySources.find(source => source.owner_user_id === profile?.id)
+      || inventorySources[0];
+    if (defaultSource) {
+      setOrderOwnerId(defaultSource.owner_user_id);
+      setFulfillmentWarehouseId(defaultSource.warehouse_id);
+    }
+  }, [open, fulfillmentWarehouseId, inventorySources, profile?.id]);
 
   const suggestMappings = (headers: string[]): Record<string, string> => {
     const mapping: Record<string, string> = {};
@@ -379,6 +377,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               expected_pickup_date: group.orderData.expected_pickup_date || null,
               salesperson_id: profile.id,
               order_owner_id: orderOwnerId,
+              fulfillment_warehouse_id: fulfillmentWarehouseId || null,
               status: defaultStatus,
               total_qty: totalQty,
               total_amount: totalAmount,
@@ -431,7 +430,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   };
 
   const canProceedToPreview = areRequiredFieldsMapped(columnMapping);
-  const selectedOwner = ownerOptions.find(o => o.id === orderOwnerId);
+  const selectedSource = inventorySources.find(source => source.warehouse_id === fulfillmentWarehouseId);
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) clearErrors(); onOpenChange(isOpen); }}>
@@ -464,34 +463,41 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           {step === 'upload' && (
             <div className="space-y-5">
               {/* Owner Selection Card */}
-              {(role === 'manager' || role === 'admin') && ownerOptions.length > 0 && (
+              {inventorySources.length > 0 && (
                 <div className="rounded-2xl border-2 border-primary/20 bg-primary/5 p-5">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
                       <Users className="h-4 w-4" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold text-foreground">Order Owner</h3>
-                      <p className="text-[11px] text-muted-foreground">Only SKUs belonging to this user will be matched</p>
+                      <h3 className="text-sm font-semibold text-foreground">Inventory Source</h3>
+                      <p className="text-[11px] text-muted-foreground">Products and delivered stock deduction use this warehouse</p>
                     </div>
                   </div>
-                  <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
+                  <Select
+                    value={fulfillmentWarehouseId}
+                    onValueChange={(warehouseId) => {
+                      const source = inventorySources.find(item => item.warehouse_id === warehouseId);
+                      setFulfillmentWarehouseId(warehouseId);
+                      if (source) setOrderOwnerId(source.owner_user_id);
+                    }}
+                  >
                     <SelectTrigger className="h-11 rounded-xl bg-background border-border/60">
                       <div className="flex items-center gap-2.5">
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-bold">
-                          {(selectedOwner?.display_name || 'U')[0].toUpperCase()}
+                          {(selectedSource?.owner_display_name || 'U')[0].toUpperCase()}
                         </div>
-                        <SelectValue placeholder="Select owner" />
+                        <SelectValue placeholder="Select inventory source" />
                       </div>
                     </SelectTrigger>
                     <SelectContent className="rounded-xl">
-                      {ownerOptions.map(opt => (
-                        <SelectItem key={opt.id} value={opt.id} className="rounded-lg">
+                      {inventorySources.map(source => (
+                        <SelectItem key={source.warehouse_id} value={source.warehouse_id} className="rounded-lg">
                           <div className="flex items-center gap-2">
                             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
-                              {opt.display_name[0].toUpperCase()}
+                              {source.owner_display_name[0].toUpperCase()}
                             </div>
-                            {opt.display_name}
+                            {source.owner_display_name} · {source.warehouse_name}
                           </div>
                         </SelectItem>
                       ))}

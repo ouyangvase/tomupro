@@ -5084,6 +5084,18 @@ export type Database = {
           sku_name: string
         }[]
       }
+      get_inventory_order_sources: {
+        Args: never
+        Returns: {
+          access_type: string
+          owner_display_name: string
+          owner_email: string | null
+          owner_user_id: string
+          warehouse_id: string
+          warehouse_name: string
+          warehouse_type: string
+        }[]
+      }
       get_leaderboard_rankings:
         | {
             Args: {
@@ -5138,6 +5150,16 @@ export type Database = {
           require_response: boolean
           seen_at: string
           show_as_popup: boolean
+        }[]
+      }
+      get_my_inventory_shares: {
+        Args: never
+        Returns: {
+          created_at: string
+          id: string
+          viewer_display_name: string
+          viewer_email: string
+          viewer_user_id: string
         }[]
       }
       get_runner_daily_earnings: {
@@ -5317,6 +5339,10 @@ export type Database = {
         Args: { p_reason: string; p_rejector_id: string; p_transfer_id: string }
         Returns: Json
       }
+      revoke_inventory_share: {
+        Args: { p_share_id: string }
+        Returns: boolean
+      }
       reopen_rescheduled_orders: { Args: never; Returns: Json }
       repair_missing_stock_deductions: {
         Args: { p_dry_run?: boolean }
@@ -5336,6 +5362,10 @@ export type Database = {
           runner_status: string
           status: string
         }[]
+      }
+      share_inventory_with_email: {
+        Args: { p_email: string }
+        Returns: string
       }
       validate_invite_code: { Args: { code_text: string }; Returns: string }
       validate_runner_code: { Args: { p_code: string }; Returns: Json }

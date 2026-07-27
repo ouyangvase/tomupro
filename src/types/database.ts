@@ -224,6 +224,7 @@ export interface Order {
   remark: string | null;
   payment_method: PaymentMethod;
   salesperson_id: string;
+  order_owner_id?: string | null;
   runner_id: string | null;
   driver_id: string | null;
   status: OrderStatus;

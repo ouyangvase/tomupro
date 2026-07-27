@@ -65,7 +65,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
-import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useInventoryOrderSources } from '@/hooks/useWarehouseSharing';
 import { useOrderItems, useCreateOrderItem, useUpdateOrderItem, useDeleteOrderItem, calculateOrderTotals } from '@/hooks/useOrderItems';
 import { useUpdateOrder, useCreateOrder, useRunnerUpdateArea } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
@@ -586,35 +586,35 @@ function RunnerAreaEditor({
 export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = 'BOOKING', readOnly: readOnlyProp }: OrderEditorProps) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
-  const { data: teamMembers = [] } = useTeamMembers();
   const { data: validAreas = [] } = useValidAreas();
+  const { data: inventorySources = [] } = useInventoryOrderSources();
 
   const [orderOwnerId, setOrderOwnerId] = useState<string>(profile?.id || '');
+  const [fulfillmentWarehouseId, setFulfillmentWarehouseId] = useState('');
+  const existingOrderOwnerId = order?.order_owner_id;
+  const existingWarehouseId = order?.fulfillment_warehouse_id;
 
   useEffect(() => {
     if (open) {
-      const orderOwner = (order as any)?.order_owner_id;
-      if (mode === 'edit' && orderOwner) {
-        setOrderOwnerId(orderOwner);
+      if (mode === 'edit' && existingOrderOwnerId) {
+        setOrderOwnerId(existingOrderOwnerId);
+        setFulfillmentWarehouseId(existingWarehouseId || '');
       } else if (profile?.id) {
         setOrderOwnerId(profile.id);
+        setFulfillmentWarehouseId('');
       }
     }
-  }, [open, mode, (order as any)?.order_owner_id, profile?.id]);
+  }, [open, mode, existingOrderOwnerId, existingWarehouseId, profile?.id]);
 
-  const ownerOptions = useMemo(() => {
-    if (role === 'salesperson') return [];
-    if (role === 'manager' && profile) {
-      return [
-        { id: profile.id, display_name: `${profile.display_name} (My Order)` },
-        ...teamMembers.map(m => ({ id: m.id, display_name: m.display_name })),
-      ];
+  useEffect(() => {
+    if (!open || mode !== 'create' || fulfillmentWarehouseId || inventorySources.length === 0) return;
+    const defaultSource = inventorySources.find(source => source.owner_user_id === profile?.id)
+      || inventorySources[0];
+    if (defaultSource) {
+      setOrderOwnerId(defaultSource.owner_user_id);
+      setFulfillmentWarehouseId(defaultSource.warehouse_id);
     }
-    if (role === 'admin' && profile) {
-      return [{ id: profile.id, display_name: `${profile.display_name} (Me)` }];
-    }
-    return [];
-  }, [role, profile, teamMembers]);
+  }, [open, mode, fulfillmentWarehouseId, inventorySources, profile?.id]);
 
   const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
   const products = ownerProducts;
@@ -871,6 +871,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
           ...orderData,
           salesperson_id: profile!.id,
           order_owner_id: orderOwnerId,
+          fulfillment_warehouse_id: fulfillmentWarehouseId || null,
           status: createAs,
         } as any);
         orderId = result.id;
@@ -953,7 +954,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
     setPendingSubmit(null);
   };
 
-  const selectedOwner = ownerOptions.find(o => o.id === orderOwnerId);
+  const selectedSource = inventorySources.find(source => source.warehouse_id === fulfillmentWarehouseId);
   const paymentMethod = form.watch('payment_method');
 
   return (
@@ -1075,33 +1076,49 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                 <fieldset disabled={isReadOnly || isRunnerAreaEdit || isLocked} className="space-y-5">
                 {/* ─── Section 1: Order Setup ─── */}
                 <SectionCard icon={FileText} title="Order Setup" subtitle="Owner, reference & channel">
-                  {/* Order Owner */}
-                  {(isManager || isAdmin) && mode === 'create' && ownerOptions.length > 0 && (
+                  {/* Inventory Source */}
+                  {mode === 'create' && inventorySources.length > 0 && (
                     <div className="mb-5">
-                      <label className="text-xs font-medium text-muted-foreground mb-2 block">Order Owner</label>
+                      <label className="text-xs font-medium text-muted-foreground mb-2 block">Inventory Source</label>
                       <div
                         className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 cursor-pointer hover:border-primary/50 transition-colors"
                       >
-                        <Select value={orderOwnerId} onValueChange={setOrderOwnerId}>
+                        <Select
+                          value={fulfillmentWarehouseId}
+                          onValueChange={(warehouseId) => {
+                            const source = inventorySources.find(item => item.warehouse_id === warehouseId);
+                            setFulfillmentWarehouseId(warehouseId);
+                            if (source) setOrderOwnerId(source.owner_user_id);
+                          }}
+                        >
                           <SelectTrigger className="border-0 bg-transparent p-0 h-auto shadow-none focus:ring-0">
                             <div className="flex items-center gap-3">
                               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-primary font-bold text-sm">
-                                {(selectedOwner?.display_name || 'U')[0].toUpperCase()}
+                                {(selectedSource?.owner_display_name || 'U')[0].toUpperCase()}
                               </div>
                               <div className="text-left">
-                                <p className="text-sm font-semibold text-foreground">{selectedOwner?.display_name || 'Select owner'}</p>
-                                <p className="text-[11px] text-muted-foreground">Product catalog will match this owner</p>
+                                <p className="text-sm font-semibold text-foreground">
+                                  {selectedSource?.owner_display_name || 'Select inventory source'}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  {selectedSource
+                                    ? `${selectedSource.warehouse_name}${selectedSource.access_type === 'shared' ? ' · Shared with me' : ''}`
+                                    : 'Products and delivered stock deduction use this warehouse'}
+                                </p>
                               </div>
                             </div>
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
-                            {ownerOptions.map(opt => (
-                              <SelectItem key={opt.id} value={opt.id} className="rounded-lg">
+                            {inventorySources.map(source => (
+                              <SelectItem key={source.warehouse_id} value={source.warehouse_id} className="rounded-lg">
                                 <div className="flex items-center gap-2">
                                   <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
-                                    {opt.display_name[0].toUpperCase()}
+                                    {source.owner_display_name[0].toUpperCase()}
                                   </div>
-                                  {opt.display_name}
+                                  <span>{source.owner_display_name} · {source.warehouse_name}</span>
+                                  {source.access_type === 'shared' && (
+                                    <Badge variant="secondary" className="ml-1 text-[10px]">Shared</Badge>
+                                  )}
                                 </div>
                               </SelectItem>
                             ))}

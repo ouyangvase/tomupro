@@ -43,11 +43,12 @@ import { format } from 'date-fns';
 import {
   ArrowLeftRight, Eye, Users, User, UsersRound, Search, Package,
   AlertTriangle, Plus, Edit, CheckCircle, XCircle,
-  MapPin,
+  MapPin, Share2,
 } from 'lucide-react';
 import { StockTransferDialog } from '@/components/inventory/StockTransferDialog';
 import { VisibilityManagementDialog } from '@/components/inventory/VisibilityManagementDialog';
 import { ManagerGroupsDialog } from '@/components/inventory/ManagerGroupsDialog';
+import { WarehouseSharingDialog } from '@/components/inventory/WarehouseSharingDialog';
 import { MobileStockCard } from '@/components/mobile/MobileStockCard';
 import { MobileProductCard } from '@/components/mobile/MobileProductCard';
 import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
@@ -58,6 +59,7 @@ import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { cn } from '@/lib/utils';
 import type { StockBalance } from '@/types/database';
 import type { Product } from '@/types/database';
+import { useInventoryOrderSources } from '@/hooks/useWarehouseSharing';
 
 // placeholder: StockBalanceRow type
 interface StockBalanceRow extends StockBalance {
@@ -78,6 +80,7 @@ export default function InventoryBalance() {
   const { data: managerRunnerBindings = [] } = useManagerRunnerBindings({
     managerId: role === 'manager' ? profile?.id : undefined,
   });
+  const { data: inventoryOrderSources = [] } = useInventoryOrderSources();
   const isMobile = useIsMobile();
 
   const isAdmin = profile?.role === 'admin';
@@ -99,6 +102,7 @@ export default function InventoryBalance() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [visibilityOpen, setVisibilityOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
+  const [warehouseSharingOpen, setWarehouseSharingOpen] = useState(false);
   const [stockLocationOpen, setStockLocationOpen] = useState(false);
   const [editingStockLocation, setEditingStockLocation] = useState<StockBalanceRow | null>(null);
   const [stockLocationRemark, setStockLocationRemark] = useState('');
@@ -216,6 +220,15 @@ export default function InventoryBalance() {
       });
     }
 
+    inventoryOrderSources.forEach((source) => {
+      addFilterOption(
+        source.owner_user_id,
+        source.owner_user_id === profile?.id
+          ? `${source.owner_display_name} (Me)`
+          : source.owner_display_name
+      );
+    });
+
     return Array.from(options.values()).sort((a, b) => {
       if (a.id === profile?.id) return -1;
       if (b.id === profile?.id) return 1;
@@ -232,6 +245,7 @@ export default function InventoryBalance() {
     teamMembers,
     salespersonRunnerBindings,
     managerRunnerBindings,
+    inventoryOrderSources,
     userLookup,
   ]);
 
@@ -581,14 +595,28 @@ export default function InventoryBalance() {
       <AppLayout>
         <div className="space-y-4 pb-20">
           <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <Package className="h-5 w-5 text-primary" />
-              Inventory
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {isAdmin ? 'View and manage all inventory' :
-                isManager ? 'View your inventory and team stock' : 'View your inventory'}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-xl font-bold flex items-center gap-2">
+                  <Package className="h-5 w-5 text-primary" />
+                  Inventory
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {isAdmin ? 'View and manage all inventory' :
+                    isManager ? 'View your inventory and team stock' : 'View your inventory'}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setWarehouseSharingOpen(true)}
+                aria-label="Warehouse Sharing"
+                title="Warehouse Sharing"
+                className="h-10 w-10 shrink-0"
+              >
+                <Share2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Stats (always visible) */}
@@ -800,6 +828,10 @@ export default function InventoryBalance() {
         </div>
 
         {stockLocationDialog}
+        <WarehouseSharingDialog
+          open={warehouseSharingOpen}
+          onOpenChange={setWarehouseSharingOpen}
+        />
 
         {/* Product Create/Edit Dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -850,8 +882,13 @@ export default function InventoryBalance() {
           title="Inventory Management"
           subtitle={isAdmin ? 'View and manage all inventory and products' :
             isManager ? 'View your inventory and team stock' : 'View your inventory'}
-          actions={isAdmin ? (
+          actions={(
             <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setWarehouseSharingOpen(true)} className="rounded-xl">
+                <Share2 className="h-4 w-4 mr-2" /> Warehouse Sharing
+              </Button>
+              {isAdmin && (
+                <>
               <Button variant="outline" onClick={() => setGroupsOpen(true)} className="rounded-xl">
                 <Users className="h-4 w-4 mr-2" /> Manager Groups
               </Button>
@@ -861,8 +898,10 @@ export default function InventoryBalance() {
               <Button onClick={() => setTransferOpen(true)} className="rounded-xl">
                 <ArrowLeftRight className="h-4 w-4 mr-2" /> Transfer Stock
               </Button>
+                </>
+              )}
             </div>
-          ) : undefined}
+          )}
         />
 
         {/* Stats Cards */}
@@ -1050,6 +1089,10 @@ export default function InventoryBalance() {
       </div>
 
       {stockLocationDialog}
+      <WarehouseSharingDialog
+        open={warehouseSharingOpen}
+        onOpenChange={setWarehouseSharingOpen}
+      />
 
       {/* Admin dialogs */}
       {isAdmin && (
