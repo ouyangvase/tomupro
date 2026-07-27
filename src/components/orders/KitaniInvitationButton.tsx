@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { ArrowUpRight, CheckCircle2, Copy, ExternalLink, Link2, Loader2, MessageCircle, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Copy, ExternalLink, Loader2, MessageCircle, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -121,28 +121,25 @@ export function KitaniInvitationButton({ order, link, mode = 'table', className 
           onClick={handleOpen}
           aria-label={`${label} for order ${order.order_code}`}
         >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#d8ab5d]/14 text-[#edc77f] ring-1 ring-inset ring-[#edc77f]/28">
-            {createInvitation.isPending ? (
-              <Loader2
-                className="h-3.5 w-3.5 animate-[spin_1.2s_cubic-bezier(0.32,0.72,0,1)_infinite]"
-                strokeWidth={1.7}
-              />
-            ) : activeLink?.status === 'LOCATION_CONFIRMED' ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-[#9ed3b2]" strokeWidth={1.7} />
-            ) : activeLink ? (
-              <Link2 className="h-3.5 w-3.5" strokeWidth={1.7} />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" strokeWidth={1.7} />
+          <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-[#fffaf0] ring-1 ring-inset ring-[#edc77f]/35">
+            <img
+              src="/kitani-mark.png"
+              alt=""
+              className="absolute -left-0.5 top-0 h-full w-auto max-w-none"
+              aria-hidden="true"
+            />
+            {createInvitation.isPending && (
+              <span className="absolute inset-0 grid place-items-center bg-[#191813]/72">
+                <Loader2
+                  className="h-3.5 w-3.5 animate-[spin_1.2s_cubic-bezier(0.32,0.72,0,1)_infinite] text-[#edc77f]"
+                  strokeWidth={1.7}
+                />
+              </span>
             )}
           </span>
 
-          <span className="min-w-0 flex-1 px-2">
-            <span className="block text-[8px] font-semibold uppercase leading-none tracking-[0.2em] text-[#d8ab5d]">
-              KITANI
-            </span>
-            <span className="mt-1 block truncate text-[11px] font-semibold leading-none tracking-normal text-[#fffaf0]">
-              {createInvitation.isPending ? 'Creating Link' : label}
-            </span>
+          <span className="min-w-0 flex-1 truncate px-2 text-[11px] font-semibold uppercase leading-none tracking-[0.08em] text-[#fffaf0]">
+            KITANI LINK
           </span>
 
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#fffaf0] text-[#191813] shadow-[0_3px_10px_-5px_rgba(0,0,0,0.7)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover/kitani:translate-x-0.5 group-hover/kitani:-translate-y-0.5 group-hover/kitani:scale-105">
@@ -157,8 +154,13 @@ export function KitaniInvitationButton({ order, link, mode = 'table', className 
             <DialogHeader className="relative overflow-hidden bg-[#191813] px-5 pb-6 pt-6 text-left text-[#fffaf0] sm:px-7 sm:pb-7 sm:pt-7">
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#edc77f]/80 to-transparent" />
               <div className="mb-5 flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-[#d8ab5d]/15 text-[#edc77f] ring-1 ring-inset ring-[#edc77f]/25">
-                  <Sparkles className="h-4 w-4" strokeWidth={1.6} />
+                <span className="relative h-8 w-8 overflow-hidden rounded-full bg-[#fffaf0] ring-1 ring-inset ring-[#edc77f]/30">
+                  <img
+                    src="/kitani-mark.png"
+                    alt=""
+                    className="absolute -left-0.5 top-0 h-full w-auto max-w-none"
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#d8ab5d]">
                   KITANI Concierge
