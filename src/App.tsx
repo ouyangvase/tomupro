@@ -254,7 +254,7 @@ function AppRoutes() {
       <Route path="/runner/failed-orders" element={<Navigate to="/dispatch?tab=failed" replace />} />
       <Route path="/runner/driver-locations" element={<Navigate to="/dispatch?tab=map" replace />} />
       <Route path="/driver/inbox" element={<Navigate to="/delivery?tab=inbox" replace />} />
-      <Route path="/driver/route" element={<Navigate to="/delivery?tab=route" replace />} />
+      <Route path="/driver/route" element={<Navigate to="/delivery?tab=inbox" replace />} />
       <Route path="/driver/pickups" element={<Navigate to="/delivery?tab=pickups" replace />} />
       <Route path="/driver/returns" element={<Navigate to="/delivery?tab=returns" replace />} />
       <Route path="/driver/stock" element={<Navigate to="/delivery?tab=stock" replace />} />

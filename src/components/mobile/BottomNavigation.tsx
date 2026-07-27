@@ -133,7 +133,6 @@ const allModules: Record<string, NavItem[]> = {
   driver: [
     { id: 'dashboard', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
     { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery' },
-    { id: 'route', label: 'Route', icon: <Truck className="h-5 w-5" />, href: '/delivery?tab=route' },
     { id: 'pickups', label: 'Pickups', icon: <Boxes className="h-5 w-5" />, href: '/delivery?tab=pickups' },
     { id: 'returns', label: 'Returns', icon: <ClipboardList className="h-5 w-5" />, href: '/delivery?tab=returns' },
     { id: 'stock-on-hand', label: 'Stock on Hand', icon: <Boxes className="h-5 w-5" />, href: '/delivery?tab=stock' },

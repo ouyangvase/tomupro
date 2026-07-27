@@ -1,10 +1,9 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 
 const DriverInbox = lazy(() => import('@/pages/driver/DriverInbox'));
-const DriverRoutePage = lazy(() => import('@/pages/driver/DriverRoutePage'));
 const DriverPickupsPage = lazy(() => import('@/pages/driver/DriverPickupsPage'));
 const DriverReturnsPage = lazy(() => import('@/pages/driver/DriverReturnsPage'));
 const DriverStockOnHandPage = lazy(() => import('@/pages/driver/DriverStockOnHandPage'));
@@ -18,7 +17,6 @@ const Loading = () => (
 
 const tabs = [
   { id: 'inbox', label: 'My Deliveries' },
-  { id: 'route', label: 'Route' },
   { id: 'pickups', label: 'Pickups' },
   { id: 'returns', label: 'Returns' },
   { id: 'stock', label: 'Stock on Hand' },
@@ -27,7 +25,12 @@ const tabs = [
 
 export default function DeliveryModule() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'inbox';
+  const requestedTab = searchParams.get('tab') || 'inbox';
+  const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : 'inbox';
+
+  if (requestedTab !== activeTab) {
+    return <Navigate to="/delivery?tab=inbox" replace />;
+  }
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
@@ -44,7 +47,6 @@ export default function DeliveryModule() {
         <Suspense fallback={<Loading />}>
           <div className="mt-4 min-w-0">
             {activeTab === 'inbox' && <DriverInbox />}
-            {activeTab === 'route' && <DriverRoutePage />}
             {activeTab === 'pickups' && <DriverPickupsPage />}
             {activeTab === 'returns' && <DriverReturnsPage />}
             {activeTab === 'stock' && <DriverStockOnHandPage />}
