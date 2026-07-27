@@ -1,25 +1,13 @@
 import { cn } from '@/lib/utils';
-import {
-  DRIVER_TAB_CHANGE_EVENT,
-  driverTabPath,
-  emitDriverTabChange,
-  type DriverTabId,
-} from '@/lib/driverTabs';
-import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { driverTabPath, type DriverTabId } from '@/lib/driverTabs';
+import { Link, Navigate, useLocation } from 'react-router-dom';
+import type { ComponentType } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
-
-const DriverInbox = lazy(() => import('@/pages/driver/DriverInbox'));
-const DriverPickupsPage = lazy(() => import('@/pages/driver/DriverPickupsPage'));
-const DriverReturnsPage = lazy(() => import('@/pages/driver/DriverReturnsPage'));
-const DriverStockOnHandPage = lazy(() => import('@/pages/driver/DriverStockOnHandPage'));
-const DriverAnalyticsPage = lazy(() => import('@/pages/driver/DriverAnalyticsPage'));
-
-const Loading = () => (
-  <div className="flex items-center justify-center py-16">
-    <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-  </div>
-);
+import DriverInbox from '@/pages/driver/DriverInbox';
+import DriverPickupsPage from '@/pages/driver/DriverPickupsPage';
+import DriverReturnsPage from '@/pages/driver/DriverReturnsPage';
+import DriverStockOnHandPage from '@/pages/driver/DriverStockOnHandPage';
+import DriverAnalyticsPage from '@/pages/driver/DriverAnalyticsPage';
 
 const tabs: Array<{ id: DriverTabId; label: string }> = [
   { id: 'inbox', label: 'My Deliveries' },
@@ -29,44 +17,27 @@ const tabs: Array<{ id: DriverTabId; label: string }> = [
   { id: 'analytics', label: 'Analytics' },
 ];
 
+const tabPages: Record<DriverTabId, ComponentType> = {
+  inbox: DriverInbox,
+  pickups: DriverPickupsPage,
+  returns: DriverReturnsPage,
+  stock: DriverStockOnHandPage,
+  analytics: DriverAnalyticsPage,
+};
+
 export default function DeliveryModule() {
-  const navigate = useNavigate();
-  const { tab: routeTab } = useParams<{ tab?: string }>();
-  const [searchParams] = useSearchParams();
-  const requestedTab = routeTab || searchParams.get('tab') || 'inbox';
+  const location = useLocation();
+  const routeTab = location.pathname.split('/')[2];
+  const requestedTab = routeTab || new URLSearchParams(location.search).get('tab') || 'inbox';
   const validRequestedTab = tabs.some((tab) => tab.id === requestedTab)
     ? requestedTab as DriverTabId
     : 'inbox';
-  const [activeTab, setActiveTab] = useState<DriverTabId>(validRequestedTab);
-
-  useEffect(() => {
-    setActiveTab(validRequestedTab);
-  }, [validRequestedTab]);
-
-  useEffect(() => {
-    emitDriverTabChange(activeTab);
-  }, [activeTab]);
-
-  useEffect(() => {
-    const handleTabChange = (event: Event) => {
-      const tab = (event as CustomEvent<DriverTabId>).detail;
-      if (tabs.some((item) => item.id === tab)) {
-        setActiveTab(tab);
-      }
-    };
-
-    window.addEventListener(DRIVER_TAB_CHANGE_EVENT, handleTabChange);
-    return () => window.removeEventListener(DRIVER_TAB_CHANGE_EVENT, handleTabChange);
-  }, []);
+  const activeTab = validRequestedTab;
+  const ActivePage = tabPages[activeTab];
 
   if (requestedTab !== validRequestedTab) {
     return <Navigate to="/delivery" replace />;
   }
-
-  const selectTab = (tab: DriverTabId) => {
-    setActiveTab(tab);
-    navigate(driverTabPath(tab));
-  };
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
@@ -76,10 +47,10 @@ export default function DeliveryModule() {
           className="inline-flex h-11 w-max min-w-max items-center justify-start gap-1 rounded-xl bg-secondary/30 p-1.5"
         >
           {tabs.map((tab) => (
-            <button
+            <Link
               key={tab.id}
-              type="button"
-              onClick={() => selectTab(tab.id)}
+              to={driverTabPath(tab.id)}
+              reloadDocument
               aria-current={activeTab === tab.id ? 'page' : undefined}
               className={cn(
                 "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors md:px-4 md:text-sm",
@@ -89,20 +60,14 @@ export default function DeliveryModule() {
               )}
             >
               {tab.label}
-            </button>
+            </Link>
           ))}
         </nav>
       </div>
       <EmbeddedProvider>
-        <Suspense fallback={<Loading />}>
-          <div className="mt-4 min-w-0">
-            {activeTab === 'inbox' && <DriverInbox />}
-            {activeTab === 'pickups' && <DriverPickupsPage />}
-            {activeTab === 'returns' && <DriverReturnsPage />}
-            {activeTab === 'stock' && <DriverStockOnHandPage />}
-            {activeTab === 'analytics' && <DriverAnalyticsPage />}
-          </div>
-        </Suspense>
+        <div className="mt-4 min-w-0">
+          <ActivePage key={activeTab} />
+        </div>
       </EmbeddedProvider>
     </div>
   );

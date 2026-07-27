@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
@@ -17,11 +17,6 @@ import {
   UserCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import {
-  DRIVER_TAB_CHANGE_EVENT,
-  emitDriverTabChange,
-  type DriverTabId,
-} from '@/lib/driverTabs';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Drawer,
@@ -66,7 +61,7 @@ const runnerTabs: NavItem[] = [
 
 const driverTabs: NavItem[] = [
   { id: 'home', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
-  { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery' },
+  { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery/inbox' },
   { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery/analytics' },
   { id: 'more', label: 'More', icon: <MoreHorizontal className="h-5 w-5" />, href: '/settings/profile', isMore: true },
 ];
@@ -137,7 +132,7 @@ const allModules: Record<string, NavItem[]> = {
   ],
   driver: [
     { id: 'dashboard', label: 'Home', icon: <Home className="h-5 w-5" />, href: '/' },
-    { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery' },
+    { id: 'delivery', label: 'Delivery', icon: <Truck className="h-5 w-5" />, href: '/delivery/inbox' },
     { id: 'pickups', label: 'Pickups', icon: <Boxes className="h-5 w-5" />, href: '/delivery/pickups' },
     { id: 'returns', label: 'Returns', icon: <ClipboardList className="h-5 w-5" />, href: '/delivery/returns' },
     { id: 'stock-on-hand', label: 'Stock on Hand', icon: <Boxes className="h-5 w-5" />, href: '/delivery/stock' },
@@ -167,37 +162,9 @@ export function BottomNavigation() {
   const { data: leaderboardSettings } = useLeaderboardSettings();
   const { data: assistantBinding } = useMyAssistantBinding();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [driverModuleActive, setDriverModuleActive] = useState(
-    () => window.location.pathname.startsWith('/delivery'),
-  );
-  const [visibleDriverTab, setVisibleDriverTab] = useState<DriverTabId>(() => {
-    const pathTab = window.location.pathname.split('/')[2];
-    const queryTab = new URLSearchParams(window.location.search).get('tab');
-    return (pathTab || queryTab || 'inbox') as DriverTabId;
-  });
   const hidePerformanceUI = !!(
     leaderboardSettings?.filters_default as { hide_performance_ui?: boolean } | null
   )?.hide_performance_ui;
-
-  useEffect(() => {
-    const handleDriverTabChange = (event: Event) => {
-      setVisibleDriverTab((event as CustomEvent<DriverTabId>).detail);
-      setDriverModuleActive(true);
-    };
-
-    window.addEventListener(DRIVER_TAB_CHANGE_EVENT, handleDriverTabChange);
-    return () => window.removeEventListener(DRIVER_TAB_CHANGE_EVENT, handleDriverTabChange);
-  }, []);
-
-  useEffect(() => {
-    const isDriverModule = location.pathname.startsWith('/delivery');
-    setDriverModuleActive(isDriverModule);
-    if (isDriverModule) {
-      const pathTab = location.pathname.split('/')[2];
-      const queryTab = new URLSearchParams(location.search).get('tab');
-      setVisibleDriverTab((pathTab || queryTab || 'inbox') as DriverTabId);
-    }
-  }, [location.pathname, location.search]);
 
   const getTabs = (): NavItem[] => {
     switch (role) {
@@ -262,20 +229,16 @@ export function BottomNavigation() {
   }, [assistantBinding, hidePerformanceUI, role]);
 
   const isActive = (href: string, id?: string): boolean => {
-    if (role === 'driver' && driverModuleActive) {
-      if (id === 'analytics') return visibleDriverTab === 'analytics';
-      if (id === 'delivery') return visibleDriverTab !== 'analytics';
+    if (role === 'driver' && location.pathname.startsWith('/delivery')) {
+      const activeDriverTab = location.pathname.split('/')[2]
+        || new URLSearchParams(location.search).get('tab')
+        || 'inbox';
+      if (id === 'analytics') return activeDriverTab === 'analytics';
+      if (id === 'delivery') return activeDriverTab !== 'analytics';
       if (id === 'home') return false;
     }
     if (href === '/') return location.pathname === '/';
     return location.pathname.startsWith(href);
-  };
-
-  const syncVisibleDriverTab = (tab: DriverTabId) => {
-    if (role === 'driver' && driverModuleActive) {
-      setVisibleDriverTab(tab);
-      emitDriverTabChange(tab);
-    }
   };
 
   return (
@@ -323,11 +286,7 @@ export function BottomNavigation() {
               <Link
                 key={tab.id}
                 to={tab.href}
-                onClick={() => {
-                  if (tab.id === 'home') setDriverModuleActive(false);
-                  if (tab.id === 'delivery') syncVisibleDriverTab('inbox');
-                  if (tab.id === 'analytics') syncVisibleDriverTab('analytics');
-                }}
+                reloadDocument={role === 'driver' && tab.href.startsWith('/delivery')}
                 className={className}
               >
                 {content}
@@ -352,10 +311,8 @@ export function BottomNavigation() {
                 onClick={() => {
                   setMoreOpen(false);
                   if (role === 'driver' && item.href.startsWith('/delivery')) {
-                    const tab = item.href.split('/')[2] as DriverTabId | undefined;
-                    syncVisibleDriverTab(tab || 'inbox');
-                  } else if (role === 'driver') {
-                    setDriverModuleActive(false);
+                    window.location.assign(item.href);
+                    return;
                   }
                   navigate(item.href);
                 }}

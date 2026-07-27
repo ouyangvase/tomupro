@@ -221,7 +221,7 @@ function AppRoutes() {
       {/* Module routes — wrapped in RealtimeProvider for authenticated users only */}
       <Route path="/orders" element={<ProtectedModule><OrdersModule /></ProtectedModule>} />
       <Route path="/dispatch" element={<ProtectedModule><DispatchModule /></ProtectedModule>} />
-      <Route path="/delivery" element={<ProtectedModule><DeliveryModule /></ProtectedModule>} />
+      <Route path="/delivery" element={<Navigate to="/delivery/inbox" replace />} />
       <Route path="/delivery/:tab" element={<ProtectedModule><DeliveryModule /></ProtectedModule>} />
       <Route path="/performance" element={<ProtectedModule><PerformanceModule /></ProtectedModule>} />
       <Route path="/team" element={<ProtectedModule><TeamModule /></ProtectedModule>} />
@@ -254,8 +254,8 @@ function AppRoutes() {
       <Route path="/runner/drivers" element={<Navigate to="/dispatch?tab=drivers" replace />} />
       <Route path="/runner/failed-orders" element={<Navigate to="/dispatch?tab=failed" replace />} />
       <Route path="/runner/driver-locations" element={<Navigate to="/dispatch?tab=map" replace />} />
-      <Route path="/driver/inbox" element={<Navigate to="/delivery?tab=inbox" replace />} />
-      <Route path="/driver/route" element={<Navigate to="/delivery?tab=inbox" replace />} />
+      <Route path="/driver/inbox" element={<Navigate to="/delivery/inbox" replace />} />
+      <Route path="/driver/route" element={<Navigate to="/delivery/inbox" replace />} />
       <Route path="/driver/pickups" element={<Navigate to="/delivery/pickups" replace />} />
       <Route path="/driver/returns" element={<Navigate to="/delivery/returns" replace />} />
       <Route path="/driver/stock" element={<Navigate to="/delivery/stock" replace />} />
