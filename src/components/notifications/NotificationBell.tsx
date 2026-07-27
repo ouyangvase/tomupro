@@ -35,6 +35,8 @@ export function NotificationBell() {
       navigate(`/admin/claim-batches`);
     } else if (notification.reference_type === 'inbound' && notification.reference_id) {
       navigate(`/inbound/pending`);
+    } else if (notification.reference_type === 'cash_handover') {
+      navigate('/dispatch?tab=driver-stock');
     }
     
     setOpen(false);

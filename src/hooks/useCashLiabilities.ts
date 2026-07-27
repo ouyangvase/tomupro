@@ -1,8 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { logAudit } from '@/hooks/useAuditLogs';
-import { format, isToday, parseISO, startOfDay } from 'date-fns';
+import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ============== Driver Deliveries Today Hook ==============
@@ -66,25 +65,33 @@ export interface CashLiability {
   customer_name: string | null;
   cash_amount: number;
   delivered_at: string;
-  status: 'OPEN' | 'SETTLED';
+  status: 'OPEN' | 'PENDING_HANDOVER' | 'SETTLED';
   settlement_batch_id: string | null;
   created_at: string;
   settled_at: string | null;
   driver?: { display_name: string };
+  order?: { order_items: Array<{ qty: number }> } | null;
 }
 
 export interface CashSettlementBatch {
   id: string;
   runner_id: string;
+  assistant_id: string | null;
+  settlement_date: string | null;
   total_amount: number;
   order_count: number;
-  status: 'SETTLED';
-  settled_at: string;
-  settled_by: string;
+  status: 'PENDING_ACK' | 'SETTLED';
+  runner_confirmed_at: string | null;
+  runner_confirmed_by: string | null;
+  assistant_acknowledged_at: string | null;
+  assistant_acknowledged_by: string | null;
+  settled_at: string | null;
+  settled_by: string | null;
   note: string | null;
   created_at: string;
   runner?: { display_name: string };
   settled_by_profile?: { display_name: string };
+  assistant?: { display_name: string; email: string | null } | null;
 }
 
 export interface DriverGroupedLiabilities {
@@ -99,6 +106,14 @@ export interface GroupedLiabilities {
   totalOpen: number;
   totalOpenAmount: number;
   driverCount: number;
+  liabilities: CashLiability[];
+  pendingHandover: CashLiability[];
+  pendingHandoverAmount: number;
+}
+
+export interface CashSettlementAssistant {
+  assistant_id: string;
+  assistant: { display_name: string; email: string | null } | null;
 }
 
 export interface AcceptedDriverDelivery {
@@ -143,26 +158,39 @@ export function useRunnerCashLiabilities(runnerIdOverride?: string) {
   return useQuery({
     queryKey: ['runner-cash-liabilities', runnerScopeId],
     queryFn: async () => {
-      if (!runnerScopeId) return { byDriver: [], totalOpen: 0, totalOpenAmount: 0, driverCount: 0 } as GroupedLiabilities;
+      if (!runnerScopeId) {
+        return {
+          byDriver: [],
+          totalOpen: 0,
+          totalOpenAmount: 0,
+          driverCount: 0,
+          liabilities: [],
+          pendingHandover: [],
+          pendingHandoverAmount: 0,
+        } as GroupedLiabilities;
+      }
 
       const { data, error } = await supabase
         .from('cash_liabilities')
         .select(`
           *,
-          driver:profiles!cash_liabilities_driver_id_fkey(display_name)
+          driver:profiles!cash_liabilities_driver_id_fkey(display_name),
+          order:orders!cash_liabilities_order_id_fkey(order_items(qty))
         `)
         .eq('runner_id', runnerScopeId)
-        .eq('status', 'OPEN')
+        .in('status', ['OPEN', 'PENDING_HANDOVER'])
         .order('delivered_at', { ascending: false });
 
       if (error) throw error;
 
-      const liabilities = (data || []) as CashLiability[];
+      const liabilities = (data || []) as unknown as CashLiability[];
+      const openLiabilities = liabilities.filter((liability) => liability.status === 'OPEN');
+      const pendingHandover = liabilities.filter((liability) => liability.status === 'PENDING_HANDOVER');
       
       // Group by driver
       const driverMap = new Map<string, DriverGroupedLiabilities>();
 
-      liabilities.forEach(liability => {
+      openLiabilities.forEach(liability => {
         const driverId = liability.driver_id || 'unknown';
         const driverName = liability.driver?.display_name || 'Unknown Driver';
         
@@ -186,15 +214,37 @@ export function useRunnerCashLiabilities(runnerIdOverride?: string) {
 
       return {
         byDriver,
-        totalOpen: liabilities.length,
-        totalOpenAmount: liabilities.reduce((sum, l) => sum + Number(l.cash_amount), 0),
+        totalOpen: openLiabilities.length,
+        totalOpenAmount: openLiabilities.reduce((sum, l) => sum + Number(l.cash_amount), 0),
         driverCount: driverMap.size,
+        liabilities: openLiabilities,
+        pendingHandover,
+        pendingHandoverAmount: pendingHandover.reduce((sum, l) => sum + Number(l.cash_amount), 0),
       } as GroupedLiabilities;
     },
   });
 }
 
-// Get settlement history for current runner
+export function useCashSettlementAssistants(runnerId?: string) {
+  return useQuery({
+    queryKey: ['cash-settlement-assistants', runnerId],
+    enabled: Boolean(runnerId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('runner_assistants')
+        .select('assistant_id, assistant:profiles!runner_assistants_assistant_id_fkey(display_name, email)')
+        .eq('runner_id', runnerId!)
+        .eq('is_active', true)
+        .eq('can_manage_cash_settlement', true)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return (data || []) as unknown as CashSettlementAssistant[];
+    },
+  });
+}
+
+// Get pending and completed cash handovers for the current Runner scope.
 export function useRunnerSettlementHistory(runnerIdOverride?: string) {
   const { user } = useAuth();
   const runnerScopeId = runnerIdOverride || user?.id;
@@ -206,163 +256,63 @@ export function useRunnerSettlementHistory(runnerIdOverride?: string) {
 
       const { data, error } = await supabase
         .from('cash_settlement_batches')
-        .select('*')
+        .select('*, assistant:profiles!cash_settlement_batches_assistant_id_fkey(display_name, email)')
         .eq('runner_id', runnerScopeId)
-        .order('settled_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(50);
 
       if (error) throw error;
-      return data as CashSettlementBatch[];
+      return (data || []) as unknown as CashSettlementBatch[];
     },
   });
 }
 
-// Settle open cash liabilities for a specific driver
-export function useSettleDriverCash(runnerIdOverride?: string) {
+export function useCreateCashHandover() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
-
   return useMutation({
-    mutationFn: async ({ driverId, note }: { driverId: string; note?: string }) => {
-      if (!user?.id || !runnerScopeId) throw new Error('Not authenticated');
-
-      // Get all open liabilities for this runner from specific driver
-      const { data: openLiabilities, error: fetchError } = await supabase
-        .from('cash_liabilities')
-        .select('*')
-        .eq('runner_id', runnerScopeId)
-        .eq('driver_id', driverId)
-        .eq('status', 'OPEN');
-
-      if (fetchError) throw fetchError;
-      if (!openLiabilities || openLiabilities.length === 0) {
-        throw new Error('No open liabilities to settle for this driver');
-      }
-
-      const totalAmount = openLiabilities.reduce((sum, l) => sum + Number(l.cash_amount), 0);
-      const orderCount = openLiabilities.length;
-
-      // Create settlement batch
-      const { data: batch, error: batchError } = await supabase
-        .from('cash_settlement_batches')
-        .insert({
-          runner_id: runnerScopeId,
-          total_amount: totalAmount,
-          order_count: orderCount,
-          settled_by: user.id,
-          note: note || `Settled from driver`,
-        })
-        .select()
-        .single();
-
-      if (batchError) throw batchError;
-
-      // Update all liabilities to SETTLED
-      const liabilityIds = openLiabilities.map(l => l.id);
-      const { error: updateError } = await supabase
-        .from('cash_liabilities')
-        .update({
-          status: 'SETTLED',
-          settlement_batch_id: batch.id,
-          settled_at: new Date().toISOString(),
-        })
-        .in('id', liabilityIds);
-
-      if (updateError) throw updateError;
-
-      // Audit log
-      await logAudit({
-        entity_type: 'cash_settlement_batch',
-        entity_id: batch.id,
-        action: 'DRIVER_CASH_SETTLED',
-        before_json: { driver_id: driverId, open_liabilities: orderCount },
-        after_json: { settled_amount: totalAmount, order_count: orderCount },
+    mutationFn: async ({ assistantId, settlementDate }: { assistantId: string; settlementDate: string }) => {
+      const { data, error } = await supabase.rpc('create_cash_handover', {
+        p_assistant_id: assistantId,
+        p_settlement_date: settlementDate,
       });
-
-      return batch;
+      if (error) throw error;
+      const result = data as { success?: boolean; error?: string };
+      if (!result?.success) throw new Error(result?.error || 'Unable to create cash handover');
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       queryClient.invalidateQueries({ queryKey: ['runner-settlement-history'] });
-      toast.success('Cash from driver settled');
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success('Sent to assistant for acknowledgement');
     },
     onError: (error: Error) => {
-      toast.error(`Settlement failed: ${error.message}`);
+      toast.error(`Cash handover failed: ${error.message}`);
     },
   });
 }
 
-// Settle all open cash liabilities (legacy)
-export function useSettleCash() {
+export function useAcknowledgeCashHandover() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-
   return useMutation({
-    mutationFn: async ({ note }: { note?: string }) => {
-      if (!user?.id) throw new Error('Not authenticated');
-
-      // Get all open liabilities for this runner
-      const { data: openLiabilities, error: fetchError } = await supabase
-        .from('cash_liabilities')
-        .select('*')
-        .eq('runner_id', user.id)
-        .eq('status', 'OPEN');
-
-      if (fetchError) throw fetchError;
-      if (!openLiabilities || openLiabilities.length === 0) {
-        throw new Error('No open liabilities to settle');
-      }
-
-      const totalAmount = openLiabilities.reduce((sum, l) => sum + Number(l.cash_amount), 0);
-      const orderCount = openLiabilities.length;
-
-      // Create settlement batch
-      const { data: batch, error: batchError } = await supabase
-        .from('cash_settlement_batches')
-        .insert({
-          runner_id: user.id,
-          total_amount: totalAmount,
-          order_count: orderCount,
-          settled_by: user.id,
-          note: note || null,
-        })
-        .select()
-        .single();
-
-      if (batchError) throw batchError;
-
-      // Update all liabilities to SETTLED
-      const liabilityIds = openLiabilities.map(l => l.id);
-      const { error: updateError } = await supabase
-        .from('cash_liabilities')
-        .update({
-          status: 'SETTLED',
-          settlement_batch_id: batch.id,
-          settled_at: new Date().toISOString(),
-        })
-        .in('id', liabilityIds);
-
-      if (updateError) throw updateError;
-
-      // Audit log
-      await logAudit({
-        entity_type: 'cash_settlement_batch',
-        entity_id: batch.id,
-        action: 'CASH_SETTLED',
-        before_json: { open_liabilities: orderCount },
-        after_json: { settled_amount: totalAmount, order_count: orderCount },
+    mutationFn: async (batchId: string) => {
+      const { data, error } = await supabase.rpc('acknowledge_cash_handover', {
+        p_batch_id: batchId,
       });
-
-      return batch;
+      if (error) throw error;
+      const result = data as { success?: boolean; error?: string };
+      if (!result?.success) throw new Error(result?.error || 'Unable to acknowledge cash handover');
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       queryClient.invalidateQueries({ queryKey: ['runner-settlement-history'] });
-      toast.success('Cash settlement confirmed');
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      toast.success('Cash handover acknowledged');
     },
     onError: (error: Error) => {
-      toast.error(`Settlement failed: ${error.message}`);
+      toast.error(`Acknowledgement failed: ${error.message}`);
     },
   });
 }

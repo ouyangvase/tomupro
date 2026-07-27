@@ -4,12 +4,7 @@ import {
   Archive,
   Banknote,
   Boxes,
-  ChevronDown,
-  ChevronRight,
   CheckCircle2,
-  ClipboardCheck,
-  History,
-  Loader2,
   PackagePlus,
   Pencil,
   RotateCcw,
@@ -19,17 +14,6 @@ import {
   Undo2,
   XCircle,
 } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CreatePickupDialog } from '@/components/driver/CreatePickupDialog';
 import { DriverActivityHistory } from '@/components/driver/DriverActivityHistory';
+import { CashSettlementWorkspace } from '@/components/runner/CashSettlementWorkspace';
 import { useMyDrivers } from '@/hooks/useDrivers';
 import {
   useCancelPickup,
@@ -50,13 +35,7 @@ import {
   type RunnerDriverPickupNeed,
 } from '@/hooks/useDriverPickups';
 import { useAcknowledgeReturn, useRunnerReturns, type DriverReturn } from '@/hooks/useDriverReturns';
-import {
-  useRunnerCashLiabilities,
-  useRunnerAcceptedDriverDeliveries,
-  useRunnerSettlementHistory,
-  useSettleDriverCash,
-  type DriverGroupedLiabilities,
-} from '@/hooks/useCashLiabilities';
+import { useRunnerCashLiabilities } from '@/hooks/useCashLiabilities';
 import { getTodayDateKey } from '@/lib/driverOrderScope';
 
 type DriverOption = {
@@ -212,8 +191,6 @@ export default function RunnerDriverStockWorkspace({
   const [quickPickupDriverId, setQuickPickupDriverId] = useState<string | null>(null);
   const [pickupDialogOpen, setPickupDialogOpen] = useState(false);
   const [editingPickup, setEditingPickup] = useState<DriverPickup | null>(null);
-  const [expandedCashDrivers, setExpandedCashDrivers] = useState<Set<string>>(new Set());
-  const [settlingDriverId, setSettlingDriverId] = useState<string | null>(null);
   const todayDate = getTodayDateKey();
   const { data: drivers, isLoading: loadingDrivers } = useMyDrivers(runnerIdOverride);
   const { data: pickups, isLoading: loadingPickups } = useRunnerPickups(runnerIdOverride);
@@ -223,13 +200,10 @@ export default function RunnerDriverStockWorkspace({
     runnerIdOverride,
   );
   const { data: pickupNeeds, isLoading: loadingPickupNeeds } = useRunnerDriverPickupNeeds(runnerIdOverride);
-  const { data: cashLiabilities, isLoading: loadingCashLiabilities } = useRunnerCashLiabilities(runnerIdOverride);
-  const { data: acceptedDeliveries = [], isLoading: loadingAcceptedDeliveries } = useRunnerAcceptedDriverDeliveries(runnerIdOverride);
-  const { data: settlementHistory, isLoading: loadingSettlementHistory } = useRunnerSettlementHistory(runnerIdOverride);
+  const { data: cashLiabilities } = useRunnerCashLiabilities(runnerIdOverride);
   const cancelPickup = useCancelPickup();
   const deletePickup = useDeletePickup();
   const acknowledgeReturn = useAcknowledgeReturn();
-  const settleDriverCash = useSettleDriverCash(runnerIdOverride);
 
   useEffect(() => {
     if (hideCashSettlement && activeTab === 'cash') {
@@ -238,20 +212,6 @@ export default function RunnerDriverStockWorkspace({
       setActiveTab('cash');
     }
   }, [activeTab, hideCashSettlement, hideDriverStock]);
-
-  const handleSettleDriver = async (driverId: string) => {
-    setSettlingDriverId(driverId);
-    try {
-      await settleDriverCash.mutateAsync({ driverId });
-      setExpandedCashDrivers((current) => {
-        const next = new Set(current);
-        next.delete(driverId);
-        return next;
-      });
-    } finally {
-      setSettlingDriverId(null);
-    }
-  };
 
   const driverOptions: DriverOption[] = useMemo(
     () =>
@@ -348,18 +308,6 @@ export default function RunnerDriverStockWorkspace({
         .includes(normalizedQuery);
     });
   }, [driverNameById, normalizedQuery, stockItems]);
-
-  const filteredCashGroups = useMemo(() => {
-    return (cashLiabilities?.byDriver || []).filter((group) => {
-      if (driverFilter !== 'all' && group.driverId !== driverFilter) return false;
-      if (!normalizedQuery) return true;
-      const haystack = [
-        group.driverName,
-        ...group.liabilities.flatMap((liability) => [liability.order_code, liability.customer_name]),
-      ].join(' ').toLowerCase();
-      return haystack.includes(normalizedQuery);
-    });
-  }, [cashLiabilities?.byDriver, driverFilter, normalizedQuery]);
 
   const unscheduledPickupNeeds = useMemo<PickupNeedDisplay[]>(() => {
     const activeToday = (pickups || []).filter((pickup) =>
@@ -506,8 +454,8 @@ export default function RunnerDriverStockWorkspace({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-        <div className="space-y-3">
+      <div className={activeTab === 'cash' ? '' : 'grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]'}>
+        {activeTab !== 'cash' && <div className="space-y-3">
           <Select value={driverFilter} onValueChange={setDriverFilter}>
             <SelectTrigger className="h-11 rounded-2xl bg-card">
               <SelectValue placeholder="All drivers" />
@@ -542,7 +490,7 @@ export default function RunnerDriverStockWorkspace({
               className="h-11 rounded-2xl bg-card pl-9"
             />
           </div>
-        </div>
+        </div>}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0">
           <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -901,241 +849,11 @@ export default function RunnerDriverStockWorkspace({
 
           {!hideCashSettlement && (
             <TabsContent value="cash" className="mt-3">
-              <div className="space-y-3">
-                <Card className="rounded-3xl border-primary/20 bg-primary/5">
-                  <CardContent className="grid gap-3 p-4 md:grid-cols-3">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Open cash</p>
-                      <p className="mt-1 text-3xl font-black text-foreground">{formatBND(totalCash)}</p>
-                      <p className="text-xs font-semibold text-muted-foreground">{totalOpenCashOrders} unsettled order(s)</p>
-                    </div>
-                    <div className="rounded-2xl border border-border/60 bg-card p-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Drivers owing cash</p>
-                      <p className="mt-1 text-2xl font-black">{cashLiabilities?.driverCount || 0}</p>
-                    </div>
-                    <div className="rounded-2xl border border-border/60 bg-card p-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Recent settlements</p>
-                      <p className="mt-1 text-2xl font-black">{settlementHistory?.length || 0}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="rounded-3xl border-border/60">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <ClipboardCheck className="h-5 w-5 text-primary" />
-                      Runner Accepted Deliveries
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {loadingAcceptedDeliveries ? (
-                      <EmptyState title="Loading accepted deliveries" description="Checking the shared Driver acceptance records." />
-                    ) : acceptedDeliveries.length === 0 ? (
-                      <EmptyState title="No accepted deliveries" description="Driver deliveries appear here after Runner acceptance." />
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Date</TableHead>
-                              <TableHead>Driver</TableHead>
-                              <TableHead>Order</TableHead>
-                              <TableHead className="text-right">Qty</TableHead>
-                              <TableHead className="text-right">Amount</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {acceptedDeliveries.map((order) => (
-                              <TableRow key={order.id}>
-                                <TableCell className="whitespace-nowrap">
-                                  {order.delivered_at ? format(new Date(order.delivered_at), 'dd MMM yyyy') : '-'}
-                                </TableCell>
-                                <TableCell className="font-semibold">{order.driver?.display_name || 'Unknown Driver'}</TableCell>
-                                <TableCell>{order.order_code}</TableCell>
-                                <TableCell className="text-right">
-                                  {order.order_items.reduce((sum, item) => sum + Number(item.qty || 0), 0)}
-                                </TableCell>
-                                <TableCell className="text-right font-bold">{formatBND(Number(order.total_amount || 0))}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {loadingCashLiabilities ? (
-                  <EmptyState title="Loading cash settlement" description="Checking open driver cash by driver." />
-                ) : filteredCashGroups.length === 0 ? (
-                  <EmptyState title="No open driver cash" description="Cash settlement is clear for the current filter." />
-                ) : (
-                  <div className="grid gap-3 xl:grid-cols-2">
-                    {filteredCashGroups.map((group) => (
-                      <DriverCashSettlementCard
-                        key={group.driverId}
-                        driverGroup={group}
-                        isExpanded={expandedCashDrivers.has(group.driverId)}
-                        isSettling={settlingDriverId === group.driverId}
-                        onToggle={() => {
-                          setExpandedCashDrivers((current) => {
-                            const next = new Set(current);
-                            if (next.has(group.driverId)) next.delete(group.driverId);
-                            else next.add(group.driverId);
-                            return next;
-                          });
-                        }}
-                        onSettle={() => handleSettleDriver(group.driverId)}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                <Card className="rounded-3xl border-border/60">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <History className="h-5 w-5 text-primary" />
-                      Recent Settlement History
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {loadingSettlementHistory ? (
-                      <EmptyState title="Loading history" description="Checking recent settlement batches." />
-                    ) : !settlementHistory || settlementHistory.length === 0 ? (
-                      <EmptyState title="No settlement history" description="Confirmed cash settlements will appear here." />
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Date</TableHead>
-                              <TableHead>Orders</TableHead>
-                              <TableHead className="text-right">Amount</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {settlementHistory.slice(0, 8).map((batch) => (
-                              <TableRow key={batch.id}>
-                                <TableCell>{format(new Date(batch.settled_at), 'dd MMM yyyy, HH:mm')}</TableCell>
-                                <TableCell>{batch.order_count} order(s)</TableCell>
-                                <TableCell className="text-right font-bold">{formatBND(Number(batch.total_amount || 0))}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+              <CashSettlementWorkspace runnerIdOverride={runnerIdOverride} />
             </TabsContent>
           )}
         </Tabs>
       </div>
     </div>
-  );
-}
-
-function DriverCashSettlementCard({
-  driverGroup,
-  isExpanded,
-  isSettling,
-  onToggle,
-  onSettle,
-}: {
-  driverGroup: DriverGroupedLiabilities;
-  isExpanded: boolean;
-  isSettling: boolean;
-  onToggle: () => void;
-  onSettle: () => void;
-}) {
-  const cannotSettle = driverGroup.driverId === 'unknown';
-
-  return (
-    <Card className="overflow-hidden rounded-3xl border-border/60">
-      <CardContent className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-start gap-3 text-left">
-            <span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-lg font-black text-foreground">{driverGroup.driverName}</span>
-              <span className="mt-0.5 block text-sm font-semibold text-muted-foreground">
-                {driverGroup.liabilities.length} unsettled order(s)
-              </span>
-            </span>
-          </button>
-          <div className="shrink-0 text-right">
-            <p className="text-xl font-black text-primary">{formatBND(driverGroup.totalAmount)}</p>
-            <p className="text-xs font-semibold text-muted-foreground">to receive</p>
-          </div>
-        </div>
-
-        {isExpanded && (
-          <div className="rounded-2xl border border-border/60 bg-muted/20">
-            <div className="max-h-64 overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Order</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Delivered</TableHead>
-                    <TableHead className="text-right">Cash</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {driverGroup.liabilities.map((liability) => (
-                    <TableRow key={liability.id}>
-                      <TableCell className="font-bold">{liability.order_code}</TableCell>
-                      <TableCell>{liability.customer_name || '-'}</TableCell>
-                      <TableCell>{format(new Date(liability.delivered_at), 'dd MMM, HH:mm')}</TableCell>
-                      <TableCell className="text-right font-bold">{formatBND(Number(liability.cash_amount || 0))}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        )}
-
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button className="w-full rounded-2xl" disabled={cannotSettle || isSettling}>
-              {isSettling ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Settling...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  Confirm Received {formatBND(driverGroup.totalAmount)}
-                </>
-              )}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Confirm cash received?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Confirm that {driverGroup.driverName} has handed over {formatBND(driverGroup.totalAmount)} from{' '}
-                {driverGroup.liabilities.length} order(s). This will mark those open cash liabilities as settled.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={onSettle}>Confirm Settlement</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {cannotSettle && (
-          <p className="text-xs font-semibold text-destructive">
-            This cash group has no driver attached. Fix the order driver before settlement.
-          </p>
-        )}
-      </CardContent>
-    </Card>
   );
 }

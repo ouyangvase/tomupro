@@ -83,6 +83,8 @@ export default function NotificationCenter() {
       navigate(`/admin/claim-batches`);
     } else if (notification.reference_type === 'inbound' && notification.reference_id) {
       navigate(`/inbound/pending`);
+    } else if (notification.reference_type === 'cash_handover') {
+      navigate('/dispatch?tab=driver-stock');
     }
   };
 
@@ -95,6 +97,9 @@ export default function NotificationCenter() {
     }
     if (notification.entity_type === 'PASSWORD_RESET') {
       return { label: 'Review Request', action: () => navigate('/team?tab=approvals') };
+    }
+    if (notification.reference_type === 'cash_handover') {
+      return { label: 'Open Cash Settlement', action: () => navigate('/dispatch?tab=driver-stock') };
     }
     if (notification.entity_type === 'ORDER' || notification.reference_type === 'order') {
       const refId = notification.reference_id;

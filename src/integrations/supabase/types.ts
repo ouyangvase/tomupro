@@ -757,39 +757,78 @@ export type Database = {
       }
       cash_settlement_batches: {
         Row: {
+          assistant_acknowledged_at: string | null
+          assistant_acknowledged_by: string | null
+          assistant_id: string | null
           created_at: string
           id: string
           note: string | null
           order_count: number
+          runner_confirmed_at: string | null
+          runner_confirmed_by: string | null
           runner_id: string
-          settled_at: string
-          settled_by: string
+          settled_at: string | null
+          settled_by: string | null
+          settlement_date: string | null
           status: string
           total_amount: number
         }
         Insert: {
+          assistant_acknowledged_at?: string | null
+          assistant_acknowledged_by?: string | null
+          assistant_id?: string | null
           created_at?: string
           id?: string
           note?: string | null
           order_count: number
+          runner_confirmed_at?: string | null
+          runner_confirmed_by?: string | null
           runner_id: string
-          settled_at?: string
-          settled_by: string
+          settled_at?: string | null
+          settled_by?: string | null
+          settlement_date?: string | null
           status?: string
           total_amount: number
         }
         Update: {
+          assistant_acknowledged_at?: string | null
+          assistant_acknowledged_by?: string | null
+          assistant_id?: string | null
           created_at?: string
           id?: string
           note?: string | null
           order_count?: number
+          runner_confirmed_at?: string | null
+          runner_confirmed_by?: string | null
           runner_id?: string
-          settled_at?: string
-          settled_by?: string
+          settled_at?: string | null
+          settled_by?: string | null
+          settlement_date?: string | null
           status?: string
           total_amount?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "cash_settlement_batches_assistant_acknowledged_by_fkey"
+            columns: ["assistant_acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_settlement_batches_assistant_id_fkey"
+            columns: ["assistant_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_settlement_batches_runner_confirmed_by_fkey"
+            columns: ["runner_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cash_settlement_batches_runner_id_fkey"
             columns: ["runner_id"]
@@ -4786,6 +4825,10 @@ export type Database = {
       }
     }
     Functions: {
+      acknowledge_cash_handover: {
+        Args: { p_batch_id: string }
+        Returns: Json
+      }
       ack_inbound_and_add_stock: {
         Args: { p_shipment_id: string }
         Returns: Json
@@ -4861,6 +4904,10 @@ export type Database = {
           p_warehouse_id: string
         }
         Returns: boolean
+      }
+      create_cash_handover: {
+        Args: { p_assistant_id: string; p_settlement_date: string }
+        Returns: Json
       }
       create_return_to_owner: {
         Args: {
