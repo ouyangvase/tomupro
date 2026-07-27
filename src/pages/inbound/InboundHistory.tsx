@@ -83,24 +83,15 @@ function ImageLightbox({ imageUrl, alt, uploadDate, onClose }: LightboxProps) {
   );
 }
 
-export default function InboundHistory() {
+export default function InboundHistory({ runnerIdOverride }: { runnerIdOverride?: string } = {}) {
   const { user, profile } = useAuth();
   const role = profile?.role;
-  
-  // Admin and Runner access only
-  if (role !== 'admin' && role !== 'runner') {
-    return (
-      <AppLayout>
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-destructive">Access Denied</h1>
-          <p className="text-muted-foreground mt-2">This page is only accessible to administrators and runners.</p>
-        </div>
-      </AppLayout>
-    );
-  }
+  const hasRunnerAccess = role === 'runner' || Boolean(runnerIdOverride);
   
   // Fetch all shipments (RLS handles visibility)
-  const { data: allShipments, isLoading } = useInboundShipments();
+  const { data: allShipments, isLoading } = useInboundShipments(
+    runnerIdOverride ? { runnerId: runnerIdOverride } : undefined,
+  );
   const { data: products } = useProducts();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: allSalespersons = [] } = useSalespersons();
@@ -119,7 +110,7 @@ export default function InboundHistory() {
 
   // Get available target users for filter dropdown
   const targetUserOptions = useMemo(() => {
-    if (role === 'admin' || role === 'runner') {
+    if (role === 'admin' || hasRunnerAccess) {
       return allSalespersons;
     } else if (role === 'manager') {
       // Include self and team members
@@ -129,7 +120,7 @@ export default function InboundHistory() {
       // Salesperson only sees their own
       return [];
     }
-  }, [role, user, teamMembers, allSalespersons]);
+  }, [role, user, teamMembers, allSalespersons, hasRunnerAccess]);
 
   // Filter shipments
   const filteredShipments = useMemo(() => {
@@ -195,6 +186,18 @@ export default function InboundHistory() {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [allShipments, statusFilter, targetUserFilter, dateFrom, dateTo, searchQuery, products]);
+
+  // Admins, runners, and assistants explicitly scoped to a runner can access history.
+  if (role !== 'admin' && !hasRunnerAccess) {
+    return (
+      <AppLayout>
+        <div className="p-6">
+          <h1 className="text-2xl font-bold text-destructive">Access Denied</h1>
+          <p className="text-muted-foreground mt-2">Inbound Stock access is required to view this page.</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   // Helper to get product info from product_id
   const getProductDisplay = (item: InboundItem) => {

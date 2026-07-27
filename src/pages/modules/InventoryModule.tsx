@@ -66,7 +66,7 @@ export default function InventoryModule() {
             {activeTab === 'inbound' && ((role === 'runner' || (isAssistantContext && assistantBinding?.can_manage_inbound_stock))
               ? <RunnerInbound runnerIdOverride={assistantRunnerId} />
               : <InboundPending />)}
-            {activeTab === 'inbound-history' && <InboundHistory />}
+            {activeTab === 'inbound-history' && <InboundHistory runnerIdOverride={assistantRunnerId} />}
             {activeTab === 'stock-audit' && <StockIntegrityAudit />}
             {activeTab === 'adjustments' && <StockAdjustment />}
             {activeTab === 'warehouses' && <WarehouseManagement />}
