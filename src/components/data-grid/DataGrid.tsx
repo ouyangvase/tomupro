@@ -81,6 +81,7 @@ interface DataGridProps<T extends object> {
   // Server-side sort callback
   onSortChange?: (field: string | null, direction: 'asc' | 'desc' | null) => void;
   searchDebounceMs?: number;
+  showSearch?: boolean;
   // Cross-page selection: ALL matching IDs from the full filtered dataset (not just current page)
   allSelectableIds?: string[];
 }
@@ -165,6 +166,7 @@ export function DataGrid<T extends object>({
   onSearchChange,
   onSortChange,
   searchDebounceMs = 400,
+  showSearch = true,
   allSelectableIds,
 }: DataGridProps<T>) {
   const isMobile = useIsMobile();
@@ -409,21 +411,26 @@ export function DataGrid<T extends object>({
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-4">
-        <div className="relative flex-1 min-w-0 lg:max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-10"
-          />
-          {showFetchingIndicator && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            </div>
-          )}
-        </div>
+      <div
+        hidden={!showSearch && !columns.some((c) => c.filterable && c.filterOptions) && !onImport && !onExport}
+        className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-4"
+      >
+        {showSearch && (
+          <div className="relative flex-1 min-w-0 lg:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-10"
+            />
+            {showFetchingIndicator && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-2 flex-wrap">
           {columns.some((c) => c.filterable && c.filterOptions) && (

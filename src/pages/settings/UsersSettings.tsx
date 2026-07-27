@@ -439,6 +439,7 @@ export default function UsersSettings() {
           columns={columns}
           loading={isLoading}
           keyField="id"
+          showSearch={false}
         />
       </div>
 
