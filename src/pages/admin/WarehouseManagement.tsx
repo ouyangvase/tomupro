@@ -46,11 +46,6 @@ export default function WarehouseManagement() {
   const [formOwner, setFormOwner] = useState('');
   const [formActive, setFormActive] = useState(true);
 
-  // Admin-only access
-  if (role !== 'admin') {
-    return <Navigate to="/" replace />;
-  }
-
   const filteredWarehouses = useMemo(() => {
     if (!warehouses) return [];
     
@@ -135,6 +130,11 @@ export default function WarehouseManagement() {
       (formType === 'MANAGER' && u.role === 'manager')
     );
   }, [users, formType, editingWarehouse]);
+
+  // Admin-only access
+  if (role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
 
   const columns = [
     {
