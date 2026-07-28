@@ -492,15 +492,20 @@ function WhatWeDoSection() {
   ];
 
   return (
-    <section ref={ref} className="py-20 lg:py-28 bg-white">
+    <section ref={ref} id="about" className="py-20 lg:py-28 bg-white">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <div className={cn(inView ? 'lp-fade-up' : 'opacity-0')}>
           <h2 className="text-3xl lg:text-[2.75rem] font-bold tracking-[-0.02em] text-[#0F172A] mb-6">
             What TOMUPRO Does
           </h2>
-          <p className="text-[#64748B] text-base lg:text-lg leading-relaxed max-w-3xl mx-auto mb-12">
-            TOMUPRO is an AI-powered logistics platform built for businesses in Brunei. It handles everything from order intake to last-mile delivery, covering order management, automated dispatch, real-time tracking, fleet management, warehouse inventory, cash on delivery (COD) reconciliation, and financial reporting. Used by eCommerce sellers, retail shops, logistics companies, and warehouse operators, TOMUPRO provides one dashboard for complete operations visibility across your entire supply chain.
-          </p>
+          <div className="text-[#64748B] text-base lg:text-lg leading-relaxed max-w-3xl mx-auto mb-12 space-y-4">
+            <p>
+              TOMUPRO is a Brunei-based logistics and delivery operations platform operated by Tomu Enterprise, a registered sole proprietorship in Brunei Darussalam under Business Registration No. P30014276.
+            </p>
+            <p>
+              TOMUPRO helps businesses manage last-mile delivery, dispatch, driver operations, pickup scheduling, order tracking, COD collection, fulfillment workflows, and delivery performance from one platform.
+            </p>
+          </div>
         </div>
 
         <div className={cn(
@@ -1356,12 +1361,60 @@ function ContactSection() {
                 </div>
                 <span className="text-[#CBD5E1] group-hover:text-white transition-colors font-medium">hello@tomu.my</span>
               </a>
+              <a href="tel:+6738136587" className="flex items-center gap-4 group">
+                <div className="h-11 w-11 rounded-xl bg-[#1E293B] flex items-center justify-center group-hover:bg-[#B8860B]/20 transition-colors">
+                  <Phone className="h-5 w-5 text-[#94A3B8] group-hover:text-[#D4A843] transition-colors" />
+                </div>
+                <span className="text-[#CBD5E1] group-hover:text-white transition-colors font-medium">+673 813 6587</span>
+              </a>
               <a href="https://tomu.my" className="flex items-center gap-4 group">
                 <div className="h-11 w-11 rounded-xl bg-[#1E293B] flex items-center justify-center group-hover:bg-[#B8860B]/20 transition-colors">
                   <Globe className="h-5 w-5 text-[#94A3B8] group-hover:text-[#D4A843] transition-colors" />
                 </div>
                 <span className="text-[#CBD5E1] group-hover:text-white transition-colors font-medium">tomu.my</span>
               </a>
+            </div>
+
+            <div className="mt-10 border-t border-[#1E293B] pt-6 max-w-lg">
+              <div className="flex items-center gap-2 mb-5">
+                <Building2 className="h-4 w-4 text-[#D4A843]" />
+                <h3 className="text-sm font-semibold text-white">Company Information</h3>
+              </div>
+              <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Legal Business Name</dt>
+                  <dd className="mt-1 text-sm text-[#CBD5E1]">Tomu Enterprise</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Business Registration No.</dt>
+                  <dd className="mt-1 text-sm text-[#CBD5E1]">P30014276</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Business Type</dt>
+                  <dd className="mt-1 text-sm text-[#CBD5E1]">Sole Proprietor</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Registered Country</dt>
+                  <dd className="mt-1 text-sm text-[#CBD5E1]">Brunei Darussalam</dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Registered Business Address</dt>
+                  <dd className="mt-1 text-sm leading-6 text-[#CBD5E1]">
+                    <address className="not-italic">
+                      No.57, Jalan Perakong Seria, Kampong Cina, Seria,<br />
+                      Belait, KB1733, Brunei Darussalam
+                    </address>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Website</dt>
+                  <dd className="mt-1 text-sm text-[#CBD5E1]">www.tomu.my</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Email</dt>
+                  <dd className="mt-1 text-sm text-[#CBD5E1]">hello@tomu.my</dd>
+                </div>
+              </dl>
             </div>
           </div>
 
@@ -1460,6 +1513,10 @@ function Footer() {
             <p className="text-sm text-[#64748B] leading-relaxed max-w-sm mb-6">
               Brunei's trusted courier and delivery platform. Last-mile delivery, fulfillment, COD, and logistics management across Bandar Seri Begawan, Kuala Belait, Seria, Tutong, and Muara.
             </p>
+            <div className="mb-6 max-w-sm border-l border-[#B8860B]/40 pl-3 text-xs leading-5 text-[#64748B]">
+              <p>TOMU / TOMUPRO is operated by Tomu Enterprise, a registered sole proprietorship in Brunei Darussalam.</p>
+              <p>Business Registration No.: P30014276</p>
+            </div>
             <div className="flex items-center gap-3">
               <a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer" className="h-9 w-9 rounded-lg bg-[#1E293B] flex items-center justify-center hover:bg-[#B8860B]/20 transition-colors">
                 <Instagram className="h-4 w-4 text-[#94A3B8]" />
@@ -1508,6 +1565,7 @@ function Footer() {
             <ul className="space-y-2.5 text-sm">
               <li><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[#64748B] hover:text-white transition-colors"><Instagram className="h-3.5 w-3.5" /> @tomupro</a></li>
               <li className="flex items-center gap-2 text-[#64748B]"><Mail className="h-3.5 w-3.5" /> hello@tomu.my</li>
+              <li className="flex items-center gap-2 text-[#64748B]"><Phone className="h-3.5 w-3.5" /> +673 813 6587</li>
               <li className="flex items-center gap-2 text-[#64748B]"><Globe className="h-3.5 w-3.5" /> tomu.my</li>
             </ul>
           </div>

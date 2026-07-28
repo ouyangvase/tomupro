@@ -4,7 +4,7 @@
 
 ## About
 
-TOMUPRO is an AI-powered logistics platform in Brunei that provides last-mile delivery, fulfillment services, and delivery management systems for businesses. Our system helps companies automate dispatch, track deliveries in real-time, and optimize routes for faster and more efficient operations.
+TOMUPRO is a Brunei-based logistics and delivery operations platform operated by Tomu Enterprise, a registered sole proprietorship in Brunei Darussalam under Business Registration No. P30014276. TOMUPRO helps businesses manage last-mile delivery, dispatch, driver operations, pickup scheduling, order tracking, COD collection, fulfillment workflows, and delivery performance from one platform.
 
 ## Services
 
@@ -45,7 +45,16 @@ Brunei Darussalam — serving Bandar Seri Begawan, Kuala Belait, Seria, Tutong, 
 
 - Website: https://tomu.my
 - Email: hello@tomu.my
+- Telephone: +673 813 6587
 - Instagram: @tomupro
+
+## Company Information
+
+- Legal Business Name: Tomu Enterprise
+- Business Registration No.: P30014276
+- Business Type: Sole Proprietor
+- Registered Country: Brunei Darussalam
+- Registered Business Address: No.57, Jalan Perakong Seria, Kampong Cina, Seria, Belait, KB1733, Brunei Darussalam
 
 ## Keywords
 
