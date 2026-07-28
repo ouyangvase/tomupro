@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
+import { useDriverAssignments, type DriverAssignment } from '@/hooks/useDriverAssignments';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
@@ -35,6 +36,14 @@ const periodOptions: Array<{ value: Period; label: string }> = [
 
 function dateKey(date: Date) {
   return format(date, 'yyyy-MM-dd');
+}
+
+function getOrderSkuItems(order: DriverAssignment) {
+  return (order.order_items || []).map((item) => ({
+    id: item.id,
+    sku: item.product?.sku_code || item.sku_label || 'Unknown SKU',
+    qty: Number(item.qty || 0),
+  }));
 }
 
 export default function DriverAnalyticsPage() {
@@ -68,10 +77,17 @@ export default function DriverAnalyticsPage() {
     calendarFrom,
     calendarTo,
   });
+  const { data: selectedOrdersWithItems } = useDriverAssignments({
+    driverId: profile?.id,
+    dateFrom: selectedDate,
+    dateTo: selectedDate,
+    includeItems: true,
+  });
 
   const selectedDay = analytics?.daily.find((day) => day.date === selectedDate);
-  const selectedActiveOrders = selectedDay?.orders.filter((order) => order.assignment_state !== 'INACTIVE') || [];
-  const selectedInactiveOrders = selectedDay?.orders.filter((order) => order.assignment_state === 'INACTIVE') || [];
+  const selectedOrders = selectedOrdersWithItems ?? selectedDay?.orders ?? [];
+  const selectedActiveOrders = selectedOrders.filter((order) => order.assignment_state !== 'INACTIVE');
+  const selectedInactiveOrders = selectedOrders.filter((order) => order.assignment_state === 'INACTIVE');
   const leadingDays = (getDay(startOfMonth(calendarMonth)) + 6) % 7;
   const summary = analytics?.summary;
   const yearMonths = useMemo(() => {
@@ -314,23 +330,36 @@ export default function DriverAnalyticsPage() {
                 </p>
               )}
               <div className="divide-y divide-border border-y border-border">
-              {selectedActiveOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between gap-3 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold">{order.order_code}</p>
-                    <p className="truncate text-xs text-muted-foreground">{order.customer_name}</p>
+              {selectedActiveOrders.map((order) => {
+                const skuItems = getOrderSkuItems(order);
+                return (
+                  <div key={order.id} className="flex items-start justify-between gap-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{order.order_code}</p>
+                      {skuItems.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {skuItems.map((item) => (
+                            <p key={item.id} className="break-words text-xs font-medium">
+                              {item.sku} <span className="text-muted-foreground">x {item.qty}</span>
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{order.customer_name}</p>
+                    </div>
+                    <Badge
+                      variant={order.assignment_state === 'FAILED' ? 'destructive' : 'outline'}
+                      className={cn(
+                        'shrink-0',
+                        order.assignment_state === 'DELIVERED' && 'border-emerald-600 text-emerald-700',
+                        order.assignment_state === 'PENDING_ACCEPTANCE' && 'border-amber-600 text-amber-700',
+                      )}
+                    >
+                      {order.assignment_state.replaceAll('_', ' ')}
+                    </Badge>
                   </div>
-                  <Badge
-                    variant={order.assignment_state === 'FAILED' ? 'destructive' : 'outline'}
-                    className={cn(
-                      order.assignment_state === 'DELIVERED' && 'border-emerald-600 text-emerald-700',
-                      order.assignment_state === 'PENDING_ACCEPTANCE' && 'border-amber-600 text-amber-700',
-                    )}
-                  >
-                    {order.assignment_state.replaceAll('_', ' ')}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
               </div>
 
               {selectedInactiveOrders.length > 0 && (
