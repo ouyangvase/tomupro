@@ -18,7 +18,7 @@ import {
   CheckCircle2, Quote, Activity, DollarSign, Route, Bell, Eye, Instagram,
   Layers, Target, Gauge, ChevronRight, ChevronDown, Star, Play, Rocket,
   Box, Shield, LineChart, Cpu, Sparkles, Settings, LayoutDashboard, Banknote,
-  Send, Phone, Building2, MessageSquare,
+  Send, Phone, MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { z } from 'zod';
@@ -1375,47 +1375,6 @@ function ContactSection() {
               </a>
             </div>
 
-            <div className="mt-10 border-t border-[#1E293B] pt-6 max-w-lg">
-              <div className="flex items-center gap-2 mb-5">
-                <Building2 className="h-4 w-4 text-[#D4A843]" />
-                <h3 className="text-sm font-semibold text-white">Company Information</h3>
-              </div>
-              <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Legal Business Name</dt>
-                  <dd className="mt-1 text-sm text-[#CBD5E1]">Tomu Enterprise</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Business Registration No.</dt>
-                  <dd className="mt-1 text-sm text-[#CBD5E1]">P30014276</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Business Type</dt>
-                  <dd className="mt-1 text-sm text-[#CBD5E1]">Sole Proprietor</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Registered Country</dt>
-                  <dd className="mt-1 text-sm text-[#CBD5E1]">Brunei Darussalam</dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Registered Business Address</dt>
-                  <dd className="mt-1 text-sm leading-6 text-[#CBD5E1]">
-                    <address className="not-italic">
-                      No.57, Jalan Perakong Seria, Kampong Cina, Seria,<br />
-                      Belait, KB1733, Brunei Darussalam
-                    </address>
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Website</dt>
-                  <dd className="mt-1 text-sm text-[#CBD5E1]">www.tomu.my</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase text-[#64748B]">Email</dt>
-                  <dd className="mt-1 text-sm text-[#CBD5E1]">hello@tomu.my</dd>
-                </div>
-              </dl>
-            </div>
           </div>
 
           {/* Right — Form Card */}
@@ -1514,8 +1473,7 @@ function Footer() {
               Brunei's trusted courier and delivery platform. Last-mile delivery, fulfillment, COD, and logistics management across Bandar Seri Begawan, Kuala Belait, Seria, Tutong, and Muara.
             </p>
             <div className="mb-6 max-w-sm border-l border-[#B8860B]/40 pl-3 text-xs leading-5 text-[#64748B]">
-              <p>TOMU / TOMUPRO is operated by Tomu Enterprise, a registered sole proprietorship in Brunei Darussalam.</p>
-              <p>Business Registration No.: P30014276</p>
+              <p>TOMUPRO is operated by Tomu Enterprise, Business Registration No.: P30014276</p>
             </div>
             <div className="flex items-center gap-3">
               <a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer" className="h-9 w-9 rounded-lg bg-[#1E293B] flex items-center justify-center hover:bg-[#B8860B]/20 transition-colors">
