@@ -98,6 +98,9 @@ export function summarizeDriverAssignments(assignments: DriverAssignment[]) {
   const cashCollected = assignments
     .filter((order) => order.assignment_state === 'DELIVERED')
     .reduce((sum, order) => sum + Number(order.driver_cash_amount ?? order.collect_amount ?? 0), 0);
+  const acceptedAmount = assignments
+    .filter((order) => order.assignment_state === 'DELIVERED')
+    .reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
 
   return {
     assigned,
@@ -108,5 +111,6 @@ export function summarizeDriverAssignments(assignments: DriverAssignment[]) {
     pending,
     deliveryRate: assigned > 0 ? (delivered / assigned) * 100 : 0,
     cashCollected,
+    acceptedAmount,
   };
 }

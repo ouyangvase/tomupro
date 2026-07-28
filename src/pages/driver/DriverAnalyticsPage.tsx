@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
+import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
 
@@ -274,6 +275,16 @@ export default function DriverAnalyticsPage() {
               <h2 className="mt-1 font-bold">{format(parseISO(selectedDate), 'dd MMMM yyyy')}</h2>
             </div>
             <Badge variant="secondary" className="shrink-0">{selectedDay?.assigned ?? 0} assigned</Badge>
+          </div>
+
+          <div className="mt-3 flex items-end justify-between gap-4 border-y border-border py-3">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground">Runner-accepted total</p>
+              <p className="mt-1 text-xl font-bold tabular-nums">{formatBND(selectedDay?.acceptedAmount ?? 0)}</p>
+            </div>
+            <p className="shrink-0 text-xs text-muted-foreground">
+              {selectedDay?.delivered ?? 0} accepted order(s)
+            </p>
           </div>
 
           {!selectedDay || selectedDay.orders.length === 0 ? (
