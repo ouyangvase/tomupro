@@ -10,6 +10,8 @@ interface TelegramResponse {
   description?: string;
 }
 
+const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
+
 async function sendTelegramMessage(botToken: string, chatId: string, text: string): Promise<TelegramResponse> {
   const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
@@ -50,12 +52,12 @@ Deno.serve(async (req) => {
 
     // ── Action: test (only for Test Connection button) ──
     if (action === 'test') {
-      const chatId = body.chat_id;
+      const chatId = String(body.chat_id ?? '').trim();
       const message = body.message || 'TomuPro bot connected!';
-      if (!chatId) {
+      if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) {
         return new Response(
-          JSON.stringify({ success: false, error: 'chat_id required' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ success: false, error: 'Enter a valid personal or group Chat ID using numbers only' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       const result = await sendTelegramMessage(botToken, chatId, message);
@@ -154,7 +156,17 @@ Deno.serve(async (req) => {
       if (testUserId && userId !== testUserId) continue;
       if (!userSetting.chat_id) continue;
 
-      const chatId = userSetting.chat_id;
+      const chatId = String(userSetting.chat_id).trim();
+      if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) {
+        await supabase.from('telegram_notification_logs').insert({
+          user_id: userId,
+          chat_id: chatId,
+          notification_type: 'daily_report',
+          status: 'failed',
+          error_message: 'Invalid personal or group Chat ID',
+        });
+        continue;
+      }
 
       const wantsStock = !!userSetting.receive_stock_balance;
       const wantsDelivered = !!userSetting.receive_delivered_not_claimed;

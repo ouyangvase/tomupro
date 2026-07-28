@@ -172,6 +172,9 @@ export async function sendTelegramTest(chatId: string, message: string) {
     body: { action: 'test', chat_id: chatId, message },
   });
   if (error) throw error;
+  if (!data?.success) {
+    throw new Error(data?.error || 'Telegram rejected the Chat ID');
+  }
   return data;
 }
 

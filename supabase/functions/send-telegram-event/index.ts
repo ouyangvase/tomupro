@@ -65,6 +65,8 @@ interface SendTelegramEventRequest {
   trigger?: string;
 }
 
+const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
+
 async function sendTelegramMessage(botToken: string, chatId: string, text: string): Promise<TelegramResponse> {
   const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
@@ -597,7 +599,8 @@ Deno.serve(async (req) => {
           }
         }
 
-        const chatId = setting.chat_id;
+        const chatId = String(setting.chat_id).trim();
+        if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) continue;
         if (sentChatIdsForEvent.has(chatId)) continue;
         sentChatIdsForEvent.add(chatId);
         const errors: string[] = [];

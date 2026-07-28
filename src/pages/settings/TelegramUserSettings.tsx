@@ -20,6 +20,8 @@ import {
   sendTelegramTest,
 } from '@/hooks/useTelegram';
 
+const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
+
 export default function TelegramUserSettings() {
   const { user, profile } = useAuth();
   const userId = user?.id;
@@ -62,11 +64,17 @@ export default function TelegramUserSettings() {
 
   const handleSave = async () => {
     if (!userId) return;
+    const normalizedChatId = chatId.trim();
+    if (normalizedChatId && !TELEGRAM_CHAT_ID_PATTERN.test(normalizedChatId)) {
+      toast.error('Enter a valid personal or group Chat ID using numbers only');
+      return;
+    }
+
     setSaving(true);
     try {
       await upsertSettings.mutateAsync({
         user_id: userId,
-        chat_id: chatId.trim() || null,
+        chat_id: normalizedChatId || null,
         telegram_enabled: telegramEnabled,
         receive_stock_balance: receiveStock,
         receive_delivered_not_claimed: receiveDelivered,
@@ -78,6 +86,7 @@ export default function TelegramUserSettings() {
         receive_team_delivery_events: receiveTeamDeliveryEvents,
         receive_team_order_updates: receiveTeamDeliveryEvents,
       } as any);
+      setChatId(normalizedChatId);
       toast.success('Settings saved successfully');
     } catch (e: any) {
       toast.error(e.message || 'Failed to save settings');
@@ -86,11 +95,17 @@ export default function TelegramUserSettings() {
   };
 
   const handleTest = async () => {
-    if (!chatId.trim()) { toast.error('Enter your Chat ID first'); return; }
+    const normalizedChatId = chatId.trim();
+    if (!normalizedChatId) { toast.error('Enter your Chat ID first'); return; }
+    if (!TELEGRAM_CHAT_ID_PATTERN.test(normalizedChatId)) {
+      toast.error('Enter a valid personal or group Chat ID using numbers only');
+      return;
+    }
+
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await sendTelegramTest(chatId.trim(), 'TomuPro Telegram connection test successful!\n\nYou will receive daily notifications here.');
+      await sendTelegramTest(normalizedChatId, 'TomuPro Telegram connection test successful!\n\nYou will receive daily notifications here.');
       setTestResult({ ok: true, message: 'Message sent! Check your Telegram.' });
       toast.success('Test message sent! Check your Telegram.');
     } catch (e: any) {
@@ -168,12 +183,20 @@ export default function TelegramUserSettings() {
               <Input
                 value={chatId}
                 onChange={e => setChatId(e.target.value)}
-                placeholder="e.g. 123456789"
+                placeholder="Personal: 123456789 · Group: -1001234567890"
                 className="font-mono h-10 rounded-xl"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
-              <p className="text-[11px] text-muted-foreground">
-                Send <span className="font-mono font-semibold">/start</span> to <span className="font-semibold">@userinfobot</span> on Telegram to get your Chat ID.
-              </p>
+              <div className="space-y-1 text-[11px] text-muted-foreground">
+                <p>
+                  Personal: send <span className="font-mono font-semibold">/start</span> to <span className="font-semibold">@userinfobot</span>.
+                </p>
+                <p>
+                  Group: add <span className="font-semibold">@ADDFD3BOT</span>, allow it to send messages, then enter the negative group ID (usually <span className="font-mono font-semibold">-100...</span>).
+                </p>
+              </div>
             </div>
 
             {/* Enable Toggle */}
