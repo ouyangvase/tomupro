@@ -15,6 +15,8 @@ interface BlogPost {
 }
 
 const PAGE_SIZE = 12;
+const SORO_EMBED_URL = "https://app.trysoro.com/api/embed/1c1dc78d-226e-4c78-8311-c170ce32643d";
+const SORO_SCRIPT_ID = "soro-blog-embed-script";
 
 export default function BlogIndex() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -22,6 +24,7 @@ export default function BlogIndex() {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [soroStatus, setSoroStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
     document.title = "Blog | TOMUPRO - Logistics & Delivery Insights";
@@ -59,6 +62,46 @@ export default function BlogIndex() {
     fetchPosts(0).finally(() => setLoading(false));
   }, [fetchPosts]);
 
+  useEffect(() => {
+    const target = document.getElementById("soro-blog");
+    if (!target) return;
+
+    target.replaceChildren();
+    setSoroStatus("loading");
+
+    const detectContent = () => {
+      if (target.querySelector(".soro-blog-list, .soro-blog-article, .soro-blog-empty")) {
+        setSoroStatus("ready");
+        return true;
+      }
+      return false;
+    };
+
+    const observer = new MutationObserver(detectContent);
+    observer.observe(target, { childList: true, subtree: true });
+
+    document.getElementById(SORO_SCRIPT_ID)?.remove();
+    const script = document.createElement("script");
+    script.id = SORO_SCRIPT_ID;
+    script.src = SORO_EMBED_URL;
+    script.async = true;
+    script.onload = () => detectContent();
+    script.onerror = () => setSoroStatus("error");
+    target.insertAdjacentElement("afterend", script);
+
+    const timeout = window.setTimeout(() => {
+      if (!detectContent()) setSoroStatus("error");
+    }, 12_000);
+
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timeout);
+      script.onload = null;
+      script.onerror = null;
+      script.remove();
+    };
+  }, []);
+
   const handleLoadMore = async () => {
     setLoadingMore(true);
     await fetchPosts(posts.length);
@@ -94,8 +137,14 @@ export default function BlogIndex() {
       {/* Articles */}
       <section className="py-16 px-6">
         <div className="max-w-5xl mx-auto">
+          <div
+            id="soro-blog"
+            className={soroStatus === "ready" ? "block" : "hidden"}
+            aria-live="polite"
+          />
+
           {/* Loading */}
-          {loading && (
+          {soroStatus === "loading" && (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden animate-pulse">
@@ -115,7 +164,7 @@ export default function BlogIndex() {
           )}
 
           {/* Error */}
-          {!loading && error && (
+          {soroStatus === "error" && !loading && error && (
             <div className="text-center py-16">
               <p className="text-gray-500 text-lg mb-4">Couldn't load articles. Please try again.</p>
               <button
@@ -129,7 +178,7 @@ export default function BlogIndex() {
           )}
 
           {/* Empty */}
-          {!loading && !error && posts.length === 0 && (
+          {soroStatus === "error" && !loading && !error && posts.length === 0 && (
             <div className="text-center py-16">
               <div className="text-6xl mb-4">📝</div>
               <h2 className="text-xl font-semibold text-[#0F172A] mb-2">Articles are on the way!</h2>
@@ -137,8 +186,8 @@ export default function BlogIndex() {
             </div>
           )}
 
-          {/* Posts Grid */}
-          {!loading && !error && posts.length > 0 && (
+          {/* Supabase fallback */}
+          {soroStatus === "error" && !loading && !error && posts.length > 0 && (
             <>
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {posts.map((post) => (
