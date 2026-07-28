@@ -269,22 +269,36 @@ export default function DriverAnalyticsPage() {
         )}
 
         <section className="border-t border-border pt-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase text-muted-foreground">Selected day</p>
-              <h2 className="mt-1 font-bold">{format(parseISO(selectedDate), 'dd MMMM yyyy')}</h2>
-            </div>
-            <Badge variant="secondary" className="shrink-0">{selectedDay?.assigned ?? 0} assigned</Badge>
+          <div>
+            <p className="text-xs font-bold uppercase text-muted-foreground">Selected day</p>
+            <h2 className="mt-1 font-bold">{format(parseISO(selectedDate), 'dd MMMM yyyy')}</h2>
           </div>
 
-          <div className="mt-3 flex items-end justify-between gap-4 border-y border-border py-3">
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground">Runner-accepted total</p>
-              <p className="mt-1 text-xl font-bold tabular-nums">{formatBND(selectedDay?.acceptedAmount ?? 0)}</p>
+          <div className="mt-3 divide-y divide-border border-y border-border">
+            <div className="flex items-center justify-between gap-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-muted-foreground">Runner-accepted total</p>
+                <p className="mt-1 text-xl font-bold tabular-nums">{formatBND(selectedDay?.acceptedAmount ?? 0)}</p>
+              </div>
+              <p className="shrink-0 text-xs text-muted-foreground">
+                {selectedDay?.delivered ?? 0} accepted
+              </p>
             </div>
-            <p className="shrink-0 text-xs text-muted-foreground">
-              {selectedDay?.delivered ?? 0} accepted order(s)
-            </p>
+            <div className="flex items-center justify-between gap-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-muted-foreground">Pending acceptance amount</p>
+                <p className="mt-1 text-xl font-bold tabular-nums">
+                  {formatBND(selectedDay?.pendingAcceptanceAmount ?? 0)}
+                </p>
+              </div>
+              <p className="shrink-0 text-xs text-muted-foreground">
+                {selectedDay?.pendingAcceptance ?? 0} pending
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-3">
+              <p className="text-xs font-semibold text-muted-foreground">Total orders</p>
+              <p className="text-xl font-bold tabular-nums">{selectedDay?.assigned ?? 0}</p>
+            </div>
           </div>
 
           {!selectedDay || selectedDay.orders.length === 0 ? (
