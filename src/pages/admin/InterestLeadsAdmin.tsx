@@ -38,10 +38,6 @@ export default function InterestLeadsAdmin() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  if (profile?.role !== 'admin') {
-    return <Navigate to="/" replace />;
-  }
-
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['interest-leads'],
     queryFn: async () => {
@@ -52,6 +48,7 @@ export default function InterestLeadsAdmin() {
       if (error) throw error;
       return data as InterestLead[];
     },
+    enabled: profile?.role === 'admin',
   });
 
   const updateStatus = useMutation({
@@ -90,6 +87,10 @@ export default function InterestLeadsAdmin() {
   });
 
   const newCount = leads.filter((l) => l.status === 'new').length;
+
+  if (profile?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="space-y-6">

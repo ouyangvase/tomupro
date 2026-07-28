@@ -69,7 +69,7 @@ export default function InventoryModule() {
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
-            {activeTab === 'balance' && <InventoryBalance />}
+            {activeTab === 'balance' && <InventoryBalance isRunnerAssistant={isAssistantContext} />}
             {activeTab === 'inbound' && ((role === 'runner' || (isAssistantContext && assistantBinding?.can_manage_inbound_stock))
               ? <RunnerInbound runnerIdOverride={assistantRunnerId} />
               : <InboundPending />)}

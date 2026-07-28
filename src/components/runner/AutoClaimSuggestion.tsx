@@ -29,8 +29,6 @@ export function AutoClaimSuggestion({
 }: AutoClaimSuggestionProps) {
   const [excludedExpanded, setExcludedExpanded] = useState(false);
 
-  if (claimableOrders.length === 0) return null;
-
   const totalAmount = claimableOrders.reduce((sum, o) => sum + o.total_amount, 0);
 
   // Group by salesperson for the breakdown
@@ -87,6 +85,8 @@ export function AutoClaimSuggestion({
 
   // Build inline summary text for excluded orders
   const excludedSummaryText = excludedSummary.map(g => `${g.count} ${g.label}`).join(', ');
+
+  if (claimableOrders.length === 0) return null;
 
   return (
     <Card className="border-primary/30 bg-gradient-to-r from-primary/8 via-primary/4 to-transparent overflow-hidden relative">

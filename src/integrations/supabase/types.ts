@@ -4970,6 +4970,14 @@ export type Database = {
       get_accessible_owner_ids:
         | { Args: { p_include_shares?: boolean }; Returns: string[] }
         | { Args: { p_scope?: string }; Returns: string[] }
+      get_accessible_stock_owners: {
+        Args: never
+        Returns: {
+          display_name: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+        }[]
+      }
       get_accessible_user_ids: {
         Args: { p_user_id?: string }
         Returns: string[]

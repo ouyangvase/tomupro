@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUsers } from '@/hooks/useUsers';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
-import { useVisibleUserIds } from '@/hooks/useTeamVisibility';
+import { useAccessibleStockOwners, useVisibleUserIds } from '@/hooks/useTeamVisibility';
 import { useBindings } from '@/hooks/useBindings';
 import { useManagerRunnerBindings } from '@/hooks/useManagerRunnerBindings';
 import { Badge } from '@/components/ui/badge';
@@ -73,13 +73,18 @@ interface StockBalanceRow extends StockBalance {
 
 const isRunnerHolderRole = (value: string | null | undefined) => value === 'runner' || value === 'driver';
 
-export default function InventoryBalance() {
+interface InventoryBalanceProps {
+  isRunnerAssistant?: boolean;
+}
+
+export default function InventoryBalance({ isRunnerAssistant = false }: InventoryBalanceProps) {
   const { profile, role } = useAuth();
   const { data: users = [] } = useUsers();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: userDirectory = [] } = useUserDirectory();
   const { visibleUserIds: productVisibleUserIds } = useVisibleUserIds('products');
   const { sharedSubjects: sharedStockSubjects } = useVisibleUserIds('stock');
+  const { data: accessibleStockOwners = [] } = useAccessibleStockOwners();
   const { data: salespersonRunnerBindings = [] } = useBindings(
     role === 'salesperson' && profile?.id ? { salespersonId: profile.id } : undefined
   );
@@ -91,7 +96,11 @@ export default function InventoryBalance() {
 
   const isAdmin = profile?.role === 'admin';
   const isManager = profile?.role === 'manager';
-  const canFilterStockHolders = role === 'salesperson' || role === 'manager';
+  const canFilterStockHolders =
+    role === 'salesperson' ||
+    role === 'manager' ||
+    role === 'runner' ||
+    isRunnerAssistant;
   const canEdit = role === 'admin' || role === 'salesperson' || role === 'manager';
   const canEditStockLocation = role === 'runner';
 
@@ -203,6 +212,10 @@ export default function InventoryBalance() {
       addFilterOption(profile.id, `${profile.display_name || profile.email || 'Me'} (Me)`, role || undefined);
     }
 
+    accessibleStockOwners.forEach((user) => {
+      addFilterOption(user.id, user.display_name, user.role);
+    });
+
     if (role === 'salesperson') {
       salespersonRunnerBindings.forEach((binding) => {
         addFilterOption(
@@ -252,6 +265,7 @@ export default function InventoryBalance() {
     profile?.display_name,
     profile?.email,
     canFilterStockHolders,
+    accessibleStockOwners,
     role,
     teamMembers,
     salespersonRunnerBindings,
@@ -275,7 +289,7 @@ export default function InventoryBalance() {
 
   const showOwnerFilter = activeSection === 'products'
     ? (isAdmin || isManager)
-    : (isAdmin || (isManager && stockTab === 'team') || role === 'salesperson');
+    : (isAdmin || (isManager && stockTab === 'team') || role === 'salesperson' || role === 'runner' || isRunnerAssistant);
   const ownerFilterPlaceholder = activeSection === 'stock' && canFilterStockHolders
     ? 'All Stock Holders'
     : 'All Owners';

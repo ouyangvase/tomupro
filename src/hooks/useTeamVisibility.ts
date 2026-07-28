@@ -39,6 +39,21 @@ export function useServerVisibleIds(scope: DataScope = 'orders') {
   });
 }
 
+export function useAccessibleStockOwners() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ['accessible-stock-owners', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_accessible_stock_owners');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id,
+    staleTime: 30000,
+  });
+}
+
 /**
  * Hook to get shared access subjects for the current user
  */

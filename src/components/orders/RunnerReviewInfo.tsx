@@ -31,10 +31,9 @@ const outcomeLabels: Record<string, string> = {
 };
 
 export function RunnerReviewInfo({ order }: RunnerReviewInfoProps) {
-  // Only show if reviewed
-  if (!order.runner_review_status || order.runner_review_status === 'NOT_REVIEWED') {
-    return null;
-  }
+  const isReviewed = Boolean(
+    order.runner_review_status && order.runner_review_status !== 'NOT_REVIEWED'
+  );
 
   // Fetch reason label if exists
   const { data: reason } = useQuery({
@@ -49,7 +48,7 @@ export function RunnerReviewInfo({ order }: RunnerReviewInfoProps) {
       if (error) return null;
       return data;
     },
-    enabled: !!order.runner_failed_reason_id,
+    enabled: isReviewed && !!order.runner_failed_reason_id,
   });
 
   // Fetch reviewer name
@@ -65,8 +64,10 @@ export function RunnerReviewInfo({ order }: RunnerReviewInfoProps) {
       if (error) return null;
       return data;
     },
-    enabled: !!order.runner_reviewed_by,
+    enabled: isReviewed && !!order.runner_reviewed_by,
   });
+
+  if (!isReviewed) return null;
 
   return (
     <Card className="border-primary/20 bg-primary/5">

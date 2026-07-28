@@ -42,7 +42,7 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
   const lastLocationRef = useRef<string>("");
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const useSharedDriverLocation = useCallback(() => {
+  const syncSharedDriverLocation = useCallback(() => {
     if (!isSharing || trackingState !== "active" || !lastLocation) {
       setDriverLocation(null);
       return false;
@@ -59,11 +59,11 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
 
   // Update route origin from the already-approved location sharing state.
   useEffect(() => {
-    if (!useSharedDriverLocation()) {
+    if (!syncSharedDriverLocation()) {
       suggestionCache.clear();
       lastLocationRef.current = "";
     }
-  }, [useSharedDriverLocation]);
+  }, [syncSharedDriverLocation]);
 
   // Geocode orders when they change (with deduplication and limits)
   useEffect(() => {
@@ -226,7 +226,7 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
 
   // Manual refresh with cache clear
   const refreshRoute = useCallback(() => {
-    if (!useSharedDriverLocation()) {
+    if (!syncSharedDriverLocation()) {
       setHasTimedOut(false);
       setError("Enable location for routes");
       return;
@@ -272,7 +272,7 @@ export const useRouteSuggestion = (orders: OrderWithLocation[]) => {
           setIsCalculating(false);
         });
     }
-  }, [useSharedDriverLocation, clearGeoCache, geocodeOrders, orders]);
+  }, [syncSharedDriverLocation, clearGeoCache, geocodeOrders, orders]);
 
   // Check if suggestions are available
   const hasSuggestions = driverLocation !== null && suggestions.size > 0;
