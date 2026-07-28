@@ -39,7 +39,7 @@ export function useNotifications() {
       return data as Notification[];
     },
     enabled: !!user,
-    refetchInterval: 180000, // 60s safety net (realtime handles instant updates)
+    refetchInterval: 180000, // 3-minute safety net (realtime handles instant updates)
   });
 }
 
@@ -50,14 +50,15 @@ export function useUnreadCount() {
     queryKey: ['notifications-unread-count', user?.id],
     queryFn: async () => {
       if (!user) return 0;
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from('notifications')
-        .select('*', { count: 'exact', head: true })
+        .select('id')
         .eq('user_id', user.id)
-        .eq('is_read', false);
+        .eq('is_read', false)
+        .limit(100);
 
       if (error) throw error;
-      return count || 0;
+      return data?.length ?? 0;
     },
     enabled: !!user,
     refetchInterval: 180000,

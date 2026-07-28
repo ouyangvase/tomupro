@@ -32,18 +32,19 @@ export function useUnreadNotificationCount() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['notifications', 'unread', user?.id],
+    queryKey: ['notifications-unread-count', user?.id],
     queryFn: async () => {
       if (!user) return 0;
 
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from('notifications')
-        .select('*', { count: 'exact', head: true })
+        .select('id')
         .eq('user_id', user.id)
-        .eq('is_read', false);
+        .eq('is_read', false)
+        .limit(100);
 
       if (error) throw error;
-      return count ?? 0;
+      return data?.length ?? 0;
     },
     enabled: !!user,
     staleTime: 30000,
