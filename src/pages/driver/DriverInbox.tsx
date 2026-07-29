@@ -106,6 +106,30 @@ function getOrderItemsForDisplay(order: DriverInboxOrder) {
   return formatOrderItems((order.order_items || []) as DriverOrderItem[]);
 }
 
+function filterDriverOrders(orders: DriverInboxOrder[], searchQuery: string) {
+  const query = searchQuery.toLowerCase().trim();
+  if (!query) return orders;
+
+  return orders.filter(order => {
+    const orderCode = (order.order_code || '').toLowerCase();
+    const customerName = (order.customer_name || '').toLowerCase();
+    const customerPhone = (order.phone || '').toLowerCase();
+    const address = (order.address || '').toLowerCase();
+    const itemText = getOrderItemsForDisplay(order)
+      .map(item => `${item.skuCode} ${item.skuName}`)
+      .join(' ')
+      .toLowerCase();
+
+    return (
+      orderCode.includes(query)
+      || customerName.includes(query)
+      || customerPhone.includes(query)
+      || address.includes(query)
+      || itemText.includes(query)
+    );
+  });
+}
+
 const driverStatusConfig: Record<string, { label: string; className: string }> = {
   ASSIGNED: { label: 'Assigned', className: 'status-neutral' },
   OUT_FOR_DELIVERY: { label: 'Out for Delivery', className: 'status-pending' },
@@ -117,7 +141,11 @@ export default function DriverInbox() {
   const { profile, user } = useAuth();
   const effectiveDriverId = profile?.id || user?.id;
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
-  const { data: assignmentOrders, isLoading } = useActiveDriverAssignments(effectiveDriverId, true);
+  const {
+    data: assignmentOrders,
+    isLoading,
+    refetch: refetchAssignments,
+  } = useActiveDriverAssignments(effectiveDriverId, true);
   const orders = assignmentOrders ?? EMPTY_DRIVER_INBOX_ORDERS;
   const { data: parentRunner } = useDriverParentRunner();
   const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY');
@@ -142,6 +170,7 @@ export default function DriverInbox() {
   const [failedProofFiles, setFailedProofFiles] = useState<File[]>([]);
   const [failedProofPreviews, setFailedProofPreviews] = useState<string[]>([]);
   const [proofUploading, setProofUploading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const myOrders = useMemo<DriverInboxOrder[]>(() => {
     return orders as DriverInboxOrder[];
   }, [orders]);
@@ -155,28 +184,10 @@ export default function DriverInbox() {
   }, []);
 
   // Keep every active assignment visible as soon as the runner assigns it.
-  const filteredOrders = useMemo(() => {
-    if (!searchQuery.trim()) return myOrders;
-    
-    const query = searchQuery.toLowerCase().trim();
-    return myOrders.filter(order => {
-      const orderCode = (order.order_code || '').toLowerCase();
-      const customerName = (order.customer_name || '').toLowerCase();
-      const customerPhone = (order.phone || '').toLowerCase();
-      const address = (order.address || '').toLowerCase();
-      const itemText = getOrderItemsForDisplay(order)
-        .map(item => `${item.skuCode} ${item.skuName}`)
-        .join(' ')
-        .toLowerCase();
-      return (
-        orderCode.includes(query)
-        || customerName.includes(query)
-        || customerPhone.includes(query)
-        || address.includes(query)
-        || itemText.includes(query)
-      );
-    });
-  }, [myOrders, searchQuery]);
+  const filteredOrders = useMemo(
+    () => filterDriverOrders(myOrders, searchQuery),
+    [myOrders, searchQuery],
+  );
 
   const pendingOrders = filteredOrders;
   const acceptedDeliveredOrders = useMemo(
@@ -281,35 +292,53 @@ export default function DriverInbox() {
     return true;
   }, [pickedProductQty]);
 
-  const handleExportOrders = useCallback(() => {
-    if (filteredOrders.length === 0) return;
+  const handleExportOrders = useCallback(async () => {
+    if (!effectiveDriverId || isExporting) return;
 
-    const rows = filteredOrders.map(order => {
-      const items = getOrderItemsForDisplay(order);
-      const productSkuText = items.length > 0
-        ? items.map(item => item.productSkuLabel).join('; ')
-        : '';
-      const qtyText = items.length > 0
-        ? items.map(item => String(item.qty)).join('; ')
-        : '';
-      const collectAmount = order.payment_method === 'COD' ? Number(order.total_amount || 0) : 0;
+    setIsExporting(true);
+    try {
+      const refreshed = await refetchAssignments();
+      if (refreshed.error) throw refreshed.error;
 
-      return [
-        order.order_code || '',
-        order.customer_name || '',
-        order.phone || '',
-        order.address || '',
-        productSkuText,
-        qtyText,
-        collectAmount.toFixed(2),
-      ];
-    });
+      const currentOrders = (refreshed.data ?? []) as DriverInboxOrder[];
+      const exportOrders = filterDriverOrders(currentOrders, searchQuery);
+      if (exportOrders.length === 0) {
+        toast.info('No current driver orders to export');
+        return;
+      }
 
-    const headers = ['Order Code', 'Name', 'Number', 'Address', 'Product / SKU', 'Qty', 'Amount Need Collect'];
-    const dateKey = format(new Date(), 'yyyyMMdd-HHmm');
+      const rows = exportOrders.map(order => {
+        const items = getOrderItemsForDisplay(order);
+        const productSkuText = items.length > 0
+          ? items.map(item => item.productSkuLabel).join('; ')
+          : '';
+        const qtyText = items.length > 0
+          ? items.map(item => String(item.qty)).join('; ')
+          : '';
+        const collectAmount = order.payment_method === 'COD' ? Number(order.total_amount || 0) : 0;
 
-    downloadXlsx([headers, ...rows], `driver_orders_${dateKey}.xlsx`, 'Driver Orders');
-  }, [filteredOrders]);
+        return [
+          order.order_code || '',
+          order.customer_name || '',
+          order.phone || '',
+          order.address || '',
+          productSkuText,
+          qtyText,
+          collectAmount.toFixed(2),
+        ];
+      });
+
+      const headers = ['Order Code', 'Name', 'Number', 'Address', 'Product / SKU', 'Qty', 'Amount Need Collect'];
+      const dateKey = format(new Date(), 'yyyyMMdd-HHmm');
+
+      downloadXlsx([headers, ...rows], `driver_orders_${dateKey}.xlsx`, 'Driver Orders');
+    } catch (error) {
+      console.error('Unable to refresh driver orders for export:', error);
+      toast.error('Unable to export current driver orders');
+    } finally {
+      setIsExporting(false);
+    }
+  }, [effectiveDriverId, isExporting, refetchAssignments, searchQuery]);
 
   const setProofSelection = useCallback((
     files: File[],
@@ -796,11 +825,15 @@ export default function DriverInbox() {
           <Button
             variant="outline"
             onClick={handleExportOrders}
-            disabled={filteredOrders.length === 0}
+            disabled={!effectiveDriverId || isExporting}
             className="h-11 w-full sm:w-auto rounded-full bg-background/70 border-border/50 px-4 font-semibold"
           >
-            <Download className="h-4 w-4 mr-2" />
-            Export Excel
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            {isExporting ? 'Exporting...' : 'Export Excel'}
           </Button>
         </div>
 
