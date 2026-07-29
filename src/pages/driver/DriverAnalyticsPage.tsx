@@ -19,10 +19,13 @@ import {
   type DriverPaymentMethod,
   type DriverPaymentSplit,
 } from '@/components/driver/DeliveryPaymentDialog';
+import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
+import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAttachments, useUploadAttachment } from '@/hooks/useAttachments';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
 import {
   useActiveDriverAssignments,
@@ -30,9 +33,11 @@ import {
   type DriverAssignment,
 } from '@/hooks/useDriverAssignments';
 import { useDriverMarkDelivered } from '@/hooks/useDrivers';
+import { compressImage } from '@/lib/imageCompression';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
+import { CalendarDays, Camera, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
+import { toast } from 'sonner';
 
 type Period = 'today' | 'week' | 'month' | 'year' | 'custom';
 
@@ -65,7 +70,13 @@ export default function DriverAnalyticsPage() {
   const [selectedDate, setSelectedDate] = useState(dateKey(new Date()));
   const [inactiveOpen, setInactiveOpen] = useState(false);
   const [correctionOrder, setCorrectionOrder] = useState<DriverAssignment | null>(null);
+  const [pendingProofOrder, setPendingProofOrder] = useState<DriverAssignment | null>(null);
+  const [pendingProofFiles, setPendingProofFiles] = useState<File[]>([]);
+  const [pendingProofPreviews, setPendingProofPreviews] = useState<string[]>([]);
+  const [pendingProofUploading, setPendingProofUploading] = useState(false);
   const markDelivered = useDriverMarkDelivered();
+  const uploadAttachment = useUploadAttachment();
+  const { data: pendingOrderAttachments = [] } = useAttachments({ orderId: pendingProofOrder?.id });
 
   const range = useMemo(() => {
     const now = new Date();
@@ -89,7 +100,10 @@ export default function DriverAnalyticsPage() {
     calendarFrom,
     calendarTo,
   });
-  const { data: selectedOrdersWithItems } = useDriverAssignments({
+  const {
+    data: selectedOrdersWithItems,
+    refetch: refetchSelectedOrders,
+  } = useDriverAssignments({
     driverId: profile?.id,
     dateFrom: selectedDate,
     dateTo: selectedDate,
@@ -101,6 +115,9 @@ export default function DriverAnalyticsPage() {
   const selectedOrders = selectedOrdersWithItems ?? selectedDay?.orders ?? [];
   const selectedActiveOrders = selectedOrders.filter((order) => order.assignment_state !== 'INACTIVE');
   const selectedInactiveOrders = selectedOrders.filter((order) => order.assignment_state === 'INACTIVE');
+  const pendingOrderProofCount = pendingOrderAttachments.filter(
+    (attachment) => attachment.type === 'delivery_photo',
+  ).length;
   const leadingDays = (getDay(startOfMonth(calendarMonth)) + 6) % 7;
   const summary = analytics?.summary;
   const yearMonths = useMemo(() => {
@@ -128,6 +145,65 @@ export default function DriverAnalyticsPage() {
       transferAmount: split.transferAmount,
     });
     setCorrectionOrder(null);
+  };
+
+  const resetPendingProofSelection = () => {
+    pendingProofPreviews.forEach((preview) => URL.revokeObjectURL(preview));
+    setPendingProofFiles([]);
+    setPendingProofPreviews([]);
+  };
+
+  const handlePendingProofFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    setPendingProofFiles((current) => [...current, ...files]);
+    setPendingProofPreviews((current) => [
+      ...current,
+      ...files.map((file) => URL.createObjectURL(file)),
+    ]);
+  };
+
+  const removePendingProofFile = (index: number) => {
+    if (pendingProofPreviews[index]) URL.revokeObjectURL(pendingProofPreviews[index]);
+    setPendingProofFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+    setPendingProofPreviews((current) => current.filter((_, previewIndex) => previewIndex !== index));
+  };
+
+  const handleUploadPendingProofs = async () => {
+    if (!pendingProofOrder || pendingProofFiles.length === 0) return;
+
+    setPendingProofUploading(true);
+    try {
+      const refreshed = await refetchSelectedOrders();
+      if (refreshed.error) throw refreshed.error;
+
+      const currentOrder = refreshed.data?.find((order) => order.id === pendingProofOrder.id);
+      if (currentOrder?.assignment_state !== 'PENDING_ACCEPTANCE') {
+        toast.error('This order is no longer pending acceptance.');
+        return;
+      }
+
+      for (const [index, file] of pendingProofFiles.entries()) {
+        const { blob, extension } = await compressImage(file, { maxWidth: 1600, quality: 0.78 });
+        const compressedFile = new File(
+          [blob],
+          `delivery-proof-${pendingProofOrder.id}-${Date.now()}-${index + 1}.${extension}`,
+          { type: blob.type || 'image/webp' },
+        );
+
+        await uploadAttachment.mutateAsync({
+          file: compressedFile,
+          bucket: 'delivery-photos',
+          orderId: pendingProofOrder.id,
+          type: 'delivery_photo',
+        });
+      }
+
+      toast.success(`${pendingProofFiles.length} proof photo(s) added`);
+      resetPendingProofSelection();
+      setPendingProofOrder(null);
+    } finally {
+      setPendingProofUploading(false);
+    }
   };
 
   return (
@@ -359,13 +435,33 @@ export default function DriverAnalyticsPage() {
               <div className="divide-y divide-border border-y border-border">
               {selectedActiveOrders.map((order) => {
                 const skuItems = getOrderSkuItems(order);
+                const isPendingAcceptance = order.assignment_state === 'PENDING_ACCEPTANCE';
                 const canCorrectToDelivered =
-                  order.assignment_state === 'PENDING_ACCEPTANCE'
+                  isPendingAcceptance
                   && order.driver_status === 'DRIVER_FAILED'
                   && order.runner_accept_status !== 'ACCEPTED'
                   && order.runner_review_status !== 'REVIEWED';
                 return (
-                  <div key={order.id} className="flex items-start justify-between gap-3 py-3">
+                  <div
+                    key={order.id}
+                    role={isPendingAcceptance ? 'button' : undefined}
+                    tabIndex={isPendingAcceptance ? 0 : undefined}
+                    onClick={() => {
+                      if (!isPendingAcceptance) return;
+                      resetPendingProofSelection();
+                      setPendingProofOrder(order);
+                    }}
+                    onKeyDown={(event) => {
+                      if (!isPendingAcceptance || (event.key !== 'Enter' && event.key !== ' ')) return;
+                      event.preventDefault();
+                      resetPendingProofSelection();
+                      setPendingProofOrder(order);
+                    }}
+                    className={cn(
+                      'flex items-start justify-between gap-3 py-3',
+                      isPendingAcceptance && 'cursor-pointer rounded-md px-2 transition-colors hover:bg-muted/60 active:bg-muted',
+                    )}
+                  >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold">{order.order_code}</p>
                       {skuItems.length > 0 && (
@@ -378,12 +474,21 @@ export default function DriverAnalyticsPage() {
                         </div>
                       )}
                       <p className="mt-1 truncate text-xs text-muted-foreground">{order.customer_name}</p>
+                      {isPendingAcceptance && (
+                        <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-primary">
+                          <Camera className="h-3.5 w-3.5" />
+                          Open and add proof photos
+                        </p>
+                      )}
                       {canCorrectToDelivered && (
                         <Button
                           type="button"
                           size="sm"
                           className="mt-2"
-                          onClick={() => setCorrectionOrder(order)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setCorrectionOrder(order);
+                          }}
                           disabled={markDelivered.isPending}
                         >
                           Mark Delivered
@@ -461,6 +566,49 @@ export default function DriverAnalyticsPage() {
           onConfirm={handleCorrectToDelivered}
           isPending={markDelivered.isPending}
         />
+
+        <MobileActionSheet
+          open={Boolean(pendingProofOrder)}
+          onOpenChange={(open) => {
+            if (open) return;
+            resetPendingProofSelection();
+            setPendingProofOrder(null);
+          }}
+          title={pendingProofOrder ? `${pendingProofOrder.order_code} Proof Photos` : 'Proof Photos'}
+          description="Add more delivery proof while this order is waiting for Runner acceptance."
+          confirmLabel={pendingProofUploading ? 'Uploading...' : 'Upload Photos'}
+          onConfirm={handleUploadPendingProofs}
+          isLoading={pendingProofUploading}
+          confirmDisabled={pendingProofFiles.length === 0}
+        >
+          {pendingProofOrder && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
+                <p className="text-sm font-bold">{pendingProofOrder.customer_name}</p>
+                <div className="mt-2 space-y-1">
+                  {getOrderSkuItems(pendingProofOrder).map((item) => (
+                    <p key={item.id} className="text-xs font-medium">
+                      {item.sku} <span className="text-muted-foreground">x {item.qty}</span>
+                    </p>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {pendingOrderProofCount} existing proof photo(s). New photos will be added, not replaced.
+                </p>
+              </div>
+
+              <ProofPhotoPicker
+                label="Additional Proof Photos"
+                previews={pendingProofPreviews}
+                onFilesChange={handlePendingProofFiles}
+                onRemoveFile={removePendingProofFile}
+                multiple
+                disabled={pendingProofUploading}
+                helperText="You can take photos or choose multiple images from your library."
+              />
+            </div>
+          )}
+        </MobileActionSheet>
       </div>
     </AppLayout>
   );
