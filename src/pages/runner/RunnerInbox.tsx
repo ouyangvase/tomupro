@@ -30,7 +30,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
 import type { Order } from '@/types/database';
-import { Package, Truck, Loader2, DollarSign, Search, Download, Upload, Clock, Eye, ChevronLeft, ChevronRight, Phone, AlertTriangle, Calendar, CheckCircle, UserPlus, ImageIcon } from 'lucide-react';
+import { Package, Truck, Loader2, DollarSign, Search, Download, Upload, Clock, Eye, ChevronLeft, ChevronRight, Phone, AlertTriangle, Calendar, CheckCircle, UserPlus, UserRound, ImageIcon } from 'lucide-react';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { OrderFiltersPanel, type OrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { MobileBulkActionsBar } from '@/components/mobile/MobileBulkActionsBar';
@@ -108,6 +108,10 @@ export default function RunnerInbox({
 
   const areaOptions = useMemo(() => validAreas.map(a => ({ label: a, value: a })), [validAreas]);
   const driverOptions = useMemo(() => myDrivers.map(d => ({ label: d.driver?.display_name || 'Unknown', value: d.driver_id })), [myDrivers]);
+  const driverNameById = useMemo(
+    () => new Map(myDrivers.map(driver => [driver.driver_id, driver.driver?.display_name || 'Unknown Driver'])),
+    [myDrivers],
+  );
 
   // Compute date range from preset
   const assignedDateRange = useMemo(() => {
@@ -543,6 +547,7 @@ export default function RunnerInbox({
                 canDeliver={canDeliver}
                 canConfirmReceipt={canReviewReceipts}
                 stockMap={runnerStockMap}
+                driverName={order.driver?.display_name || (order.driver_id ? driverNameById.get(order.driver_id) : null)}
               />
             ))}
           </div>
@@ -654,11 +659,13 @@ interface RunnerOrderCardProps {
   canDeliver: boolean;
   canConfirmReceipt: boolean;
   stockMap: Map<string, number>;
+  driverName?: string | null;
 }
 
-function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, onViewReceipt, isMobile, canDeliver, canConfirmReceipt, stockMap }: RunnerOrderCardProps) {
+function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, onViewReceipt, isMobile, canDeliver, canConfirmReceipt, stockMap, driverName }: RunnerOrderCardProps) {
   const isReceiptBlocked = order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed';
   const canAcceptReceipt = canConfirmReceipt && !canDeliver && order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed' && order.receipt_status !== 'rejected';
+  const assignedDriverName = order.driver_id ? (driverName?.trim() || 'Unknown Driver') : null;
 
   const isMobileRejected = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
 
@@ -715,6 +722,13 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
               </div>
             )}
             <p className="text-xs text-muted-foreground truncate">{order.address || 'No address'}</p>
+            {assignedDriverName && (
+              <div className="flex min-w-0 items-center gap-1.5 pt-0.5 text-xs">
+                <UserRound className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="shrink-0 text-muted-foreground">Driver</span>
+                <span className="truncate font-semibold text-foreground">{assignedDriverName}</span>
+              </div>
+            )}
           </div>
 
           {/* Row 3: Amount + Payment + Assigned date */}
@@ -851,6 +865,13 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.address || 'No address'}</p>
+          {assignedDriverName && (
+            <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs">
+              <UserRound className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <span className="shrink-0 text-muted-foreground">Driver</span>
+              <span className="truncate font-semibold text-foreground">{assignedDriverName}</span>
+            </div>
+          )}
           {hasOutOfStock && (
             <div className="flex items-center gap-1.5 mt-1">
               <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800 text-[10px] px-1.5 py-0 font-semibold">
