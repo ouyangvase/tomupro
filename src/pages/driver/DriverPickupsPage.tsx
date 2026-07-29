@@ -38,7 +38,7 @@ function PickupDetails({
             ? 'shrink-0 border-amber-300 bg-amber-50 text-amber-800'
             : 'shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700'}
         >
-          {actionable ? 'Ready' : 'Completed'}
+          {actionable ? 'Ready' : 'Successful Pickup'}
         </Badge>
       </div>
 
