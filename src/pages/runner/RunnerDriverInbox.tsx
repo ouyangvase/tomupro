@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import capybaraEmpty from '@/assets/capybara-empty.png';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -457,6 +457,8 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
   const [assignmentOrderLimit, setAssignmentOrderLimit] = useState(0);
   const [assignmentAction, setAssignmentAction] = useState<AssignmentAction>('ASSIGN');
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
+  const [assignmentSnapshotLoading, setAssignmentSnapshotLoading] = useState(false);
+  const assignmentSnapshotRequestRef = useRef(0);
   const [areaCorrectionDialogOpen, setAreaCorrectionDialogOpen] = useState(false);
   const [correctionAreaCode, setCorrectionAreaCode] = useState('');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -961,29 +963,61 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
     clearSelection();
   };
 
-  const handleAssignRemaining = async (areaCode: string) => {
+  const handleAssignRemaining = (areaCode: string) => {
     if (!isNormalArea(areaCode)) return;
+    const localOrders = dispatchAreaOrders.filter((order) => (
+      inferAreaFromOrder(order) === areaCode &&
+      isActiveQueueUnassigned(order, todayDateKey)
+    ));
+
+    if (localOrders.length === 0) {
+      toast.error('No assignable orders in this area');
+      return;
+    }
+
     setActiveAreaCode(areaCode);
     setAssignmentFilter('unassigned');
-    try {
-      const snapshots = await fetchRunnerDispatchAreaOrderIds({
+    selectOrders(localOrders.map((order) => order.id));
+    setAssignmentAction('ASSIGN');
+    setTargetDriver('');
+    setAssignmentDialogOpen(true);
+    setAssignmentSnapshotLoading(true);
+
+    const requestId = assignmentSnapshotRequestRef.current + 1;
+    assignmentSnapshotRequestRef.current = requestId;
+    void fetchRunnerDispatchAreaOrderIds({
         operationalDate: activeQueueScopeDate,
         deliveryAreaCode: areaCode,
         unassignedOnly: true,
+      })
+      .then((snapshots) => {
+        if (assignmentSnapshotRequestRef.current !== requestId) return;
+        if (snapshots.length === 0) {
+          clearSelection();
+          setAssignmentDialogOpen(false);
+          toast.error('No assignable orders in this area');
+          return;
+        }
+        selectOrders(snapshots.map((order) => order.order_id), snapshots);
+      })
+      .catch((error) => {
+        if (assignmentSnapshotRequestRef.current !== requestId) return;
+        clearSelection();
+        setAssignmentDialogOpen(false);
+        toast.error(error instanceof Error ? error.message : 'Unable to load assignable orders');
+      })
+      .finally(() => {
+        if (assignmentSnapshotRequestRef.current === requestId) {
+          setAssignmentSnapshotLoading(false);
+        }
       });
+  };
 
-      if (snapshots.length === 0) {
-        toast.error('No assignable orders in this area');
-        return;
-      }
-
-      selectOrders(snapshots.map((order) => order.order_id), snapshots);
-      setAssignmentOrderLimit(snapshots.length);
-      setAssignmentAction('ASSIGN');
-      setTargetDriver('');
-      setAssignmentDialogOpen(true);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to load assignable orders');
+  const handleAssignmentDialogOpenChange = (open: boolean) => {
+    setAssignmentDialogOpen(open);
+    if (!open) {
+      assignmentSnapshotRequestRef.current += 1;
+      setAssignmentSnapshotLoading(false);
     }
   };
 
@@ -1743,13 +1777,19 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
           </DialogContent>
         </Dialog>
 
-        <Dialog open={assignmentDialogOpen} onOpenChange={setAssignmentDialogOpen}>
+        <Dialog open={assignmentDialogOpen} onOpenChange={handleAssignmentDialogOpenChange}>
           <DialogContent className="bottom-0 top-auto max-h-[88dvh] w-screen max-w-none translate-y-0 gap-3 overflow-y-auto overflow-x-hidden rounded-b-none rounded-t-[1.5rem] border-[#e2d8c8] bg-white p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] text-[#171717] shadow-[0_-22px_70px_rgba(17,16,14,0.22)] backdrop-blur-0 sm:bottom-auto sm:top-[50%] sm:max-h-[92dvh] sm:w-[min(92vw,32rem)] sm:max-w-lg sm:translate-y-[-50%] sm:rounded-2xl sm:p-6">
             <DialogHeader className="space-y-1 pr-8 text-left">
               <DialogTitle className="text-lg leading-tight sm:text-xl">{assignmentAction === 'REASSIGN' ? 'Reassign Orders' : 'Assign Orders'}</DialogTitle>
               <DialogDescription className="text-xs sm:text-sm">Review workload and collection before applying this batch.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
+              {assignmentSnapshotLoading && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950" role="status">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                  Checking the latest assignable orders...
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2 rounded-xl border bg-muted/20 p-3 text-sm">
                 <div>
                   <p className="text-xs uppercase text-muted-foreground">Selected orders</p>
@@ -1779,6 +1819,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                       variant="outline"
                       size="sm"
                       onClick={() => selectAssignmentSubset(assignmentAreaUnassignedOrders, 'ASSIGN')}
+                      disabled={assignmentSnapshotLoading}
                     >
                       All remaining ({assignmentAreaUnassignedOrders.length})
                     </Button>
@@ -1789,6 +1830,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                         variant="outline"
                         size="sm"
                         onClick={() => selectAssignmentSubset(group.orders, 'ASSIGN')}
+                        disabled={assignmentSnapshotLoading}
                       >
                         {group.label} ({group.orders.length})
                       </Button>
@@ -1809,6 +1851,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                           variant="outline"
                           size="sm"
                           onClick={() => selectAssignmentSubset(assignmentAreaStaleOrders, 'REASSIGN')}
+                          disabled={assignmentSnapshotLoading}
                         >
                           Reassign previous-day ({assignmentAreaStaleOrders.length})
                         </Button>
@@ -1820,6 +1863,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                             [...assignmentAreaUnassignedOrders, ...assignmentAreaStaleOrders],
                             'REASSIGN',
                           )}
+                          disabled={assignmentSnapshotLoading}
                         >
                           Move all ({assignmentAreaUnassignedOrders.length + assignmentAreaStaleOrders.length})
                         </Button>
@@ -1844,7 +1888,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                       size="icon"
                       className="h-10 w-10 shrink-0 rounded-full"
                       onClick={() => setAssignmentOrderLimit(Math.max(1, cappedAssignmentLimit - 1))}
-                      disabled={cappedAssignmentLimit <= 1}
+                      disabled={assignmentSnapshotLoading || cappedAssignmentLimit <= 1}
                     >
                       -
                     </Button>
@@ -1856,6 +1900,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                       max={selectedRows.length}
                       value={cappedAssignmentLimit}
                       onChange={(event) => handleAssignmentLimitChange(event.target.value)}
+                      disabled={assignmentSnapshotLoading}
                       className="h-10 w-20 rounded-full text-center text-base font-bold tabular-nums"
                     />
                     <Button
@@ -1864,7 +1909,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                       size="icon"
                       className="h-10 w-10 shrink-0 rounded-full"
                       onClick={() => setAssignmentOrderLimit(Math.min(selectedRows.length, cappedAssignmentLimit + 1))}
-                      disabled={cappedAssignmentLimit >= selectedRows.length}
+                      disabled={assignmentSnapshotLoading || cappedAssignmentLimit >= selectedRows.length}
                     >
                       +
                     </Button>
@@ -1943,9 +1988,9 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
               )}
             </div>
             <DialogFooter className="gap-2 pt-2 sm:gap-3 sm:pt-4">
-              <Button variant="outline" onClick={() => setAssignmentDialogOpen(false)} className="h-11 rounded-full">Cancel</Button>
-              <Button onClick={handleConfirmAssignment} disabled={!targetDriver || assignmentOrderIds.length === 0 || applyBatch.isPending} className="h-11 rounded-full">
-                {applyBatch.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" />}
+              <Button variant="outline" onClick={() => handleAssignmentDialogOpenChange(false)} className="h-11 rounded-full">Cancel</Button>
+              <Button onClick={handleConfirmAssignment} disabled={assignmentSnapshotLoading || !targetDriver || assignmentOrderIds.length === 0 || applyBatch.isPending} className="h-11 rounded-full">
+                {assignmentSnapshotLoading || applyBatch.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" />}
                 Confirm {cappedAssignmentLimit} {assignmentAction === 'REASSIGN' ? 'Reassignment' : 'Assignment'}
               </Button>
             </DialogFooter>
