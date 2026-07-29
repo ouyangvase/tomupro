@@ -326,11 +326,19 @@ export function useDriverMarkDelivered() {
       // Get order details including runner_id
       const { data: order, error: orderError } = await supabase
         .from('orders')
-        .select('runner_id, order_code, customer_name, total_amount')
+        .select('driver_id, driver_status, runner_id, runner_accept_status, runner_review_status, order_code, customer_name, total_amount')
         .eq('id', orderId)
         .single();
       
       if (orderError) throw orderError;
+      if (order.driver_id !== user.id) throw new Error('This order is not assigned to you');
+      const isFailedCorrection = order.driver_status === 'DRIVER_FAILED';
+      if (
+        isFailedCorrection
+        && (order.runner_accept_status === 'ACCEPTED' || order.runner_review_status === 'REVIEWED')
+      ) {
+        throw new Error('This delivery outcome has already been reviewed by the runner');
+      }
 
       const orderAmount = Number(order.total_amount || 0);
       const collectedCash =
@@ -342,17 +350,33 @@ export function useDriverMarkDelivered() {
       const collectedTransfer = Math.max(0, orderAmount - collectedCash);
 
       // Update order with driver-reported payment method
-      const { data, error } = await supabase
+      const updatePayload = {
+        driver_status: 'DRIVER_DELIVERED' as const,
+        driver_delivered_at: new Date().toISOString(),
+        driver_payment_method: paymentMethod,
+        driver_cash_amount: collectedCash,
+        driver_transfer_amount: collectedTransfer,
+        runner_accept_status: 'PENDING' as const,
+        ...(isFailedCorrection ? {
+          driver_failed_reason: null,
+          driver_failed_remark: null,
+          driver_next_delivery_date: null,
+        } : {}),
+      };
+
+      let updateQuery = supabase
         .from('orders')
-        .update({
-          driver_status: 'DRIVER_DELIVERED',
-          driver_delivered_at: new Date().toISOString(),
-          driver_payment_method: paymentMethod,
-          driver_cash_amount: collectedCash,
-          driver_transfer_amount: collectedTransfer,
-          runner_accept_status: 'PENDING',
-        })
+        .update(updatePayload)
         .eq('id', orderId)
+        .eq('driver_id', user.id);
+
+      if (isFailedCorrection) {
+        updateQuery = updateQuery
+          .or('runner_accept_status.is.null,runner_accept_status.neq.ACCEPTED')
+          .or('runner_review_status.is.null,runner_review_status.neq.REVIEWED');
+      }
+
+      const { data, error } = await updateQuery
         .select()
         .single();
       

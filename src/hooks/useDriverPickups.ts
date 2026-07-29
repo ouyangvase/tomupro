@@ -519,7 +519,7 @@ export function useDeletePickup() {
   });
 }
 
-// Driver custody balance: completed pickups - submitted returns - Runner-accepted deliveries.
+// Driver custody balance: completed pickups - Runner-acknowledged returns - Runner-accepted deliveries.
 export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: string) {
   const { user } = useAuth();
   const runnerScopeId = runnerIdOverride || (driverId ? user?.id : undefined);
@@ -560,7 +560,7 @@ export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: st
             product:products(id, sku_name, sku_code)
           )
         `)
-        .neq('status', 'CANCELLED');
+        .eq('status', 'RUNNER_ACKED');
 
       let deliveryQuery = supabase
         .from('orders')

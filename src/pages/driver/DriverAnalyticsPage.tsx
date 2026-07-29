@@ -14,12 +14,18 @@ import {
   addMonths,
 } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
+import {
+  DeliveryPaymentDialog,
+  type DriverPaymentMethod,
+  type DriverPaymentSplit,
+} from '@/components/driver/DeliveryPaymentDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
 import { useDriverAssignments, type DriverAssignment } from '@/hooks/useDriverAssignments';
+import { useDriverMarkDelivered } from '@/hooks/useDrivers';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
@@ -54,6 +60,8 @@ export default function DriverAnalyticsPage() {
   const [customTo, setCustomTo] = useState(dateKey(new Date()));
   const [selectedDate, setSelectedDate] = useState(dateKey(new Date()));
   const [inactiveOpen, setInactiveOpen] = useState(false);
+  const [correctionOrder, setCorrectionOrder] = useState<DriverAssignment | null>(null);
+  const markDelivered = useDriverMarkDelivered();
 
   const range = useMemo(() => {
     const now = new Date();
@@ -102,6 +110,20 @@ export default function DriverAnalyticsPage() {
       return { monthIndex, assigned, delivered, failed };
     });
   }, [analytics?.rangeOrders, period]);
+
+  const handleCorrectToDelivered = async (
+    orderId: string,
+    paymentMethod: DriverPaymentMethod,
+    split: DriverPaymentSplit,
+  ) => {
+    await markDelivered.mutateAsync({
+      orderId,
+      paymentMethod,
+      cashAmount: split.cashAmount,
+      transferAmount: split.transferAmount,
+    });
+    setCorrectionOrder(null);
+  };
 
   return (
     <AppLayout>
@@ -332,6 +354,11 @@ export default function DriverAnalyticsPage() {
               <div className="divide-y divide-border border-y border-border">
               {selectedActiveOrders.map((order) => {
                 const skuItems = getOrderSkuItems(order);
+                const canCorrectToDelivered =
+                  order.assignment_state === 'PENDING_ACCEPTANCE'
+                  && order.driver_status === 'DRIVER_FAILED'
+                  && order.runner_accept_status !== 'ACCEPTED'
+                  && order.runner_review_status !== 'REVIEWED';
                 return (
                   <div key={order.id} className="flex items-start justify-between gap-3 py-3">
                     <div className="min-w-0 flex-1">
@@ -346,6 +373,17 @@ export default function DriverAnalyticsPage() {
                         </div>
                       )}
                       <p className="mt-1 truncate text-xs text-muted-foreground">{order.customer_name}</p>
+                      {canCorrectToDelivered && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="mt-2"
+                          onClick={() => setCorrectionOrder(order)}
+                          disabled={markDelivered.isPending}
+                        >
+                          Mark Delivered
+                        </Button>
+                      )}
                     </div>
                     <Badge
                       variant={order.assignment_state === 'FAILED' ? 'destructive' : 'outline'}
@@ -403,6 +441,21 @@ export default function DriverAnalyticsPage() {
             No performance data yet.
           </div>
         )}
+
+        <DeliveryPaymentDialog
+          open={Boolean(correctionOrder)}
+          onOpenChange={(open) => {
+            if (!open) setCorrectionOrder(null);
+          }}
+          order={correctionOrder ? {
+            id: correctionOrder.id,
+            order_code: correctionOrder.order_code,
+            customer_name: correctionOrder.customer_name,
+            total_amount: correctionOrder.total_amount,
+          } : null}
+          onConfirm={handleCorrectToDelivered}
+          isPending={markDelivered.isPending}
+        />
       </div>
     </AppLayout>
   );
