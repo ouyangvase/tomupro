@@ -91,6 +91,8 @@ export function useRealtimeOrderUpdates(enabled = true) {
     invalidateOrderListQueries(queryClient);
     queryClient.invalidateQueries({ queryKey: ['driver-assignments'] });
     queryClient.invalidateQueries({ queryKey: ['driver-order-count'] });
+    queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
+    queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
 
     // Debounce stats/badges — they don't need sub-second freshness
     debouncedInvalidateStats(queryClient);
@@ -220,6 +222,10 @@ export function useRealtimePickupUpdates(enabled = true) {
         (payload) => {
           queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
           queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
+          queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
+          queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
+          queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
+          queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
           
           const newPickup = payload.new as { 
             driver_id?: string;
@@ -280,6 +286,10 @@ export function useRealtimeReturnUpdates(enabled = true) {
         (payload) => {
           queryClient.invalidateQueries({ queryKey: ['driver-returns'] });
           queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
+          queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
+          queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
+          queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
+          queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
           
           const newReturn = payload.new as { 
             driver_id?: string;

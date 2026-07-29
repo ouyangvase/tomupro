@@ -108,6 +108,8 @@ export function useCreateReturn() {
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
       queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
       queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
+      queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
       toast({ title: 'Return submitted successfully' });
     },
     onError: (error: Error) => {
@@ -144,6 +146,8 @@ export function useAcknowledgeReturn() {
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
       queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
       queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
+      queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
       toast({ title: 'Return acknowledged' });
     },
     onError: (error: Error) => {
@@ -170,6 +174,8 @@ export function useCancelReturn() {
       queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
       queryClient.invalidateQueries({ queryKey: ['driver-return-required'] });
       queryClient.invalidateQueries({ queryKey: ['driver-allocated-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
+      queryClient.invalidateQueries({ queryKey: ['suggested-pickup-qty'] });
       toast({ title: 'Return cancelled' });
     },
     onError: (error: Error) => {

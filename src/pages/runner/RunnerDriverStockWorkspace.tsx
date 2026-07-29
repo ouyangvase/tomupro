@@ -74,7 +74,7 @@ function productLabel(item: { product?: { sku_name?: string | null; sku_code?: s
 
 function pickupStatusLabel(status: DriverPickup['status']) {
   if (status === 'DRIVER_ACKED') return 'Acknowledged';
-  if (status === 'COMPLETED') return 'Completed';
+  if (status === 'COMPLETED') return 'Successful Pickup';
   if (status === 'CANCELLED') return 'Cancelled';
   return 'Pending driver';
 }
@@ -213,6 +213,14 @@ export default function RunnerDriverStockWorkspace({
     }
   }, [activeTab, hideCashSettlement, hideDriverStock]);
 
+  useEffect(() => {
+    if (!editingPickup) return;
+    const latestPickup = (pickups || []).find((pickup) => pickup.id === editingPickup.id);
+    if (!latestPickup || latestPickup.status !== 'PENDING_DRIVER_ACK') {
+      setEditingPickup(null);
+    }
+  }, [editingPickup, pickups]);
+
   const driverOptions: DriverOption[] = useMemo(
     () =>
       (drivers || []).map((item) => ({
@@ -310,34 +318,14 @@ export default function RunnerDriverStockWorkspace({
   }, [driverNameById, normalizedQuery, stockItems]);
 
   const unscheduledPickupNeeds = useMemo<PickupNeedDisplay[]>(() => {
-    const activeToday = (pickups || []).filter((pickup) =>
+    const editableToday = (pickups || []).filter((pickup) =>
       pickup.pickup_date.slice(0, 10) === todayDate
-      && pickup.status !== 'CANCELLED');
+      && pickup.status === 'PENDING_DRIVER_ACK');
 
-    return (pickupNeeds || []).flatMap((need) => {
-      const existingPickup = activeToday.find((pickup) => pickup.driver_id === need.driver_id);
-      const coveredByProduct = new Map<string, number>();
-      (existingPickup?.items || []).forEach((item) => {
-        coveredByProduct.set(
-          item.product_id,
-          (coveredByProduct.get(item.product_id) || 0) + Number(item.qty || 0),
-        );
-      });
-      const remainingItems = need.items
-        .map((item) => ({
-          ...item,
-          required_qty: Math.max(item.required_qty - (coveredByProduct.get(item.product_id) || 0), 0),
-        }))
-        .filter((item) => item.required_qty > 0);
-
-      if (remainingItems.length === 0) return [];
-      return [{
-        ...need,
-        items: remainingItems,
-        total_qty: remainingItems.reduce((sum, item) => sum + item.required_qty, 0),
-        existingPickup,
-      }];
-    });
+    return (pickupNeeds || []).map((need) => ({
+      ...need,
+      existingPickup: editableToday.find((pickup) => pickup.driver_id === need.driver_id),
+    }));
   }, [pickupNeeds, pickups, todayDate]);
 
   const filteredPickupNeeds = useMemo(() => {
@@ -580,7 +568,7 @@ export default function RunnerDriverStockWorkspace({
                         </div>
 
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {(pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED') && (
+                          {pickup.status === 'PENDING_DRIVER_ACK' && (
                             <Button size="sm" variant="outline" onClick={() => setEditingPickup(pickup)}>
                               <Pencil className="mr-1 h-4 w-4" /> Edit
                             </Button>
@@ -645,7 +633,7 @@ export default function RunnerDriverStockWorkspace({
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
-                                {(pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED') && (
+                                {pickup.status === 'PENDING_DRIVER_ACK' && (
                                   <Button size="sm" variant="outline" onClick={() => setEditingPickup(pickup)}>
                                     <Pencil className="mr-1 h-4 w-4" /> Edit
                                   </Button>

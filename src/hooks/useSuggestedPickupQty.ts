@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  buildPickupNeedItems,
-  type ActiveDriverDeliveryOrder,
+  fetchRunnerDriverPickupShortages,
 } from '@/hooks/useDriverPickups';
 import { fetchDriverAssignments } from '@/hooks/useDriverAssignments';
 
@@ -39,22 +38,32 @@ export function useSuggestedPickupQty(driverId: string | undefined, pickupDate: 
       if (!driverId) return { items: [], orderIds: [], orderCodes: [] } satisfies SuggestedPickup;
       if (!runnerScopeId) throw new Error('Not authenticated');
 
-      const orders = await fetchDriverAssignments({
-        runnerId: runnerScopeId,
-        driverId,
-        activeOnly: true,
-        includeItems: true,
-      });
+      const [orders, shortageRows] = await Promise.all([
+        fetchDriverAssignments({
+          runnerId: runnerScopeId,
+          driverId,
+          activeOnly: true,
+          includeItems: false,
+        }),
+        fetchRunnerDriverPickupShortages(runnerScopeId, driverId),
+      ]);
       if (!orders || orders.length === 0) {
         return { items: [], orderIds: [], orderCodes: [] } satisfies SuggestedPickup;
       }
 
       return {
-        items: buildPickupNeedItems(orders as ActiveDriverDeliveryOrder[]) as SuggestedQuantity[],
+        items: (shortageRows || []).map((item) => ({
+          product_id: item.product_id,
+          sku_name: item.sku_name,
+          sku_code: item.sku_code,
+          required_qty: Number(item.required_qty || 0),
+        })),
         orderIds: orders.map((order) => order.id).filter(Boolean),
         orderCodes: orders.map((order) => order.order_code || '-').filter(Boolean),
       } satisfies SuggestedPickup;
     },
     enabled: !!driverId && !!pickupDate && !!runnerScopeId,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   });
 }
