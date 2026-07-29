@@ -62,10 +62,9 @@ import { downloadXlsx } from '@/lib/xlsxExport';
 import {
   getDriverOperationalDateKey,
   getTodayDateKey,
-  hasDriverVisibleActiveStatus,
-  isHiddenFromDriverApps,
   isDriverWorkloadOrder,
   isStaleActiveDriverAssignment,
+  normalizeDriverStatus,
 } from '@/lib/driverOrderScope';
 import type { Order } from '@/types/database';
 
@@ -247,18 +246,14 @@ function isNormalArea(areaCode: string) {
   return !['NEEDS_REVIEW', 'SELF_PICKUP', 'CANCELLED'].includes(areaCode);
 }
 
-function isActivelyAssigned(order: RunnerOrder) {
-  return Boolean(order.driver_id)
-    && hasDriverVisibleActiveStatus(order)
-    && !isHiddenFromDriverApps(order);
-}
-
 function isAssignedForAreaSummary(order: RunnerOrder, _targetDateKey?: string) {
-  return isActivelyAssigned(order);
+  const driverStatus = normalizeDriverStatus(order.driver_status) || 'UNASSIGNED';
+  return Boolean(order.driver_id) && driverStatus !== 'UNASSIGNED';
 }
 
-function isActiveQueueUnassigned(order: RunnerOrder, targetDateKey: string) {
-  return !isAssignedForAreaSummary(order, targetDateKey);
+function isActiveQueueUnassigned(order: RunnerOrder, _targetDateKey: string) {
+  const driverStatus = normalizeDriverStatus(order.driver_status) || 'UNASSIGNED';
+  return !order.driver_id || driverStatus === 'UNASSIGNED';
 }
 
 function getLocalityLabel(order: RunnerOrder, areaCode: string) {
