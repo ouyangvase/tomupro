@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUpdateOrder } from '@/hooks/useOrders';
-import { useDriverAssignments } from '@/hooks/useDriverAssignments';
+import { useActiveDriverAssignments } from '@/hooks/useDriverAssignments';
 import { useDriverMarkDelivered, useDriverMarkFailed, useDriverParentRunner } from '@/hooks/useDrivers';
 import { useReasons } from '@/hooks/useReasons';
 import { useRouteSuggestion } from '@/hooks/useRouteSuggestion';
@@ -35,8 +35,6 @@ import { compressImage } from '@/lib/imageCompression';
 import { downloadXlsx } from '@/lib/xlsxExport';
 import {
   getTodayDateKey,
-  hasDriverVisibleActiveStatus,
-  isHiddenFromDriverApps,
   isCompletedDriverDeliveryAccepted,
   isSameDriverOperationalDate,
   normalizeDriverStatus,
@@ -119,11 +117,7 @@ export default function DriverInbox() {
   const { profile, user } = useAuth();
   const effectiveDriverId = profile?.id || user?.id;
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
-  const { data: assignmentOrders, isLoading } = useDriverAssignments({
-    driverId: effectiveDriverId,
-    activeOnly: true,
-    includeItems: true,
-  });
+  const { data: assignmentOrders, isLoading } = useActiveDriverAssignments(effectiveDriverId, true);
   const orders = assignmentOrders ?? EMPTY_DRIVER_INBOX_ORDERS;
   const { data: parentRunner } = useDriverParentRunner();
   const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY');
@@ -162,14 +156,10 @@ export default function DriverInbox() {
 
   // Keep every active assignment visible as soon as the runner assigns it.
   const filteredOrders = useMemo(() => {
-    const statusFiltered = myOrders.filter(
-      (order) => hasDriverVisibleActiveStatus(order) && !isHiddenFromDriverApps(order),
-    );
-    
-    if (!searchQuery.trim()) return statusFiltered;
+    if (!searchQuery.trim()) return myOrders;
     
     const query = searchQuery.toLowerCase().trim();
-    return statusFiltered.filter(order => {
+    return myOrders.filter(order => {
       const orderCode = (order.order_code || '').toLowerCase();
       const customerName = (order.customer_name || '').toLowerCase();
       const customerPhone = (order.phone || '').toLowerCase();
@@ -188,10 +178,7 @@ export default function DriverInbox() {
     });
   }, [myOrders, searchQuery]);
 
-  const pendingOrders = useMemo(() => filteredOrders.filter((order) => {
-    const status = normalizeDriverStatus(order.driver_status);
-    return status === 'ASSIGNED' || status === 'OUT_FOR_DELIVERY';
-  }), [filteredOrders]);
+  const pendingOrders = filteredOrders;
   const acceptedDeliveredOrders = useMemo(
     () => myOrders.filter((order) => isCompletedDriverDeliveryAccepted(order) && isSameDriverOperationalDate(order, todayDateKey)),
     [myOrders, todayDateKey],

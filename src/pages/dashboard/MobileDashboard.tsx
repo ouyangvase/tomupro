@@ -17,9 +17,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBND } from '@/lib/currency';
 import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
-import { useDriverAssignments } from '@/hooks/useDriverAssignments';
+import { useActiveDriverAssignments } from '@/hooks/useDriverAssignments';
 import { cn } from '@/lib/utils';
-import { getTodayDateKey } from '@/lib/driverOrderScope';
 import { GlobalSearchBar } from '@/components/GlobalSearchBar';
 import capybaraAdmin from '@/assets/capybara-admin.png';
 import capybaraRunner from '@/assets/capybara-runner.png';
@@ -464,12 +463,7 @@ function RunnerMobileDashboard() {
 function DriverMobileDashboard() {
   const { profile, user } = useAuth();
   const effectiveDriverId = profile?.id || user?.id;
-  const { data: activeJobs = [], isLoading } = useDriverAssignments({
-    driverId: effectiveDriverId,
-    dateTo: getTodayDateKey(),
-    activeOnly: true,
-    includeItems: false,
-  });
+  const { data: activeJobs = [], isLoading } = useActiveDriverAssignments(effectiveDriverId);
 
   const quickActions: QuickAction[] = [
     { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/delivery/inbox', badge: activeJobs.length },
@@ -482,9 +476,9 @@ function DriverMobileDashboard() {
   return (
     <div className="p-4 space-y-6">
       <HeroSummaryCard
-        title="Today's Deliveries"
+        title="Active Deliveries"
         value={activeJobs.length}
-        subtitle="Active jobs waiting"
+        subtitle="All assigned jobs waiting"
         viewAllLink="/delivery/inbox"
         viewAllLabel="Start Delivering"
         icon={<Truck className="h-5 w-5" />}

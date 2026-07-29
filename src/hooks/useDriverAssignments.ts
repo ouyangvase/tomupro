@@ -86,6 +86,17 @@ export function useDriverAssignments(query: DriverAssignmentQuery = {}) {
   });
 }
 
+export function useActiveDriverAssignments(
+  driverId?: string | null,
+  includeItems = false,
+) {
+  return useDriverAssignments({
+    driverId,
+    activeOnly: true,
+    includeItems,
+  });
+}
+
 export function summarizeDriverAssignments(assignments: DriverAssignment[]) {
   const delivered = assignments.filter((order) => order.assignment_state === 'DELIVERED').length;
   const failed = assignments.filter((order) => order.assignment_state === 'FAILED').length;

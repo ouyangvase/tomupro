@@ -24,7 +24,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAnalytics } from '@/hooks/useDriverAnalytics';
-import { useDriverAssignments, type DriverAssignment } from '@/hooks/useDriverAssignments';
+import {
+  useActiveDriverAssignments,
+  useDriverAssignments,
+  type DriverAssignment,
+} from '@/hooks/useDriverAssignments';
 import { useDriverMarkDelivered } from '@/hooks/useDrivers';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
@@ -91,6 +95,7 @@ export default function DriverAnalyticsPage() {
     dateTo: selectedDate,
     includeItems: true,
   });
+  const { data: activeAssignments = [] } = useActiveDriverAssignments(profile?.id);
 
   const selectedDay = analytics?.daily.find((day) => day.date === selectedDate);
   const selectedOrders = selectedOrdersWithItems ?? selectedDay?.orders ?? [];
@@ -182,8 +187,8 @@ export default function DriverAnalyticsPage() {
               <p className="mt-1 text-xl font-bold text-destructive">{summary?.failed ?? 0}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Pending</p>
-              <p className="mt-1 text-xl font-bold">{summary?.pending ?? 0}</p>
+              <p className="text-xs text-muted-foreground">Active deliveries</p>
+              <p className="mt-1 text-xl font-bold">{activeAssignments.length}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Pending acceptance</p>
@@ -334,7 +339,7 @@ export default function DriverAnalyticsPage() {
               </p>
             </div>
             <div className="flex items-center justify-between gap-4 py-3">
-              <p className="text-xs font-semibold text-muted-foreground">Total orders</p>
+              <p className="text-xs font-semibold text-muted-foreground">Selected-day orders</p>
               <p className="text-xl font-bold tabular-nums">{selectedDay?.assigned ?? 0}</p>
             </div>
           </div>
