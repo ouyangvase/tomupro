@@ -94,7 +94,8 @@ export function isCompletedDriverDeliveryAccepted(order: DriverOrderScopeFields)
 
 export function hasDriverVisibleActiveStatus(order: DriverOrderScopeFields) {
   return (
-    DRIVER_VISIBLE_STATUSES.includes(normalizeDriverStatus(order.driver_status) as typeof DRIVER_VISIBLE_STATUSES[number])
+    normalizeDriverStatus(order.status) === 'READY'
+    && DRIVER_VISIBLE_STATUSES.includes(normalizeDriverStatus(order.driver_status) as typeof DRIVER_VISIBLE_STATUSES[number])
   );
 }
 
@@ -115,7 +116,8 @@ export function isVisibleDriverInboxOrder(order: DriverOrderScopeFields, targetD
 export function isDriverWorkloadOrder(order: DriverOrderScopeFields, targetDateKey = getTodayDateKey()) {
   const orderDateKey = getDriverOperationalDateKey(order);
   return (
-    DRIVER_WORKLOAD_STATUSES.includes(normalizeDriverStatus(order.driver_status) as typeof DRIVER_WORKLOAD_STATUSES[number])
+    normalizeDriverStatus(order.status) === 'READY'
+    && DRIVER_WORKLOAD_STATUSES.includes(normalizeDriverStatus(order.driver_status) as typeof DRIVER_WORKLOAD_STATUSES[number])
     && !isHiddenFromDriverApps(order)
     && Boolean(orderDateKey && targetDateKey && orderDateKey <= targetDateKey)
   );

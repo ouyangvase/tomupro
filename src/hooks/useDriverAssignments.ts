@@ -83,6 +83,8 @@ export function useDriverAssignments(query: DriverAssignmentQuery = {}) {
     ],
     queryFn: () => fetchDriverAssignments(query),
     enabled: Boolean(query.runnerId || query.driverId),
+    refetchInterval: query.activeOnly ? 10_000 : false,
+    refetchIntervalInBackground: false,
   });
 }
 

@@ -89,6 +89,8 @@ export function useRealtimeOrderUpdates(enabled = true) {
 
     // Always invalidate the core order lists (lightweight, users need fresh data)
     invalidateOrderListQueries(queryClient);
+    queryClient.invalidateQueries({ queryKey: ['driver-assignments'] });
+    queryClient.invalidateQueries({ queryKey: ['driver-order-count'] });
 
     // Debounce stats/badges — they don't need sub-second freshness
     debouncedInvalidateStats(queryClient);
