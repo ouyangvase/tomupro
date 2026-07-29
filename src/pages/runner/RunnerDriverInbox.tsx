@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { useRunnerDriverOrders, useMyDrivers, useRunnerAcceptDelivery, useRunnerRejectDelivery, useBulkRunnerAcceptDelivery } from '@/hooks/useDrivers';
 import {
+  fetchRunnerDispatchAreaOrderIds,
   useApplyDriverAssignmentBatch,
   useCorrectOrderDeliveryArea,
   useDeliveryAreas,
@@ -960,33 +961,30 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
     clearSelection();
   };
 
-  const handleAssignRemaining = (areaCode: string) => {
+  const handleAssignRemaining = async (areaCode: string) => {
     if (!isNormalArea(areaCode)) return;
     setActiveAreaCode(areaCode);
     setAssignmentFilter('unassigned');
-    const remainingOrders = dispatchAreaOrders.filter((order) =>
-      inferAreaFromOrder(order) === areaCode
-      && isActiveQueueUnassigned(order, todayDateKey)
-    );
+    try {
+      const snapshots = await fetchRunnerDispatchAreaOrderIds({
+        operationalDate: activeQueueScopeDate,
+        deliveryAreaCode: areaCode,
+        unassignedOnly: true,
+      });
 
-    if (remainingOrders.length === 0) {
-      toast.error('No unassigned orders in this area');
-      return;
+      if (snapshots.length === 0) {
+        toast.error('No assignable orders in this area');
+        return;
+      }
+
+      selectOrders(snapshots.map((order) => order.order_id), snapshots);
+      setAssignmentOrderLimit(snapshots.length);
+      setAssignmentAction('ASSIGN');
+      setTargetDriver('');
+      setAssignmentDialogOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to load assignable orders');
     }
-
-    const snapshots: DispatchAreaOrderId[] = remainingOrders.map((order) => ({
-      order_id: order.id,
-      order_code: order.order_code || null,
-      delivery_area_code: areaCode,
-      delivery_area_name: getAreaLabel(areaCode, deliveryAreas),
-      collect_amount: getCollectAmount(order),
-    }));
-
-    selectOrders(remainingOrders.map((order) => order.id), snapshots);
-    setAssignmentOrderLimit(remainingOrders.length);
-    setAssignmentAction('ASSIGN');
-    setTargetDriver('');
-    setAssignmentDialogOpen(true);
   };
 
   const handleSelectGroup = (ordersToSelect: RunnerOrder[], unassignedOnly = false) => {
