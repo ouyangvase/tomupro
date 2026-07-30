@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Profile, AppRole } from '@/types/database';
 import type { ProfileStatus } from '@/components/auth/ProfileGate';
+import { clearVisibleOwnerIdsCache } from '@/lib/visibleOwnerIdsCache';
+import { lifecycleTrace } from '@/lib/lifecycleTrace';
 
 // Extended Profile type to include new status fields
 type UserStatus = 'active' | 'disabled' | 'resigned';
@@ -59,8 +61,6 @@ const SUPABASE_PROJECT_REF = getSupabaseProjectRef();
 const PROFILE_FETCH_TIMEOUT_MS = 5000;
 const PROFILE_FETCH_MAX_RETRIES = 0;
 const PROFILE_FETCH_BASE_DELAY_MS = 300;
-const AUTH_LOADING_TIMEOUT_MS = 1500;
-const PROFILE_LOADING_TIMEOUT_MS = 6000;
 const PROFILE_CACHE_PREFIX = `tomupro-profile-cache:${SUPABASE_PROJECT_REF}:`;
 const VALID_ROLES: AppRole[] = ['admin', 'manager', 'salesperson', 'runner', 'driver', 'runner_assistant', 'finance_viewer'];
 const ENABLE_PROFILE_REALTIME = import.meta.env.VITE_ENABLE_SUPABASE_REALTIME === 'true';
@@ -138,6 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const profileRequestSeqRef = useRef(0);
   const previousRoleRef = useRef<AppRole | null>(null);
   const initDoneRef = useRef(false);
+  const authUserIdRef = useRef<string | null>(null);
 
   // Update the ref whenever profile changes
   useEffect(() => {
@@ -149,6 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     clearProfileCache();
+    clearVisibleOwnerIdsCache();
     sessionStorage.clear();
     setUser(null);
     setSession(null);
@@ -172,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     clearProfileCache();
+    clearVisibleOwnerIdsCache();
     sessionStorage.clear();
 
     setUser(null);
@@ -268,6 +271,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             writeCachedProfile(newProfile);
             setProfileStatus('ready');
             setProfileError(null);
+            lifecycleTrace('user_loaded', { userId });
+            lifecycleTrace('role_loaded', { userId, role: newProfile.role });
+            lifecycleTrace('profile_ready', { userId, role: newProfile.role });
             return;
           }
 
@@ -306,6 +312,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[Auth] Background profile refresh failed:', lastError?.message || lastError);
       } else {
         console.error('[Auth] Profile fetch failed after all retries:', lastError);
+        lifecycleTrace('profile_failed', {
+          userId,
+          message: lastError?.message || 'unknown',
+        });
         setProfileStatus('error');
         setProfileError(lastError?.message || 'Failed to load profile after multiple attempts');
       }
@@ -343,43 +353,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.location.reload();
   }, []);
 
-  // Safety timeout — prevent forever-loading screen (reduced from 5s to 3s)
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (loading) {
-        console.warn('[Auth] Loading timeout - forcing completion');
-        isFetchingRef.current = false;
-        setLoading(false);
-      }
-    }, AUTH_LOADING_TIMEOUT_MS);
-
-    return () => clearTimeout(timeout);
-  }, [loading]);
-
-  useEffect(() => {
-    if (profileStatus !== 'loading') return;
-
-    const timeout = window.setTimeout(() => {
-      console.warn('[Auth] Profile loading watchdog timeout');
-      profileRequestSeqRef.current += 1;
-      isFetchingRef.current = false;
-      setProfileStatus('error');
-      setProfileError('Profile request timed out. Please try again.');
-      setLoading(false);
-    }, PROFILE_LOADING_TIMEOUT_MS);
-
-    return () => window.clearTimeout(timeout);
-  }, [profileStatus]);
-
   // ─── Single auth initialization via onAuthStateChange ───────────────
   // This effect has STABLE dependencies (no state that changes after profile loads)
   // so it runs exactly ONCE on mount.
   useEffect(() => {
     let mounted = true;
+    lifecycleTrace('auth_initializing');
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         if (!mounted) return;
+        lifecycleTrace('auth_event', {
+          event,
+          hasSession: Boolean(newSession),
+          userId: newSession?.user?.id || null,
+        });
 
         // Supabase owns the persisted session. A transient null refresh/update event
         // is not an authoritative logout and must not erase otherwise valid tokens.
@@ -391,6 +379,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Handle sign out
         if (event === 'SIGNED_OUT') {
+          authUserIdRef.current = null;
           clearAuthState();
           setLoading(false);
           return;
@@ -404,6 +393,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Valid session present (INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED)
         if (newSession?.user) {
+          if (authUserIdRef.current && authUserIdRef.current !== newSession.user.id) {
+            clearVisibleOwnerIdsCache();
+          }
+          authUserIdRef.current = newSession.user.id;
           setSession(newSession);
           setUser(newSession.user);
 
@@ -439,6 +432,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (mounted) {
           setLoading(false);
+          lifecycleTrace('auth_ready', {
+            userId: newSession?.user?.id || null,
+            profileStatus: profileUserIdRef.current === newSession?.user?.id ? 'ready' : 'pending',
+          });
         }
       }
     );
@@ -538,6 +535,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     clearProfileCache();
+    clearVisibleOwnerIdsCache();
     sessionStorage.clear();
 
     setUser(null);

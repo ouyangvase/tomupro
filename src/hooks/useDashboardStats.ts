@@ -105,7 +105,7 @@ export function useManagerStats() {
       if (!user) throw new Error('Not authenticated');
 
       // Get visible owner IDs from shared cache
-      const visibleIds = await getVisibleOwnerIdsCached();
+      const visibleIds = await getVisibleOwnerIdsCached(user.id);
 
       // If no visible IDs, return zeros
       if (!visibleIds || visibleIds.length === 0) {

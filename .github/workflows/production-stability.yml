@@ -1,0 +1,100 @@
+name: Production stability
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: First-load browser checks
+        if: ${{ secrets.TOMUPRO_AUDIT_CREDENTIALS_JSON != '' }}
+        env:
+          TOMUPRO_AUDIT_CREDENTIALS_JSON: ${{ secrets.TOMUPRO_AUDIT_CREDENTIALS_JSON }}
+          TOMUPRO_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          TOMUPRO_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          TOMUPRO_AUDIT_BASE_URL: http://127.0.0.1:4175
+        run: |
+          printf '%s' "$TOMUPRO_AUDIT_CREDENTIALS_JSON" > "$RUNNER_TEMP/tomupro-audit.json"
+          npm run preview -- --host 127.0.0.1 --port 4175 &
+          npx wait-on http://127.0.0.1:4175
+          npx playwright install --with-deps chrome
+          TOMUPRO_AUDIT_CREDENTIALS="$RUNNER_TEMP/tomupro-audit.json" npm run test:e2e
+
+      - name: Upload browser diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: test-results/playwright
+          if-no-files-found: ignore
+
+  health-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: ESLint baseline report
+        continue-on-error: true
+        run: npm run lint
+      - name: React Doctor baseline report
+        continue-on-error: true
+        timeout-minutes: 5
+        run: npm run doctor -- --verbose --scope changed
+      - name: Unused-code baseline report
+        continue-on-error: true
+        run: npm run health:unused
+      - name: Dependency graph baseline report
+        continue-on-error: true
+        run: npm run health:deps
+
+  load-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run preview -- --host 127.0.0.1 --port 4175 &
+      - run: npx wait-on http://127.0.0.1:4175
+      - name: Run Lighthouse audit
+        run: npx lighthouse http://127.0.0.1:4175/auth --preset=desktop --output=json --output-path=./lighthouse-report.json --chrome-flags="--headless --no-sandbox" --quiet
+      - name: Upload Lighthouse report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: lighthouse-report.json
+      - uses: grafana/setup-k6-action@v1
+      - run: npm run test:load

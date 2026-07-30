@@ -16,7 +16,7 @@ export interface ReadyOrderStats {
  * Respects salesperson visibility for non-admin roles.
  */
 export function useReadyOrderStats(salespersonIds?: string[], salespersonId?: string) {
-  const { user, role } = useAuth();
+  const { user, role, profileStatus } = useAuth();
 
   return useQuery({
     queryKey: ['ready-order-stats', user?.id, role, salespersonIds, salespersonId],
@@ -26,7 +26,7 @@ export function useReadyOrderStats(salespersonIds?: string[], salespersonId?: st
       // Get visible owner IDs for non-admin roles
       let visibleUserIds: string[] | null = null;
       if (role !== 'admin') {
-        visibleUserIds = await getVisibleOwnerIdsCached();
+        visibleUserIds = await getVisibleOwnerIdsCached(user.id);
       }
 
       // Helper to build base query with visibility filters
@@ -87,7 +87,8 @@ export function useReadyOrderStats(salespersonIds?: string[], salespersonId?: st
         codCount: codRes.count || 0,
       };
     },
-    enabled: !!user,
+    enabled: profileStatus === 'ready' && !!user && !!role,
+    refetchOnReconnect: true,
     refetchInterval: 120000,
   });
 }

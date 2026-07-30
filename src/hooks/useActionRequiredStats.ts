@@ -127,7 +127,7 @@ export function useManagerActionRequiredStats() {
 
       // Use server-side RPC (SECURITY DEFINER) for team visibility
       // This is the single source of truth — includes bindings, groups, profiles.manager_id, and data_shares
-      const visibleIds = await getVisibleOwnerIdsCached();
+      const visibleIds = await getVisibleOwnerIdsCached(user.id);
       if (!visibleIds) throw new Error('Failed to fetch visible owner IDs');
 
       const allMemberIds = visibleIds && visibleIds.length > 0

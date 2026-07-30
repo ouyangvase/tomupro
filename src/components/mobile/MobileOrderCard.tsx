@@ -55,6 +55,7 @@ export function MobileOrderCard({
 
   return (
     <Card
+      data-order-id={id}
       className={cn(
         'mobile-motion overflow-hidden rounded-[1.65rem] border-[#e5dacb] bg-[#fffdf8] p-3 shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_12px_34px_rgba(113,78,31,0.07)] transition-all duration-500',
         isSelected && 'border-[#c78b2f] bg-[#fff7ea] ring-2 ring-[#c78b2f]/18',

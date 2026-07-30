@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { lifecycleTrace } from '@/lib/lifecycleTrace';
 
 /**
  * Shared in-memory cache for get_visible_owner_ids RPC results.
@@ -12,9 +13,13 @@ import { supabase } from '@/integrations/supabase/client';
  */
 const CACHE_TTL_MS = 30_000;
 
-let cachedIds: string[] | null = null;
-let cacheTimestamp = 0;
-let inflightPromise: Promise<string[] | null> | null = null;
+type CacheEntry = {
+  ids: string[] | null;
+  timestamp: number;
+  inflight: Promise<string[] | null> | null;
+};
+
+const cacheByUser = new Map<string, CacheEntry>();
 
 /**
  * Get visible owner IDs with shared caching.
@@ -23,41 +28,67 @@ let inflightPromise: Promise<string[] | null> | null = null;
  * Multiple concurrent callers will share the same in-flight request
  * (request deduplication) and subsequent callers within TTL get cached data.
  */
-export async function getVisibleOwnerIdsCached(): Promise<string[] | null> {
+export async function getVisibleOwnerIdsCached(userId: string): Promise<string[] | null> {
+  if (!userId) {
+    throw new Error('A user ID is required to resolve visible owner IDs.');
+  }
+
   const now = Date.now();
+  const entry = cacheByUser.get(userId);
 
   // Return cached value if fresh
-  if (now - cacheTimestamp < CACHE_TTL_MS) {
-    return cachedIds;
+  if (entry && now - entry.timestamp < CACHE_TTL_MS) {
+    return entry.ids;
   }
 
   // Deduplicate concurrent requests
-  if (inflightPromise) {
-    return inflightPromise;
+  if (entry?.inflight) {
+    return entry.inflight;
   }
 
-  inflightPromise = (async () => {
+  lifecycleTrace('scope_fetch_started', { userId });
+  const inflight = (async () => {
     try {
       const { data, error } = await supabase.rpc('get_visible_owner_ids');
       if (error) {
-        console.warn('Failed to fetch visible owner IDs:', error);
-        // Return stale cache on error rather than failing
-        return cachedIds;
+        lifecycleTrace('scope_fetch_failed', { userId, code: error.code || null });
+        if (entry) return entry.ids;
+        throw error;
       }
-      cachedIds = data;
-      cacheTimestamp = Date.now();
-      return data as string[] | null;
+
+      const ids = data as string[] | null;
+      cacheByUser.set(userId, {
+        ids,
+        timestamp: Date.now(),
+        inflight: null,
+      });
+      lifecycleTrace('scope_fetch_succeeded', {
+        userId,
+        ownerCount: ids?.length ?? 0,
+      });
+      return ids;
     } finally {
-      inflightPromise = null;
+      const current = cacheByUser.get(userId);
+      if (current?.inflight === inflight) {
+        current.inflight = null;
+      }
     }
   })();
 
-  return inflightPromise;
+  cacheByUser.set(userId, {
+    ids: entry?.ids ?? null,
+    timestamp: entry?.timestamp ?? 0,
+    inflight,
+  });
+
+  return inflight;
 }
 
 /** Force-clear the cache (call after role change or logout). */
-export function clearVisibleOwnerIdsCache() {
-  cachedIds = null;
-  cacheTimestamp = 0;
-  inflightPromise = null;
+export function clearVisibleOwnerIdsCache(userId?: string) {
+  if (userId) {
+    cacheByUser.delete(userId);
+    return;
+  }
+  cacheByUser.clear();
 }

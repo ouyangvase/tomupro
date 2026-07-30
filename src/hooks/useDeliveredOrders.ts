@@ -16,7 +16,7 @@ export function useVisibleOwnerIds() {
     queryKey: ['visible-owner-ids', user?.id, role],
     queryFn: async () => {
       if (role === 'admin') return null; // admin sees everything
-      return getVisibleOwnerIdsCached();
+      return getVisibleOwnerIdsCached(user!.id);
     },
     enabled: !!user?.id,
     staleTime: 60000,

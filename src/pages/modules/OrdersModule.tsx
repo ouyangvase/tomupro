@@ -7,6 +7,7 @@ import ReadySales from '@/pages/sales/ReadySales';
 import SalespersonActionInbox from '@/pages/sales/SalespersonActionInbox';
 import RunnerDeliveredOrders from '@/pages/runner/RunnerDeliveredOrders';
 import CancelledSales from '@/pages/sales/CancelledSales';
+import { lifecycleTrace } from '@/lib/lifecycleTrace';
 
 const tabs = [
   { id: 'booking', label: 'Booking' },
@@ -20,6 +21,11 @@ export default function OrdersModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'booking';
   const highlightOrderId = searchParams.get('highlight') || null;
+
+  useEffect(() => {
+    lifecycleTrace('route_opened', { route: '/orders', tab: activeTab });
+    lifecycleTrace('orders_page_mounted', { tab: activeTab });
+  }, [activeTab]);
 
   // Clear highlight param after 4 seconds so it doesn't persist on refresh
   useEffect(() => {

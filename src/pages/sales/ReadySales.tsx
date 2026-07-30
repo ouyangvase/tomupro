@@ -33,6 +33,7 @@ import { Plus, UserCheck, Search, X, Upload, Download, ShoppingCart, Zap, Loader
 import { PageHero } from '@/components/dashboard/PageHero';
 import { DispatchStatusCards } from '@/components/orders/DispatchStatusCards';
 import { DispatchBoard } from '@/components/orders/DispatchBoard';
+import { OrdersLoadError } from '@/components/orders/OrdersLoadError';
 import capybaraSales from '@/assets/capybara-sales.png';
 import {
   Tooltip,
@@ -107,7 +108,16 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     searchQuery: serverSearch || undefined,
   }), [isManager, salespersonIds, role, profile?.id, serverSearch]);
 
-  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders(orderFilters, 50);
+  const {
+    data: orders,
+    isLoading,
+    isFetching,
+    error,
+    pagination,
+    setPage,
+    setPageSize,
+    refetch,
+  } = usePaginatedOrders(orderFilters, 50);
   const visibleOrderIds = useMemo(() => orders.map(order => order.id), [orders]);
   const { data: kitaniLinks = new Map() } = useKitaniOrderLinks(visibleOrderIds);
 
@@ -447,7 +457,9 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
         )}
 
         {/* Orders Board */}
-        {isMobile ? (
+        {error ? (
+          <OrdersLoadError error={error} onRetry={refetch} />
+        ) : isMobile ? (
           <div className="space-y-3">
             {isEditable && filteredOrders.length > 0 && (
               <MobileSelectAllCard

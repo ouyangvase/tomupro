@@ -6,8 +6,17 @@ import { installChunkRecovery } from "@/lib/installChunkRecovery";
 
 installChunkRecovery();
 
-createRoot(document.getElementById("root")!).render(
-  <AppErrorBoundary>
-    <App />
-  </AppErrorBoundary>,
-);
+async function bootstrap() {
+  if (import.meta.env.DEV) {
+    const { scan } = await import('react-scan');
+    scan({ enabled: true });
+  }
+
+  createRoot(document.getElementById("root")!).render(
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>,
+  );
+}
+
+void bootstrap();

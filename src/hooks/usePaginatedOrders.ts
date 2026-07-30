@@ -3,6 +3,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
+import { lifecycleTrace } from '@/lib/lifecycleTrace';
 import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/types/database';
 
 export interface PaginatedOrderFilters {
@@ -64,10 +65,9 @@ export function usePaginatedOrders(
   filters: PaginatedOrderFilters = {},
   initialPageSize = 50
 ): UsePaginatedOrdersResult {
-  const { user, role } = useAuth();
+  const { user, role, profileStatus } = useAuth();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(initialPageSize);
-  const [showInitialLoader, setShowInitialLoader] = useState(true);
 
   // Reset to page 1 when filters change
   const filterKey = JSON.stringify(filters);
@@ -76,9 +76,21 @@ export function usePaginatedOrders(
     if (prevFilterKey.current !== filterKey) {
       prevFilterKey.current = filterKey;
       setPage(1);
-      setShowInitialLoader(true);
     }
   }, [filterKey]);
+
+  useEffect(() => {
+    if (profileStatus !== 'ready' || !user?.id || !role) return;
+    lifecycleTrace('query_enabled', {
+      userId: user.id,
+      role,
+      queryKey: 'orders-paginated',
+      page,
+      pageSize,
+      status: filters.status || null,
+      hasSearch: Boolean(filters.searchQuery),
+    });
+  }, [filterKey, filters.searchQuery, filters.status, page, pageSize, profileStatus, role, user?.id]);
 
   const setPageSize = useCallback((size: number) => {
     setPageSizeState(size);
@@ -94,13 +106,32 @@ export function usePaginatedOrders(
     retryDelay: 1000,
     placeholderData: keepPreviousData,
     queryFn: async () => {
+      if (!user?.id || !role || profileStatus !== 'ready') {
+        throw new Error('Orders query started before authentication and profile scope were ready.');
+      }
+
+      const queryStartedAt = performance.now();
+      lifecycleTrace('orders_query_started', {
+        userId: user.id,
+        role,
+        page,
+        pageSize,
+        status: filters.status || null,
+      });
+
       // Get visible owner IDs for team visibility
       // Skip for admin (sees everything) and when runnerId is set (runner views own assigned orders)
       let visibleUserIds: string[] | null = null;
       const skipVisibilityRpc = role === 'admin' || !!filters.runnerId || Boolean(filters.runnerIds?.length);
       if (!skipVisibilityRpc) {
-        visibleUserIds = await getVisibleOwnerIdsCached();
+        visibleUserIds = await getVisibleOwnerIdsCached(user.id);
       }
+      lifecycleTrace('runner_scope_loaded', {
+        userId: user.id,
+        role,
+        visibleOwnerIds: visibleUserIds || [],
+        unrestricted: visibleUserIds === null,
+      });
 
       // Build the query with count
       let query = supabase
@@ -245,7 +276,14 @@ export function usePaginatedOrders(
       }
 
       const { data: ordersData, error: ordersError, count } = await query;
-      if (ordersError) throw ordersError;
+      if (ordersError) {
+        lifecycleTrace('orders_query_failed', {
+          userId: user.id,
+          code: ordersError.code || null,
+          durationMs: Math.round(performance.now() - queryStartedAt),
+        });
+        throw ordersError;
+      }
 
       // Enrich with user names
       const userIds = new Set<string>();
@@ -277,23 +315,19 @@ export function usePaginatedOrders(
           : null,
       }));
 
-      return { orders: orders as unknown as Order[], count: count || 0 };
+      const result = { orders: orders as unknown as Order[], count: count || 0 };
+      lifecycleTrace(result.count === 0 ? 'orders_query_empty' : 'orders_query_succeeded', {
+        userId: user.id,
+        httpStatus: 200,
+        resultCount: result.orders.length,
+        totalCount: result.count,
+        durationMs: Math.round(performance.now() - queryStartedAt),
+      });
+      return result;
     },
-    enabled: !!user?.id,
+    enabled: profileStatus === 'ready' && !!user?.id && !!role,
+    refetchOnReconnect: true,
   });
-
-  useEffect(() => {
-    if (!isLoading) {
-      setShowInitialLoader(false);
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setShowInitialLoader(false);
-    }, 900);
-
-    return () => window.clearTimeout(timeout);
-  }, [isLoading, filterKey, page, pageSize]);
 
   const totalCount = queryResult?.count || 0;
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
@@ -307,7 +341,7 @@ export function usePaginatedOrders(
 
   return {
     data: queryResult?.orders || [],
-    isLoading: isLoading && showInitialLoader,
+    isLoading,
     isFetching,
     error: error as Error | null,
     pagination: {
@@ -330,7 +364,7 @@ export function useAllOrderIds(
   filters: PaginatedOrderFilters = {},
   enabled = true
 ) {
-  const { user, role } = useAuth();
+  const { user, role, profileStatus } = useAuth();
 
   return useQuery({
     queryKey: ['orders-all-ids', filters, role, user?.id],
@@ -341,7 +375,8 @@ export function useAllOrderIds(
       let visibleUserIds: string[] | null = null;
       const skipVisibilityRpc = role === 'admin' || !!filters.runnerId;
       if (!skipVisibilityRpc) {
-        visibleUserIds = await getVisibleOwnerIdsCached();
+        if (!user?.id) throw new Error('Not authenticated');
+        visibleUserIds = await getVisibleOwnerIdsCached(user.id);
       }
 
       // Only select IDs — lightweight query, no joins
@@ -467,6 +502,7 @@ export function useAllOrderIds(
 
       return allIds;
     },
-    enabled: enabled && !!user?.id,
+    enabled: enabled && profileStatus === 'ready' && !!user?.id && !!role,
+    refetchOnReconnect: true,
   });
 }

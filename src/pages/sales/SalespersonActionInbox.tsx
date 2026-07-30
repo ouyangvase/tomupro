@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { cn } from '@/lib/utils';
+import { OrdersLoadError } from '@/components/orders/OrdersLoadError';
 import { exportOrderLines } from '@/lib/csv';
 import { toast } from 'sonner';
 import { getSignedStorageUrl } from '@/lib/storageUrls';
@@ -227,7 +228,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     queryKey: ['visible-owner-ids', profile?.id],
     queryFn: async () => {
       const { getVisibleOwnerIdsCached } = await import('@/lib/visibleOwnerIdsCache');
-      return getVisibleOwnerIdsCached();
+      return getVisibleOwnerIdsCached(profile!.id);
     },
     enabled: !!profile?.id && role === 'manager',
     staleTime: 60000,
@@ -264,7 +265,16 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     return filters;
   }, [role, profile?.id, viewMode, selectedMember, salespersonFilter, visibleOwnerIds, searchQuery]);
 
-  const { data: allOrders = [], isFetching, pagination, setPage, setPageSize, refetch } = usePaginatedOrders(orderFilters, 50);
+  const {
+    data: allOrders = [],
+    isLoading,
+    isFetching,
+    error,
+    pagination,
+    setPage,
+    setPageSize,
+    refetch,
+  } = usePaginatedOrders(orderFilters, 50);
 
   const canViewAll = role === 'admin';
   const canViewGroup = role === 'manager';
@@ -892,7 +902,11 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
         {/* ════════════════════════════════════════════
             5. ISSUE TABLE / MOBILE LIST
             ════════════════════════════════════════════ */}
-        {actionRequiredOrders.length === 0 ? (
+        {error ? (
+          <OrdersLoadError error={error} onRetry={refetch} />
+        ) : isLoading ? (
+          <CapybaraState type="loading" />
+        ) : actionRequiredOrders.length === 0 ? (
           <CapybaraState type="empty" title="All clear!" description="No orders requiring action right now. Great job! 🎉" />
         ) : isMobile ? (
           <div className="space-y-3">

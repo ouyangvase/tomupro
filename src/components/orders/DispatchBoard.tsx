@@ -8,6 +8,7 @@ import capybaraEmpty from '@/assets/capybara-empty.png';
 import type { Order } from '@/types/database';
 import type { OrderStockResult } from '@/hooks/useStockCalculation';
 import type { ReactNode } from 'react';
+import { lifecycleTrace } from '@/lib/lifecycleTrace';
 
 interface DispatchBoardProps {
   orders: Order[];
@@ -52,6 +53,7 @@ export function DispatchBoard({
   renderKitaniAction,
 }: DispatchBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const renderedResultRef = useRef<string | null>(null);
   const allIdsCount = allSelectableIds ? allSelectableIds.length : orders.length;
   const isAllSelected = allIdsCount > 0 &&
     (allSelectableIds
@@ -83,6 +85,28 @@ export function DispatchBoard({
       return () => clearTimeout(timer);
     }
   }, [highlightOrderId, loading, orders]);
+
+  useEffect(() => {
+    if (loading) return;
+    const signature = `${page}:${orders.length}:${totalCount}`;
+    if (renderedResultRef.current === signature) return;
+    renderedResultRef.current = signature;
+    lifecycleTrace('orders_rendered', {
+      page,
+      renderedCount: orders.length,
+      totalCount,
+      state: orders.length > 0 ? 'data' : 'empty',
+    });
+  }, [loading, orders.length, page, totalCount]);
+
+  if (loading && orders.length === 0) {
+    return (
+      <div className="flex items-center justify-center gap-3 py-20 text-muted-foreground">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <span className="text-sm">Loading orders...</span>
+      </div>
+    );
+  }
 
   if (orders.length === 0) {
     return (

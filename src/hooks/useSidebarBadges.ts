@@ -45,7 +45,7 @@ export function useSidebarBadges(): Record<string, number> {
       }
 
       if (role === 'manager') {
-        const visibleIds = await getVisibleOwnerIdsCached();
+        const visibleIds = await getVisibleOwnerIdsCached(user.id);
         if (!visibleIds || visibleIds.length === 0) return 0;
         const { count, error } = await supabase
           .from('orders')

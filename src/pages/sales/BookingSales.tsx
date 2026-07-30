@@ -19,6 +19,7 @@ import {
 import { PageHero } from '@/components/dashboard/PageHero';
 import { DispatchStatusCards } from '@/components/orders/DispatchStatusCards';
 import { DispatchBoard } from '@/components/orders/DispatchBoard';
+import { OrdersLoadError } from '@/components/orders/OrdersLoadError';
 import capybaraDispatcher from '@/assets/capybara-dispatcher.png';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
@@ -103,7 +104,16 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
     nextDeliveryDateTo: dateRange.to,
   }), [isManager, salespersonIds, role, profile?.id, serverSearch, dateRange]);
 
-  const { data: orders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders(orderFilters, 50);
+  const {
+    data: orders,
+    isLoading,
+    isFetching,
+    error,
+    pagination,
+    setPage,
+    setPageSize,
+    refetch,
+  } = usePaginatedOrders(orderFilters, 50);
   const visibleOrderIds = useMemo(() => orders.map(order => order.id), [orders]);
   const { data: kitaniLinks = new Map() } = useKitaniOrderLinks(visibleOrderIds);
 
@@ -410,7 +420,9 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
           )}
 
           {/* Order List */}
-          {isLoading ? (
+          {error ? (
+            <OrdersLoadError error={error} onRetry={refetch} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center gap-3 py-12">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               <span className="text-muted-foreground text-sm">Loading...</span>
@@ -682,28 +694,32 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
         )}
 
         {/* Dispatch Board */}
-        <DispatchBoard
-          orders={filteredOrders}
-          loading={isLoading}
-          selectedRows={selectedRows}
-          onSelectionChange={setSelectedRows}
-          onRowClick={handleRowClick}
-          selectable={isEditable}
-          page={pagination.page}
-          pageSize={pagination.pageSize}
-          totalCount={pagination.totalCount}
-          totalPages={pagination.totalPages}
-          onPageChange={setPage}
-          isFetching={isFetching}
-          allSelectableIds={allOrderIds}
-          highlightOrderId={highlightOrderId}
-          showStockStatus
-          stockResults={stockResults}
-          onStockBadgeClick={(order) => setStockDetailOrder(order)}
-          renderKitaniAction={(order) => (
-            <KitaniInvitationButton order={order} link={kitaniLinks.get(order.id)} />
-          )}
-        />
+        {error ? (
+          <OrdersLoadError error={error} onRetry={refetch} />
+        ) : (
+          <DispatchBoard
+            orders={filteredOrders}
+            loading={isLoading}
+            selectedRows={selectedRows}
+            onSelectionChange={setSelectedRows}
+            onRowClick={handleRowClick}
+            selectable={isEditable}
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            totalCount={pagination.totalCount}
+            totalPages={pagination.totalPages}
+            onPageChange={setPage}
+            isFetching={isFetching}
+            allSelectableIds={allOrderIds}
+            highlightOrderId={highlightOrderId}
+            showStockStatus
+            stockResults={stockResults}
+            onStockBadgeClick={(order) => setStockDetailOrder(order)}
+            renderKitaniAction={(order) => (
+              <KitaniInvitationButton order={order} link={kitaniLinks.get(order.id)} />
+            )}
+          />
+        )}
       </div>
 
       <OrderEditor

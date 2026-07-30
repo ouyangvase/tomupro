@@ -40,6 +40,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { OrdersLoadError } from '@/components/orders/OrdersLoadError';
 
 export default function CancelledSales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
@@ -68,7 +69,16 @@ export default function CancelledSales({ highlightOrderId }: { highlightOrderId?
   }), [isManager, salespersonIds, role, profile?.id, serverSearch]);
 
   // Use paginated orders hook
-  const { data: allOrders, isLoading, isFetching, pagination, setPage, setPageSize } = usePaginatedOrders(orderFilters, 50);
+  const {
+    data: allOrders,
+    isLoading,
+    isFetching,
+    error,
+    pagination,
+    setPage,
+    setPageSize,
+    refetch,
+  } = usePaginatedOrders(orderFilters, 50);
 
   // Fetch ALL matching IDs for cross-page "Select All"
   const { data: allOrderIds = [] } = useAllOrderIds(orderFilters);
@@ -472,6 +482,9 @@ export default function CancelledSales({ highlightOrderId }: { highlightOrderId?
           </div>
         </div>
 
+        {error ? (
+          <OrdersLoadError error={error} onRetry={refetch} />
+        ) : (
         <DataGrid
           data={filteredOrders}
           columns={columns}
@@ -503,6 +516,7 @@ export default function CancelledSales({ highlightOrderId }: { highlightOrderId?
             ) : undefined
           }
         />
+        )}
       </div>
 
       {/* Restore Dialog */}

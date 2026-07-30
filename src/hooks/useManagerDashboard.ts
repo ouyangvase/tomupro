@@ -69,7 +69,7 @@ export function useManagerDashboard(period: PeriodType = 'mtd') {
       const periodStartStr = format(periodStart, 'yyyy-MM-dd');
 
       // Use shared cache for team visibility (avoids redundant RPC calls)
-      const visibleIds = await getVisibleOwnerIdsCached();
+      const visibleIds = await getVisibleOwnerIdsCached(user.id);
 
       const teamIds = visibleIds && visibleIds.length > 0
         ? visibleIds

@@ -304,7 +304,9 @@ export async function fetchOrdersForExport(
     let visibleUserIds: string[] | null = null;
     const skipVisibilityRpc = role === 'admin' || !!filters.runnerId;
     if (!skipVisibilityRpc) {
-      visibleUserIds = await getVisibleOwnerIdsCached();
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) throw error || new Error('Not authenticated');
+      visibleUserIds = await getVisibleOwnerIdsCached(user.id);
     }
 
     // Phase 1: Fetch all matching IDs (lightweight)
