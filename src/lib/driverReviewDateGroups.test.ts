@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getDriverActionTimestamp,
   groupDriverReviewOrdersByDate,
+  isPendingDriverReviewOrder,
 } from '@/lib/driverReviewDateGroups';
 
 describe('groupDriverReviewOrdersByDate', () => {
@@ -47,5 +48,32 @@ describe('groupDriverReviewOrdersByDate', () => {
 
     expect(getDriverActionTimestamp(historicalFailedOrder)).toBe(historicalFailedOrder.updated_at);
     expect(groupDriverReviewOrdersByDate([historicalFailedOrder])[0].dateKey).toBe('2026-07-29');
+  });
+
+  it.each([
+    ['DELIVERED', 'DRIVER_DELIVERED'],
+    ['FAILED_DELIVERY', 'DRIVER_FAILED'],
+    ['CANCELLED', 'DRIVER_DELIVERED'],
+  ] as const)(
+    'excludes final Runner outcome %s from the pending review queue',
+    (runnerStatus, driverStatus) => {
+      expect(isPendingDriverReviewOrder({
+        id: 'final-order',
+        assignment_state: 'PENDING_ACCEPTANCE',
+        driver_id: 'driver-1',
+        driver_status: driverStatus,
+        runner_status: runnerStatus,
+      }, driverStatus)).toBe(false);
+    },
+  );
+
+  it('keeps an unreviewed Driver outcome in the pending review queue', () => {
+    expect(isPendingDriverReviewOrder({
+      id: 'pending-order',
+      assignment_state: 'PENDING_ACCEPTANCE',
+      driver_id: 'driver-1',
+      driver_status: 'DRIVER_DELIVERED',
+      runner_status: 'ASSIGNED',
+    }, 'DRIVER_DELIVERED')).toBe(true);
   });
 });

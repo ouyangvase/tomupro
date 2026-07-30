@@ -2,12 +2,24 @@ const BRUNEI_TIME_ZONE = 'Asia/Brunei';
 
 export type DriverReviewOrder = {
   id: string;
+  assignment_state?: string | null;
+  runner_status?: string | null;
+  driver_id?: string | null;
   driver_status?: string | null;
   total_amount?: number | null;
   driver_delivered_at?: string | null;
   driver_failed_at?: string | null;
   updated_at?: string | null;
 };
+
+const FINAL_RUNNER_OUTCOMES = new Set([
+  'DELIVERED',
+  'FAILED_DELIVERY',
+  'CANCELLED',
+  'CANCELED',
+  'RETURNED',
+  'REFUNDED',
+]);
 
 export type DriverReviewDateGroup<T extends DriverReviewOrder> = {
   dateKey: string;
@@ -37,6 +49,16 @@ export function getDriverActionTimestamp(order: DriverReviewOrder) {
     return order.driver_failed_at || order.updated_at || null;
   }
   return null;
+}
+
+export function isPendingDriverReviewOrder(
+  order: DriverReviewOrder,
+  expectedDriverStatus: 'DRIVER_DELIVERED' | 'DRIVER_FAILED',
+) {
+  return order.assignment_state === 'PENDING_ACCEPTANCE'
+    && order.driver_status === expectedDriverStatus
+    && Boolean(order.driver_id)
+    && !FINAL_RUNNER_OUTCOMES.has(String(order.runner_status || '').toUpperCase());
 }
 
 export function groupDriverReviewOrdersByDate<T extends DriverReviewOrder>(

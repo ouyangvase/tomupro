@@ -50,6 +50,7 @@ import {
   formatDriverActionDateTime,
   getDriverActionTimestamp,
   groupDriverReviewOrdersByDate,
+  isPendingDriverReviewOrder,
   type DriverReviewDateGroup,
 } from '@/lib/driverReviewDateGroups';
 import type { Order, OrderItem } from '@/types/database';
@@ -130,19 +131,11 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   }, [users, drivers]);
 
   const pendingAcceptanceOrders = useMemo(() => (
-    assignments.filter((order) =>
-      order.assignment_state === 'PENDING_ACCEPTANCE' &&
-      order.driver_status === 'DRIVER_DELIVERED' &&
-      !!order.driver_id
-    )
+    assignments.filter((order) => isPendingDriverReviewOrder(order, 'DRIVER_DELIVERED'))
   ), [assignments]);
 
   const failedReviewOrders = useMemo(() => (
-    assignments.filter((order) =>
-      order.assignment_state === 'PENDING_ACCEPTANCE' &&
-      order.driver_status === 'DRIVER_FAILED' &&
-      !!order.driver_id
-    )
+    assignments.filter((order) => isPendingDriverReviewOrder(order, 'DRIVER_FAILED'))
   ), [assignments]);
 
   const pendingOrderIds = useMemo(
