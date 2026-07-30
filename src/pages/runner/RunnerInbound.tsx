@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useMemo, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +41,9 @@ import {
 } from 'lucide-react';
 import capybaraImport from '@/assets/capybara-import.png';
 import { PageHero } from '@/components/dashboard/PageHero';
-import { InboundExcelImport } from '@/components/inbound/InboundExcelImport';
+
+const InboundExcelImport = lazy(() => import('@/components/inbound/InboundExcelImport')
+  .then((module) => ({ default: module.InboundExcelImport })));
 
 interface InboundItemDraft {
   id: string;
@@ -203,11 +205,13 @@ export default function RunnerInbound({ runnerIdOverride }: { runnerIdOverride?:
         />
 
         {runnerScopeId ? (
-          <InboundExcelImport
-            runnerId={runnerScopeId}
-            boundUsers={boundUsers}
-            disabled={boundUsersLoading || boundUsers.length === 0}
-          />
+          <Suspense fallback={<div className="h-16 animate-pulse rounded-lg border bg-muted/30" />}>
+            <InboundExcelImport
+              runnerId={runnerScopeId}
+              boundUsers={boundUsers}
+              disabled={boundUsersLoading || boundUsers.length === 0}
+            />
+          </Suspense>
         ) : null}
 
         {/* Workflow Steps Hint */}

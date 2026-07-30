@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { UserRound } from 'lucide-react';
-import { InboundExcelImport } from '@/components/inbound/InboundExcelImport';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRunnerBoundUsers } from '@/hooks/useRunnerBoundUsers';
 import { useUsers } from '@/hooks/useUsers';
+
+const InboundExcelImport = lazy(() => import('@/components/inbound/InboundExcelImport')
+  .then((module) => ({ default: module.InboundExcelImport })));
 
 export function AdminInboundExcelImport() {
   const { data: users = [], isLoading: usersLoading } = useUsers();
@@ -48,11 +50,13 @@ export function AdminInboundExcelImport() {
       </div>
 
       {runnerId ? (
-        <InboundExcelImport
-          runnerId={runnerId}
-          boundUsers={boundUsers}
-          disabled={boundUsersLoading || boundUsers.length === 0}
-        />
+        <Suspense fallback={<div className="h-16 animate-pulse rounded-lg border bg-muted/30" />}>
+          <InboundExcelImport
+            runnerId={runnerId}
+            boundUsers={boundUsers}
+            disabled={boundUsersLoading || boundUsers.length === 0}
+          />
+        </Suspense>
       ) : null}
     </div>
   );
