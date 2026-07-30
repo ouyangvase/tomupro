@@ -6,6 +6,7 @@ export type DriverReviewOrder = {
   runner_status?: string | null;
   driver_id?: string | null;
   driver_status?: string | null;
+  payment_method?: string | null;
   total_amount?: number | null;
   driver_delivered_at?: string | null;
   driver_failed_at?: string | null;
@@ -27,7 +28,8 @@ export type DriverReviewDateGroup<T extends DriverReviewOrder> = {
   deliveredOrders: T[];
   failedOrders: T[];
   deliveredAmount: number;
-  failedAmount: number;
+  cashAmount: number;
+  transferAmount: number;
 };
 
 function getBruneiDateKey(timestamp: string) {
@@ -77,16 +79,21 @@ export function groupDriverReviewOrdersByDate<T extends DriverReviewOrder>(
       deliveredOrders: [],
       failedOrders: [],
       deliveredAmount: 0,
-      failedAmount: 0,
+      cashAmount: 0,
+      transferAmount: 0,
     };
     const amount = Number(order.total_amount || 0);
 
     if (order.driver_status === 'DRIVER_DELIVERED') {
       group.deliveredOrders.push(order);
       group.deliveredAmount += amount;
+      if (order.payment_method === 'TRANSFER') {
+        group.transferAmount += amount;
+      } else if (order.payment_method === 'COD' || order.payment_method === 'CASH') {
+        group.cashAmount += amount;
+      }
     } else if (order.driver_status === 'DRIVER_FAILED') {
       group.failedOrders.push(order);
-      group.failedAmount += amount;
     }
 
     if (new Date(actionAt).getTime() > new Date(group.latestActionAt).getTime()) {

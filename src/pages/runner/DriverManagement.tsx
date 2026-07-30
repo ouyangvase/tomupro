@@ -70,8 +70,8 @@ type DriverReviewGroup = {
   deliveredOrders: Order[];
   failedOrders: Order[];
   deliveredAmount: number;
-  failedAmount: number;
-  proofCount: number;
+  cashAmount: number;
+  transferAmount: number;
   dateGroups: DriverReviewDateGroup<Order>[];
 };
 
@@ -196,8 +196,8 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
         deliveredOrders: [],
         failedOrders: [],
         deliveredAmount: 0,
-        failedAmount: 0,
-        proofCount: 0,
+        cashAmount: 0,
+        transferAmount: 0,
         dateGroups: [],
       };
       return existing;
@@ -206,16 +206,19 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     pendingAcceptanceOrders.forEach((order) => {
       const existing = ensureGroup(order);
       existing.deliveredOrders.push(order);
-      existing.deliveredAmount += Number(order.total_amount || 0);
-      existing.proofCount += proofsByOrder[order.id]?.length || 0;
+      const amount = Number(order.total_amount || 0);
+      existing.deliveredAmount += amount;
+      if (order.payment_method === 'TRANSFER') {
+        existing.transferAmount += amount;
+      } else if (order.payment_method === 'COD') {
+        existing.cashAmount += amount;
+      }
       groups.set(existing.driverId, existing);
     });
 
     failedReviewOrders.forEach((order) => {
       const existing = ensureGroup(order);
       existing.failedOrders.push(order);
-      existing.failedAmount += Number(order.total_amount || 0);
-      existing.proofCount += proofsByOrder[order.id]?.length || 0;
       groups.set(existing.driverId, existing);
     });
 
@@ -231,7 +234,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
         (b.deliveredOrders.length + b.failedOrders.length) -
         (a.deliveredOrders.length + a.failedOrders.length)
       ) || a.driverName.localeCompare(b.driverName));
-  }, [pendingAcceptanceOrders, failedReviewOrders, proofsByOrder, userById]);
+  }, [pendingAcceptanceOrders, failedReviewOrders, userById]);
 
   const pendingTotalAmount = useMemo(
     () => pendingAcceptanceOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0),
@@ -421,22 +424,18 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                                   {group.failedOrders.length} failed
                                 </Badge>
                               </div>
-                              <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                              <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
                                 <div className="rounded-xl bg-secondary/40 p-2">
                                   <p className="text-[10px] uppercase text-muted-foreground">Delivered amount</p>
                                   <p className="font-black">{formatBND(group.deliveredAmount)}</p>
                                 </div>
                                 <div className="rounded-xl bg-secondary/40 p-2">
-                                  <p className="text-[10px] uppercase text-muted-foreground">Failed amount</p>
-                                  <p className="font-black">{formatBND(group.failedAmount)}</p>
+                                  <p className="text-[10px] uppercase text-muted-foreground">Cash amount</p>
+                                  <p className="font-black">{formatBND(group.cashAmount)}</p>
                                 </div>
                                 <div className="rounded-xl bg-secondary/40 p-2">
-                                  <p className="text-[10px] uppercase text-muted-foreground">Proof photos</p>
-                                  <p className="font-black">{group.proofCount}</p>
-                                </div>
-                                <div className="rounded-xl bg-secondary/40 p-2">
-                                  <p className="text-[10px] uppercase text-muted-foreground">List</p>
-                                  <p className="font-black">{isOpen ? 'Open' : 'Closed'}</p>
+                                  <p className="text-[10px] uppercase text-muted-foreground">Transfer amount</p>
+                                  <p className="font-black">{formatBND(group.transferAmount)}</p>
                                 </div>
                               </div>
                             </div>
@@ -474,7 +473,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                                   - new Date(getDriverActionTimestamp(a) || 0).getTime(),
                               );
                               const dateOrderCount = dateOrders.length;
-                              const dateTotal = dateGroup.deliveredAmount + dateGroup.failedAmount;
+                              const dateTotal = dateGroup.cashAmount + dateGroup.transferAmount;
 
                               return (
                                 <div key={dateGroupId} className="overflow-hidden rounded-xl border bg-background">
@@ -498,13 +497,13 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                                       </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                                      <div className="rounded-lg bg-emerald-500/10 p-2">
-                                        <p className="text-[10px] uppercase text-muted-foreground">Delivered amount</p>
-                                        <p className="font-black text-emerald-700">{formatBND(dateGroup.deliveredAmount)}</p>
+                                      <div className="rounded-lg bg-amber-500/10 p-2">
+                                        <p className="text-[10px] uppercase text-muted-foreground">Cash amount</p>
+                                        <p className="font-black text-amber-700">{formatBND(dateGroup.cashAmount)}</p>
                                       </div>
-                                      <div className="rounded-lg bg-red-500/10 p-2">
-                                        <p className="text-[10px] uppercase text-muted-foreground">Failed amount</p>
-                                        <p className="font-black text-red-700">{formatBND(dateGroup.failedAmount)}</p>
+                                      <div className="rounded-lg bg-sky-500/10 p-2">
+                                        <p className="text-[10px] uppercase text-muted-foreground">Transfer amount</p>
+                                        <p className="font-black text-sky-700">{formatBND(dateGroup.transferAmount)}</p>
                                       </div>
                                       <div className="rounded-lg bg-secondary/50 p-2">
                                         <p className="text-[10px] uppercase text-muted-foreground">Date total</p>

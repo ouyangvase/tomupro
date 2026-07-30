@@ -11,18 +11,21 @@ describe('groupDriverReviewOrdersByDate', () => {
       {
         id: 'delivered-late',
         driver_status: 'DRIVER_DELIVERED',
+        payment_method: 'COD',
         total_amount: 39,
         driver_delivered_at: '2026-07-30T16:30:00.000Z',
       },
       {
         id: 'failed-same-day',
         driver_status: 'DRIVER_FAILED',
+        payment_method: 'TRANSFER',
         total_amount: 69,
         driver_failed_at: '2026-07-31T03:00:00.000Z',
       },
       {
         id: 'delivered-previous-day',
         driver_status: 'DRIVER_DELIVERED',
+        payment_method: 'TRANSFER',
         total_amount: 20,
         driver_delivered_at: '2026-07-30T10:00:00.000Z',
       },
@@ -31,7 +34,13 @@ describe('groupDriverReviewOrdersByDate', () => {
     expect(groups.map((group) => group.dateKey)).toEqual(['2026-07-31', '2026-07-30']);
     expect(groups[0]).toMatchObject({
       deliveredAmount: 39,
-      failedAmount: 69,
+      cashAmount: 39,
+      transferAmount: 0,
+    });
+    expect(groups[1]).toMatchObject({
+      deliveredAmount: 20,
+      cashAmount: 0,
+      transferAmount: 20,
     });
     expect(groups[0].deliveredOrders.map((order) => order.id)).toEqual(['delivered-late']);
     expect(groups[0].failedOrders.map((order) => order.id)).toEqual(['failed-same-day']);
