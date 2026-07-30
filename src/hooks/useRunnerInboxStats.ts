@@ -62,31 +62,42 @@ export async function fetchRunnerOperationalStats(runnerId: string): Promise<Run
   }, {} as RunnerOperationalStats);
 }
 
-export function runnerOperationalStatsQueryKey(runnerId?: string) {
+export function runnerOperationalStatsQueryKey(runnerId?: string | string[]) {
   return ['runner-operational-stats', runnerId] as const;
 }
 
-export function useRunnerOperationalStats(runnerId?: string) {
+function sumRunnerStats(stats: RunnerOperationalStats[]) {
+  return runnerStatKeys.reduce((total, key) => {
+    total[key] = stats.reduce((sum, item) => sum + Number(item[key] || 0), 0);
+    return total;
+  }, {} as RunnerOperationalStats);
+}
+
+export function useRunnerOperationalStats(runnerId?: string | string[]) {
   const { user } = useAuth();
-  const effectiveRunnerId = runnerId || user?.id;
+  const effectiveRunnerIds = Array.isArray(runnerId)
+    ? runnerId
+    : [runnerId || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: runnerOperationalStatsQueryKey(effectiveRunnerId),
-    queryFn: () => fetchRunnerOperationalStats(effectiveRunnerId!),
-    enabled: Boolean(effectiveRunnerId),
+    queryKey: runnerOperationalStatsQueryKey(effectiveRunnerIds),
+    queryFn: async () => sumRunnerStats(await Promise.all(effectiveRunnerIds.map(fetchRunnerOperationalStats))),
+    enabled: effectiveRunnerIds.length > 0,
     staleTime: 60000,
     refetchInterval: 120000,
   });
 }
 
-export function useRunnerInboxStats(runnerId?: string) {
+export function useRunnerInboxStats(runnerId?: string | string[]) {
   const { user } = useAuth();
-  const effectiveRunnerId = runnerId || user?.id;
+  const effectiveRunnerIds = Array.isArray(runnerId)
+    ? runnerId
+    : [runnerId || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: runnerOperationalStatsQueryKey(effectiveRunnerId),
-    queryFn: () => fetchRunnerOperationalStats(effectiveRunnerId!),
-    enabled: Boolean(effectiveRunnerId),
+    queryKey: runnerOperationalStatsQueryKey(effectiveRunnerIds),
+    queryFn: async () => sumRunnerStats(await Promise.all(effectiveRunnerIds.map(fetchRunnerOperationalStats))),
+    enabled: effectiveRunnerIds.length > 0,
     staleTime: 60000,
     refetchInterval: 120000,
     select: (stats): RunnerInboxStats => ({

@@ -13,6 +13,8 @@ interface SearchResult {
   id: string;
   order_code: string;
   customer_name: string | null;
+  runner_id: string | null;
+  runner_name: string | null;
   status: string;
   runner_status: string | null;
   driver_status?: string | null;
@@ -104,7 +106,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
       try {
         let ordersQuery = supabase
           .from('orders')
-          .select('id, order_code, customer_name, status, runner_status, driver_status, runner_accept_status, created_at')
+          .select('id, order_code, customer_name, runner_id, status, runner_status, driver_status, runner_accept_status, created_at')
           .ilike('order_code', `${orderCodeQuery}%`)
           .order('created_at', { ascending: false })
           .limit(8);
@@ -114,20 +116,35 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
         } else if (profile?.role === 'runner') {
           ordersQuery = ordersQuery.eq('runner_id', profile.id);
         } else if (profile?.role === 'runner_assistant') {
-          if (!assistantBinding?.runner_id) {
+          const runnerIds = assistantBinding?.runnerIds || [];
+          if (runnerIds.length === 0) {
             setResults([]);
             setShowDropdown(true);
             return;
           }
-          ordersQuery = ordersQuery.eq('runner_id', assistantBinding.runner_id);
+          ordersQuery = runnerIds.length === 1
+            ? ordersQuery.eq('runner_id', runnerIds[0])
+            : ordersQuery.in('runner_id', runnerIds);
         }
 
         const { data, error } = await ordersQuery;
         if (error) throw error;
+        const runnerIds = Array.from(new Set((data || [])
+          .map((order) => order.runner_id)
+          .filter((id): id is string => Boolean(id))));
+        const { data: runnerProfiles } = runnerIds.length > 0
+          ? await supabase
+            .from('profiles')
+            .select('id, display_name')
+            .in('id', runnerIds)
+          : { data: [] };
+        const runnerNames = new Map((runnerProfiles || []).map((runner) => [runner.id, runner.display_name]));
         setResults((data || []).map((order) => ({
           id: order.id,
           order_code: order.order_code || '',
           customer_name: order.customer_name,
+          runner_id: order.runner_id,
+          runner_name: order.runner_id ? runnerNames.get(order.runner_id) || 'Unknown Runner' : null,
           status: order.status || '',
           runner_status: order.runner_status,
           driver_status: order.driver_status,
@@ -144,7 +161,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
 
     const debounce = setTimeout(searchOrders, 300);
     return () => clearTimeout(debounce);
-  }, [query, profile?.id, profile?.role, assistantBinding?.runner_id]);
+  }, [query, profile?.id, profile?.role, assistantBinding?.runnerIds]);
 
   const handleResultClick = (order: SearchResult) => {
     setQuery('');
@@ -226,6 +243,9 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                       <p className="text-xs text-muted-foreground truncate">
                         {order.customer_name || 'No customer name'}
                       </p>
+                      {profile?.role === 'runner_assistant' && order.runner_name && (
+                        <p className="text-xs font-medium text-primary">Runner: {order.runner_name}</p>
+                      )}
                     </div>
                     {(() => {
                       const displayStatus = getDisplayStatus(order);
@@ -302,6 +322,9 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                     <p className="text-sm text-muted-foreground truncate">
                       {order.customer_name || 'No customer name'}
                     </p>
+                    {profile?.role === 'runner_assistant' && order.runner_name && (
+                      <p className="text-xs font-medium text-primary">Runner: {order.runner_name}</p>
+                    )}
                   </div>
                   {(() => {
                     const displayStatus = getDisplayStatus(order);

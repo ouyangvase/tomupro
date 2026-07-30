@@ -19,6 +19,7 @@ export type DriverAssignment = Order & {
 
 export type DriverAssignmentQuery = {
   runnerId?: string | null;
+  runnerIds?: string[];
   driverId?: string | null;
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -71,18 +72,29 @@ export async function fetchDriverAssignments({
 }
 
 export function useDriverAssignments(query: DriverAssignmentQuery = {}) {
+  const runnerIds = query.runnerIds?.length
+    ? query.runnerIds
+    : [query.runnerId].filter((id): id is string => Boolean(id));
   return useQuery({
     queryKey: [
       'driver-assignments',
-      query.runnerId || 'any-runner',
+      runnerIds.length ? runnerIds : 'any-runner',
       query.driverId || 'any-driver',
       query.dateFrom || 'any-start',
       query.dateTo || 'any-end',
       query.activeOnly || false,
       query.includeItems !== false,
     ],
-    queryFn: () => fetchDriverAssignments(query),
-    enabled: Boolean(query.runnerId || query.driverId),
+    queryFn: async () => {
+      if (runnerIds.length <= 1) {
+        return fetchDriverAssignments({ ...query, runnerId: runnerIds[0] || null });
+      }
+      const rows = (await Promise.all(
+        runnerIds.map((runnerId) => fetchDriverAssignments({ ...query, runnerId })),
+      )).flat();
+      return Array.from(new Map(rows.map((order) => [order.id, order])).values());
+    },
+    enabled: Boolean(runnerIds.length || query.driverId),
     refetchInterval: query.activeOnly ? 10_000 : false,
     refetchIntervalInBackground: false,
   });

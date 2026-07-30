@@ -350,6 +350,11 @@ function OrderCardRow({
               <span className="font-mono text-base font-bold text-foreground md:text-sm">{order.order_code}</span>
               <Badge variant="outline" className="rounded-full text-[11px]">{areaLabel}</Badge>
               <Badge variant="secondary" className="rounded-full text-[11px]">{locality}</Badge>
+              {order.runner?.display_name && (
+                <Badge variant="secondary" className="max-w-[180px] truncate rounded-full text-[11px]">
+                  Runner: {order.runner.display_name}
+                </Badge>
+              )}
               {order.driver_status && (
                 <Badge className={cn(driverStatusColors[order.driver_status] || 'bg-muted', 'rounded-full text-[11px]')}>
                   {order.driver_status.replace(/_/g, ' ')}
@@ -414,7 +419,7 @@ function UserDotLabel({ name }: { name: string }) {
 }
 
 type RunnerDriverInboxProps = {
-  runnerIdOverride?: string;
+  runnerIdOverride?: string | string[];
   workloadOnly?: boolean;
   canManageAssignments?: boolean;
 };
@@ -429,8 +434,12 @@ export default function RunnerDriverInbox({
   const queryClient = useQueryClient();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
-  const runnerScopeId = runnerIdOverride || profile?.id;
-  const hasDelegatedRunnerScope = Boolean(runnerIdOverride);
+  const runnerScopeIds = useMemo(() => Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || profile?.id].filter((id): id is string => Boolean(id)),
+  [profile?.id, runnerIdOverride]);
+  const runnerScopeId = runnerScopeIds.length === 1 ? runnerScopeIds[0] : undefined;
+  const hasDelegatedRunnerScope = runnerScopeIds.length > 0 && profile?.role !== 'runner';
   const canUseDbDriverWorkloads =
     profile?.role === 'runner' ||
     profile?.role === 'admin' ||
@@ -442,8 +451,8 @@ export default function RunnerDriverInbox({
   const canManageDriverAssignments = canManageAssignments ?? (
     profile?.role === 'runner' || profile?.role === 'admin'
   );
-  const { data: orders = [], isLoading } = useRunnerDriverOrders(runnerIdOverride);
-  const { data: myDrivers = [] } = useMyDrivers(runnerIdOverride);
+  const { data: orders = [], isLoading } = useRunnerDriverOrders(runnerScopeIds);
+  const { data: myDrivers = [] } = useMyDrivers(runnerScopeIds);
   const { data: dbDeliveryAreas = [] } = useDeliveryAreas();
   const acceptDelivery = useRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
@@ -500,16 +509,16 @@ export default function RunnerDriverInbox({
   const { data: dbDriverWorkloads = [], isFetching: driverWorkloadFetching } = useRunnerDispatchDriverWorkloads(activeQueueScopeDate);
   const performanceRange = useMemo(() => getDateRange(performanceAnchorDate, performancePeriod), [performanceAnchorDate, performancePeriod]);
   const { data: performanceOrders = [], isFetching: performanceFetching } = useQuery({
-    queryKey: ['runner-driver-performance-orders', runnerScopeId, performancePeriod, performanceRange.start, performanceRange.end],
-    enabled: Boolean(runnerScopeId),
+    queryKey: ['runner-driver-performance-orders', runnerScopeIds, performancePeriod, performanceRange.start, performanceRange.end],
+    enabled: runnerScopeIds.length > 0,
     queryFn: async () => {
-      if (!runnerScopeId) return [];
-      return fetchDriverAssignments({
-        runnerId: runnerScopeId,
+      const rows = (await Promise.all(runnerScopeIds.map((runnerId) => fetchDriverAssignments({
+        runnerId,
         dateFrom: performanceRange.start,
         dateTo: performanceRange.end,
         includeItems: false,
-      });
+      })))).flat();
+      return Array.from(new Map(rows.map((order) => [order.id, order])).values());
     },
   });
 
@@ -817,18 +826,18 @@ export default function RunnerDriverInbox({
   };
 
   const handleExportWorkload = async () => {
-    if (!runnerScopeId || !workloadExportMonth) return;
+    if (runnerScopeIds.length === 0 || !workloadExportMonth) return;
 
     setWorkloadExporting(true);
     try {
       const range = getDateRange(`${workloadExportMonth}-01`, 'month');
-      const exportOrders = await fetchDriverAssignments({
-        runnerId: runnerScopeId,
+      const exportOrders = (await Promise.all(runnerScopeIds.map((runnerId) => fetchDriverAssignments({
+        runnerId,
         driverId: workloadExportDriverId === 'all' ? null : workloadExportDriverId,
         dateFrom: range.start,
         dateTo: range.end,
         includeItems: true,
-      });
+      })))).flat();
       const includedStates = new Set(['DELIVERED', 'FAILED', 'PENDING_ACCEPTANCE']);
       const filteredExportOrders = exportOrders.filter((order) => includedStates.has(order.assignment_state));
 

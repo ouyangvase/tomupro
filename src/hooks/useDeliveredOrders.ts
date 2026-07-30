@@ -66,12 +66,22 @@ export interface DeliveredSummary {
 
 interface UseDeliveredOrdersParams {
   runnerId?: string;
+  runnerIds?: string[];
   salespersonId?: string;
   salespersonIds?: string[];
   limit?: number;
   offset?: number;
   enabled?: boolean;
 }
+
+type DeliveredOrdersRpcClient = {
+  rpc: (
+    name: 'get_delivered_orders_fast' | 'get_runner_assistant_delivered_orders',
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown[] | null; error: Error | null }>;
+};
+
+const deliveredOrdersRpcClient = supabase as unknown as DeliveredOrdersRpcClient;
 
 /**
  * Optimized hook for fetching delivered orders using a single RPC call
@@ -106,36 +116,47 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
  * Use this when you need the complete dataset for client-side filtering.
  */
 export function useDeliveredOrdersFastAll(params: Omit<UseDeliveredOrdersParams, 'limit' | 'offset'> & { totalHint?: number } = {}) {
-  const { runnerId, salespersonId, salespersonIds, enabled = true, totalHint } = params;
+  const { runnerId, runnerIds, salespersonId, salespersonIds, enabled = true, totalHint } = params;
   const BATCH_SIZE = 1000;
+  const isAssistantScope = runnerIds !== undefined;
+  const effectiveRunnerIds = runnerIds?.length ? runnerIds : runnerId ? [runnerId] : [];
 
   return useQuery({
-    queryKey: ['delivered-orders-fast-all', runnerId, salespersonId, salespersonIds],
+    queryKey: ['delivered-orders-fast-all', effectiveRunnerIds, salespersonId, salespersonIds],
     queryFn: async () => {
-      let allRows: DeliveredOrder[] = [];
-      let offset = 0;
-      let hasMore = true;
+      const scopes = effectiveRunnerIds.length > 0 ? effectiveRunnerIds : [null];
+      const scopedRows = await Promise.all(scopes.map(async (scopeRunnerId) => {
+        let allRows: DeliveredOrder[] = [];
+        let offset = 0;
+        let hasMore = true;
 
-      while (hasMore) {
-        const { data, error } = await supabase.rpc('get_delivered_orders_fast', {
-          p_runner_id: runnerId || null,
-          p_salesperson_id: salespersonId || null,
-          p_salesperson_ids: salespersonIds || null,
-          p_limit: BATCH_SIZE,
-          p_offset: offset,
-        });
+        while (hasMore) {
+          const { data, error } = await deliveredOrdersRpcClient.rpc(
+            isAssistantScope ? 'get_runner_assistant_delivered_orders' : 'get_delivered_orders_fast',
+            {
+            p_runner_id: scopeRunnerId,
+            p_salesperson_id: salespersonId || null,
+            p_salesperson_ids: salespersonIds || null,
+            p_limit: BATCH_SIZE,
+            p_offset: offset,
+            },
+          );
 
-        if (error) throw error;
+          if (error) throw error;
+          const batch = (data || []) as DeliveredOrder[];
+          allRows = allRows.concat(batch);
+          offset += batch.length;
+          hasMore = batch.length >= BATCH_SIZE;
+        }
+        return allRows;
+      }));
 
-        const batch = (data || []) as DeliveredOrder[];
-        allRows = allRows.concat(batch);
-        offset += batch.length;
-
-        // If we got fewer than BATCH_SIZE, we've reached the end
-        hasMore = batch.length >= BATCH_SIZE;
-      }
-
-      return allRows;
+      const distinctRows = new Map(scopedRows.flat().map((order) => [order.id, order]));
+      return Array.from(distinctRows.values()).sort((a, b) => {
+        const left = a.delivered_at || a.order_date || '';
+        const right = b.delivered_at || b.order_date || '';
+        return right.localeCompare(left);
+      });
     },
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes (large dataset, avoid frequent refetches)

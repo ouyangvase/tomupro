@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import type { RunnerAssistant, Profile } from '@/types/database';
 
 const ASSISTANT_REQUEST_TIMEOUT_MS = 10000;
-const ASSISTANT_PERMISSION_FIELDS = [
+export const ASSISTANT_PERMISSION_FIELDS = [
   'can_deliver',
   'can_confirm_receipt',
   'can_manage_driver_stock',
@@ -17,8 +18,49 @@ const ASSISTANT_PERMISSION_FIELDS = [
   'can_view_driver_workload',
 ] as const;
 
+export type AssistantPermissionField = typeof ASSISTANT_PERMISSION_FIELDS[number];
+export type AssistantPermissions = Record<AssistantPermissionField, boolean>;
+
+export type RunnerAssistantScope = RunnerAssistant & {
+  bindings: RunnerAssistant[];
+  runnerIds: string[];
+  runners: Profile[];
+};
+
 function hasAnyAssistantPermission(binding: Partial<RunnerAssistant>) {
   return ASSISTANT_PERMISSION_FIELDS.some((field) => Boolean(binding[field]));
+}
+
+function permissionPayload(input: Partial<RunnerAssistant>): AssistantPermissions {
+  return Object.fromEntries(
+    ASSISTANT_PERMISSION_FIELDS.map((field) => [field, Boolean(input[field])]),
+  ) as AssistantPermissions;
+}
+
+type AssistantRpcResult = {
+  success?: boolean;
+  changed_count?: number;
+};
+
+type AssistantRpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: AssistantRpcResult | null; error: Error | null }>;
+};
+
+const assistantRpcClient = supabase as unknown as AssistantRpcClient;
+
+function invalidateAssistantQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ['runner-assistants'] });
+  queryClient.invalidateQueries({ queryKey: ['my-assistant-binding'] });
+  queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-pickups'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-returns'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-driver-pickup-needs'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+  queryClient.invalidateQueries({ queryKey: ['my-drivers'] });
 }
 
 async function withAbortTimeout<T>(
@@ -87,10 +129,32 @@ export function useRunnerAssistants(runnerId?: string) {
 }
 
 /**
- * For the logged-in runner_assistant, fetch their binding to find the assigned runner.
+ * Resolve every active Runner link for the logged-in Assistant. Permissions are
+ * global, so the first row is the compatibility surface for existing callers.
  */
 export function useMyAssistantBinding() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`assistant-scope:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'runner_assistants',
+          filter: `assistant_id=eq.${user.id}`,
+        },
+        () => invalidateAssistantQueries(queryClient),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient, user?.id]);
 
   return useQuery({
     queryKey: ['my-assistant-binding', user?.id],
@@ -101,36 +165,51 @@ export function useMyAssistantBinding() {
           .select('*')
           .eq('assistant_id', user!.id)
           .eq('is_active', true)
+          .order('created_at', { ascending: true })
           .abortSignal(signal)
-          .maybeSingle(),
+          .limit(100),
         'Assistant access check timed out. Please try again.',
       );
 
       if (error) throw error;
-      if (!data || !hasAnyAssistantPermission(data as RunnerAssistant)) return null;
+      const bindings = (data || []) as RunnerAssistant[];
+      const primary = bindings[0];
+      if (!primary || !hasAnyAssistantPermission(primary)) return null;
 
-      // Fetch runner profile
-      const { data: runnerProfile, error: runnerError } = await withAbortTimeout(
+      const runnerIds = Array.from(new Set(bindings.map((binding) => binding.runner_id)));
+      const { data: runnerProfiles, error: runnerError } = await withAbortTimeout(
         (signal) => supabase
           .from('profiles')
           .select('*')
-          .eq('id', data.runner_id)
+          .in('id', runnerIds)
           .abortSignal(signal)
-          .single(),
-        'Runner profile check timed out. Please try again.',
+          .limit(100),
+        'Runner profiles check timed out. Please try again.',
       );
       if (runnerError) throw runnerError;
+      const runners = (runnerProfiles || []) as Profile[];
+      const runnerMap = new Map(runners.map((runner) => [runner.id, runner]));
+      const enrichedBindings = bindings.map((binding) => ({
+        ...binding,
+        runner: runnerMap.get(binding.runner_id),
+      })) as RunnerAssistant[];
 
       return {
-        ...data,
-        runner: runnerProfile as Profile | undefined,
-      } as RunnerAssistant;
+        ...primary,
+        runner: runnerMap.get(primary.runner_id),
+        bindings: enrichedBindings,
+        runnerIds,
+        runners,
+      } as RunnerAssistantScope;
     },
     enabled: !!user?.id,
     retry: 1,
     staleTime: 30000,
+    refetchOnWindowFocus: 'always',
   });
 }
+
+export const useMyAssistantScope = useMyAssistantBinding;
 
 /**
  * Create a new runner assistant binding.
@@ -142,7 +221,7 @@ export function useCreateRunnerAssistant() {
 
   return useMutation({
     mutationFn: async (input: {
-      runner_id: string;
+      runner_ids: string[];
       assistant_id: string;
       can_deliver: boolean;
       can_confirm_receipt: boolean;
@@ -155,62 +234,24 @@ export function useCreateRunnerAssistant() {
       can_view_driver_workload?: boolean;
     }) => {
 
-      // Check if binding already exists (maybe inactive)
-      const { data: existing } = await supabase
-        .from('runner_assistants')
-        .select('id, is_active')
-        .eq('assistant_id', input.assistant_id)
-        .maybeSingle();
-
-      if (existing) {
-        // Reactivate and update
-        const { data, error } = await supabase
-          .from('runner_assistants')
-          .update({
-            runner_id: input.runner_id,
-            can_deliver: input.can_deliver,
-            can_confirm_receipt: input.can_confirm_receipt,
-            can_manage_driver_stock: input.can_manage_driver_stock ?? false,
-            can_manage_driver_inbox: input.can_manage_driver_inbox ?? false,
-            can_manage_cash_settlement: input.can_manage_cash_settlement ?? false,
-            can_manage_driver_operations: input.can_manage_driver_operations ?? false,
-            can_view_stock_audit: input.can_view_stock_audit ?? false,
-            can_manage_inbound_stock: input.can_manage_inbound_stock ?? false,
-            can_view_driver_workload: input.can_view_driver_workload ?? false,
-            is_active: true,
-            created_by: user?.id,
-          })
-          .eq('id', existing.id)
-          .select()
-          .single();
-        if (error) throw error;
-        return data;
-      }
-
-      const { data, error } = await supabase
-        .from('runner_assistants')
-        .insert({
-          runner_id: input.runner_id,
-          assistant_id: input.assistant_id,
-          can_deliver: input.can_deliver,
-          can_confirm_receipt: input.can_confirm_receipt,
-          can_manage_driver_stock: input.can_manage_driver_stock ?? false,
-          can_manage_driver_inbox: input.can_manage_driver_inbox ?? false,
-          can_manage_cash_settlement: input.can_manage_cash_settlement ?? false,
-          can_manage_driver_operations: input.can_manage_driver_operations ?? false,
-          can_view_stock_audit: input.can_view_stock_audit ?? false,
-          can_manage_inbound_stock: input.can_manage_inbound_stock ?? false,
-          can_view_driver_workload: input.can_view_driver_workload ?? false,
-          created_by: user?.id,
-        })
-        .select()
-        .single();
+      if (!user?.id) throw new Error('Not authenticated');
+      const runnerIds = Array.from(new Set(input.runner_ids));
+      const { data, error } = await assistantRpcClient.rpc('add_runner_assistant_links', {
+        p_assistant_id: input.assistant_id,
+        p_runner_ids: runnerIds,
+      });
       if (error) throw error;
+
+      const { error: permissionError } = await assistantRpcClient.rpc('set_runner_assistant_permissions', {
+        p_assistant_id: input.assistant_id,
+        p_permissions: permissionPayload(input as Partial<RunnerAssistant>),
+      });
+      if (permissionError) throw permissionError;
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['runner-assistants'] });
-      toast({ title: 'Runner assistant assigned' });
+      invalidateAssistantQueries(queryClient);
+      toast({ title: 'Runner links saved' });
     },
     onError: (err: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
@@ -227,7 +268,7 @@ export function useUpdateRunnerAssistant() {
 
   return useMutation({
     mutationFn: async (input: {
-      id: string;
+      assistant_id: string;
       can_deliver?: boolean;
       can_confirm_receipt?: boolean;
       can_manage_driver_stock?: boolean;
@@ -237,7 +278,6 @@ export function useUpdateRunnerAssistant() {
       can_view_stock_audit?: boolean;
       can_manage_inbound_stock?: boolean;
       can_view_driver_workload?: boolean;
-      is_active?: boolean;
     }) => {
       const updates: Record<string, boolean> = {};
       if (input.can_deliver !== undefined) updates.can_deliver = input.can_deliver;
@@ -249,39 +289,57 @@ export function useUpdateRunnerAssistant() {
       if (input.can_view_stock_audit !== undefined) updates.can_view_stock_audit = input.can_view_stock_audit;
       if (input.can_manage_inbound_stock !== undefined) updates.can_manage_inbound_stock = input.can_manage_inbound_stock;
       if (input.can_view_driver_workload !== undefined) updates.can_view_driver_workload = input.can_view_driver_workload;
-      if (input.is_active !== undefined) updates.is_active = input.is_active;
-
-      const { data, error } = await withAbortTimeout(
-        (signal) => supabase
-          .from('runner_assistants')
-          .update(updates)
-          .eq('id', input.id)
-          .abortSignal(signal)
-          .select()
-          .single(),
-        'Assistant permission update timed out. Please try again.',
-      );
+      const { data, error } = await assistantRpcClient.rpc('set_runner_assistant_permissions', {
+        p_assistant_id: input.assistant_id,
+        p_permissions: updates,
+      });
       if (error) throw error;
       return data;
     },
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: ['runner-assistants'] });
-      const previous = queryClient.getQueriesData<RunnerAssistant[]>({ queryKey: ['runner-assistants'] });
-      queryClient.setQueriesData<RunnerAssistant[]>({ queryKey: ['runner-assistants'] }, (current) =>
-        current?.map((assistant) => assistant.id === input.id ? { ...assistant, ...input } : assistant),
-      );
-      return { previous };
-    },
     onSuccess: () => {
-      toast({ title: 'Runner assistant updated' });
+      toast({ title: 'Assistant permissions updated' });
     },
-    onError: (err: Error, _input, context) => {
-      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data));
+    onError: (err: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['runner-assistants'] });
-      queryClient.invalidateQueries({ queryKey: ['my-assistant-binding'] });
+      invalidateAssistantQueries(queryClient);
     },
+  });
+}
+
+export function useRemoveRunnerAssistantLink() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (bindingId: string) => {
+      const { data, error } = await assistantRpcClient.rpc('remove_runner_assistant_link', {
+        p_binding_id: bindingId,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => toast({ title: 'Runner link removed' }),
+    onError: (error: Error) => toast({ variant: 'destructive', title: 'Error', description: error.message }),
+    onSettled: () => invalidateAssistantQueries(queryClient),
+  });
+}
+
+export function useRemoveRunnerAssistant() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (assistantId: string) => {
+      const { data, error } = await assistantRpcClient.rpc('remove_runner_assistant', {
+        p_assistant_id: assistantId,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => toast({ title: 'Runner assistant removed' }),
+    onError: (error: Error) => toast({ variant: 'destructive', title: 'Error', description: error.message }),
+    onSettled: () => invalidateAssistantQueries(queryClient),
   });
 }

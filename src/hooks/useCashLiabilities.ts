@@ -72,6 +72,7 @@ export interface CashLiability {
   driver_name: string | null;
   order_qty: number;
   driver?: { display_name: string };
+  runner?: { display_name: string };
   order?: { order_items: Array<{ qty: number }> } | null;
 }
 
@@ -128,23 +129,28 @@ export interface AcceptedDriverDelivery {
   order_items: Array<{ qty: number }>;
 }
 
-export function useRunnerAcceptedDriverDeliveries(runnerIdOverride?: string) {
+export function useRunnerAcceptedDriverDeliveries(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: ['runner-accepted-driver-deliveries', runnerScopeId],
-    enabled: Boolean(runnerScopeId),
+    queryKey: ['runner-accepted-driver-deliveries', runnerScopeIds],
+    enabled: runnerScopeIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
-        .select('id, order_code, total_amount, delivered_at, driver_id, driver:profiles!orders_driver_id_fkey(display_name), order_items(qty)')
-        .eq('runner_id', runnerScopeId!)
+        .select('id, order_code, total_amount, delivered_at, driver_id, runner_id, runner:profiles!orders_runner_id_fkey(display_name), driver:profiles!orders_driver_id_fkey(display_name), order_items(qty)')
         .eq('driver_status', 'DRIVER_DELIVERED')
         .eq('runner_accept_status', 'ACCEPTED')
         .not('driver_id', 'is', null)
         .order('delivered_at', { ascending: false })
         .limit(100);
+      query = runnerScopeIds.length === 1
+        ? query.eq('runner_id', runnerScopeIds[0])
+        : query.in('runner_id', runnerScopeIds);
+      const { data, error } = await query;
 
       if (error) throw error;
       return (data || []) as AcceptedDriverDelivery[];
@@ -153,14 +159,16 @@ export function useRunnerAcceptedDriverDeliveries(runnerIdOverride?: string) {
 }
 
 // Get open cash liabilities for current runner, grouped by driver
-export function useRunnerCashLiabilities(runnerIdOverride?: string) {
+export function useRunnerCashLiabilities(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: ['runner-cash-liabilities', runnerScopeId],
+    queryKey: ['runner-cash-liabilities', runnerScopeIds],
     queryFn: async () => {
-      if (!runnerScopeId) {
+      if (runnerScopeIds.length === 0) {
         return {
           byDriver: [],
           totalOpen: 0,
@@ -172,15 +180,22 @@ export function useRunnerCashLiabilities(runnerIdOverride?: string) {
         } as GroupedLiabilities;
       }
 
-      const { data, error } = await supabase.rpc('get_cash_settlement_details', {
-        p_runner_id: runnerScopeId,
-      });
-
-      if (error) throw error;
-
-      const liabilities = (data || []).map((liability) => ({
+      const results = await Promise.all(runnerScopeIds.map(async (runnerId) => {
+        const { data, error } = await supabase.rpc('get_cash_settlement_details', {
+          p_runner_id: runnerId,
+        });
+        if (error) throw error;
+        return data || [];
+      }));
+      const { data: runnerProfiles } = await supabase
+        .from('user_directory')
+        .select('id, display_name')
+        .in('id', runnerScopeIds);
+      const runnerNames = new Map((runnerProfiles || []).map((runner) => [runner.id, runner.display_name]));
+      const liabilities = results.flat().map((liability) => ({
         ...liability,
         driver: { display_name: liability.driver_name || 'Unknown Driver' },
+        runner: { display_name: runnerNames.get(liability.runner_id) || 'Unknown Runner' },
       })) as CashLiability[];
       const openLiabilities = liabilities.filter((liability) => liability.status === 'OPEN');
       const pendingHandover = liabilities.filter((liability) => liability.status === 'PENDING_HANDOVER');
@@ -243,21 +258,26 @@ export function useCashSettlementAssistants(runnerId?: string) {
 }
 
 // Get pending and completed cash handovers for the current Runner scope.
-export function useRunnerSettlementHistory(runnerIdOverride?: string) {
+export function useRunnerSettlementHistory(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: ['runner-settlement-history', runnerScopeId],
+    queryKey: ['runner-settlement-history', runnerScopeIds],
     queryFn: async () => {
-      if (!runnerScopeId) return [];
+      if (runnerScopeIds.length === 0) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('cash_settlement_batches')
-        .select('*, assistant:profiles!cash_settlement_batches_assistant_id_fkey(display_name, email)')
-        .eq('runner_id', runnerScopeId)
+        .select('*, runner:profiles!cash_settlement_batches_runner_id_fkey(display_name), assistant:profiles!cash_settlement_batches_assistant_id_fkey(display_name, email)')
         .order('created_at', { ascending: false })
         .limit(50);
+      query = runnerScopeIds.length === 1
+        ? query.eq('runner_id', runnerScopeIds[0])
+        : query.in('runner_id', runnerScopeIds);
+      const { data, error } = await query;
 
       if (error) throw error;
       return (data || []) as unknown as CashSettlementBatch[];

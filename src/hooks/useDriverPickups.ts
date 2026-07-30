@@ -107,6 +107,8 @@ export interface DriverPickupShortageItem extends PickupNeedItem {
 }
 
 export interface RunnerDriverPickupNeed {
+  runner_id: string;
+  runner_name: string;
   driver_id: string;
   driver_name: string;
   driver_email: string | null;
@@ -244,29 +246,35 @@ async function fetchActiveDriverOrders(params: {
 }
 
 // Fetch pickups for a runner (all their drivers)
-export function useRunnerPickups(runnerIdOverride?: string) {
+export function useRunnerPickups(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: ['runner-pickups', runnerScopeId],
+    queryKey: ['runner-pickups', runnerScopeIds],
     queryFn: async () => {
-      if (!runnerScopeId) throw new Error('Not authenticated');
+      if (runnerScopeIds.length === 0) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('driver_pickups')
         .select(`
           *,
+          runner:profiles!driver_pickups_runner_id_fkey(id, display_name, email),
           driver:profiles!driver_pickups_driver_id_fkey(id, display_name, email),
           creator:profiles!driver_pickups_created_by_fkey(id, display_name, email),
           items:driver_pickup_items(*, product:products(id, sku_name, sku_code))
         `)
-        .eq('runner_id', runnerScopeId)
         .order('pickup_date', { ascending: false });
+      query = runnerScopeIds.length === 1
+        ? query.eq('runner_id', runnerScopeIds[0])
+        : query.in('runner_id', runnerScopeIds);
+      const { data, error } = await query;
       if (error) throw error;
       return data as DriverPickup[];
     },
-    enabled: !!runnerScopeId,
+    enabled: runnerScopeIds.length > 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: 'always',
   });
@@ -531,34 +539,66 @@ export async function fetchRunnerDriverPickupShortages(
 }
 
 // Driver custody balance: completed pickups - Runner-acknowledged returns - Runner-accepted deliveries.
-export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: string) {
+export function useDriverAllocatedStock(driverId?: string, runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || (driverId ? user?.id : undefined);
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || (driverId ? user?.id : undefined)].filter((id): id is string => Boolean(id));
   const targetDriverId = driverId === 'all' ? null : (driverId || user?.id || null);
 
   return useQuery({
-    queryKey: ['driver-allocated-stock', driverId || 'self', runnerScopeId || user?.id],
-    queryFn: () => fetchDriverAllocatedStock(runnerScopeId || null, targetDriverId),
+    queryKey: ['driver-allocated-stock', driverId || 'self', runnerScopeIds],
+    queryFn: async () => {
+      if (runnerScopeIds.length <= 1) {
+        return fetchDriverAllocatedStock(runnerScopeIds[0] || null, targetDriverId);
+      }
+      const rows = (await Promise.all(
+        runnerScopeIds.map((runnerId) => fetchDriverAllocatedStock(runnerId, targetDriverId)),
+      )).flat();
+      const merged = new Map<string, DriverAllocatedStockItem>();
+      for (const row of rows) {
+        const key = `${row.driver_id}:${row.product_id}`;
+        const current = merged.get(key);
+        if (!current) {
+          merged.set(key, { ...row });
+          continue;
+        }
+        current.pickup_qty += Number(row.pickup_qty || 0);
+        current.returned_qty += Number(row.returned_qty || 0);
+        current.delivered_qty += Number(row.delivered_qty || 0);
+        current.allocated_qty += Number(row.allocated_qty || 0);
+        current.pending_qty += Number(row.pending_qty || 0);
+      }
+      return Array.from(merged.values());
+    },
     enabled: !!user?.id,
     refetchOnMount: 'always',
     refetchOnWindowFocus: 'always',
   });
 }
 
-export function useRunnerDriverPickupNeeds(runnerIdOverride?: string) {
+export function useRunnerDriverPickupNeeds(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: ['runner-driver-pickup-needs', runnerScopeId],
+    queryKey: ['runner-driver-pickup-needs', runnerScopeIds],
     queryFn: async (): Promise<RunnerDriverPickupNeed[]> => {
-      if (!runnerScopeId) throw new Error('Not authenticated');
+      if (runnerScopeIds.length === 0) throw new Error('Not authenticated');
 
-      const [driverLinks, orders, shortageRows] = await Promise.all([
-        fetchRunnerDriverLinks(runnerScopeId),
-        fetchActiveDriverOrders({ runnerId: runnerScopeId }),
-        fetchRunnerDriverPickupShortages(runnerScopeId),
-      ]);
+      const { data: runners } = await supabase
+        .from('user_directory')
+        .select('id, display_name')
+        .in('id', runnerScopeIds);
+      const runnerNames = new Map((runners || []).map((runner) => [runner.id, runner.display_name]));
+      const groupedResults = await Promise.all(runnerScopeIds.map(async (runnerScopeId) => {
+        const [driverLinks, orders, shortageRows] = await Promise.all([
+          fetchRunnerDriverLinks(runnerScopeId),
+          fetchActiveDriverOrders({ runnerId: runnerScopeId }),
+          fetchRunnerDriverPickupShortages(runnerScopeId),
+        ]);
       const ordersByDriver = new Map<string, ActiveDriverDeliveryOrder[]>();
       const shortagesByDriver = new Map<string, DriverPickupShortageItem[]>();
       for (const order of orders) {
@@ -599,6 +639,8 @@ export function useRunnerDriverPickupNeeds(runnerIdOverride?: string) {
           });
 
           return {
+            runner_id: runnerScopeId,
+            runner_name: runnerNames.get(runnerScopeId) || 'Unknown Runner',
             driver_id: driverId,
             driver_name: driver?.display_name || driver?.email || driverOrders[0]?.driver_name || 'Unknown Driver',
             driver_email: driver?.email || null,
@@ -611,10 +653,12 @@ export function useRunnerDriverPickupNeeds(runnerIdOverride?: string) {
             overdue_order_codes: overdueOrders.map(order => order.order_code || '-').filter(Boolean),
           };
         })
-        .filter((need) => need.items.length > 0)
+        .filter((need) => need.items.length > 0);
+      }));
+      return groupedResults.flat()
         .sort((a, b) => b.order_count - a.order_count || a.driver_name.localeCompare(b.driver_name));
     },
-    enabled: !!runnerScopeId,
+    enabled: runnerScopeIds.length > 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: 'always',
     refetchInterval: 10_000,

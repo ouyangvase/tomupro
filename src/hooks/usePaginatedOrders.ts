@@ -11,6 +11,7 @@ export interface PaginatedOrderFilters {
   salespersonIds?: string[];
   salespersonId?: string;
   runnerId?: string;
+  runnerIds?: string[];
   runnerStatus?: RunnerStatus;
   runnerStatusIn?: RunnerStatus[];
   excludeRunnerStatuses?: RunnerStatus[];
@@ -96,7 +97,7 @@ export function usePaginatedOrders(
       // Get visible owner IDs for team visibility
       // Skip for admin (sees everything) and when runnerId is set (runner views own assigned orders)
       let visibleUserIds: string[] | null = null;
-      const skipVisibilityRpc = role === 'admin' || !!filters.runnerId;
+      const skipVisibilityRpc = role === 'admin' || !!filters.runnerId || Boolean(filters.runnerIds?.length);
       if (!skipVisibilityRpc) {
         visibleUserIds = await getVisibleOwnerIdsCached();
       }
@@ -170,7 +171,7 @@ export function usePaginatedOrders(
       // Visibility: team filtering
       // Skip salesperson visibility filtering when runnerId is set
       // (runner views orders assigned to them, not orders they created)
-      const skipVisibilityFilter = !!filters.runnerId;
+      const skipVisibilityFilter = !!filters.runnerId || Boolean(filters.runnerIds?.length);
 
       if (!skipVisibilityFilter) {
         if (filters.salespersonIds && filters.salespersonIds.length > 0) {
@@ -197,6 +198,7 @@ export function usePaginatedOrders(
       }
 
       if (filters.runnerId) query = query.eq('runner_id', filters.runnerId);
+      if (filters.runnerIds?.length) query = query.in('runner_id', filters.runnerIds);
       if (filters.driverId) query = query.eq('driver_id', filters.driverId);
       if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
       if (filters.reconciliationStatusIn && filters.reconciliationStatusIn.length > 0) {

@@ -217,7 +217,15 @@ function ClaimEligibilityBadge({ order, approvedChargeMap, canClaim }: { order: 
   );
 }
 
-export default function RunnerDeliveredOrders({ initialSearch = '', highlightOrderId }: { initialSearch?: string; highlightOrderId?: string | null }) {
+export default function RunnerDeliveredOrders({
+  initialSearch = '',
+  highlightOrderId,
+  runnerIdsOverride,
+}: {
+  initialSearch?: string;
+  highlightOrderId?: string | null;
+  runnerIdsOverride?: string[];
+}) {
   const { user, profile, role } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -274,6 +282,7 @@ export default function RunnerDeliveredOrders({ initialSearch = '', highlightOrd
   
   // ---------- Unified RPC path for ALL roles (bypasses RLS via SECURITY DEFINER) ----------
   const isRunnerRole = role === 'runner';
+  const isAssistantView = role === 'runner_assistant' || Boolean(runnerIdsOverride?.length);
 
   // Get visible owner IDs for role-scoping (admin=null=all, manager/salesperson=team IDs)
   const { data: visibleOwnerIds } = useVisibleOwnerIds();
@@ -285,7 +294,7 @@ export default function RunnerDeliveredOrders({ initialSearch = '', highlightOrd
 
     // Role-based defaults
     if (role === 'admin') return undefined; // admin sees all
-    if (role === 'runner') return undefined; // runner uses runner_id filter, not salesperson
+    if (role === 'runner' || isAssistantView) return undefined; // runner scope uses runner_id filters
     if (role === 'salesperson') return user?.id ? [user.id] : undefined;
 
     // Manager: use team view state
@@ -303,19 +312,21 @@ export default function RunnerDeliveredOrders({ initialSearch = '', highlightOrd
     }
 
     return undefined;
-  }, [role, user?.id, salespersonFilters, salespersonIds, visibleOwnerIds]);
+  }, [role, user?.id, salespersonFilters, salespersonIds, visibleOwnerIds, isAssistantView]);
 
   // For non-admin/non-runner roles, wait for visible owner IDs before fetching
   const rpcEnabled = useMemo(() => {
     if (!user?.id) return false;
     if (role === 'admin' || role === 'runner') return true;
+    if (isAssistantView) return Boolean(runnerIdsOverride?.length);
     // Manager/salesperson: must have scoped IDs
     return rpcSalespersonIds !== undefined && rpcSalespersonIds.length > 0;
-  }, [user?.id, role, rpcSalespersonIds]);
+  }, [user?.id, role, rpcSalespersonIds, isAssistantView, runnerIdsOverride]);
 
   // Use the batch-loading RPC for ALL roles
   const { data: rpcOrders = [], isLoading: rpcLoading } = useDeliveredOrdersFastAll({
     runnerId: isRunnerRole ? user?.id : undefined,
+    runnerIds: isAssistantView ? runnerIdsOverride : undefined,
     salespersonIds: rpcSalespersonIds,
     enabled: rpcEnabled,
   });
@@ -436,7 +447,7 @@ export default function RunnerDeliveredOrders({ initialSearch = '', highlightOrd
   const paginatedOrders = deliveredOrders;
 
   const { data: userDirectory = [] } = useUserDirectory();
-  const { data: myDrivers = [] } = useMyDrivers();
+  const { data: myDrivers = [] } = useMyDrivers(isAssistantView ? runnerIdsOverride : undefined);
   const { data: products = [] } = useProducts();
   const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : {});
 

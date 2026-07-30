@@ -51,13 +51,16 @@ function flushTelegramEventQueue(body?: Record<string, unknown>) {
 }
 
 // Get drivers for a runner (with driver_code)
-export function useRunnerDrivers(runnerId?: string) {
+export function useRunnerDrivers(runnerId?: string | string[]) {
+  const runnerIds = Array.isArray(runnerId)
+    ? runnerId
+    : [runnerId].filter((id): id is string => Boolean(id));
   return useQuery({
-    queryKey: ['runner-drivers', runnerId],
+    queryKey: ['runner-drivers', runnerIds],
     queryFn: async () => {
-      if (!runnerId) return [];
-      
-      const { data, error } = await supabase
+      if (runnerIds.length === 0) return [];
+
+      let query = supabase
         .from('runner_drivers')
         .select(`
           id,
@@ -67,41 +70,48 @@ export function useRunnerDrivers(runnerId?: string) {
           created_at,
           driver:profiles!driver_id(id, display_name, email, role, driver_code)
         `)
-        .eq('runner_id', runnerId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
-      
+      query = runnerIds.length === 1
+        ? query.eq('runner_id', runnerIds[0])
+        : query.in('runner_id', runnerIds);
+      const { data, error } = await query;
       if (error) throw error;
-      return data;
+      return Array.from(new Map((data || []).map((link) => [link.driver_id, link])).values());
     },
-    enabled: !!runnerId,
+    enabled: runnerIds.length > 0,
   });
 }
 
 // Get drivers for current runner (self)
-export function useMyDrivers(runnerIdOverride?: string) {
+export function useMyDrivers(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: ['my-drivers', runnerScopeId],
+    queryKey: ['my-drivers', runnerScopeIds],
     queryFn: async () => {
-      if (!runnerScopeId) return [];
-      
-      const { data, error } = await supabase
+      if (runnerScopeIds.length === 0) return [];
+
+      let query = supabase
         .from('runner_drivers')
         .select(`
           *,
           driver:profiles!runner_drivers_driver_id_fkey(id, display_name, email, role, is_active)
         `)
-        .eq('runner_id', runnerScopeId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
-      
+      query = runnerScopeIds.length === 1
+        ? query.eq('runner_id', runnerScopeIds[0])
+        : query.in('runner_id', runnerScopeIds);
+      const { data, error } = await query;
       if (error) throw error;
-      return data as unknown as RunnerDriver[];
+      const links = data as unknown as RunnerDriver[];
+      return Array.from(new Map(links.map((link) => [link.driver_id, link])).values());
     },
-    enabled: Boolean(runnerScopeId),
+    enabled: runnerScopeIds.length > 0,
   });
 }
 
@@ -666,26 +676,31 @@ export function useUnassignDriverFromOrder() {
 // Get active orders for Runner Driver Inbox.
 // This intentionally matches Runner Inbox active scope:
 // READY orders assigned/taken by the current runner, excluding delivered/failed/unassigned.
-export function useRunnerDriverOrders(runnerIdOverride?: string) {
+export function useRunnerDriverOrders(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: ['runner-driver-orders', runnerScopeId],
+    queryKey: ['runner-driver-orders', runnerScopeIds],
     queryFn: async () => {
-      if (!runnerScopeId) return [];
+      if (runnerScopeIds.length === 0) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select(`
           *,
           order_items(*)
         `)
-        .eq('runner_id', runnerScopeId)
         .eq('status', 'READY')
         .in('runner_status', ['ASSIGNED', 'TAKEN'])
         .order('runner_assigned_at', { ascending: false, nullsFirst: false })
         .order('order_date', { ascending: false });
+      query = runnerScopeIds.length === 1
+        ? query.eq('runner_id', runnerScopeIds[0])
+        : query.in('runner_id', runnerScopeIds);
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -717,6 +732,6 @@ export function useRunnerDriverOrders(runnerIdOverride?: string) {
         driver: order.driver_id ? usersMap[order.driver_id] : null,
       })) || [];
     },
-    enabled: Boolean(runnerScopeId),
+    enabled: runnerScopeIds.length > 0,
   });
 }

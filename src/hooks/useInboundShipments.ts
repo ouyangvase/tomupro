@@ -5,6 +5,7 @@ import type { InboundShipment, InboundItem, InboundStatus } from '@/types/databa
 
 interface InboundFilters {
   runnerId?: string;
+  runnerIds?: string[];
   salespersonId?: string;
   status?: InboundStatus;
 }
@@ -26,6 +27,9 @@ export function useInboundShipments(filters?: InboundFilters) {
 
       if (filters?.runnerId) {
         query = query.eq('runner_id', filters.runnerId);
+      }
+      if (filters?.runnerIds?.length) {
+        query = query.in('runner_id', filters.runnerIds);
       }
       if (filters?.salespersonId) {
         query = query.eq('salesperson_id', filters.salespersonId);

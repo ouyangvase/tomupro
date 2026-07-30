@@ -83,14 +83,18 @@ function ImageLightbox({ imageUrl, alt, uploadDate, onClose }: LightboxProps) {
   );
 }
 
-export default function InboundHistory({ runnerIdOverride }: { runnerIdOverride?: string } = {}) {
+export default function InboundHistory({ runnerIdOverride }: { runnerIdOverride?: string | string[] } = {}) {
   const { user, profile } = useAuth();
   const role = profile?.role;
   const hasRunnerAccess = role === 'runner' || Boolean(runnerIdOverride);
   
   // Fetch all shipments (RLS handles visibility)
   const { data: allShipments, isLoading } = useInboundShipments(
-    runnerIdOverride ? { runnerId: runnerIdOverride } : undefined,
+    Array.isArray(runnerIdOverride)
+      ? { runnerIds: runnerIdOverride }
+      : runnerIdOverride
+        ? { runnerId: runnerIdOverride }
+        : undefined,
   );
   const { data: products } = useProducts();
   const { data: teamMembers = [] } = useTeamMembers();

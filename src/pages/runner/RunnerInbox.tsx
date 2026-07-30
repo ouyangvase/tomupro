@@ -43,6 +43,7 @@ import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
 
 interface RunnerInboxProps {
+  runnerIdsOverride?: string[];
   initialSearch?: string;
   highlightOrderId?: string | null;
   duplicateOrdersAction?: ReactNode;
@@ -50,6 +51,7 @@ interface RunnerInboxProps {
 }
 
 export default function RunnerInbox({
+  runnerIdsOverride,
   initialSearch = '',
   highlightOrderId = null,
   duplicateOrdersAction = null,
@@ -60,20 +62,25 @@ export default function RunnerInbox({
   const isMobile = useIsMobile();
   const { data: assistantBinding, isLoading: assistantLoading } = useMyAssistantBinding();
   const isAssistant = role === 'runner_assistant' || Boolean(assistantBinding?.runner_id);
-  const effectiveRunnerId = isAssistant ? assistantBinding?.runner_id : (profile?.id || user?.id);
-  const { data: myDrivers = [] } = useMyDrivers(isAssistant ? effectiveRunnerId : undefined);
+  const effectiveRunnerIds = useMemo(() => runnerIdsOverride?.length
+    ? runnerIdsOverride
+    : isAssistant
+      ? (assistantBinding?.runnerIds || [])
+      : [profile?.id || user?.id].filter((id): id is string => Boolean(id)),
+  [assistantBinding?.runnerIds, isAssistant, profile?.id, runnerIdsOverride, user?.id]);
+  const { data: myDrivers = [] } = useMyDrivers(effectiveRunnerIds);
   const { data: validAreas = [] } = useValidAreas();
   const { data: stockBalances = [] } = useStockBalance();
 
   // Build a map of product_id → balance_qty for the current runner's warehouse
   const runnerStockMap = useMemo(() => {
-    if (!effectiveRunnerId) return new Map<string, number>();
+    if (effectiveRunnerIds.length === 0) return new Map<string, number>();
     const map = new Map<string, number>();
     stockBalances
-      .filter(b => b.owner_user_id === effectiveRunnerId)
-      .forEach(b => map.set(b.product_id, b.balance_qty));
+      .filter(b => effectiveRunnerIds.includes(b.owner_user_id))
+      .forEach(b => map.set(b.product_id, (map.get(b.product_id) || 0) + b.balance_qty));
     return map;
-  }, [stockBalances, effectiveRunnerId]);
+  }, [stockBalances, effectiveRunnerIds]);
 
   // Runner Assistant binding
 
@@ -130,7 +137,7 @@ export default function RunnerInbox({
   }, [datePreset]);
 
   const orderFilters = useMemo(() => ({
-    runnerId: effectiveRunnerId,
+    runnerIds: effectiveRunnerIds,
     excludeDeliveredAndFailed: true as const,
     searchQuery: serverSearch || undefined,
     runnerStatus: filters.runnerStatus as any,
@@ -143,12 +150,12 @@ export default function RunnerInbox({
     sortDirection: 'desc' as const,
     assignedDateFrom: assignedDateRange.from,
     assignedDateTo: assignedDateRange.to,
-  }), [effectiveRunnerId, serverSearch, filters.runnerStatus, filters.area, filters.driverId, filters.reconciliationStatus, filters.paymentMethod, filters.receiptStatus, assignedDateRange.from, assignedDateRange.to, isReceiptOnlyAssistant]);
+  }), [effectiveRunnerIds, serverSearch, filters.runnerStatus, filters.area, filters.driverId, filters.reconciliationStatus, filters.paymentMethod, filters.receiptStatus, assignedDateRange.from, assignedDateRange.to, isReceiptOnlyAssistant]);
 
   const { data: orders, isLoading, isFetching, pagination, setPage } = usePaginatedOrders(orderFilters, 50);
 
   // Server-side stats for summary cards (not affected by pagination)
-  const { data: inboxStats } = useRunnerInboxStats(effectiveRunnerId);
+  const { data: inboxStats } = useRunnerInboxStats(effectiveRunnerIds);
 
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 
@@ -304,12 +311,14 @@ export default function RunnerInbox({
         let query = supabase
           .from('orders')
           .select('id')
-          .eq('runner_id', user!.id)
           .eq('status', 'READY')
           .neq('runner_status', 'DELIVERED')
           .neq('runner_status', 'FAILED_DELIVERY')
           .neq('runner_status', 'UNASSIGNED')
           .neq('status', 'CANCELLED');
+        query = effectiveRunnerIds.length === 1
+          ? query.eq('runner_id', effectiveRunnerIds[0])
+          : query.in('runner_id', effectiveRunnerIds);
 
         if (serverSearch?.trim()) {
           const term = `${serverSearch.trim().toUpperCase().replace(/\s+/g, '')}%`;
@@ -698,6 +707,11 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
             {order.area && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0">{order.area}</Badge>
             )}
+            {order.runner?.display_name && (
+              <Badge variant="secondary" className="max-w-[140px] truncate text-[9px] px-1.5 py-0">
+                Runner: {order.runner.display_name}
+              </Badge>
+            )}
             <div className="ml-auto flex items-center gap-1.5">
               {stockMap.size > 0 && (
                 <StockStatusBadge
@@ -865,6 +879,11 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.address || 'No address'}</p>
+          {order.runner?.display_name && (
+            <p className="mt-1 truncate text-[11px] font-semibold text-primary">
+              Runner: {order.runner.display_name}
+            </p>
+          )}
           {assignedDriverName && (
             <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs">
               <UserRound className="h-3.5 w-3.5 shrink-0 text-primary" />

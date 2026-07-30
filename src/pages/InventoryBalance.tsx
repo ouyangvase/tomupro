@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { usePaginatedStockBalance } from '@/hooks/usePaginatedStockBalance';
@@ -75,9 +75,13 @@ const isRunnerHolderRole = (value: string | null | undefined) => value === 'runn
 
 interface InventoryBalanceProps {
   isRunnerAssistant?: boolean;
+  assistantRunnerIds?: string[];
 }
 
-export default function InventoryBalance({ isRunnerAssistant = false }: InventoryBalanceProps) {
+export default function InventoryBalance({
+  isRunnerAssistant = false,
+  assistantRunnerIds,
+}: InventoryBalanceProps) {
   const { profile, role } = useAuth();
   const { data: users = [] } = useUsers();
   const { data: teamMembers = [] } = useTeamMembers();
@@ -129,6 +133,11 @@ export default function InventoryBalance({ isRunnerAssistant = false }: Inventor
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({ sku_name: '', sku_code: '' });
+
+  useEffect(() => {
+    if (!isRunnerAssistant) return;
+    setOwnerFilter(assistantRunnerIds?.length === 1 ? assistantRunnerIds[0] : 'all');
+  }, [assistantRunnerIds, isRunnerAssistant]);
 
   // Product mutations
   const createProduct = useCreateProduct();

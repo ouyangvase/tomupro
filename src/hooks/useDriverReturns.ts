@@ -29,28 +29,34 @@ export interface DriverReturnItem {
 }
 
 // Fetch returns for a runner
-export function useRunnerReturns(runnerIdOverride?: string) {
+export function useRunnerReturns(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
 
   return useQuery({
-    queryKey: ['runner-returns', runnerScopeId],
+    queryKey: ['runner-returns', runnerScopeIds],
     queryFn: async () => {
-      if (!runnerScopeId) return [];
+      if (runnerScopeIds.length === 0) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('driver_returns')
         .select(`
           *,
           driver:profiles!driver_returns_driver_id_fkey(display_name),
+          runner:profiles!driver_returns_runner_id_fkey(display_name),
           items:driver_return_items(*, product:products(sku_name, sku_code))
         `)
-        .eq('runner_id', runnerScopeId)
         .order('created_at', { ascending: false });
+      query = runnerScopeIds.length === 1
+        ? query.eq('runner_id', runnerScopeIds[0])
+        : query.in('runner_id', runnerScopeIds);
+      const { data, error } = await query;
       if (error) throw error;
       return data as DriverReturn[];
     },
-    enabled: Boolean(runnerScopeId),
+    enabled: runnerScopeIds.length > 0,
   });
 }
 

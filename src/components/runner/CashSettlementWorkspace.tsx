@@ -105,9 +105,11 @@ function StatusBadge({ status }: { status: CashSettlementBatch['status'] }) {
   );
 }
 
-export function CashSettlementWorkspace({ runnerIdOverride }: { runnerIdOverride?: string }) {
+export function CashSettlementWorkspace({ runnerIdOverride }: { runnerIdOverride?: string | string[] }) {
   const { user } = useAuth();
-  const runnerScopeId = runnerIdOverride || user?.id;
+  const runnerScopeId = Array.isArray(runnerIdOverride)
+    ? undefined
+    : runnerIdOverride || user?.id;
   const isAssistantView = Boolean(runnerIdOverride);
   const { data: cash, isLoading: loadingCash, isError: cashLoadFailed } = useRunnerCashLiabilities(runnerIdOverride);
   const { data: batches = [], isLoading: loadingBatches } = useRunnerSettlementHistory(runnerIdOverride);
@@ -280,6 +282,7 @@ export function CashSettlementWorkspace({ runnerIdOverride }: { runnerIdOverride
                             <div key={liability.id} className="flex items-center justify-between gap-3 p-3 text-sm">
                               <div className="min-w-0">
                                 <p className="truncate font-bold">{liability.driver?.display_name || 'Unknown Driver'}</p>
+                                <p className="truncate text-xs font-semibold text-primary">Runner: {liability.runner?.display_name || 'Unknown Runner'}</p>
                                 <p className="truncate text-muted-foreground">{liability.order_code} · Qty {orderQty(liability)}</p>
                               </div>
                               <p className="shrink-0 font-black">{formatBND(Number(liability.cash_amount))}</p>
@@ -341,6 +344,7 @@ export function CashSettlementWorkspace({ runnerIdOverride }: { runnerIdOverride
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate font-black text-foreground">{liability.driver?.display_name || 'Unknown Driver'}</p>
+                        <p className="truncate text-xs font-semibold text-primary">Runner: {liability.runner?.display_name || 'Unknown Runner'}</p>
                         <p className="text-sm text-muted-foreground">{liability.order_code}</p>
                       </div>
                       <p className="shrink-0 text-lg font-black text-primary">{formatBND(Number(liability.cash_amount))}</p>
@@ -373,7 +377,10 @@ export function CashSettlementWorkspace({ runnerIdOverride }: { runnerIdOverride
                     {openLiabilities.map((liability) => (
                       <TableRow key={liability.id}>
                         <TableCell className="whitespace-nowrap">{format(new Date(liability.delivered_at), 'dd MMM yyyy')}</TableCell>
-                        <TableCell className="font-bold">{liability.driver?.display_name || 'Unknown Driver'}</TableCell>
+                        <TableCell className="font-bold">
+                          <p>{liability.driver?.display_name || 'Unknown Driver'}</p>
+                          <p className="text-xs text-primary">Runner: {liability.runner?.display_name || 'Unknown Runner'}</p>
+                        </TableCell>
                         <TableCell>{liability.order_code}</TableCell>
                         <TableCell className="text-right">{orderQty(liability)}</TableCell>
                         <TableCell className="text-right font-black">{formatBND(Number(liability.cash_amount))}</TableCell>
@@ -589,6 +596,7 @@ function SettlementHistory({ batches, isLoading }: { batches: CashSettlementBatc
                 <p className="font-black text-foreground">{dateLabel(batch.settlement_date)}</p>
                 <p className="text-sm text-muted-foreground">
                   {batch.order_count} order(s)
+                  {batch.runner?.display_name ? ` · Runner: ${batch.runner.display_name}` : ''}
                   {batch.assistant?.display_name ? ` · ${batch.assistant.display_name}` : ''}
                 </p>
               </div>

@@ -127,11 +127,12 @@ function PickupNeedsPanel({
         ) : (
           <div className="grid gap-3 xl:grid-cols-2">
             {needs.map((need) => (
-              <Card key={need.driver_id} className="rounded-2xl border-border/60 bg-card">
+              <Card key={`${need.runner_id}:${need.driver_id}`} className="rounded-2xl border-border/60 bg-card">
                 <CardContent className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-lg font-black text-foreground">{need.driver_name}</p>
+                      <p className="truncate text-xs font-bold text-primary">Runner: {need.runner_name}</p>
                       <p className="text-sm font-semibold text-muted-foreground">
                         {need.order_count} active order(s) - {need.total_qty} item qty
                       </p>
@@ -174,7 +175,7 @@ function PickupNeedsPanel({
 }
 
 type RunnerDriverStockWorkspaceProps = {
-  runnerIdOverride?: string;
+  runnerIdOverride?: string | string[];
   hideCashSettlement?: boolean;
   hideDriverStock?: boolean;
 };
@@ -324,7 +325,8 @@ export default function RunnerDriverStockWorkspace({
 
     return (pickupNeeds || []).map((need) => ({
       ...need,
-      existingPickup: editableToday.find((pickup) => pickup.driver_id === need.driver_id),
+      existingPickup: editableToday.find((pickup) =>
+        pickup.driver_id === need.driver_id && pickup.runner_id === need.runner_id),
     }));
   }, [pickupNeeds, pickups, todayDate]);
 
@@ -353,6 +355,9 @@ export default function RunnerDriverStockWorkspace({
   const activePickupOrderCount = unscheduledPickupNeeds.reduce((sum, need) => sum + need.order_count, 0);
   const totalCash = Number(cashLiabilities?.totalOpenAmount || 0);
   const totalOpenCashOrders = Number(cashLiabilities?.totalOpen || 0);
+  const explicitRunnerId = Array.isArray(runnerIdOverride)
+    ? (runnerIdOverride.length === 1 ? runnerIdOverride[0] : undefined)
+    : runnerIdOverride;
 
   return (
     <div className="space-y-4 pb-28 md:pb-4">
@@ -383,14 +388,14 @@ export default function RunnerDriverStockWorkspace({
                 defaultItems={quickPickupNeed?.items}
                 defaultOrderIds={quickPickupNeed?.order_ids}
                 defaultOrderCodes={quickPickupNeed?.order_codes}
-                runnerIdOverride={runnerIdOverride}
+                runnerIdOverride={quickPickupNeed?.runner_id || explicitRunnerId}
                 trigger={
-                  <Button onClick={() => {
+                  <Button disabled={!quickPickupNeed && !explicitRunnerId} onClick={() => {
                     setQuickPickupDriverId(null);
                     setPickupDialogOpen(true);
                   }}>
                     <PackagePlus className="mr-2 h-4 w-4" />
-                    Create Pickup
+                    {explicitRunnerId || quickPickupNeed ? 'Create Pickup' : 'Select a Runner'}
                   </Button>
                 }
               />
@@ -401,7 +406,7 @@ export default function RunnerDriverStockWorkspace({
                     if (!open) setEditingPickup(null);
                   }}
                   pickup={editingPickup}
-                  runnerIdOverride={runnerIdOverride}
+                  runnerIdOverride={editingPickup.runner_id}
                 />
               )}
             </>
@@ -537,6 +542,9 @@ export default function RunnerDriverStockWorkspace({
                             <p className="mt-1 break-words text-base font-black text-foreground">
                               {pickup.driver?.display_name || 'Unknown driver'}
                             </p>
+                            {pickup.runner?.display_name && (
+                              <p className="text-xs font-bold text-primary">Runner: {pickup.runner.display_name}</p>
+                            )}
                             <p className="mt-1 text-sm font-semibold text-muted-foreground">
                               {format(new Date(pickup.pickup_date), 'dd MMM yyyy')}
                             </p>
@@ -597,7 +605,10 @@ export default function RunnerDriverStockWorkspace({
                       <TableBody>
                         {todayPickups.map((pickup) => (
                           <TableRow key={pickup.id}>
-                            <TableCell className="font-semibold">{pickup.driver?.display_name || 'Unknown'}</TableCell>
+                            <TableCell className="font-semibold">
+                              <p>{pickup.driver?.display_name || 'Unknown'}</p>
+                              {pickup.runner?.display_name && <p className="text-xs text-primary">Runner: {pickup.runner.display_name}</p>}
+                            </TableCell>
                             <TableCell className="min-w-[180px]">
                               <p className="font-semibold">{format(new Date(pickup.pickup_date), 'dd MMM yyyy')}</p>
                               <p className="mt-1 text-xs text-muted-foreground">
@@ -672,7 +683,10 @@ export default function RunnerDriverStockWorkspace({
                       {group.map((pickup) => (
                         <div key={pickup.id} className="rounded-lg border border-border/70 bg-background p-3">
                           <div className="flex items-start justify-between gap-3">
-                            <p className="font-semibold">{pickup.driver?.display_name || 'Unknown driver'}</p>
+                            <div>
+                              <p className="font-semibold">{pickup.driver?.display_name || 'Unknown driver'}</p>
+                              {pickup.runner?.display_name && <p className="text-xs text-primary">Runner: {pickup.runner.display_name}</p>}
+                            </div>
                             <Badge variant="outline" className="shrink-0">{pickupStatusLabel(pickup.status)}</Badge>
                           </div>
                           <div className="mt-2 space-y-1 text-sm text-muted-foreground">
@@ -717,7 +731,10 @@ export default function RunnerDriverStockWorkspace({
                       <TableBody>
                         {pendingFilteredReturns.map((item) => (
                           <TableRow key={item.id}>
-                            <TableCell className="font-semibold">{item.driver?.display_name || 'Unknown'}</TableCell>
+                            <TableCell className="font-semibold">
+                              <p>{item.driver?.display_name || 'Unknown'}</p>
+                              {item.runner?.display_name && <p className="text-xs text-primary">Runner: {item.runner.display_name}</p>}
+                            </TableCell>
                             <TableCell>{format(new Date(item.created_at), 'dd MMM, HH:mm')}</TableCell>
                             <TableCell className="min-w-[260px]">
                               {(item.items || []).length > 0 ? (
@@ -769,7 +786,10 @@ export default function RunnerDriverStockWorkspace({
                       {group.map((item) => (
                         <div key={item.id} className="rounded-lg border border-border/70 bg-background p-3">
                           <div className="flex items-start justify-between gap-3">
-                            <p className="font-semibold">{item.driver?.display_name || 'Unknown driver'}</p>
+                            <div>
+                              <p className="font-semibold">{item.driver?.display_name || 'Unknown driver'}</p>
+                              {item.runner?.display_name && <p className="text-xs text-primary">Runner: {item.runner.display_name}</p>}
+                            </div>
                             <Badge variant="outline" className="shrink-0">{returnStatusLabel(item.status)}</Badge>
                           </div>
                           <div className="mt-2 space-y-1 text-sm text-muted-foreground">

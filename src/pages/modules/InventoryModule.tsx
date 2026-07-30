@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
-import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
+import { useMyAssistantScope } from '@/hooks/useRunnerAssistants';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const InventoryBalance = lazy(() => import('@/pages/InventoryBalance'));
 const InboundPending = lazy(() => import('@/pages/inbound/InboundPending'));
@@ -23,9 +24,21 @@ export default function InventoryModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const role = profile?.role;
-  const { data: assistantBinding } = useMyAssistantBinding();
+  const { data: assistantBinding } = useMyAssistantScope();
   const isAssistantContext = role !== 'runner' && Boolean(assistantBinding?.runner_id);
-  const assistantRunnerId = isAssistantContext ? assistantBinding?.runner_id : undefined;
+  const requestedRunnerId = searchParams.get('runner') || 'all';
+  const linkedRunnerIds = assistantBinding?.runnerIds || [];
+  const selectedRunnerId = linkedRunnerIds.includes(requestedRunnerId) ? requestedRunnerId : 'all';
+  const assistantRunnerIds = isAssistantContext
+    ? (selectedRunnerId === 'all' ? linkedRunnerIds : [selectedRunnerId])
+    : undefined;
+  const setRouteParam = (key: string, value: string) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set(key, value);
+      return next;
+    }, { replace: true });
+  };
 
   const allTabs = [
     { id: 'balance', label: 'Stock Balance', roles: ['admin', 'manager', 'salesperson', 'runner'] },
@@ -57,7 +70,7 @@ export default function InventoryModule() {
 
   return (
     <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="min-w-0">
+      <Tabs value={activeTab} onValueChange={(v) => setRouteParam('tab', v)} className="min-w-0">
         <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 scrollbar-hide touch-pan-x [-webkit-overflow-scrolling:touch] md:mx-0 md:px-0">
           <TabsList className="inline-flex h-11 w-max min-w-max justify-start bg-secondary/30">
             {tabs.map(t => (
@@ -66,14 +79,39 @@ export default function InventoryModule() {
           </TabsList>
         </div>
       </Tabs>
+      {isAssistantContext && linkedRunnerIds.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">Runner</span>
+          <Select value={selectedRunnerId} onValueChange={(value) => setRouteParam('runner', value)}>
+            <SelectTrigger className="h-9 w-full max-w-[240px] rounded-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Linked Runners</SelectItem>
+              {(assistantBinding?.runners || []).map((runner) => (
+                <SelectItem key={runner.id} value={runner.id}>
+                  {runner.display_name || runner.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
-            {activeTab === 'balance' && <InventoryBalance isRunnerAssistant={isAssistantContext} />}
+            {activeTab === 'balance' && (
+              <InventoryBalance
+                isRunnerAssistant={isAssistantContext}
+                assistantRunnerIds={assistantRunnerIds}
+              />
+            )}
             {activeTab === 'inbound' && ((role === 'runner' || (isAssistantContext && assistantBinding?.can_manage_inbound_stock))
-              ? <RunnerInbound runnerIdOverride={assistantRunnerId} />
+              ? isAssistantContext && assistantRunnerIds && assistantRunnerIds.length !== 1
+                ? <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Select one linked Runner before creating inbound stock.</div>
+                : <RunnerInbound runnerIdOverride={assistantRunnerIds?.[0]} />
               : <InboundPending />)}
-            {activeTab === 'inbound-history' && <InboundHistory runnerIdOverride={assistantRunnerId} />}
+            {activeTab === 'inbound-history' && <InboundHistory runnerIdOverride={assistantRunnerIds} />}
             {activeTab === 'adjustments' && <StockAdjustment />}
             {activeTab === 'warehouses' && <WarehouseManagement />}
             {activeTab === 'data-sharing' && <DataSharingAdmin />}

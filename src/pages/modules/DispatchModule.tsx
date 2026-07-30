@@ -4,10 +4,11 @@ import { lazy, Suspense, useEffect, useState, Component, type ReactNode } from '
 import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import { SyncNowButton } from '@/components/google-sheet/SyncNowButton';
-import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
+import { useMyAssistantScope } from '@/hooks/useRunnerAssistants';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Layers, X } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Retry dynamic import once on chunk load failure (stale deployment cache)
 function lazyRetry<T extends { default: React.ComponentType<never> }>(
@@ -78,13 +79,25 @@ export default function DispatchModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const role = profile?.role;
-  const { data: assistantBinding, isLoading: assistantBindingLoading } = useMyAssistantBinding();
+  const { data: assistantBinding, isLoading: assistantBindingLoading } = useMyAssistantScope();
   const activeTab = searchParams.get('tab') || 'inbox';
   const highlightOrderId = searchParams.get('highlight') || null;
   const routeSearch = searchParams.get('search') || '';
   const [showDuplicateOrders, setShowDuplicateOrders] = useState(false);
   const isAssistantContext = role !== 'runner' && Boolean(assistantBinding?.runner_id);
-  const assistantRunnerId = isAssistantContext ? assistantBinding?.runner_id : undefined;
+  const requestedRunnerId = searchParams.get('runner') || 'all';
+  const linkedRunnerIds = assistantBinding?.runnerIds || [];
+  const selectedRunnerId = linkedRunnerIds.includes(requestedRunnerId) ? requestedRunnerId : 'all';
+  const assistantRunnerIds = isAssistantContext
+    ? (selectedRunnerId === 'all' ? linkedRunnerIds : [selectedRunnerId])
+    : undefined;
+  const setRouteParam = (key: string, value: string) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set(key, value);
+      return next;
+    }, { replace: true });
+  };
 
   const runnerTabs = [
     { id: 'inbox', label: 'Runner Inbox' },
@@ -217,7 +230,7 @@ export default function DispatchModule() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="min-w-0 flex-1">
+        <Tabs value={activeTab} onValueChange={(v) => setRouteParam('tab', v)} className="min-w-0 flex-1">
           <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 scrollbar-hide touch-pan-x [-webkit-overflow-scrolling:touch] md:mx-0 md:px-0">
             <TabsList className="inline-flex h-11 w-max min-w-max justify-start bg-secondary/30">
               {tabs.map(t => (
@@ -235,6 +248,24 @@ export default function DispatchModule() {
           />
         )}
       </div>
+      {isAssistantContext && linkedRunnerIds.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">Runner</span>
+          <Select value={selectedRunnerId} onValueChange={(value) => setRouteParam('runner', value)}>
+            <SelectTrigger className="h-9 w-full max-w-[240px] rounded-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Linked Runners</SelectItem>
+              {(assistantBinding?.runners || []).map((runner) => (
+                <SelectItem key={runner.id} value={runner.id}>
+                  {runner.display_name || runner.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
@@ -280,6 +311,7 @@ export default function DispatchModule() {
             {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : (
               <TabErrorBoundary>
                 <RunnerInbox
+                  runnerIdsOverride={assistantRunnerIds}
                   initialSearch={routeSearch}
                   highlightOrderId={highlightOrderId}
                   duplicateOrdersAction={duplicateOrdersAction}
@@ -290,7 +322,7 @@ export default function DispatchModule() {
             {activeTab === 'driver-inbox' && canUseDriverInbox && (
               <TabErrorBoundary>
                 <RunnerDriverInbox
-                  runnerIdOverride={assistantRunnerId}
+                  runnerIdOverride={assistantRunnerIds}
                   canManageAssignments={canManageDriverAssignments}
                 />
               </TabErrorBoundary>
@@ -298,17 +330,17 @@ export default function DispatchModule() {
             {activeTab === 'driver-workload' && canUseDriverWorkload && (
               <TabErrorBoundary>
                 <RunnerDriverInbox
-                  runnerIdOverride={assistantRunnerId}
+                  runnerIdOverride={assistantRunnerIds}
                   workloadOnly
                   canManageAssignments={canManageDriverAssignments}
                 />
               </TabErrorBoundary>
             )}
-            {activeTab === 'drivers' && canUseDriverOperations && <DriverManagement runnerIdOverride={assistantRunnerId} />}
+            {activeTab === 'drivers' && canUseDriverOperations && <DriverManagement runnerIdOverride={assistantRunnerIds} />}
             {activeTab === 'driver-stock' && canUseDriverStock && (
               <TabErrorBoundary>
                 <RunnerDriverStockWorkspace
-                  runnerIdOverride={assistantRunnerId}
+                  runnerIdOverride={assistantRunnerIds}
                   hideCashSettlement={!canUseCashSettlement}
                   hideDriverStock={isAssistantContext && !assistantBinding?.can_manage_driver_stock}
                 />
@@ -319,7 +351,11 @@ export default function DispatchModule() {
             )}
             {activeTab === 'map' && <DriverLocationsPage />}
             {activeTab === 'delivered' && (role === 'runner' || isAssistantContext) && (
-              <RunnerDeliveredOrders initialSearch={routeSearch} highlightOrderId={highlightOrderId} />
+              <RunnerDeliveredOrders
+                initialSearch={routeSearch}
+                highlightOrderId={highlightOrderId}
+                runnerIdsOverride={assistantRunnerIds}
+              />
             )}
           </div>
         </Suspense>
