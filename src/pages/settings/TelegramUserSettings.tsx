@@ -11,13 +11,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import {
   Loader2, Send, Save, CheckCircle, XCircle, MessageSquare, Bell,
-  ExternalLink, Wifi, WifiOff, Clock, ArrowRight,
+  ExternalLink, Wifi, WifiOff, Clock, ArrowRight, Plus, Trash2, Star,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   useMyTelegramSettings, useUpsertMyTelegramSettings,
-  useMyLatestTelegramLog,
-  sendTelegramTest,
+  useMyLatestTelegramLog, useMyTelegramDestinations,
+  useVerifyTelegramDestination, useRemoveTelegramDestination,
+  useSetPrimaryTelegramDestination, sendTelegramDestinationTest,
+  sendAllTelegramDestinationsTest,
 } from '@/hooks/useTelegram';
 
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
@@ -28,10 +30,15 @@ export default function TelegramUserSettings() {
   const role = profile?.role;
 
   const { data: settings, isLoading } = useMyTelegramSettings(userId);
+  const { data: destinations = [], isLoading: destinationsLoading } = useMyTelegramDestinations(userId);
   const { data: latestLog } = useMyLatestTelegramLog(userId);
   const upsertSettings = useUpsertMyTelegramSettings();
+  const verifyDestination = useVerifyTelegramDestination();
+  const removeDestination = useRemoveTelegramDestination();
+  const setPrimaryDestination = useSetPrimaryTelegramDestination();
 
-  const [chatId, setChatId] = useState('');
+  const [newChatId, setNewChatId] = useState('');
+  const [newLabel, setNewLabel] = useState('');
   const [telegramEnabled, setTelegramEnabled] = useState(false);
   const [receiveStock, setReceiveStock] = useState(true);
   const [receiveDelivered, setReceiveDelivered] = useState(true);
@@ -42,11 +49,11 @@ export default function TelegramUserSettings() {
   const [receiveTeamDeliveryEvents, setReceiveTeamDeliveryEvents] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingDestinationId, setTestingDestinationId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (settings) {
-      setChatId(settings.chat_id || '');
       setTelegramEnabled(settings.telegram_enabled);
       setReceiveStock(settings.receive_stock_balance);
       setReceiveDelivered(settings.receive_delivered_not_claimed);
@@ -64,17 +71,12 @@ export default function TelegramUserSettings() {
 
   const handleSave = async () => {
     if (!userId) return;
-    const normalizedChatId = chatId.trim();
-    if (normalizedChatId && !TELEGRAM_CHAT_ID_PATTERN.test(normalizedChatId)) {
-      toast.error('Enter a valid personal or group Chat ID using numbers only');
-      return;
-    }
 
     setSaving(true);
     try {
       await upsertSettings.mutateAsync({
         user_id: userId,
-        chat_id: normalizedChatId || null,
+        chat_id: settings?.chat_id || null,
         telegram_enabled: telegramEnabled,
         receive_stock_balance: receiveStock,
         receive_delivered_not_claimed: receiveDelivered,
@@ -86,7 +88,6 @@ export default function TelegramUserSettings() {
         receive_team_delivery_events: receiveTeamDeliveryEvents,
         receive_team_order_updates: receiveTeamDeliveryEvents,
       } as any);
-      setChatId(normalizedChatId);
       toast.success('Settings saved successfully');
     } catch (e: any) {
       toast.error(e.message || 'Failed to save settings');
@@ -94,18 +95,41 @@ export default function TelegramUserSettings() {
     setSaving(false);
   };
 
-  const handleTest = async () => {
-    const normalizedChatId = chatId.trim();
-    if (!normalizedChatId) { toast.error('Enter your Chat ID first'); return; }
+  const handleAddDestination = async () => {
+    if (!userId || destinations.length >= 2) return;
+    const normalizedChatId = newChatId.trim();
+    if (!normalizedChatId) {
+      toast.error('Enter a Telegram Chat ID');
+      return;
+    }
     if (!TELEGRAM_CHAT_ID_PATTERN.test(normalizedChatId)) {
       toast.error('Enter a valid personal or group Chat ID using numbers only');
       return;
     }
 
-    setTesting(true);
     setTestResult(null);
     try {
-      await sendTelegramTest(normalizedChatId, 'TomuPro Telegram connection test successful!\n\nYou will receive daily notifications here.');
+      await verifyDestination.mutateAsync({
+        userId,
+        chatId: normalizedChatId,
+        label: newLabel.trim() || undefined,
+      });
+      setNewChatId('');
+      setNewLabel('');
+      setTestResult({ ok: true, message: 'Telegram verified and connected.' });
+      toast.success('Telegram verified and connected');
+    } catch (e: any) {
+      const msg = e.message || 'Verification failed. Start @ADDFD3BOT in the chat and try again.';
+      setTestResult({ ok: false, message: msg });
+      toast.error(msg);
+    }
+  };
+
+  const handleTestDestination = async (destinationId: string) => {
+    setTestingDestinationId(destinationId);
+    setTestResult(null);
+    try {
+      await sendTelegramDestinationTest(destinationId);
       setTestResult({ ok: true, message: 'Message sent! Check your Telegram.' });
       toast.success('Test message sent! Check your Telegram.');
     } catch (e: any) {
@@ -113,14 +137,53 @@ export default function TelegramUserSettings() {
       setTestResult({ ok: false, message: msg });
       toast.error(msg);
     }
+    setTestingDestinationId(null);
+  };
+
+  const handleTestAll = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const response = await sendAllTelegramDestinationsTest();
+      const successful = (response.results || []).filter((result: any) => result.success).length;
+      const total = response.results?.length || 0;
+      const allSucceeded = total > 0 && successful === total;
+      setTestResult({ ok: allSucceeded, message: `${successful} of ${total} Telegram chats received the test.` });
+      if (allSucceeded) toast.success(`Test delivered to ${successful} of ${total} chats`);
+      else toast.error(`Test delivered to ${successful} of ${total} chats`);
+    } catch (e: any) {
+      const msg = e.message || 'Telegram test failed';
+      setTestResult({ ok: false, message: msg });
+      toast.error(msg);
+    }
     setTesting(false);
   };
 
-  const isConnected = !!chatId.trim();
+  const handleRemoveDestination = async (destinationId: string) => {
+    if (!userId) return;
+    try {
+      await removeDestination.mutateAsync({ userId, destinationId });
+      toast.success('Telegram removed');
+    } catch (e: any) {
+      toast.error(e.message || 'Unable to remove Telegram');
+    }
+  };
+
+  const handleSetPrimary = async (destinationId: string) => {
+    if (!userId) return;
+    try {
+      await setPrimaryDestination.mutateAsync({ userId, destinationId });
+      toast.success('Primary Telegram updated');
+    } catch (e: any) {
+      toast.error(e.message || 'Unable to update Primary Telegram');
+    }
+  };
+
+  const isConnected = destinations.length > 0;
   const canStock = true;
   const canDelivered = true;
 
-  if (isLoading) {
+  if (isLoading || destinationsLoading) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center py-16">
@@ -162,7 +225,7 @@ export default function TelegramUserSettings() {
                 )}
                 <div>
                   <p className="text-sm font-semibold">{isConnected ? 'Connected' : 'Not Connected'}</p>
-                  {isConnected && <p className="text-xs text-muted-foreground font-mono">Chat ID: {chatId}</p>}
+                  <p className="text-xs text-muted-foreground">{destinations.length}/2 Telegram chats</p>
                 </div>
               </div>
               <Badge
@@ -177,26 +240,115 @@ export default function TelegramUserSettings() {
           </div>
 
           <div className="p-5 space-y-4">
-            {/* Chat ID Input */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Chat ID</Label>
-              <Input
-                value={chatId}
-                onChange={e => setChatId(e.target.value)}
-                placeholder="Personal: 123456789 · Group: -1001234567890"
-                className="font-mono h-10 rounded-xl"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              <div className="space-y-1 text-[11px] text-muted-foreground">
-                <p>
-                  Personal: send <span className="font-mono font-semibold">/start</span> to <span className="font-semibold">@userinfobot</span>.
+            <div className="space-y-3">
+              {destinations.map((destination) => (
+                <div key={destination.id} className="rounded-xl border border-border/50 bg-secondary/15 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold">{destination.label}</p>
+                        {destination.is_primary && (
+                          <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary text-[10px]">
+                            Primary
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 text-[10px] dark:border-green-800 dark:bg-green-950/30 dark:text-green-400">
+                          Connected
+                        </Badge>
+                      </div>
+                      <p className="break-all font-mono text-xs text-muted-foreground">Chat ID: {destination.chat_id}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-destructive"
+                      onClick={() => handleRemoveDestination(destination.id)}
+                      disabled={removeDestination.isPending}
+                      aria-label={`Remove ${destination.label}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      onClick={() => handleTestDestination(destination.id)}
+                      disabled={testingDestinationId === destination.id}
+                    >
+                      {testingDestinationId === destination.id
+                        ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        : <Send className="mr-1.5 h-3.5 w-3.5" />}
+                      Test
+                    </Button>
+                    {!destination.is_primary && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => handleSetPrimary(destination.id)}
+                        disabled={setPrimaryDestination.isPending}
+                      >
+                        <Star className="mr-1.5 h-3.5 w-3.5" />
+                        Set Primary
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {destinations.length < 2 ? (
+                <div className="space-y-3 rounded-xl border border-dashed border-primary/40 p-3">
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {destinations.length === 0 ? 'Connect Telegram' : 'Add Secondary Telegram'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      A verification message must succeed before the chat is connected.
+                    </p>
+                  </div>
+                  <Input
+                    value={newLabel}
+                    onChange={event => setNewLabel(event.target.value)}
+                    placeholder={destinations.length === 0 ? 'Primary Telegram' : 'Secondary Telegram'}
+                    className="h-10 rounded-xl"
+                    maxLength={40}
+                  />
+                  <Input
+                    value={newChatId}
+                    onChange={event => setNewChatId(event.target.value)}
+                    placeholder="Personal: 123456789 · Group: -1001234567890"
+                    className="h-10 rounded-xl font-mono"
+                    inputMode="numeric"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleAddDestination}
+                    disabled={verifyDestination.isPending || !newChatId.trim()}
+                    className="h-10 w-full rounded-xl"
+                  >
+                    {verifyDestination.isPending
+                      ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      : <Plus className="mr-2 h-4 w-4" />}
+                    Verify & Add Telegram
+                  </Button>
+                  <div className="space-y-1 text-[11px] text-muted-foreground">
+                    <p>Personal: send <span className="font-mono font-semibold">/start</span> to <span className="font-semibold">@ADDFD3BOT</span>.</p>
+                    <p>Group: add <span className="font-semibold">@ADDFD3BOT</span>, allow messages, then enter its negative ID (usually <span className="font-mono font-semibold">-100...</span>).</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-xl bg-secondary/30 px-3 py-2.5 text-center text-xs font-medium text-muted-foreground">
+                  Maximum 2 Telegram chats connected
                 </p>
-                <p>
-                  Group: add <span className="font-semibold">@ADDFD3BOT</span>, allow it to send messages, then enter the negative group ID (usually <span className="font-mono font-semibold">-100...</span>).
-                </p>
-              </div>
+              )}
             </div>
 
             {/* Enable Toggle */}
@@ -403,9 +555,9 @@ export default function TelegramUserSettings() {
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
             Save Settings
           </Button>
-          <Button variant="outline" onClick={handleTest} disabled={testing || !chatId.trim()} className="flex-1 h-11 rounded-xl">
+          <Button variant="outline" onClick={handleTestAll} disabled={testing || destinations.length === 0} className="flex-1 h-11 rounded-xl">
             {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-            Send Test Message
+            Test {destinations.length === 2 ? 'Both Chats' : 'Telegram'}
           </Button>
         </div>
 

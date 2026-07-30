@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const FUNCTION_VERSION = '20260730_driver_reschedule_v3';
+const FUNCTION_VERSION = '20260730_multi_telegram_destinations_v4';
 const DELIVERY_PHOTO_BUCKET = 'delivery-photos';
 
 const corsHeaders = {
@@ -13,6 +13,16 @@ type RecipientKind = 'runner' | 'assistant' | 'order_owner' | 'team_manager';
 interface TelegramResponse {
   ok: boolean;
   description?: string;
+  result?: {
+    message_id?: number;
+  };
+}
+
+interface TelegramDestination {
+  id: string | null;
+  user_id: string;
+  chat_id: string;
+  label: string;
 }
 
 interface QueueEvent {
@@ -544,17 +554,44 @@ Deno.serve(async (req) => {
 
     const userIdList = [...allUserIds];
     const settingsMap = new Map<string, any>();
+    const destinationsMap = new Map<string, TelegramDestination[]>();
 
     if (userIdList.length > 0) {
       const { data: settings } = await supabase
         .from('user_telegram_settings')
         .select('*')
         .eq('telegram_enabled', true)
-        .not('chat_id', 'is', null)
         .in('user_id', userIdList);
 
       for (const setting of (settings || [])) {
         settingsMap.set(setting.user_id, setting);
+      }
+
+      const { data: destinations } = await supabase
+        .from('user_telegram_destinations')
+        .select('id, user_id, chat_id, label')
+        .in('user_id', userIdList)
+        .eq('active', true)
+        .not('verified_at', 'is', null)
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      for (const destination of (destinations || []) as TelegramDestination[]) {
+        const userDestinations = destinationsMap.get(destination.user_id) || [];
+        userDestinations.push(destination);
+        destinationsMap.set(destination.user_id, userDestinations);
+      }
+
+      for (const setting of (settings || [])) {
+        if (destinationsMap.has(setting.user_id)) continue;
+        const legacyChatId = String(setting.chat_id || '').trim();
+        if (!TELEGRAM_CHAT_ID_PATTERN.test(legacyChatId)) continue;
+        destinationsMap.set(setting.user_id, [{
+          id: null,
+          user_id: setting.user_id,
+          chat_id: legacyChatId,
+          label: 'Primary Telegram',
+        }]);
       }
 
       const missingProfiles = userIdList.filter((userId) => !profileMap.has(userId));
@@ -628,10 +665,11 @@ Deno.serve(async (req) => {
       }
 
       const sentChatIdsForEvent = new Set<string>();
+      let eventHadFailure = false;
 
       for (const recipient of uniqueRecipients(recipients)) {
         const setting = settingsMap.get(recipient.userId);
-        if (!setting?.chat_id) continue;
+        if (!setting) continue;
 
         if (isReceipt && setting.receive_receipt_events === false) continue;
         if (isDelivery && setting.receive_delivery_events === false) continue;
@@ -646,71 +684,93 @@ Deno.serve(async (req) => {
           }
         }
 
-        const chatId = String(setting.chat_id).trim();
-        if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) continue;
-        if (sentChatIdsForEvent.has(chatId)) continue;
-        sentChatIdsForEvent.add(chatId);
-        const errors: string[] = [];
+        const userDestinations = destinationsMap.get(recipient.userId) || [];
+        for (const destination of userDestinations) {
+          const chatId = destination.chat_id.trim();
+          if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) continue;
+          if (sentChatIdsForEvent.has(chatId)) continue;
+          sentChatIdsForEvent.add(chatId);
 
-        try {
-          const photoUrls = isDriver
-            ? await resolveTelegramPhotoUrls(supabase, photos)
-            : photos.map((photo) => photo.url).filter(Boolean);
+          const deliveryKey = `event:${id}:${chatId}`;
+          const { data: claims, error: claimError } = await supabase.rpc(
+            'claim_telegram_notification_delivery',
+            {
+              p_delivery_key: deliveryKey,
+              p_user_id: recipient.userId,
+              p_destination_id: destination.id,
+              p_chat_id: chatId,
+              p_notification_type: `event_${event_type}`,
+              p_message_preview: message.substring(0, 200),
+              p_order_id: logOrderId,
+              p_order_ref: logOrderRef,
+              p_recipient_role: recipient.kind,
+              p_event_id: id,
+            },
+          );
+          if (claimError) {
+            eventHadFailure = true;
+            console.error(`[send-telegram-event] Failed to claim ${deliveryKey}:`, claimError.message);
+            continue;
+          }
 
-          for (let i = 0; i < photoUrls.length; i += 10) {
-            const batch = photoUrls.slice(i, i + 10);
-            if (batch.length > 1) {
-              const groupResult = await sendTelegramMediaGroup(botToken, chatId, batch);
-              if (groupResult.ok) continue;
-              console.warn('[send-telegram-event] Media group failed, falling back to individual photos:', groupResult.description);
-            }
+          const claim = claims?.[0];
+          if (!claim?.should_send) {
+            if (claim?.delivery_status !== 'success') eventHadFailure = true;
+            continue;
+          }
 
-            for (const photoUrl of batch) {
-              const photoResult = await sendTelegramPhoto(botToken, chatId, photoUrl);
-              if (!photoResult.ok) {
-                errors.push(photoResult.description || 'Photo send failed');
+          const errors: string[] = [];
+          try {
+            const photoUrls = isDriver
+              ? await resolveTelegramPhotoUrls(supabase, photos)
+              : photos.map((photo) => photo.url).filter(Boolean);
+
+            for (let i = 0; i < photoUrls.length; i += 10) {
+              const batch = photoUrls.slice(i, i + 10);
+              if (batch.length > 1) {
+                const groupResult = await sendTelegramMediaGroup(botToken, chatId, batch);
+                if (groupResult.ok) continue;
+                console.warn('[send-telegram-event] Media group failed, falling back to individual photos:', groupResult.description);
+              }
+
+              for (const photoUrl of batch) {
+                const photoResult = await sendTelegramPhoto(botToken, chatId, photoUrl);
+                if (!photoResult.ok) errors.push(photoResult.description || 'Photo send failed');
               }
             }
+
+            const messageResult = await sendTelegramMessage(botToken, chatId, message);
+            if (!messageResult.ok) errors.push(messageResult.description || 'Message send failed');
+
+            const ok = errors.length === 0;
+            await supabase
+              .from('telegram_notification_logs')
+              .update({
+                status: ok ? 'success' : 'failed',
+                error_message: ok ? null : errors.join('; '),
+                telegram_message_id: messageResult.result?.message_id ? String(messageResult.result.message_id) : null,
+                sent_at: new Date().toISOString(),
+              })
+              .eq('id', claim.log_id);
+
+            if (ok) sentCount++;
+            else eventHadFailure = true;
+          } catch (err) {
+            eventHadFailure = true;
+            console.error(`[send-telegram-event] Failed to send to ${recipient.userId}:`, err);
+            await supabase
+              .from('telegram_notification_logs')
+              .update({
+                status: 'failed',
+                error_message: err instanceof Error ? err.message : String(err),
+                sent_at: new Date().toISOString(),
+              })
+              .eq('id', claim.log_id);
           }
-
-          const messageResult = await sendTelegramMessage(botToken, chatId, message);
-          if (!messageResult.ok) {
-            errors.push(messageResult.description || 'Message send failed');
-          }
-
-          const ok = errors.length === 0;
-          await supabase.from('telegram_notification_logs').insert({
-            user_id: recipient.userId,
-            chat_id: chatId,
-            notification_type: `event_${event_type}`,
-            status: ok ? 'success' : 'failed',
-            error_message: ok ? null : errors.join('; '),
-            message_preview: message.substring(0, 200),
-            order_id: logOrderId,
-            order_ref: logOrderRef,
-            recipient_role: recipient.kind,
-            event_id: id,
-          });
-
-          if (ok) sentCount++;
-        } catch (err) {
-          console.error(`[send-telegram-event] Failed to send to ${recipient.userId}:`, err);
-          await supabase.from('telegram_notification_logs').insert({
-            user_id: recipient.userId,
-            chat_id: chatId,
-            notification_type: `event_${event_type}`,
-            status: 'failed',
-            error_message: err instanceof Error ? err.message : String(err),
-            message_preview: message.substring(0, 200),
-            order_id: logOrderId,
-            order_ref: logOrderRef,
-            recipient_role: recipient.kind,
-            event_id: id,
-          });
         }
       }
 
-      processedIds.push(id);
+      if (!eventHadFailure) processedIds.push(id);
     }
 
     if (processedIds.length > 0) {

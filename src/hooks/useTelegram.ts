@@ -29,6 +29,18 @@ export interface UserTelegramSettings {
   updated_at: string;
 }
 
+export interface TelegramDestination {
+  id: string;
+  user_id: string;
+  chat_id: string;
+  label: string;
+  active: boolean;
+  is_primary: boolean;
+  verified_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TelegramLog {
   id: string;
   user_id: string;
@@ -131,6 +143,82 @@ export function useUpsertMyTelegramSettings() {
 
 /* ── Logs ── */
 
+export function useMyTelegramDestinations(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['telegram-destinations', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const { data, error } = await (supabase as any)
+        .from('user_telegram_destinations')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('active', true)
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data || []) as TelegramDestination[];
+    },
+    enabled: !!userId,
+  });
+}
+
+export function useVerifyTelegramDestination() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ chatId, label }: { userId: string; chatId: string; label?: string }) => {
+      const { data, error } = await supabase.functions.invoke('send-telegram-daily', {
+        body: {
+          action: 'verify_destination',
+          chat_id: chatId,
+          label,
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Telegram could not verify this chat');
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['telegram-destinations', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['user-telegram-settings', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['telegram-log-latest', variables.userId] });
+    },
+  });
+}
+
+export function useRemoveTelegramDestination() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ destinationId }: { userId: string; destinationId: string }) => {
+      const { data, error } = await (supabase as any).rpc('remove_my_telegram_destination', {
+        p_destination_id: destinationId,
+      });
+      if (error) throw error;
+      if (!data) throw new Error('Telegram destination was not found');
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['telegram-destinations', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['user-telegram-settings', variables.userId] });
+    },
+  });
+}
+
+export function useSetPrimaryTelegramDestination() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ destinationId }: { userId: string; destinationId: string }) => {
+      const { data, error } = await (supabase as any).rpc('set_my_primary_telegram_destination', {
+        p_destination_id: destinationId,
+      });
+      if (error) throw error;
+      if (!data) throw new Error('Telegram destination was not found');
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['telegram-destinations', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['user-telegram-settings', variables.userId] });
+    },
+  });
+}
+
 export function useTelegramLogs(limit = 50) {
   return useQuery({
     queryKey: ['telegram-logs', limit],
@@ -175,6 +263,24 @@ export async function sendTelegramTest(chatId: string, message: string) {
   if (!data?.success) {
     throw new Error(data?.error || 'Telegram rejected the Chat ID');
   }
+  return data;
+}
+
+export async function sendTelegramDestinationTest(destinationId: string) {
+  const { data, error } = await supabase.functions.invoke('send-telegram-daily', {
+    body: { action: 'test_destination', destination_id: destinationId },
+  });
+  if (error) throw error;
+  if (!data?.success) throw new Error(data?.error || 'Telegram test failed');
+  return data;
+}
+
+export async function sendAllTelegramDestinationsTest() {
+  const { data, error } = await supabase.functions.invoke('send-telegram-daily', {
+    body: { action: 'test_all_destinations' },
+  });
+  if (error) throw error;
+  if (!data?.success) throw new Error(data?.error || 'Telegram test failed');
   return data;
 }
 

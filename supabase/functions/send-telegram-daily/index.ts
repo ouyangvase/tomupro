@@ -8,9 +8,19 @@ const corsHeaders = {
 interface TelegramResponse {
   ok: boolean;
   description?: string;
+  result?: {
+    message_id?: number;
+  };
 }
 
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
+
+interface TelegramDestination {
+  id: string | null;
+  user_id: string;
+  chat_id: string;
+  label: string;
+}
 
 async function sendTelegramMessage(botToken: string, chatId: string, text: string): Promise<TelegramResponse> {
   const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -19,6 +29,23 @@ async function sendTelegramMessage(botToken: string, chatId: string, text: strin
     body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
   });
   return res.json();
+}
+
+async function getAuthenticatedUserId(req: Request, supabase: any): Promise<string | null> {
+  const authorization = req.headers.get('Authorization') || '';
+  const token = authorization.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user?.id) return null;
+  return data.user.id;
+}
+
+function jsonResponse(payload: Record<string, unknown>, status = 200): Response {
+  return new Response(
+    JSON.stringify(payload),
+    { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+  );
 }
 
 Deno.serve(async (req) => {
@@ -51,20 +78,136 @@ Deno.serve(async (req) => {
     const botToken = botSettings.bot_token;
 
     // ── Action: test (only for Test Connection button) ──
-    if (action === 'test') {
-      const chatId = String(body.chat_id ?? '').trim();
-      const message = body.message || 'TomuPro bot connected!';
-      if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Enter a valid personal or group Chat ID using numbers only' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    if (['test', 'verify_destination', 'test_destination', 'test_all_destinations'].includes(action)) {
+      const userId = await getAuthenticatedUserId(req, supabase);
+      if (!userId) return jsonResponse({ success: false, error: 'Authentication required' }, 401);
+
+      if (action === 'verify_destination') {
+        const chatId = String(body.chat_id ?? '').trim();
+        const label = String(body.label ?? '').trim() || null;
+        if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) {
+          return jsonResponse({ success: false, error: 'Enter a valid personal or group Chat ID using numbers only' }, 400);
+        }
+
+        const { data: existingDestinations, error: existingError } = await supabase
+          .from('user_telegram_destinations')
+          .select('id, chat_id')
+          .eq('user_id', userId)
+          .eq('active', true);
+        if (existingError) return jsonResponse({ success: false, error: existingError.message }, 400);
+        if ((existingDestinations || []).some((destination) => destination.chat_id === chatId)) {
+          return jsonResponse({ success: false, error: 'This Telegram chat is already connected' }, 409);
+        }
+        if ((existingDestinations || []).length >= 2) {
+          return jsonResponse({ success: false, error: 'Maximum 2 Telegram chats connected' }, 409);
+        }
+
+        const verification = await sendTelegramMessage(
+          botToken,
+          chatId,
+          '<b>TomuPro Telegram verified</b>\n\nVerification succeeded. TomuPro is completing the connection.',
         );
+        if (!verification.ok) {
+          return jsonResponse({ success: false, error: verification.description || 'Telegram could not reach this chat' }, 400);
+        }
+
+        const { data: destinationId, error: destinationError } = await supabase.rpc(
+          'upsert_verified_telegram_destination',
+          { p_user_id: userId, p_chat_id: chatId, p_label: label },
+        );
+        if (destinationError) {
+          return jsonResponse({ success: false, error: destinationError.message }, 400);
+        }
+
+        await supabase.from('telegram_notification_logs').insert({
+          user_id: userId,
+          telegram_destination_id: destinationId,
+          chat_id: chatId,
+          notification_type: 'destination_verification',
+          status: 'success',
+          telegram_message_id: verification.result?.message_id ? String(verification.result.message_id) : null,
+          message_preview: 'TomuPro Telegram verified',
+        });
+
+        return jsonResponse({
+          success: true,
+          destination_id: destinationId,
+          telegram_message_id: verification.result?.message_id ?? null,
+          verified_at: new Date().toISOString(),
+        });
       }
-      const result = await sendTelegramMessage(botToken, chatId, message);
-      return new Response(
-        JSON.stringify({ success: result.ok, error: result.description }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+
+      if (action === 'test') {
+        const chatId = String(body.chat_id ?? '').trim();
+        if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) {
+          return jsonResponse({ success: false, error: 'Enter a valid personal or group Chat ID using numbers only' }, 400);
+        }
+
+        const { data: allowedDestination } = await supabase
+          .from('user_telegram_destinations')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('chat_id', chatId)
+          .eq('active', true)
+          .not('verified_at', 'is', null)
+          .maybeSingle();
+        if (!allowedDestination) {
+          return jsonResponse({ success: false, error: 'Verify this Telegram chat before testing it' }, 403);
+        }
+
+        const result = await sendTelegramMessage(botToken, chatId, body.message || 'TomuPro bot connected!');
+        return jsonResponse({ success: result.ok, error: result.description, telegram_message_id: result.result?.message_id ?? null });
+      }
+
+      let destinationQuery = supabase
+        .from('user_telegram_destinations')
+        .select('id, user_id, chat_id, label')
+        .eq('user_id', userId)
+        .eq('active', true)
+        .not('verified_at', 'is', null);
+
+      if (action === 'test_destination') {
+        destinationQuery = destinationQuery.eq('id', body.destination_id);
+      }
+
+      const { data: destinations, error: destinationsError } = await destinationQuery
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true });
+      if (destinationsError) return jsonResponse({ success: false, error: destinationsError.message }, 400);
+      if (!destinations?.length) return jsonResponse({ success: false, error: 'No verified Telegram chat found' }, 404);
+
+      const results = [];
+      for (const destination of destinations as TelegramDestination[]) {
+        const result = await sendTelegramMessage(
+          botToken,
+          destination.chat_id,
+          '<b>TomuPro test notification</b>\n\nYour Telegram connection is working.',
+        );
+        await supabase.from('telegram_notification_logs').insert({
+          user_id: userId,
+          telegram_destination_id: destination.id,
+          chat_id: destination.chat_id,
+          notification_type: 'destination_test',
+          status: result.ok ? 'success' : 'failed',
+          error_message: result.ok ? null : (result.description || 'Telegram send failed'),
+          telegram_message_id: result.result?.message_id ? String(result.result.message_id) : null,
+          message_preview: 'TomuPro test notification',
+        });
+        results.push({
+          destination_id: destination.id,
+          label: destination.label,
+          success: result.ok,
+          error: result.ok ? null : result.description,
+          telegram_message_id: result.result?.message_id ?? null,
+        });
+      }
+
+      return jsonResponse({
+        success: true,
+        all_succeeded: results.every((result) => result.success),
+        results,
+        tested_at: new Date().toISOString(),
+      });
     }
 
     // ── Action: send_daily ──
@@ -80,8 +223,7 @@ Deno.serve(async (req) => {
     const { data: userSettings } = await supabase
       .from('user_telegram_settings')
       .select('*')
-      .eq('telegram_enabled', true)
-      .not('chat_id', 'is', null);
+      .eq('telegram_enabled', true);
 
     if (!userSettings?.length) {
       return new Response(
@@ -91,6 +233,34 @@ Deno.serve(async (req) => {
     }
 
     const testUserId = body.test_user_id;
+    const userIds = (userSettings as any[]).map((setting) => setting.user_id);
+    const destinationsByUser = new Map<string, TelegramDestination[]>();
+    const { data: destinations } = await supabase
+      .from('user_telegram_destinations')
+      .select('id, user_id, chat_id, label')
+      .in('user_id', userIds)
+      .eq('active', true)
+      .not('verified_at', 'is', null)
+      .order('is_primary', { ascending: false })
+      .order('created_at', { ascending: true });
+
+    for (const destination of (destinations || []) as TelegramDestination[]) {
+      const userDestinations = destinationsByUser.get(destination.user_id) || [];
+      userDestinations.push(destination);
+      destinationsByUser.set(destination.user_id, userDestinations);
+    }
+
+    for (const setting of userSettings as any[]) {
+      if (destinationsByUser.has(setting.user_id)) continue;
+      const legacyChatId = String(setting.chat_id || '').trim();
+      if (!TELEGRAM_CHAT_ID_PATTERN.test(legacyChatId)) continue;
+      destinationsByUser.set(setting.user_id, [{
+        id: null,
+        user_id: setting.user_id,
+        chat_id: legacyChatId,
+        label: 'Primary Telegram',
+      }]);
+    }
 
     // ── Fetch stock from stock_balance_view (same source as Inventory page) ──
     const { data: allStock, error: stockError } = await supabase
@@ -154,19 +324,8 @@ Deno.serve(async (req) => {
     for (const userSetting of (userSettings as any[])) {
       const userId = userSetting.user_id;
       if (testUserId && userId !== testUserId) continue;
-      if (!userSetting.chat_id) continue;
-
-      const chatId = String(userSetting.chat_id).trim();
-      if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) {
-        await supabase.from('telegram_notification_logs').insert({
-          user_id: userId,
-          chat_id: chatId,
-          notification_type: 'daily_report',
-          status: 'failed',
-          error_message: 'Invalid personal or group Chat ID',
-        });
-        continue;
-      }
+      const userDestinations = destinationsByUser.get(userId) || [];
+      if (userDestinations.length === 0) continue;
 
       const wantsStock = !!userSetting.receive_stock_balance;
       const wantsDelivered = !!userSetting.receive_delivered_not_claimed;
@@ -315,26 +474,53 @@ Deno.serve(async (req) => {
       }
 
       // ── Send single combined message ──
-      try {
-        const result = await sendTelegramMessage(botToken, chatId, msg.trim());
-        await supabase.from('telegram_notification_logs').insert({
-          user_id: userId,
-          chat_id: chatId,
-          notification_type: 'daily_report',
-          status: result.ok ? 'success' : 'failed',
-          error_message: result.ok ? null : (result.description || 'Unknown error'),
-          message_preview: msg.substring(0, 200),
-        });
-        if (result.ok) sentCount++;
-      } catch (err) {
-        await supabase.from('telegram_notification_logs').insert({
-          user_id: userId,
-          chat_id: chatId,
-          notification_type: 'daily_report',
-          status: 'failed',
-          error_message: err instanceof Error ? err.message : String(err),
-          message_preview: msg.substring(0, 200),
-        });
+      for (const destination of userDestinations) {
+        const chatId = destination.chat_id.trim();
+        if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) continue;
+
+        const deliveryType = testUserId ? 'daily_report_test' : 'daily_report';
+        const deliveryKey = `${deliveryType}:${today.toISOString().slice(0, 10)}:${userId}:${chatId}`;
+        const { data: claims, error: claimError } = await supabase.rpc(
+          'claim_telegram_notification_delivery',
+          {
+            p_delivery_key: deliveryKey,
+            p_user_id: userId,
+            p_destination_id: destination.id,
+            p_chat_id: chatId,
+            p_notification_type: 'daily_report',
+            p_message_preview: msg.substring(0, 200),
+          },
+        );
+        if (claimError) {
+          console.error(`[send-telegram-daily] Failed to claim ${deliveryKey}:`, claimError.message);
+          continue;
+        }
+
+        const claim = claims?.[0];
+        if (!claim?.should_send) continue;
+
+        try {
+          const result = await sendTelegramMessage(botToken, chatId, msg.trim());
+          await supabase
+            .from('telegram_notification_logs')
+            .update({
+              status: result.ok ? 'success' : 'failed',
+              error_message: result.ok ? null : (result.description || 'Unknown error'),
+              telegram_message_id: result.result?.message_id ? String(result.result.message_id) : null,
+              sent_at: new Date().toISOString(),
+            })
+            .eq('id', claim.log_id);
+          if (result.ok) sentCount++;
+        } catch (err) {
+          await supabase
+            .from('telegram_notification_logs')
+            .update({
+              status: 'failed',
+              error_message: err instanceof Error ? err.message : String(err),
+              sent_at: new Date().toISOString(),
+            })
+            .eq('id', claim.log_id);
+        }
       }
     }
 
