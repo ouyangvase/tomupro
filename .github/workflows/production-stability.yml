@@ -14,6 +14,7 @@ jobs:
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
+      TOMUPRO_AUDIT_CREDENTIALS_JSON: ${{ secrets.TOMUPRO_AUDIT_CREDENTIALS_JSON }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,9 +27,8 @@ jobs:
       - run: npm run build
 
       - name: First-load browser checks
-        if: ${{ secrets.TOMUPRO_AUDIT_CREDENTIALS_JSON != '' }}
+        if: ${{ env.TOMUPRO_AUDIT_CREDENTIALS_JSON != '' }}
         env:
-          TOMUPRO_AUDIT_CREDENTIALS_JSON: ${{ secrets.TOMUPRO_AUDIT_CREDENTIALS_JSON }}
           TOMUPRO_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           TOMUPRO_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           TOMUPRO_AUDIT_BASE_URL: http://127.0.0.1:4175
