@@ -75,6 +75,19 @@ export interface AssignmentBatchResult {
   notified_driver_count?: number;
 }
 
+export interface BulkRevertDriverOrdersResult {
+  success: boolean;
+  batch_id: string | null;
+  driver_id: string;
+  driver_name: string;
+  expected_count: number;
+  reverted_count: number;
+  skipped_count: number;
+  reverted_collect_amount: number;
+  reverted_order_ids: string[];
+  notification_id?: string | null;
+}
+
 type RpcResult<T> = Promise<{ data: T | null; error: Error | null }>;
 type DispatchSupabaseClient = {
   rpc: <T = unknown>(fn: string, args?: Record<string, unknown>) => RpcResult<T>;
@@ -289,6 +302,78 @@ export function useRemoveDriverAssignmentBatch() {
     },
     onError: (error: Error) => {
       toast.error(`Remove assignment failed: ${error.message}`);
+    },
+  });
+}
+
+export function useBulkRevertDriverAppOrders() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      runnerId,
+      driverId,
+      expectedOrderIds,
+      operationalDate,
+    }: {
+      runnerId: string;
+      driverId: string;
+      expectedOrderIds: string[];
+      operationalDate: string | null;
+    }) => {
+      const { data, error } = await dispatchSupabase.rpc<BulkRevertDriverOrdersResult>(
+        'bulk_revert_driver_app_orders',
+        {
+          p_runner_id: runnerId,
+          p_driver_id: driverId,
+          p_expected_order_ids: expectedOrderIds,
+          p_operational_date: operationalDate,
+        },
+      );
+
+      if (error) throw error;
+      if (!data) throw new Error('Bulk revert returned no result');
+      return {
+        ...data,
+        expected_count: Number(data.expected_count || 0),
+        reverted_count: Number(data.reverted_count || 0),
+        skipped_count: Number(data.skipped_count || 0),
+        reverted_collect_amount: Number(data.reverted_collect_amount || 0),
+        reverted_order_ids: data.reverted_order_ids || [],
+      };
+    },
+    onSuccess: async (result) => {
+      queryClient.setQueriesData<DispatchDriverWorkload[]>(
+        { queryKey: ['runner-dispatch-driver-workloads'] },
+        (current) => current?.map((driver) => (
+          driver.driver_id === result.driver_id
+            ? {
+                ...driver,
+                assigned_order_count: Math.max(
+                  Number(driver.assigned_order_count || 0) - result.reverted_count,
+                  0,
+                ),
+                collect_amount: Math.max(
+                  Number(driver.collect_amount || 0) - result.reverted_collect_amount,
+                  0,
+                ),
+              }
+            : driver
+        )),
+      );
+
+      invalidateOrderQueries(queryClient);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-area-summary'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-locality-summary'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-driver-workloads'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['driver-assignments'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['driver-order-count'], refetchType: 'active' }),
+      ]);
+    },
+    onError: (error: Error) => {
+      toast.error(`Revert orders failed: ${error.message}`);
     },
   });
 }

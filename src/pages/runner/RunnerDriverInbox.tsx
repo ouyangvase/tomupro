@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import capybaraEmpty from '@/assets/capybara-empty.png';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { useRunnerDriverOrders, useMyDrivers, useRunnerAcceptDelivery, useRunner
 import {
   fetchRunnerDispatchAreaOrderIds,
   useApplyDriverAssignmentBatch,
+  useBulkRevertDriverAppOrders,
   useCorrectOrderDeliveryArea,
   useDeliveryAreas,
   useRunnerDispatchDriverWorkloads,
@@ -415,10 +416,16 @@ function UserDotLabel({ name }: { name: string }) {
 type RunnerDriverInboxProps = {
   runnerIdOverride?: string;
   workloadOnly?: boolean;
+  canManageAssignments?: boolean;
 };
 
-export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = false }: RunnerDriverInboxProps = {}) {
+export default function RunnerDriverInbox({
+  runnerIdOverride,
+  workloadOnly = false,
+  canManageAssignments,
+}: RunnerDriverInboxProps = {}) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
@@ -432,6 +439,9 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
     profile?.role === 'runner' ||
     profile?.role === 'admin' ||
     hasDelegatedRunnerScope;
+  const canManageDriverAssignments = canManageAssignments ?? (
+    profile?.role === 'runner' || profile?.role === 'admin'
+  );
   const { data: orders = [], isLoading } = useRunnerDriverOrders(runnerIdOverride);
   const { data: myDrivers = [] } = useMyDrivers(runnerIdOverride);
   const { data: dbDeliveryAreas = [] } = useDeliveryAreas();
@@ -441,6 +451,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
   const manualReopen = useManualReopenOrder();
   const revertDelivery = useRevertDelivery();
   const applyBatch = useApplyDriverAssignmentBatch();
+  const bulkRevertDriverOrders = useBulkRevertDriverAppOrders();
   const correctArea = useCorrectOrderDeliveryArea();
 
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
@@ -463,7 +474,7 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
   const [reviewOrder, setReviewOrder] = useState<RunnerOrder | null>(null);
   const [revertDialogOpen, setRevertDialogOpen] = useState(false);
   const [revertOrderData, setRevertOrderData] = useState<RunnerOrder | null>(null);
-  const [driverFilter, setDriverFilter] = useState<string>('all');
+  const [driverFilter, setDriverFilter] = useState<string>(() => searchParams.get('driver') || 'all');
   const [driverStatusFilter, setDriverStatusFilter] = useState<string>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>('all');
@@ -479,6 +490,12 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
   const [workloadExportMonth, setWorkloadExportMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [workloadExportDriverId, setWorkloadExportDriverId] = useState('all');
   const [workloadExporting, setWorkloadExporting] = useState(false);
+  const [bulkRevertDialogOpen, setBulkRevertDialogOpen] = useState(false);
+  const [bulkRevertDriver, setBulkRevertDriver] = useState<DriverWorkloadView | null>(null);
+  const [bulkRevertSnapshot, setBulkRevertSnapshot] = useState<DriverAssignment[]>([]);
+  const [bulkRevertSnapshotLoading, setBulkRevertSnapshotLoading] = useState(false);
+  const [bulkRevertConfirmation, setBulkRevertConfirmation] = useState('');
+  const bulkRevertRequestRef = useRef(0);
 
   const { data: dbDriverWorkloads = [], isFetching: driverWorkloadFetching } = useRunnerDispatchDriverWorkloads(activeQueueScopeDate);
   const performanceRange = useMemo(() => getDateRange(performanceAnchorDate, performancePeriod), [performanceAnchorDate, performancePeriod]);
@@ -956,6 +973,69 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
   const handleDriverFilterChange = (value: string) => {
     setDriverFilter(value);
     clearSelection();
+  };
+
+  const handleBulkRevertDialogOpenChange = (open: boolean) => {
+    setBulkRevertDialogOpen(open);
+    if (!open) {
+      bulkRevertRequestRef.current += 1;
+      setBulkRevertDriver(null);
+      setBulkRevertSnapshot([]);
+      setBulkRevertSnapshotLoading(false);
+      setBulkRevertConfirmation('');
+    }
+  };
+
+  const handleOpenBulkRevert = (driver: DriverWorkloadView) => {
+    if (!runnerScopeId || !canManageDriverAssignments || driver.orderCount === 0) return;
+
+    const requestId = bulkRevertRequestRef.current + 1;
+    bulkRevertRequestRef.current = requestId;
+    setBulkRevertDriver(driver);
+    setBulkRevertSnapshot([]);
+    setBulkRevertConfirmation('');
+    setBulkRevertSnapshotLoading(true);
+    setBulkRevertDialogOpen(true);
+
+    void fetchDriverAssignments({
+      runnerId: runnerScopeId,
+      driverId: driver.driver_id,
+      activeOnly: true,
+      includeItems: false,
+    })
+      .then((snapshot) => {
+        if (bulkRevertRequestRef.current !== requestId) return;
+        setBulkRevertSnapshot(snapshot);
+      })
+      .catch((error) => {
+        if (bulkRevertRequestRef.current !== requestId) return;
+        handleBulkRevertDialogOpenChange(false);
+        toast.error(error instanceof Error ? error.message : 'Unable to load current Driver App orders.');
+      })
+      .finally(() => {
+        if (bulkRevertRequestRef.current === requestId) {
+          setBulkRevertSnapshotLoading(false);
+        }
+      });
+  };
+
+  const handleConfirmBulkRevert = () => {
+    if (!runnerScopeId || !bulkRevertDriver || bulkRevertSnapshot.length === 0) return;
+
+    bulkRevertDriverOrders.mutate({
+      runnerId: runnerScopeId,
+      driverId: bulkRevertDriver.driver_id,
+      expectedOrderIds: bulkRevertSnapshot.map((order) => order.id),
+      operationalDate: activeQueueScopeDate,
+    }, {
+      onSuccess: (result) => {
+        const skippedMessage = result.skipped_count > 0
+          ? ` ${result.skipped_count} order(s) were skipped because their status changed.`
+          : '';
+        toast.success(`${result.reverted_count} order(s) reverted successfully.${skippedMessage}`);
+        handleBulkRevertDialogOpenChange(false);
+      },
+    });
   };
 
   const handleAssignRemaining = (areaCode: string) => {
@@ -1665,7 +1745,10 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                                 <div className="rounded-[0.85rem] bg-white/[0.06] p-2">
                                   <p className="font-black tabular-nums text-white">{driver.orderCount}</p>
-                                  <p className="text-white/45">Accepted orders</p>
+                                  <p className="font-semibold text-white/65">Current App Orders</p>
+                                  <p className="mt-0.5 text-[10px] leading-tight text-white/38">
+                                    {driver.orderCount} visible in Driver App
+                                  </p>
                                 </div>
                                 <div className="rounded-[0.85rem] bg-white/[0.06] p-2">
                                   <p className="break-words font-black leading-tight tabular-nums text-white">{formatBND(driver.collectAmount)}</p>
@@ -1692,18 +1775,67 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
                               </div>
                             </button>
 
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={!canAssignSelected}
-                              onClick={() => {
-                                setTargetDriver(driver.driver_id);
-                                openAssignmentDialog(selectedHasAssigned ? 'REASSIGN' : 'ASSIGN');
-                              }}
-                              className="mt-3 h-9 w-full rounded-full bg-[#c78b2f] text-[#17120c] hover:bg-[#d99b3d] disabled:bg-white/10 disabled:text-white/35"
-                            >
-                              {selectedRows.length > 0 ? `Assign Selected (${selectedRows.length})` : 'Select orders first'}
-                            </Button>
+                            {!workloadOnly && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!canAssignSelected}
+                                onClick={() => {
+                                  setTargetDriver(driver.driver_id);
+                                  openAssignmentDialog(selectedHasAssigned ? 'REASSIGN' : 'ASSIGN');
+                                }}
+                                className="mt-3 h-9 w-full rounded-full bg-[#c78b2f] text-[#17120c] hover:bg-[#d99b3d] disabled:bg-white/10 disabled:text-white/35"
+                              >
+                                {selectedRows.length > 0 ? `Assign Selected (${selectedRows.length})` : 'Select orders first'}
+                              </Button>
+                            )}
+
+                            {canManageDriverAssignments ? (
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    handleDriverFilterChange(driver.driver_id);
+                                    if (workloadOnly) {
+                                      navigate(`/dispatch?tab=driver-inbox&driver=${driver.driver_id}`);
+                                    }
+                                  }}
+                                  className="h-9 min-w-0 rounded-full border-white/20 bg-white/[0.05] px-3 text-white hover:bg-white/10 hover:text-white"
+                                >
+                                  <ExternalLink className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                                  View Orders
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={driver.orderCount === 0 || (
+                                    bulkRevertSnapshotLoading && bulkRevertDriver?.driver_id === driver.driver_id
+                                  ) || bulkRevertDriverOrders.isPending}
+                                  onClick={() => handleOpenBulkRevert(driver)}
+                                  className="h-9 min-w-0 rounded-full border-red-400/60 bg-red-500/5 px-3 text-red-200 hover:bg-red-500/15 hover:text-red-100 disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-white/30"
+                                >
+                                  {bulkRevertSnapshotLoading && bulkRevertDriver?.driver_id === driver.driver_id ? (
+                                    <Loader2 className="mr-1.5 h-3.5 w-3.5 shrink-0 animate-spin" />
+                                  ) : (
+                                    <Undo2 className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                                  )}
+                                  Revert All
+                                </Button>
+                              </div>
+                            ) : workloadOnly ? (
+                              <p className="mt-3 text-center text-xs text-white/42">
+                                View-only workload access
+                              </p>
+                            ) : null}
+
+                            {driver.orderCount === 0 && (
+                              <p className="mt-2 text-center text-[11px] leading-snug text-white/38">
+                                No active orders are currently visible in this Driver App.
+                              </p>
+                            )}
                           </div>
                         );
                       })
@@ -1713,6 +1845,91 @@ export default function RunnerDriverInbox({ runnerIdOverride, workloadOnly = fal
               </aside>
             </div>
         </section>
+
+        <Dialog open={bulkRevertDialogOpen} onOpenChange={handleBulkRevertDialogOpenChange}>
+          <DialogContent className="bottom-0 top-auto max-h-[88dvh] w-screen max-w-none translate-y-0 overflow-y-auto rounded-b-none rounded-t-[1.5rem] border-red-100 bg-white p-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:bottom-auto sm:top-[50%] sm:w-[min(92vw,31rem)] sm:max-w-lg sm:translate-y-[-50%] sm:rounded-2xl sm:p-6">
+            <DialogHeader className="space-y-2 pr-7 text-left">
+              <DialogTitle className="text-xl leading-tight">
+                Revert all current orders for {bulkRevertDriver?.name || 'this Driver'}?
+              </DialogTitle>
+              <DialogDescription className="leading-relaxed">
+                These are rechecked from the same active-order source used by the Driver App before anything changes.
+              </DialogDescription>
+            </DialogHeader>
+
+            {bulkRevertSnapshotLoading ? (
+              <div className="flex min-h-32 items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/20 text-sm text-muted-foreground" role="status">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking current Driver App orders...
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-red-100 bg-red-50/60 p-4">
+                  <p className="text-3xl font-black tabular-nums text-foreground">
+                    {bulkRevertSnapshot.length}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">
+                    current Driver App order(s)
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    They will be removed from {bulkRevertDriver?.name || 'the Driver'} and returned to the existing Unassigned queue.
+                    Completed, historical, or status-changed orders will be skipped.
+                  </p>
+                </div>
+
+                {bulkRevertSnapshot.length > 20 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="bulk-revert-confirmation">Type REVERT to confirm</Label>
+                    <Input
+                      id="bulk-revert-confirmation"
+                      autoComplete="off"
+                      value={bulkRevertConfirmation}
+                      onChange={(event) => setBulkRevertConfirmation(event.target.value)}
+                      placeholder="REVERT"
+                      className="h-11"
+                    />
+                  </div>
+                )}
+
+                {bulkRevertSnapshot.length === 0 && (
+                  <p className="rounded-xl border bg-muted/20 p-3 text-sm text-muted-foreground">
+                    No active orders are currently visible in this Driver App.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <DialogFooter className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleBulkRevertDialogOpenChange(false)}
+                className="h-11 rounded-full"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleConfirmBulkRevert}
+                disabled={
+                  bulkRevertSnapshotLoading
+                  || bulkRevertDriverOrders.isPending
+                  || bulkRevertSnapshot.length === 0
+                  || (bulkRevertSnapshot.length > 20 && bulkRevertConfirmation.trim().toUpperCase() !== 'REVERT')
+                }
+                className="h-11 rounded-full whitespace-nowrap"
+              >
+                {bulkRevertDriverOrders.isPending ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <Undo2 className="mr-1.5 h-4 w-4" />
+                )}
+                Revert {bulkRevertSnapshot.length} Orders
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={workloadExportOpen} onOpenChange={setWorkloadExportOpen}>
           <DialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl">

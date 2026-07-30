@@ -120,6 +120,9 @@ export default function DispatchModule() {
   const tabs = role === 'runner' ? runnerTabs : isAssistantContext ? runnerAssistantTabs : adminTabs;
   const canUseDriverInbox = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_inbox));
   const canUseDriverWorkload = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_view_driver_workload));
+  const canManageDriverAssignments = role === 'runner' || role === 'admin' || (
+    isAssistantContext && Boolean(assistantBinding?.can_manage_driver_inbox)
+  );
   const canUseDriverOperations = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_operations));
   const canUseDriverStock = role === 'runner' || (isAssistantContext && Boolean(
     assistantBinding?.can_manage_driver_stock || assistantBinding?.can_manage_cash_settlement
@@ -286,12 +289,19 @@ export default function DispatchModule() {
             ))}
             {activeTab === 'driver-inbox' && canUseDriverInbox && (
               <TabErrorBoundary>
-                <RunnerDriverInbox runnerIdOverride={assistantRunnerId} />
+                <RunnerDriverInbox
+                  runnerIdOverride={assistantRunnerId}
+                  canManageAssignments={canManageDriverAssignments}
+                />
               </TabErrorBoundary>
             )}
             {activeTab === 'driver-workload' && canUseDriverWorkload && (
               <TabErrorBoundary>
-                <RunnerDriverInbox runnerIdOverride={assistantRunnerId} workloadOnly />
+                <RunnerDriverInbox
+                  runnerIdOverride={assistantRunnerId}
+                  workloadOnly
+                  canManageAssignments={canManageDriverAssignments}
+                />
               </TabErrorBoundary>
             )}
             {activeTab === 'drivers' && canUseDriverOperations && <DriverManagement runnerIdOverride={assistantRunnerId} />}
