@@ -156,22 +156,19 @@ export function useTeamRankingForDriver() {
       
       if (!isVisible) return [];
 
-      // Get runner_id
-      const { data: driverData } = await supabase
-        .from('runner_drivers')
-        .select('runner_id')
-        .eq('driver_id', user.id)
-        .eq('is_active', true)
-        .maybeSingle();
-      
-      if (!driverData) return [];
+      // Keep the existing single-team ranking view stable when a driver has
+      // multiple eligible runner bindings.
+      const { data: runnerId } = await supabase
+        .rpc('get_driver_parent_runner', { p_driver_id: user.id });
+
+      if (!runnerId || typeof runnerId !== 'string') return [];
 
       const currentMonth = `${new Date().toISOString().slice(0, 7)}-01`;
       
       const { data, error } = await supabase
         .from('driver_monthly_ranking')
         .select('*')
-        .eq('runner_id', driverData.runner_id)
+        .eq('runner_id', runnerId)
         .gte('month', currentMonth)
         .order('rank_in_team', { ascending: true });
       

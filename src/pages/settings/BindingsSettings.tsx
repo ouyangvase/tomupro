@@ -49,8 +49,60 @@ import { format } from 'date-fns';
 import type { Profile } from '@/types/database';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import CanonicalBindingPanel from './CanonicalBindingPanel';
 
 export default function BindingsSettings() {
+  const { role } = useAuth();
+
+  if (role !== 'admin') {
+    return <LegacyBindingsSettings />;
+  }
+
+  return (
+    <div className="space-y-5 p-4 md:p-6">
+      <div className="flex items-center gap-3">
+        <Link2 className="h-7 w-7 text-primary" />
+        <div>
+          <h1 className="text-2xl font-bold">Binding Management</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage user eligibility without changing order assignments.
+          </p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="salesperson-binding">
+        <div className="sticky top-0 z-20 -mx-4 overflow-x-auto border-b bg-background/95 px-4 py-2 backdrop-blur md:mx-0 md:px-0">
+          <TabsList className="h-11 w-max min-w-max justify-start">
+            <TabsTrigger value="salesperson-binding" className="gap-2">
+              <Shield className="h-4 w-4" />
+              Salesperson Binding
+            </TabsTrigger>
+            <TabsTrigger value="driver-binding" className="gap-2">
+              <Truck className="h-4 w-4" />
+              Driver Binding
+            </TabsTrigger>
+            <TabsTrigger value="runner-access" className="gap-2">
+              <Link2 className="h-4 w-4" />
+              Runner Access
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="salesperson-binding" className="mt-4">
+          <CanonicalBindingPanel mode="salesperson" />
+        </TabsContent>
+        <TabsContent value="driver-binding" className="mt-4">
+          <CanonicalBindingPanel mode="driver" />
+        </TabsContent>
+        <TabsContent value="runner-access" className="mt-4">
+          <LegacyBindingsSettings embedded />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function LegacyBindingsSettings({ embedded = false }: { embedded?: boolean }) {
   const { profile, role } = useAuth();
   const isAdmin = role === 'admin';
   const isManager = role === 'manager';
@@ -490,8 +542,8 @@ export default function BindingsSettings() {
 
   return (
     <>
-      <div className="p-6 space-y-6">
-        <div className="flex items-center gap-3">
+      <div className={cn('space-y-6', !embedded && 'p-6')}>
+        {!embedded && <div className="flex items-center gap-3">
           <Link2 className="h-8 w-8 text-primary" />
           <div>
             <h1 className="text-2xl font-bold">
@@ -503,7 +555,7 @@ export default function BindingsSettings() {
                 : 'Manage salesperson-runner and manager-salesperson bindings'}
             </p>
           </div>
-        </div>
+        </div>}
 
         {isAdmin ? (
           // Admin view - Two tabs: Runner Binding (unified) and Team Assignment

@@ -2830,7 +2830,9 @@ export type Database = {
           ended_at: string | null
           id: string
           manager_id: string
+          removed_by: string | null
           salesperson_id: string
+          updated_at: string
         }
         Insert: {
           active?: boolean
@@ -2839,7 +2841,9 @@ export type Database = {
           ended_at?: string | null
           id?: string
           manager_id: string
+          removed_by?: string | null
           salesperson_id: string
+          updated_at?: string
         }
         Update: {
           active?: boolean
@@ -2848,7 +2852,9 @@ export type Database = {
           ended_at?: string | null
           id?: string
           manager_id?: string
+          removed_by?: string | null
           salesperson_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -3886,30 +3892,42 @@ export type Database = {
       runner_drivers: {
         Row: {
           created_at: string
+          created_by: string | null
           driver_id: string
           id: string
           is_active: boolean
+          removed_at: string | null
+          removed_by: string | null
           runner_id: string
+          updated_at: string
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
           driver_id: string
           id?: string
           is_active?: boolean
+          removed_at?: string | null
+          removed_by?: string | null
           runner_id: string
+          updated_at?: string
         }
         Update: {
           created_at?: string
+          created_by?: string | null
           driver_id?: string
           id?: string
           is_active?: boolean
+          removed_at?: string | null
+          removed_by?: string | null
           runner_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "runner_drivers_driver_id_fkey"
             columns: ["driver_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },

@@ -141,6 +141,8 @@ async function fetchDriverParentRunnerId(driverId: string): Promise<string | nul
     .select('runner_id')
     .eq('driver_id', driverId)
     .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -198,22 +200,22 @@ export function useAddDriverToRunner() {
   
   return useMutation({
     mutationFn: async ({ runnerId, driverId }: { runnerId: string; driverId: string }) => {
-      // First check if there's an existing record (active or inactive)
+      // Pair-scoped lookup: a driver may remain linked to other runners.
       const { data: existing } = await supabase
         .from('runner_drivers')
         .select('id, is_active, runner_id')
+        .eq('runner_id', runnerId)
         .eq('driver_id', driverId)
         .maybeSingle();
       
       if (existing) {
         if (existing.is_active) {
-          throw new Error('This driver is already assigned to a runner');
+          throw new Error('This driver is already linked to this runner');
         }
-        // Reactivate and update the runner
+        // Reactivate this exact pair without changing any other runner links.
         const { data, error } = await supabase
           .from('runner_drivers')
           .update({
-            runner_id: runnerId,
             is_active: true,
           })
           .eq('id', existing.id)
@@ -239,6 +241,7 @@ export function useAddDriverToRunner() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-drivers'] });
+      queryClient.invalidateQueries({ queryKey: ['my-drivers'] });
       queryClient.invalidateQueries({ queryKey: ['all-drivers'] });
       toast.success('Driver added successfully');
     },
