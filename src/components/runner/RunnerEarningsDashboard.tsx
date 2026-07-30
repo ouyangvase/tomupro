@@ -7,15 +7,20 @@ import {
   Wallet, Target, Zap, ArrowUpRight 
 } from 'lucide-react';
 import type { RunnerEarnings } from '@/hooks/useRunnerEarnings';
+import type { FilteredRunnerEarnings } from '@/lib/filteredRunnerEarnings';
 
 interface RunnerEarningsDashboardProps {
   earnings: RunnerEarnings | undefined;
+  filteredEarnings: FilteredRunnerEarnings;
+  filterLabel: string;
   isLoading: boolean;
   weeklyTarget?: number;
 }
 
 export function RunnerEarningsDashboard({ 
   earnings, 
+  filteredEarnings,
+  filterLabel,
   isLoading, 
   weeklyTarget = 1000 
 }: RunnerEarningsDashboardProps) {
@@ -50,9 +55,9 @@ export function RunnerEarningsDashboard({
 
   const cards = [
     {
-      label: "Today's Earnings",
-      value: e.today_earnings,
-      subtitle: `${e.today_orders} deliveries`,
+      label: 'Filtered Earnings',
+      value: filteredEarnings.total_amount,
+      subtitle: `${filterLabel} · ${filteredEarnings.total_orders} deliveries`,
       icon: Zap,
       color: 'hsl(var(--chart-1))',
       bgClass: 'bg-[hsl(var(--chart-1)/0.1)]',
@@ -60,19 +65,19 @@ export function RunnerEarningsDashboard({
       textClass: 'text-[hsl(var(--chart-1))]',
     },
     {
-      label: "This Week",
-      value: e.week_earnings,
-      subtitle: `${e.week_orders} deliveries`,
+      label: 'Claim Submitted',
+      value: filteredEarnings.submitted_amount,
+      subtitle: `${filteredEarnings.submitted_orders} orders`,
       icon: TrendingUp,
-      color: 'hsl(var(--status-success))',
-      bgClass: 'bg-[hsl(var(--status-success)/0.1)]',
-      borderClass: 'border-[hsl(var(--status-success)/0.3)]',
-      textClass: 'text-[hsl(var(--status-success))]',
+      color: 'hsl(var(--chart-1))',
+      bgClass: 'bg-[hsl(var(--chart-1)/0.1)]',
+      borderClass: 'border-[hsl(var(--chart-1)/0.3)]',
+      textClass: 'text-[hsl(var(--chart-1))]',
     },
     {
       label: "Pending Claim",
-      value: e.pending_amount,
-      subtitle: `${e.pending_orders} orders`,
+      value: filteredEarnings.pending_amount,
+      subtitle: `${filteredEarnings.pending_orders} orders`,
       icon: Clock,
       color: 'hsl(var(--status-warning))',
       bgClass: 'bg-[hsl(var(--status-warning)/0.1)]',
@@ -81,8 +86,8 @@ export function RunnerEarningsDashboard({
     },
     {
       label: "Approved",
-      value: e.approved_amount,
-      subtitle: `${e.approved_orders} orders`,
+      value: filteredEarnings.approved_amount,
+      subtitle: `${filteredEarnings.approved_orders} orders`,
       icon: CheckCircle,
       color: 'hsl(var(--status-success))',
       bgClass: 'bg-[hsl(var(--status-success)/0.08)]',
@@ -161,9 +166,13 @@ export function RunnerEarningsDashboard({
                 <Wallet className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Runner Balance</p>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Filtered Runner Balance</p>
                 <p className="text-2xl font-extrabold tracking-tight">
-                  {formatBND(e.approved_amount + e.pending_amount + e.submitted_amount)}
+                  {formatBND(
+                    filteredEarnings.approved_amount
+                    + filteredEarnings.pending_amount
+                    + filteredEarnings.submitted_amount,
+                  )}
                 </p>
               </div>
             </div>
@@ -171,17 +180,17 @@ export function RunnerEarningsDashboard({
               <div className="flex items-center gap-1.5 text-xs">
                 <div className="h-2 w-2 rounded-full bg-[hsl(var(--status-warning))]" />
                 <span className="text-muted-foreground">Pending</span>
-                <span className="font-semibold">{formatBND(e.pending_amount, false)}</span>
+                <span className="font-semibold">{formatBND(filteredEarnings.pending_amount, false)}</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
                 <div className="h-2 w-2 rounded-full bg-[hsl(var(--chart-1))]" />
                 <span className="text-muted-foreground">Submitted</span>
-                <span className="font-semibold">{formatBND(e.submitted_amount, false)}</span>
+                <span className="font-semibold">{formatBND(filteredEarnings.submitted_amount, false)}</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
                 <div className="h-2 w-2 rounded-full bg-[hsl(var(--status-success))]" />
                 <span className="text-muted-foreground">Approved</span>
-                <span className="font-semibold">{formatBND(e.approved_amount, false)}</span>
+                <span className="font-semibold">{formatBND(filteredEarnings.approved_amount, false)}</span>
               </div>
             </div>
           </div>

@@ -119,6 +119,7 @@ import { AutoClaimSuggestion } from '@/components/runner/AutoClaimSuggestion';
 import { EarningsChart } from '@/components/runner/EarningsChart';
 import { ClaimBatchTimeline } from '@/components/runner/ClaimBatchTimeline';
 import { useRunnerEarnings } from '@/hooks/useRunnerEarnings';
+import { summarizeFilteredRunnerEarnings } from '@/lib/filteredRunnerEarnings';
 
 // Claim status filter options for the dropdown
 type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -246,7 +247,7 @@ export default function RunnerDeliveredOrders({
   }, [highlightOrderId]);
   
   // Approved delivery charges map for the runner (area -> charge_amount)
-  const { data: approvedChargeMap = {} } = useApprovedChargeMap();
+  const { data: approvedChargeMap = {}, isLoading: approvedChargeLoading } = useApprovedChargeMap();
   
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager: isManagerRole, teamMembers } = useTeamViewState('team');
@@ -538,6 +539,11 @@ export default function RunnerDeliveredOrders({
 
   const displaySummary = clientSummary;
   const displaySummaryLoading = rpcLoading;
+
+  const filteredRunnerEarnings = useMemo(
+    () => summarizeFilteredRunnerEarnings(allFilteredOrders, approvedChargeMap),
+    [allFilteredOrders, approvedChargeMap],
+  );
 
   // Orders eligible for claiming (DELIVERED + NOT_CLAIMED + delivered_at exists + valid area rate) - uses FULL dataset for runners
   const claimableOrders = useMemo(() => {
@@ -1098,7 +1104,9 @@ export default function RunnerDeliveredOrders({
         {role === 'runner' && (
           <RunnerEarningsDashboard
             earnings={runnerEarnings}
-            isLoading={earningsLoading}
+            filteredEarnings={filteredRunnerEarnings}
+            filterLabel={dateRange.label}
+            isLoading={earningsLoading || approvedChargeLoading || rpcLoading}
           />
         )}
 
