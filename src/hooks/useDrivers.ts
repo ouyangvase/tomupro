@@ -372,6 +372,7 @@ export function useDriverMarkDelivered() {
       const updatePayload = {
         driver_status: 'DRIVER_DELIVERED' as const,
         driver_delivered_at: new Date().toISOString(),
+        driver_failed_at: null,
         driver_payment_method: paymentMethod,
         driver_cash_amount: collectedCash,
         driver_transfer_amount: collectedTransfer,
@@ -444,10 +445,13 @@ export function useDriverMarkFailed() {
       remark?: string;
       nextDeliveryDate?: string;
     }) => {
+      const driverFailedAt = new Date().toISOString();
       const { data, error } = await supabase
         .from('orders')
         .update({
           driver_status: 'DRIVER_FAILED',
+          driver_delivered_at: null,
+          driver_failed_at: driverFailedAt,
           driver_failed_reason: reason,
           driver_failed_remark: remark || null,
           driver_next_delivery_date: nextDeliveryDate || null,
@@ -460,7 +464,7 @@ export function useDriverMarkFailed() {
           salesperson_action_required: false,
           salesperson_action_type: null,
           salesperson_action_due_date: null,
-          updated_at: new Date().toISOString(),
+          updated_at: driverFailedAt,
         })
         .eq('id', orderId)
         .select()

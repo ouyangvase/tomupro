@@ -3113,6 +3113,7 @@ export type Database = {
           dispute_reason: string | null
           driver_cash_amount: number | null
           driver_delivered_at: string | null
+          driver_failed_at: string | null
           driver_failed_reason: string | null
           driver_failed_remark: string | null
           driver_id: string | null
@@ -3187,6 +3188,7 @@ export type Database = {
           dispute_reason?: string | null
           driver_cash_amount?: number | null
           driver_delivered_at?: string | null
+          driver_failed_at?: string | null
           driver_failed_reason?: string | null
           driver_failed_remark?: string | null
           driver_id?: string | null
@@ -3261,6 +3263,7 @@ export type Database = {
           dispute_reason?: string | null
           driver_cash_amount?: number | null
           driver_delivered_at?: string | null
+          driver_failed_at?: string | null
           driver_failed_reason?: string | null
           driver_failed_remark?: string | null
           driver_id?: string | null

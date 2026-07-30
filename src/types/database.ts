@@ -235,6 +235,7 @@ export interface Order {
   driver_status: DriverStatus | null;
   runner_accept_status: RunnerAcceptStatus | null;
   driver_delivered_at: string | null;
+  driver_failed_at?: string | null;
   driver_cash_amount?: number | null;
   driver_transfer_amount?: number | null;
   driver_failed_reason: string | null;

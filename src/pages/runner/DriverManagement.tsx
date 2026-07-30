@@ -45,6 +45,13 @@ import {
 import { toast } from 'sonner';
 import { formatBND } from '@/lib/currency';
 import { getSignedStorageUrl } from '@/lib/storageUrls';
+import {
+  formatDriverActionDate,
+  formatDriverActionDateTime,
+  getDriverActionTimestamp,
+  groupDriverReviewOrdersByDate,
+  type DriverReviewDateGroup,
+} from '@/lib/driverReviewDateGroups';
 import type { Order, OrderItem } from '@/types/database';
 
 const DRIVER_CAPACITY = 40;
@@ -64,6 +71,7 @@ type DriverReviewGroup = {
   deliveredAmount: number;
   failedAmount: number;
   proofCount: number;
+  dateGroups: DriverReviewDateGroup<Order>[];
 };
 
 function getDriverName(order: Order, fallbackUsers: Map<string, { display_name?: string | null }>) {
@@ -113,6 +121,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   const [rejectReason, setRejectReason] = useState('');
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [openGroupIds, setOpenGroupIds] = useState<string[]>([]);
+  const [openDateGroupIds, setOpenDateGroupIds] = useState<string[]>([]);
   const [driverSummaryOpen, setDriverSummaryOpen] = useState(false);
 
   const availableDrivers = useMemo(() => {
@@ -196,6 +205,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
         deliveredAmount: 0,
         failedAmount: 0,
         proofCount: 0,
+        dateGroups: [],
       };
       return existing;
     };
@@ -216,10 +226,18 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
       groups.set(existing.driverId, existing);
     });
 
-    return Array.from(groups.values()).sort((a, b) => (
-      (b.deliveredOrders.length + b.failedOrders.length) -
-      (a.deliveredOrders.length + a.failedOrders.length)
-    ) || a.driverName.localeCompare(b.driverName));
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        dateGroups: groupDriverReviewOrdersByDate([
+          ...group.deliveredOrders,
+          ...group.failedOrders,
+        ]),
+      }))
+      .sort((a, b) => (
+        (b.deliveredOrders.length + b.failedOrders.length) -
+        (a.deliveredOrders.length + a.failedOrders.length)
+      ) || a.driverName.localeCompare(b.driverName));
   }, [pendingAcceptanceOrders, failedReviewOrders, proofsByOrder, userById]);
 
   const pendingTotalAmount = useMemo(
@@ -309,6 +327,14 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     ));
   };
 
+  const toggleDateGroupOpen = (dateGroupId: string) => {
+    setOpenDateGroupIds((prev) => (
+      prev.includes(dateGroupId)
+        ? prev.filter((id) => id !== dateGroupId)
+        : [...prev, dateGroupId]
+    ));
+  };
+
   const isAccepting = acceptDelivery.isPending || bulkAcceptDelivery.isPending || reviewOrder.isPending;
 
   return (
@@ -379,7 +405,6 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                   reviewGroups.map((group) => {
                     const isOpen = openGroupIds.includes(group.driverId);
                     const reviewCount = group.deliveredOrders.length + group.failedOrders.length;
-                    const allReviewOrders = [...group.deliveredOrders, ...group.failedOrders];
 
                     return (
                       <div key={group.driverId} className="rounded-2xl border bg-background shadow-sm">
@@ -444,71 +469,139 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                         </div>
 
                         {isOpen && (
-                          <div className="divide-y border-t">
-                            {allReviewOrders.map((order) => {
-                              const proofs = proofsByOrder[order.id] || [];
-                              const isDelivered = order.driver_status === 'DRIVER_DELIVERED';
+                          <div className="space-y-2 border-t bg-secondary/10 p-2 sm:p-3">
+                            {group.dateGroups.map((dateGroup) => {
+                              const dateGroupId = `${group.driverId}:${dateGroup.dateKey}`;
+                              const isDateOpen = openDateGroupIds.includes(dateGroupId);
+                              const dateOrders = [
+                                ...dateGroup.deliveredOrders,
+                                ...dateGroup.failedOrders,
+                              ].sort(
+                                (a, b) => new Date(getDriverActionTimestamp(b) || 0).getTime()
+                                  - new Date(getDriverActionTimestamp(a) || 0).getTime(),
+                              );
+                              const dateOrderCount = dateOrders.length;
+                              const dateTotal = dateGroup.deliveredAmount + dateGroup.failedAmount;
 
                               return (
-                                <div key={order.id} className="grid gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
+                                <div key={dateGroupId} className="overflow-hidden rounded-xl border bg-background">
                                   <button
                                     type="button"
-                                    onClick={() => setDetailOrderId(order.id)}
-                                    className="min-w-0 text-left"
+                                    onClick={() => toggleDateGroupOpen(dateGroupId)}
+                                    className="grid w-full gap-3 p-3 text-left sm:p-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(0,1.7fr)] lg:items-center"
+                                    aria-expanded={isDateOpen}
                                   >
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <p className="font-black">{order.order_code}</p>
-                                      <Badge variant="outline" className="rounded-full">{order.area || 'No area'}</Badge>
-                                      <Badge className={isDelivered ? 'rounded-full bg-amber-500/10 text-amber-700 hover:bg-amber-500/10' : 'rounded-full bg-red-500/10 text-red-700 hover:bg-red-500/10'}>
-                                        {isDelivered ? 'Awaiting accept' : 'Failed delivery'}
-                                      </Badge>
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                        {isDateOpen
+                                          ? <ChevronDown className="h-4 w-4" />
+                                          : <ChevronRight className="h-4 w-4" />}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="font-black">{formatDriverActionDate(dateGroup.latestActionAt)}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {dateOrderCount} order(s) - {isDateOpen ? 'Open' : 'Tap to open'}
+                                        </p>
+                                      </div>
                                     </div>
-                                    <p className="mt-1 truncate text-sm font-semibold" title={order.customer_name}>{order.customer_name}</p>
-                                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{order.address}</p>
-                                    <p className="mt-2 line-clamp-1 text-xs text-muted-foreground" title={getOrderSkuText(order)}>
-                                      {getOrderSkuText(order)}
-                                    </p>
-                                    {!isDelivered && (order.driver_failed_reason || order.driver_failed_remark) && (
-                                      <p className="mt-2 line-clamp-2 text-xs font-medium text-destructive">
-                                        {order.driver_failed_reason}{order.driver_failed_remark ? ` / ${order.driver_failed_remark}` : ''}
-                                      </p>
-                                    )}
+                                    <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                                      <div className="rounded-lg bg-emerald-500/10 p-2">
+                                        <p className="text-[10px] uppercase text-muted-foreground">Delivered amount</p>
+                                        <p className="font-black text-emerald-700">{formatBND(dateGroup.deliveredAmount)}</p>
+                                      </div>
+                                      <div className="rounded-lg bg-red-500/10 p-2">
+                                        <p className="text-[10px] uppercase text-muted-foreground">Failed amount</p>
+                                        <p className="font-black text-red-700">{formatBND(dateGroup.failedAmount)}</p>
+                                      </div>
+                                      <div className="rounded-lg bg-secondary/50 p-2">
+                                        <p className="text-[10px] uppercase text-muted-foreground">Date total</p>
+                                        <p className="font-black">{formatBND(dateTotal)}</p>
+                                      </div>
+                                      <div className="rounded-lg bg-secondary/50 p-2">
+                                        <p className="text-[10px] uppercase text-muted-foreground">Orders</p>
+                                        <p className="font-black">{dateOrderCount}</p>
+                                      </div>
+                                    </div>
                                   </button>
 
-                                  <div className="flex flex-col gap-2 md:items-end">
-                                    <div className="flex w-full items-center justify-between gap-2 md:justify-end">
-                                      <div className="text-left md:text-right">
-                                        <p className="text-lg font-black tabular-nums">{formatBND(Number(order.total_amount || 0))}</p>
-                                        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{order.payment_method}</p>
-                                      </div>
-                                      <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setDetailOrderId(order.id)}>
-                                        {proofs.length > 0 ? <ImageIcon className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                      </Button>
+                                  {isDateOpen && (
+                                    <div className="divide-y border-t">
+                                      {dateOrders.map((order) => {
+                                        const proofs = proofsByOrder[order.id] || [];
+                                        const isDelivered = order.driver_status === 'DRIVER_DELIVERED';
+                                        const actionTimestamp = getDriverActionTimestamp(order);
+
+                                        return (
+                                          <div key={order.id} className="grid gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
+                                            <button
+                                              type="button"
+                                              onClick={() => setDetailOrderId(order.id)}
+                                              className="min-w-0 text-left"
+                                            >
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                <p className="font-black">{order.order_code}</p>
+                                                <Badge variant="outline" className="rounded-full">{order.area || 'No area'}</Badge>
+                                                <Badge className={isDelivered ? 'rounded-full bg-amber-500/10 text-amber-700 hover:bg-amber-500/10' : 'rounded-full bg-red-500/10 text-red-700 hover:bg-red-500/10'}>
+                                                  {isDelivered ? 'Awaiting accept' : 'Failed delivery'}
+                                                </Badge>
+                                              </div>
+                                              {actionTimestamp && (
+                                                <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-primary">
+                                                  <Clock className="h-3.5 w-3.5" />
+                                                  Driver clicked {isDelivered ? 'Delivered' : 'Failed'} - {formatDriverActionDateTime(actionTimestamp)}
+                                                </p>
+                                              )}
+                                              <p className="mt-1 truncate text-sm font-semibold" title={order.customer_name}>{order.customer_name}</p>
+                                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{order.address}</p>
+                                              <p className="mt-2 line-clamp-1 text-xs text-muted-foreground" title={getOrderSkuText(order)}>
+                                                {getOrderSkuText(order)}
+                                              </p>
+                                              {!isDelivered && (order.driver_failed_reason || order.driver_failed_remark) && (
+                                                <p className="mt-2 line-clamp-2 text-xs font-medium text-destructive">
+                                                  {order.driver_failed_reason}{order.driver_failed_remark ? ` / ${order.driver_failed_remark}` : ''}
+                                                </p>
+                                              )}
+                                            </button>
+
+                                            <div className="flex flex-col gap-2 md:items-end">
+                                              <div className="flex w-full items-center justify-between gap-2 md:justify-end">
+                                                <div className="text-left md:text-right">
+                                                  <p className="text-lg font-black tabular-nums">{formatBND(Number(order.total_amount || 0))}</p>
+                                                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{order.payment_method}</p>
+                                                </div>
+                                                <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setDetailOrderId(order.id)}>
+                                                  {proofs.length > 0 ? <ImageIcon className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                </Button>
+                                              </div>
+                                              {isDelivered ? (
+                                                <div className="grid grid-cols-2 gap-2 md:w-[220px]">
+                                                  <Button size="sm" onClick={() => handleAcceptOrders([order.id])} disabled={isAccepting} className="rounded-full">
+                                                    <Check className="mr-1.5 h-4 w-4" />
+                                                    Accept
+                                                  </Button>
+                                                  <Button variant="destructive" size="sm" onClick={() => handleOpenRejectDialog(order.id)} disabled={rejectDelivery.isPending} className="rounded-full">
+                                                    <X className="mr-1.5 h-4 w-4" />
+                                                    Reject
+                                                  </Button>
+                                                </div>
+                                              ) : (
+                                                <div className="grid w-full grid-cols-2 gap-2 md:w-[220px]">
+                                                  <Button variant="outline" size="sm" onClick={() => setDetailOrderId(order.id)} className="rounded-full">
+                                                    <Eye className="mr-1.5 h-4 w-4" />
+                                                    View
+                                                  </Button>
+                                                  <Button size="sm" onClick={() => handleAcceptFailedOrders([order])} disabled={isAccepting} className="rounded-full">
+                                                    <Check className="mr-1.5 h-4 w-4" />
+                                                    Accept
+                                                  </Button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
-                                    {isDelivered ? (
-                                      <div className="grid grid-cols-2 gap-2 md:w-[220px]">
-                                        <Button size="sm" onClick={() => handleAcceptOrders([order.id])} disabled={isAccepting} className="rounded-full">
-                                          <Check className="mr-1.5 h-4 w-4" />
-                                          Accept
-                                        </Button>
-                                        <Button variant="destructive" size="sm" onClick={() => handleOpenRejectDialog(order.id)} disabled={rejectDelivery.isPending} className="rounded-full">
-                                          <X className="mr-1.5 h-4 w-4" />
-                                          Reject
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <div className="grid w-full grid-cols-2 gap-2 md:w-[220px]">
-                                        <Button variant="outline" size="sm" onClick={() => setDetailOrderId(order.id)} className="rounded-full">
-                                          <Eye className="mr-1.5 h-4 w-4" />
-                                          View
-                                        </Button>
-                                        <Button size="sm" onClick={() => handleAcceptFailedOrders([order])} disabled={isAccepting} className="rounded-full">
-                                          <Check className="mr-1.5 h-4 w-4" />
-                                          Accept
-                                        </Button>
-                                      </div>
-                                    )}
-                                  </div>
+                                  )}
                                 </div>
                               );
                             })}

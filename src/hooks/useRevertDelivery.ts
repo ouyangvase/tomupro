@@ -114,6 +114,7 @@ export function useRevertDelivery() {
           runner_accept_status: null,
           delivered_at: null,
           driver_delivered_at: null,
+          driver_failed_at: null,
           stock_deducted: false,
           runner_review_status: null,
           runner_final_outcome: null,
