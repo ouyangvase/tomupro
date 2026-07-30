@@ -220,21 +220,15 @@ function inferAreaFromOrder(order: RunnerOrder) {
   if (order.delivery_area_code) return order.delivery_area_code;
 
   const normalized = normalizeText(order.address);
-  const legacyArea = normalizeText(order.area);
   const skuText = normalizeText(formatOrderItemsDisplay(order.order_items || []).displayText);
 
   if (!normalized || ['-', '.', 'NA', 'N A'].includes(normalized)) return 'NEEDS_REVIEW';
-  if (normalized.includes('CANCEL FEE') || skuText.includes('CANCEL FEE') || legacyArea === 'CF') return 'CANCELLED';
-  if (normalized.includes('PICK UP') || normalized.includes('PICKUP') || normalized.includes('SELF PICK') || legacyArea === 'PICKUP' || legacyArea === 'PU') return 'SELF_PICKUP';
+  if (normalized.includes('CANCEL FEE') || skuText.includes('CANCEL FEE')) return 'CANCELLED';
+  if (normalized.includes('PICK UP') || normalized.includes('PICKUP') || normalized.includes('SELF PICK')) return 'SELF_PICKUP';
 
   for (const rule of LOCALITY_RULES) {
     if (rule.terms.some((term) => normalized.includes(term))) return rule.code;
   }
-
-  if (legacyArea === 'TEMB') return 'TEMBURONG';
-  if (legacyArea === 'TTG') return 'TUTONG';
-  if (legacyArea === 'KB') return 'BELAIT';
-  if (NORMAL_AREAS.some((area) => area.code === legacyArea)) return legacyArea;
 
   return 'NEEDS_REVIEW';
 }
@@ -859,7 +853,7 @@ export default function RunnerDriverInbox({
         'Customer',
         'Phone',
         'Address',
-        'Area',
+        'Delivery Zone',
         'Products / SKU',
         'Total Qty',
         'Payment Method',
@@ -883,7 +877,7 @@ export default function RunnerDriverInbox({
           order.customer_name || '',
           order.phone || '',
           order.address || '',
-          order.delivery_area_name || order.area || '',
+          order.delivery_area_name || getAreaLabel(inferAreaFromOrder(order), deliveryAreas),
           formatOrderItemsDisplay(order.order_items || []).displayText,
           Number(order.total_qty || 0),
           order.payment_method || '',
@@ -1333,7 +1327,7 @@ export default function RunnerDriverInbox({
           </div>
         </section>
 
-        <section className="space-y-4" aria-label="Area-based driver assignment workspace">
+        <section className="space-y-4" aria-label="Delivery-zone driver assignment workspace">
             <div className={cn('grid min-w-0 gap-4', workloadOnly ? 'mx-auto max-w-3xl' : 'xl:grid-cols-[minmax(0,1fr)_330px] 2xl:grid-cols-[minmax(0,1fr)_360px]')}>
               {!workloadOnly && <div className="min-w-0 space-y-4">
                 <div className="rounded-[1.5rem] border border-[#1f2937]/8 bg-[#f2eee7] p-1 shadow-[0_18px_46px_rgba(17,16,14,0.06)]">
@@ -1598,7 +1592,7 @@ export default function RunnerDriverInbox({
                                 selectOrders([order.id]);
                                 handleOpenAreaCorrection();
                               }}>
-                                <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Resolve Area
+                                <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Resolve Delivery Zone
                               </Button>
                             ) : undefined
                           }
@@ -2021,7 +2015,7 @@ export default function RunnerDriverInbox({
                   <p className="break-words text-lg font-bold leading-tight tabular-nums">{formatBND(selectedTotalCollect)}</p>
                 </div>
                 <div className="col-span-2">
-                  <p className="text-xs uppercase text-muted-foreground">Area(s)</p>
+                  <p className="text-xs uppercase text-muted-foreground">Delivery Zone(s)</p>
                   <p className="break-words font-medium">{selectedAreasLabel || '-'}</p>
                 </div>
               </div>
@@ -2221,8 +2215,8 @@ export default function RunnerDriverInbox({
         <Dialog open={areaCorrectionDialogOpen} onOpenChange={setAreaCorrectionDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Correct Delivery Area</DialogTitle>
-              <DialogDescription>Move selected orders out of Needs Review or into the correct operational area.</DialogDescription>
+              <DialogTitle>Correct Delivery Zone</DialogTitle>
+              <DialogDescription>Move selected orders out of Needs Review or into the correct delivery zone.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="rounded-xl border bg-muted/20 p-3 text-sm">
@@ -2249,7 +2243,7 @@ export default function RunnerDriverInbox({
               <Button variant="outline" onClick={() => setAreaCorrectionDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleConfirmAreaCorrection} disabled={!correctionAreaCode || correctArea.isPending}>
                 {correctArea.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <MapPin className="mr-1 h-4 w-4" />}
-                Save Area
+                Save Delivery Zone
               </Button>
             </DialogFooter>
           </DialogContent>
