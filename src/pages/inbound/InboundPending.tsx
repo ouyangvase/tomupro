@@ -22,6 +22,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAccessibleOwnerIds, useCanOperateOnSharedData } from '@/hooks/useDataSharing';
 import { DataScopeSelector, OwnerBadge } from '@/components/data-sharing/DataScopeSelector';
+import { AdminInboundExcelImport } from '@/components/inbound/AdminInboundExcelImport';
 import type { DataViewMode } from '@/types/data-sharing';
 import type { InboundShipment, InboundItem, InboundStatus } from '@/types/database';
 import { Package, CheckCircle, AlertTriangle, ZoomIn, X, Calendar, Image as ImageIcon, Warehouse } from 'lucide-react';
@@ -334,6 +335,8 @@ export default function InboundPending() {
           </div>
           <DataScopeSelector value={viewMode} onChange={setViewMode} scope="inbound" />
         </div>
+
+        {role === 'admin' ? <AdminInboundExcelImport /> : null}
 
         <DataGrid
           data={shipments || []}

@@ -1,4 +1,9 @@
-type XlsxCellValue = string | number | boolean | null | undefined;
+export type XlsxCellValue = string | number | boolean | null | undefined;
+
+export interface XlsxSheet {
+  name: string;
+  rows: XlsxCellValue[][];
+}
 
 const textEncoder = new TextEncoder();
 
@@ -185,9 +190,23 @@ function buildSheetXml(rows: XlsxCellValue[][]) {
 </worksheet>`;
 }
 
-export function createXlsxBlob(rows: XlsxCellValue[][], sheetName = 'Sheet1') {
-  const safeSheetName = escapeXml(sheetName.slice(0, 31) || 'Sheet1');
-  const files = [
+export function createXlsxWorkbookBlob(sheets: XlsxSheet[]) {
+  const safeSheets = (sheets.length > 0 ? sheets : [{ name: 'Sheet1', rows: [[]] }]).map((sheet, index) => ({
+    name: escapeXml(sheet.name.slice(0, 31) || `Sheet${index + 1}`),
+    rows: sheet.rows,
+    index: index + 1,
+  }));
+  const worksheetOverrides = safeSheets.map((sheet) => (
+    `<Override PartName="/xl/worksheets/sheet${sheet.index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+  )).join('\n  ');
+  const workbookSheets = safeSheets.map((sheet) => (
+    `<sheet name="${sheet.name}" sheetId="${sheet.index}" r:id="rId${sheet.index}"/>`
+  )).join('');
+  const workbookRelationships = safeSheets.map((sheet) => (
+    `<Relationship Id="rId${sheet.index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${sheet.index}.xml"/>`
+  )).join('\n  ');
+
+  const files: Array<{ path: string; content: string }> = [
     {
       path: '[Content_Types].xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -195,7 +214,7 @@ export function createXlsxBlob(rows: XlsxCellValue[][], sheetName = 'Sheet1') {
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  ${worksheetOverrides}
 </Types>`,
     },
     {
@@ -209,23 +228,43 @@ export function createXlsxBlob(rows: XlsxCellValue[][], sheetName = 'Sheet1') {
       path: 'xl/workbook.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="${safeSheetName}" sheetId="1" r:id="rId1"/></sheets>
+  <sheets>${workbookSheets}</sheets>
 </workbook>`,
     },
     {
       path: 'xl/_rels/workbook.xml.rels',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  ${workbookRelationships}
 </Relationships>`,
-    },
-    {
-      path: 'xl/worksheets/sheet1.xml',
-      content: buildSheetXml(rows),
     },
   ];
 
+  for (const sheet of safeSheets) {
+    files.push({
+      path: `xl/worksheets/sheet${sheet.index}.xml`,
+      content: buildSheetXml(sheet.rows),
+    });
+  }
+
   return createZip(files);
+}
+
+export function createXlsxBlob(rows: XlsxCellValue[][], sheetName = 'Sheet1') {
+  return createXlsxWorkbookBlob([{ name: sheetName, rows }]);
+}
+
+export function downloadXlsxWorkbook(sheets: XlsxSheet[], filename: string) {
+  const blob = createXlsxWorkbookBlob(sheets);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function downloadXlsx(rows: XlsxCellValue[][], filename: string, sheetName?: string) {

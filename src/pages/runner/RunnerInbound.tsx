@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import capybaraImport from '@/assets/capybara-import.png';
 import { PageHero } from '@/components/dashboard/PageHero';
+import { InboundExcelImport } from '@/components/inbound/InboundExcelImport';
 
 interface InboundItemDraft {
   id: string;
@@ -200,6 +201,14 @@ export default function RunnerInbound({ runnerIdOverride }: { runnerIdOverride?:
           image={capybaraImport}
           imageAlt="Capybara receiving packages"
         />
+
+        {runnerScopeId ? (
+          <InboundExcelImport
+            runnerId={runnerScopeId}
+            boundUsers={boundUsers}
+            disabled={boundUsersLoading || boundUsers.length === 0}
+          />
+        ) : null}
 
         {/* Workflow Steps Hint */}
         <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
