@@ -319,6 +319,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   };
 
   const toggleGroupOpen = (driverId: string) => {
+    setOpenFailedDateGroupIds((prev) => prev.filter((id) => !id.startsWith(`${driverId}:`)));
     setOpenGroupIds((prev) => (
       prev.includes(driverId) ? prev.filter((id) => id !== driverId) : [...prev, driverId]
     ));
