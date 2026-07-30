@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const FUNCTION_VERSION = '20260723_driver_telegram_v2';
+const FUNCTION_VERSION = '20260730_driver_reschedule_v3';
 const DELIVERY_PHOTO_BUCKET = 'delivery-photos';
 
 const corsHeaders = {
@@ -35,6 +35,7 @@ interface OrderRow {
   driver_delivered_at: string | null;
   driver_failed_reason: string | null;
   driver_failed_remark: string | null;
+  driver_next_delivery_date: string | null;
   updated_at: string | null;
   driver_id: string | null;
   salesperson_id: string | null;
@@ -173,6 +174,20 @@ function formatEventDate(value: unknown): string {
   }).format(date);
 }
 
+function formatDeliveryDate(value: unknown): string {
+  const raw = String(value || '').trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? new Date(`${raw}T00:00:00+08:00`)
+    : new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Brunei',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+}
+
 function getOwnerId(order: OrderRow): string | null {
   return order.order_owner_id || order.owner_salesperson_id_snapshot || order.salesperson_id || null;
 }
@@ -248,6 +263,37 @@ function driverEventMessage(event: QueueEvent, order: OrderRow): string {
   if (event.event_type === 'driver_failed') {
     const reason = order.driver_failed_reason || metadata.driver_failed_reason || '';
     const remark = order.driver_failed_remark || metadata.driver_failed_remark || '';
+    const nextDeliveryDate = order.driver_next_delivery_date
+      || metadata.driver_next_delivery_date
+      || '';
+    const normalizedReason = reason.trim().toLowerCase();
+
+    if (
+      normalizedReason === 'delivery tomorrow'
+      || (
+        normalizedReason === 'customer requested reschedule'
+        && metadata.delivery_timing === 'tomorrow'
+      )
+    ) {
+      return [
+        `<b>${orderCode}</b>`,
+        '',
+        'Delivery Tomorrow',
+        formatDeliveryDate(nextDeliveryDate),
+        'Deliver again tomorrow',
+      ].join('\n');
+    }
+
+    if (normalizedReason === 'customer requested reschedule' && nextDeliveryDate) {
+      return [
+        `<b>${orderCode}</b>`,
+        '',
+        'Rescheduled',
+        'New Delivery Date:',
+        formatDeliveryDate(nextDeliveryDate),
+      ].join('\n');
+    }
+
     const remarkLine = [reason, remark].filter(Boolean).join(' / ') || 'No remark';
 
     return [
@@ -383,6 +429,7 @@ Deno.serve(async (req) => {
           driver_delivered_at,
           driver_failed_reason,
           driver_failed_remark,
+          driver_next_delivery_date,
           updated_at,
           driver_id,
           salesperson_id,

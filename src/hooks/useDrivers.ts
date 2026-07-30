@@ -11,6 +11,12 @@ type AssignmentBatchResult = {
   assigned_count?: number;
 };
 
+type DriverReviewResult = {
+  success?: boolean;
+  error?: string;
+  action?: string;
+};
+
 type DriverAssignmentRpcClient = {
   rpc: <T = unknown>(
     fn: string,
@@ -357,6 +363,14 @@ export function useDriverMarkDelivered() {
         driver_cash_amount: collectedCash,
         driver_transfer_amount: collectedTransfer,
         runner_accept_status: 'PENDING' as const,
+        runner_review_status: 'NOT_REVIEWED',
+        runner_final_outcome: null,
+        runner_comment: null,
+        runner_reviewed_at: null,
+        runner_reviewed_by: null,
+        salesperson_action_required: false,
+        salesperson_action_type: null,
+        salesperson_action_due_date: null,
         ...(isFailedCorrection ? {
           driver_failed_reason: null,
           driver_failed_remark: null,
@@ -425,6 +439,15 @@ export function useDriverMarkFailed() {
           driver_failed_remark: remark || null,
           driver_next_delivery_date: nextDeliveryDate || null,
           runner_accept_status: 'PENDING',
+          runner_review_status: 'NOT_REVIEWED',
+          runner_final_outcome: null,
+          runner_comment: null,
+          runner_reviewed_at: null,
+          runner_reviewed_by: null,
+          salesperson_action_required: false,
+          salesperson_action_type: null,
+          salesperson_action_due_date: null,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', orderId)
         .select()
@@ -433,10 +456,17 @@ export function useDriverMarkFailed() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, { orderId }) => {
+    onSuccess: (_, { orderId, reason }) => {
       invalidateOrderQueries(queryClient);
       flushTelegramEventQueue({ order_id: orderId, event_type: 'driver_failed', limit: 2 });
-      toast.success('Marked as failed');
+      const normalizedReason = reason.trim().toLowerCase();
+      if (normalizedReason === 'delivery tomorrow') {
+        toast.success('Delivery tomorrow submitted for Runner acceptance');
+      } else if (normalizedReason === 'customer requested reschedule') {
+        toast.success('Reschedule submitted for Runner acceptance');
+      } else {
+        toast.success('Marked as failed');
+      }
     },
     onError: (error: Error) => {
       toast.error(`Failed to update: ${error.message}`);
@@ -459,16 +489,22 @@ export function useRunnerAcceptDelivery() {
         p_reason: null,
       });
       if (error) throw error;
-      if (!(data as { success?: boolean; error?: string })?.success) {
-        throw new Error((data as { error?: string })?.error || 'Unable to accept Driver report');
+      if (!(data as DriverReviewResult)?.success) {
+        throw new Error((data as DriverReviewResult)?.error || 'Unable to accept Driver report');
       }
-      return data;
+      return data as DriverReviewResult;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       queryClient.invalidateQueries({ queryKey: ['runner-accepted-driver-deliveries'] });
-      toast.success('Delivery accepted');
+      if (data.action === 'DRIVER_DELIVERY_DEFERRED') {
+        toast.success('Delivery kept with the same Driver for tomorrow');
+      } else if (data.action === 'DRIVER_RESCHEDULE_ACCEPTED') {
+        toast.success('Future delivery date accepted');
+      } else {
+        toast.success('Delivery accepted');
+      }
     },
     onError: (error: Error) => {
       toast.error(`Failed to accept: ${error.message}`);
@@ -493,10 +529,10 @@ export function useBulkRunnerAcceptDelivery() {
           p_reason: null,
         });
         if (error) throw error;
-        if (!(data as { success?: boolean; error?: string })?.success) {
-          throw new Error((data as { error?: string })?.error || 'Unable to accept Driver report');
+        if (!(data as DriverReviewResult)?.success) {
+          throw new Error((data as DriverReviewResult)?.error || 'Unable to accept Driver report');
         }
-        return data;
+        return data as DriverReviewResult;
       }));
       return results;
     },
@@ -504,7 +540,15 @@ export function useBulkRunnerAcceptDelivery() {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       queryClient.invalidateQueries({ queryKey: ['runner-accepted-driver-deliveries'] });
-      toast.success(`${data.length} deliveries accepted`);
+      const deferredCount = data.filter((result) =>
+        result.action === 'DRIVER_DELIVERY_DEFERRED'
+        || result.action === 'DRIVER_RESCHEDULE_ACCEPTED'
+      ).length;
+      toast.success(
+        deferredCount > 0
+          ? `${data.length} reports accepted, ${deferredCount} rescheduled`
+          : `${data.length} deliveries accepted`,
+      );
     },
     onError: (error: Error) => {
       toast.error(`Failed to bulk accept: ${error.message}`);

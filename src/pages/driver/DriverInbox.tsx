@@ -28,7 +28,7 @@ import { RouteSuggestionBadge } from '@/components/driver/RouteSuggestionBadge';
 import { DriverRemarkSelector } from '@/components/driver/DriverRemarkSelector';
 import { DraggableOrderList } from '@/components/driver/DraggableOrderList';
 import { RemarkStatusDot } from '@/components/driver/RemarkStatusDot';
-import { format, isToday, isTomorrow, parseISO } from 'date-fns';
+import { addDays, format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { compressImage } from '@/lib/imageCompression';
@@ -51,6 +51,12 @@ type DriverOrderItem = OrderItem & {
 };
 
 const EMPTY_DRIVER_INBOX_ORDERS: DriverInboxOrder[] = [];
+const DELIVERY_TOMORROW_REASON = 'Delivery Tomorrow';
+const CUSTOMER_RESCHEDULE_REASON = 'Customer requested reschedule';
+
+function normalizeFailureReason(value: string) {
+  return value.trim().toLowerCase();
+}
 
 function firstText(...values: Array<string | null | undefined>) {
   for (const value of values) {
@@ -149,6 +155,20 @@ export default function DriverInbox() {
   const orders = assignmentOrders ?? EMPTY_DRIVER_INBOX_ORDERS;
   const { data: parentRunner } = useDriverParentRunner();
   const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY');
+  const orderedFailedReasons = useMemo(
+    () => [...failedReasons].sort((left, right) => {
+      const leftLabel = normalizeFailureReason(left.label);
+      const rightLabel = normalizeFailureReason(right.label);
+      if (leftLabel === normalizeFailureReason(DELIVERY_TOMORROW_REASON)) {
+        return rightLabel === normalizeFailureReason('Other') ? -1 : 0;
+      }
+      if (rightLabel === normalizeFailureReason(DELIVERY_TOMORROW_REASON)) {
+        return leftLabel === normalizeFailureReason('Other') ? 1 : 0;
+      }
+      return 0;
+    }),
+    [failedReasons],
+  );
   const markDelivered = useDriverMarkDelivered();
   const markFailed = useDriverMarkFailed();
   const updateOrder = useUpdateOrder();
@@ -171,6 +191,18 @@ export default function DriverInbox() {
   const [failedProofPreviews, setFailedProofPreviews] = useState<string[]>([]);
   const [proofUploading, setProofUploading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const isDeliveryTomorrow = normalizeFailureReason(failedReason)
+    === normalizeFailureReason(DELIVERY_TOMORROW_REASON);
+  const isCustomerReschedule = normalizeFailureReason(failedReason)
+    === normalizeFailureReason(CUSTOMER_RESCHEDULE_REASON);
+  const tomorrowDateKey = useMemo(() => format(addDays(new Date(), 1), 'yyyy-MM-dd'), []);
+  const failedSubmissionDate = isDeliveryTomorrow
+    ? tomorrowDateKey
+    : isCustomerReschedule
+      ? nextDeliveryDate
+      : '';
+  const failedSubmissionDisabled = !failedReason
+    || (isCustomerReschedule && (!nextDeliveryDate || nextDeliveryDate < tomorrowDateKey));
   const myOrders = useMemo<DriverInboxOrder[]>(() => {
     return orders as DriverInboxOrder[];
   }, [orders]);
@@ -496,6 +528,10 @@ export default function DriverInbox() {
 
   const handleSubmitFailed = async () => {
     if (!selectedOrder || !failedReason) return;
+    if (isCustomerReschedule && (!nextDeliveryDate || nextDeliveryDate < tomorrowDateKey)) {
+      toast.error('Choose tomorrow or a later delivery date.');
+      return;
+    }
     if (selectedOrderDetails && !hasPickupForOrder(selectedOrderDetails)) {
       toast.error('Pickup stock must match this order before failed delivery can be submitted.');
       return;
@@ -506,7 +542,7 @@ export default function DriverInbox() {
       orderId: selectedOrder,
       reason: failedReason,
       remark: failedRemark,
-      nextDeliveryDate: nextDeliveryDate || undefined,
+      nextDeliveryDate: failedSubmissionDate || undefined,
     });
     
     setFailedDialogOpen(false);
@@ -1107,33 +1143,60 @@ export default function DriverInbox() {
             if (!open) resetProofSelection('failed');
           }}
           title="Mark Delivery Failed"
-          description="Please select a reason and provide details"
-          confirmLabel={(markFailed.isPending || proofUploading) ? 'Submitting...' : 'Submit Failed'}
+          description="Select an outcome and add details if needed"
+          confirmLabel={(markFailed.isPending || proofUploading)
+            ? 'Submitting...'
+            : (isDeliveryTomorrow || isCustomerReschedule)
+              ? 'Submit Update'
+              : 'Submit Failed'}
           confirmVariant="destructive"
           onConfirm={handleSubmitFailed}
           isLoading={markFailed.isPending || proofUploading}
-          confirmDisabled={!failedReason || !failedRemark}
+          confirmDisabled={failedSubmissionDisabled}
         >
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Reason *</Label>
-              <Select value={failedReason} onValueChange={setFailedReason}>
+              <Select
+                value={failedReason}
+                onValueChange={(value) => {
+                  setFailedReason(value);
+                  if (normalizeFailureReason(value) !== normalizeFailureReason(CUSTOMER_RESCHEDULE_REASON)) {
+                    setNextDeliveryDate('');
+                  }
+                }}
+              >
                 <SelectTrigger className="h-12 min-h-[44px]">
                   <SelectValue placeholder="Select reason" />
                 </SelectTrigger>
                 <SelectContent>
-                  {failedReasons.map(r => (
+                  {orderedFailedReasons.map(r => (
                     <SelectItem key={r.id} value={r.label}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+            {isCustomerReschedule && (
+              <div className="space-y-2">
+                <Label>New Delivery Date *</Label>
+                <Input
+                  type="date"
+                  value={nextDeliveryDate}
+                  min={tomorrowDateKey}
+                  onChange={e => setNextDeliveryDate(e.target.value)}
+                  className="h-12 min-h-[44px]"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Tomorrow keeps this Driver. Later dates use the scheduled reselivery flow.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
-              <Label>Remark *</Label>
+              <Label>Remark</Label>
               <Textarea 
                 value={failedRemark} 
                 onChange={e => setFailedRemark(e.target.value)}
-                placeholder="Additional details..."
+                placeholder="Additional details (optional)"
                 className="min-h-[100px]"
               />
             </div>
@@ -1145,17 +1208,8 @@ export default function DriverInbox() {
               multiple
               disabled={markFailed.isPending || proofUploading}
               emptyTitle="Take photos or choose from album"
-              helperText="Multiple images are allowed and visible to authorized users in Action Required."
+              helperText="Multiple images are allowed and visible to the Runner during review."
             />
-            <div className="space-y-2">
-              <Label>Next Delivery Date (Optional)</Label>
-              <Input 
-                type="date" 
-                value={nextDeliveryDate}
-                onChange={e => setNextDeliveryDate(e.target.value)}
-                className="h-12 min-h-[44px]"
-              />
-            </div>
           </div>
         </MobileActionSheet>
 

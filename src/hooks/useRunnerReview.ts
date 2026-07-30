@@ -115,6 +115,14 @@ export function useRunnerReviewOrder() {
             (reviewResult as { error?: string })?.error || 'Unable to accept Driver report',
           );
         }
+
+        const reviewAction = (reviewResult as { action?: string })?.action;
+        if (
+          reviewAction === 'DRIVER_DELIVERY_DEFERRED'
+          || reviewAction === 'DRIVER_RESCHEDULE_ACCEPTED'
+        ) {
+          return reviewResult;
+        }
       }
 
       const { error } = await supabase
