@@ -25,6 +25,19 @@ type RpcMetrics = Partial<Record<
   | 'transfer'
   | 'transferCount',
   number | string | null
+>> & Partial<Record<
+  | 'delivery_rate'
+  | 'pending_acceptance'
+  | 'pending_acceptance_amount'
+  | 'total_assigned_sales'
+  | 'accepted_sales'
+  | 'pending_sales'
+  | 'cash_collected'
+  | 'cash_collected_count'
+  | 'cash_pending'
+  | 'cash_pending_count'
+  | 'transfer_count',
+  number | string | null
 >>;
 
 export interface DriverAnalyticsSummary {
@@ -105,29 +118,29 @@ function metric(value: number | string | null | undefined) {
 export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): DriverAnalyticsSummary {
   const assigned = metric(source.assigned);
   const delivered = metric(source.delivered);
-  const acceptedSales = metric(source.acceptedSales);
+  const acceptedSales = metric(source.acceptedSales ?? source.accepted_sales);
 
   return {
     assigned,
     delivered,
-    deliveryRate: source.deliveryRate == null
+    deliveryRate: source.deliveryRate == null && source.delivery_rate == null
       ? (assigned > 0 ? (delivered / assigned) * 100 : 0)
-      : metric(source.deliveryRate),
+      : metric(source.deliveryRate ?? source.delivery_rate),
     failed: metric(source.failed),
     inactive: 0,
     pending: metric(source.pending),
-    pendingAcceptance: metric(source.pendingAcceptance),
-    pendingAcceptanceAmount: metric(source.pendingAcceptanceAmount),
-    totalAssignedSales: metric(source.totalAssignedSales),
+    pendingAcceptance: metric(source.pendingAcceptance ?? source.pending_acceptance),
+    pendingAcceptanceAmount: metric(source.pendingAcceptanceAmount ?? source.pending_acceptance_amount),
+    totalAssignedSales: metric(source.totalAssignedSales ?? source.total_assigned_sales),
     acceptedSales,
     acceptedAmount: acceptedSales,
-    pendingSales: metric(source.pendingSales),
-    cashCollected: metric(source.cashCollected),
-    cashCollectedCount: metric(source.cashCollectedCount),
-    cashPendingSettlement: metric(source.cashPendingSettlement),
-    cashPendingSettlementCount: metric(source.cashPendingSettlementCount),
+    pendingSales: metric(source.pendingSales ?? source.pending_sales),
+    cashCollected: metric(source.cashCollected ?? source.cash_collected),
+    cashCollectedCount: metric(source.cashCollectedCount ?? source.cash_collected_count),
+    cashPendingSettlement: metric(source.cashPendingSettlement ?? source.cash_pending),
+    cashPendingSettlementCount: metric(source.cashPendingSettlementCount ?? source.cash_pending_count),
     transfer: metric(source.transfer),
-    transferCount: metric(source.transferCount),
+    transferCount: metric(source.transferCount ?? source.transfer_count),
   };
 }
 
