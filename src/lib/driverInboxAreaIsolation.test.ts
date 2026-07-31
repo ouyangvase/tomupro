@@ -14,6 +14,13 @@ const isolationMigration = readFileSync(
   ),
   'utf8',
 );
+const manualAssignmentMigration = readFileSync(
+  resolve(
+    projectRoot,
+    'supabase/migrations/20260731211500_allow_manual_driver_assignment_before_zone_review.sql',
+  ),
+  'utf8',
+);
 
 describe('Driver Inbox business-area isolation', () => {
   it('does not use the canonical business area as a Driver Inbox zone fallback', () => {
@@ -47,6 +54,21 @@ describe('Driver Inbox business-area isolation', () => {
     );
     expect(isolationMigration).toContain(
       'o.area = snapshot.area_before',
+    );
+  });
+
+  it('allows manual assignment before zone review without weakening dated zone assignment', () => {
+    expect(manualAssignmentMigration).toContain(
+      "IN ('SELF_PICKUP', 'CANCELLED')",
+    );
+    expect(manualAssignmentMigration).toContain(
+      "p_operational_date IS NOT NULL",
+    );
+    expect(manualAssignmentMigration).toContain(
+      ") = 'NEEDS_REVIEW'",
+    );
+    expect(manualAssignmentMigration).not.toContain(
+      "IN ('SELF_PICKUP', 'CANCELLED', 'NEEDS_REVIEW')",
     );
   });
 });
