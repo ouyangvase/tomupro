@@ -1,23 +1,94 @@
 import { useQuery } from '@tanstack/react-query';
-import { eachDayOfInterval, endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
+import { endOfMonth, format, startOfMonth } from 'date-fns';
 import {
   fetchDriverAssignments,
   summarizeDriverAssignments,
   type DriverAssignment,
 } from '@/hooks/useDriverAssignments';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
 
-export type DriverAnalyticsSummary = ReturnType<typeof summarizeDriverAssignments>;
+type RpcMetrics = Partial<Record<
+  | 'assigned'
+  | 'delivered'
+  | 'deliveryRate'
+  | 'failed'
+  | 'pending'
+  | 'pendingAcceptance'
+  | 'pendingAcceptanceAmount'
+  | 'totalAssignedSales'
+  | 'acceptedSales'
+  | 'pendingSales'
+  | 'cashCollected'
+  | 'cashCollectedCount'
+  | 'cashPendingSettlement'
+  | 'cashPendingSettlementCount'
+  | 'transfer'
+  | 'transferCount',
+  number | string | null
+>>;
+
+export interface DriverAnalyticsSummary {
+  assigned: number;
+  delivered: number;
+  deliveryRate: number;
+  failed: number;
+  inactive: number;
+  pending: number;
+  pendingAcceptance: number;
+  pendingAcceptanceAmount: number;
+  totalAssignedSales: number;
+  acceptedSales: number;
+  acceptedAmount: number;
+  pendingSales: number;
+  cashCollected: number;
+  cashCollectedCount: number;
+  cashPendingSettlement: number;
+  cashPendingSettlementCount: number;
+  transfer: number;
+  transferCount: number;
+}
 
 export interface DriverDailyAnalytics extends DriverAnalyticsSummary {
   date: string;
-  orders: DriverAssignment[];
+}
+
+export interface DriverMonthlyAnalytics extends DriverAnalyticsSummary {
+  month: string;
 }
 
 export interface DriverAnalytics {
+  timezone: 'Asia/Brunei';
   summary: DriverAnalyticsSummary;
   daily: DriverDailyAnalytics[];
-  rangeOrders: DriverAssignment[];
+  monthly: DriverMonthlyAnalytics[];
 }
+
+export type DriverAnalyticsOrder = DriverAssignment & {
+  effective_assignment_date?: string | null;
+  assignment_timestamp?: string | null;
+  assignment_source?: string | null;
+  cash_settlement_status?: string | null;
+  reassigned?: boolean;
+};
+
+export interface DriverAnalyticsDay {
+  date: string;
+  summary: DriverAnalyticsSummary;
+  orders: DriverAnalyticsOrder[];
+}
+
+type DriverAnalyticsRpc = {
+  timezone?: string;
+  summary?: RpcMetrics;
+  daily?: Array<RpcMetrics & { date: string }>;
+  monthly?: Array<RpcMetrics & { month: string }>;
+};
+
+type DriverAnalyticsDayRpc = {
+  date?: string;
+  summary?: RpcMetrics;
+  orders?: Array<Record<string, unknown>>;
+};
 
 export type DriverAnalyticsRange = {
   dateFrom?: string;
@@ -25,6 +96,40 @@ export type DriverAnalyticsRange = {
   calendarFrom?: string;
   calendarTo?: string;
 };
+
+function metric(value: number | string | null | undefined) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): DriverAnalyticsSummary {
+  const assigned = metric(source.assigned);
+  const delivered = metric(source.delivered);
+  const acceptedSales = metric(source.acceptedSales);
+
+  return {
+    assigned,
+    delivered,
+    deliveryRate: source.deliveryRate == null
+      ? (assigned > 0 ? (delivered / assigned) * 100 : 0)
+      : metric(source.deliveryRate),
+    failed: metric(source.failed),
+    inactive: 0,
+    pending: metric(source.pending),
+    pendingAcceptance: metric(source.pendingAcceptance),
+    pendingAcceptanceAmount: metric(source.pendingAcceptanceAmount),
+    totalAssignedSales: metric(source.totalAssignedSales),
+    acceptedSales,
+    acceptedAmount: acceptedSales,
+    pendingSales: metric(source.pendingSales),
+    cashCollected: metric(source.cashCollected),
+    cashCollectedCount: metric(source.cashCollectedCount),
+    cashPendingSettlement: metric(source.cashPendingSettlement),
+    cashPendingSettlementCount: metric(source.cashPendingSettlementCount),
+    transfer: metric(source.transfer),
+    transferCount: metric(source.transferCount),
+  };
+}
 
 function rangeBounds(range: DriverAnalyticsRange) {
   const now = new Date();
@@ -35,14 +140,7 @@ function rangeBounds(range: DriverAnalyticsRange) {
   const calendarFrom = range.calendarFrom || dateFrom;
   const calendarTo = range.calendarTo || dateTo;
 
-  return {
-    dateFrom,
-    dateTo,
-    calendarFrom,
-    calendarTo,
-    queryFrom: [dateFrom, calendarFrom].sort()[0],
-    queryTo: [dateTo, calendarTo].sort().at(-1)!,
-  };
+  return { dateFrom, dateTo, calendarFrom, calendarTo };
 }
 
 export function useDriverAnalytics(driverId?: string, range: DriverAnalyticsRange = {}) {
@@ -52,6 +150,7 @@ export function useDriverAnalytics(driverId?: string, range: DriverAnalyticsRang
     queryKey: [
       'driver-analytics',
       driverId,
+      'summary',
       bounds.dateFrom,
       bounds.dateTo,
       bounds.calendarFrom,
@@ -60,39 +159,55 @@ export function useDriverAnalytics(driverId?: string, range: DriverAnalyticsRang
     queryFn: async (): Promise<DriverAnalytics | null> => {
       if (!driverId) return null;
 
-      const assignments = await fetchDriverAssignments({
-        driverId,
-        dateFrom: bounds.queryFrom,
-        dateTo: bounds.queryTo,
-        includeItems: false,
-      });
-      const rangeOrders = assignments.filter(
-        (order) => order.operational_date >= bounds.dateFrom && order.operational_date <= bounds.dateTo,
-      );
-      const calendarOrders = assignments.filter(
-        (order) => order.operational_date >= bounds.calendarFrom && order.operational_date <= bounds.calendarTo,
-      );
-      const ordersByDate = new Map<string, DriverAssignment[]>();
-      calendarOrders.forEach((order) => {
-        ordersByDate.set(order.operational_date, [...(ordersByDate.get(order.operational_date) || []), order]);
-      });
-
-      const daily = eachDayOfInterval({
-        start: parseISO(bounds.calendarFrom),
-        end: parseISO(bounds.calendarTo),
-      }).map((day) => {
-        const date = format(day, 'yyyy-MM-dd');
-        const orders = ordersByDate.get(date) || [];
-        return { date, orders, ...summarizeDriverAssignments(orders) };
+      const data = await callSupabaseRpc<DriverAnalyticsRpc>('get_driver_analytics', {
+        p_driver_id: driverId,
+        p_range_from: bounds.dateFrom,
+        p_range_to: bounds.dateTo,
+        p_calendar_from: bounds.calendarFrom,
+        p_calendar_to: bounds.calendarTo,
       });
 
       return {
-        summary: summarizeDriverAssignments(rangeOrders),
-        daily,
-        rangeOrders,
+        timezone: 'Asia/Brunei',
+        summary: normalizeDriverAnalyticsMetrics(data?.summary),
+        daily: (data?.daily || []).map((day) => ({
+          date: day.date,
+          ...normalizeDriverAnalyticsMetrics(day),
+        })),
+        monthly: (data?.monthly || []).map((month) => ({
+          month: month.month,
+          ...normalizeDriverAnalyticsMetrics(month),
+        })),
       };
     },
     enabled: Boolean(driverId),
+    staleTime: 30_000,
+  });
+}
+
+export function useDriverAnalyticsDay(driverId?: string, date?: string) {
+  return useQuery({
+    queryKey: ['driver-analytics', driverId, 'day', date],
+    queryFn: async (): Promise<DriverAnalyticsDay | null> => {
+      if (!driverId || !date) return null;
+
+      const data = await callSupabaseRpc<DriverAnalyticsDayRpc>('get_driver_analytics_day', {
+        p_driver_id: driverId,
+        p_date: date,
+      });
+
+      return {
+        date: data?.date || date,
+        summary: normalizeDriverAnalyticsMetrics(data?.summary),
+        orders: (data?.orders || []).map((order) => ({
+          ...order,
+          is_active_assignment: order.assignment_state === 'ACTIVE',
+          collect_amount: metric(order.collect_amount as number | string | null | undefined),
+        })) as DriverAnalyticsOrder[],
+      };
+    },
+    enabled: Boolean(driverId && date),
+    staleTime: 15_000,
   });
 }
 

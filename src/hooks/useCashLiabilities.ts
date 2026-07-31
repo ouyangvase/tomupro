@@ -301,6 +301,7 @@ export function useCreateCashHandover() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       queryClient.invalidateQueries({ queryKey: ['runner-settlement-history'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-analytics'] });
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       toast.success('Sent to assistant for acknowledgement');
     },
@@ -325,6 +326,7 @@ export function useAcknowledgeCashHandover() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       queryClient.invalidateQueries({ queryKey: ['runner-settlement-history'] });
+      queryClient.invalidateQueries({ queryKey: ['driver-analytics'] });
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
       toast.success('Cash handover acknowledged');
