@@ -5,13 +5,33 @@ type RpcResult<T> = {
   error: Error | null;
 };
 
-type DynamicRpcClient = {
-  rpc<T>(name: string, args: Record<string, unknown>): PromiseLike<RpcResult<T>>;
+type RpcFilterBuilder<T> = PromiseLike<RpcResult<T>> & {
+  in(column: string, values: readonly string[]): RpcFilterBuilder<T>;
 };
 
-export async function callSupabaseRpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
+type DynamicRpcClient = {
+  rpc<T>(name: string, args: Record<string, unknown>): RpcFilterBuilder<T>;
+};
+
+type RpcOptions = {
+  in?: {
+    column: string;
+    values: readonly string[];
+  };
+};
+
+export async function callSupabaseRpc<T>(
+  name: string,
+  args: Record<string, unknown>,
+  options: RpcOptions = {},
+): Promise<T> {
   const client = supabase as unknown as DynamicRpcClient;
-  const { data, error } = await client.rpc<T>(name, args);
+  let request = client.rpc<T>(name, args);
+  if (options.in?.values.length) {
+    request = request.in(options.in.column, options.in.values);
+  }
+
+  const { data, error } = await request;
   if (error) throw error;
   return data as T;
 }

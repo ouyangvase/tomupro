@@ -36,8 +36,31 @@ export const DRIVER_WORKLOAD_STATUSES = [
   'OUT_FOR_DELIVERY',
 ] as const;
 
+export const DRIVER_INBOX_ASSIGNMENT_STATES = [
+  'ACTIVE',
+  'PENDING_ACCEPTANCE',
+] as const;
+
+export type DriverInboxAssignmentSection =
+  | 'ACTIVE'
+  | 'PENDING_DELIVERED'
+  | 'PENDING_FAILED';
+
 export function normalizeDriverStatus(value: string | null | undefined) {
   return String(value || '').trim().toUpperCase();
+}
+
+export function getDriverInboxAssignmentSection(order: DriverOrderScopeFields & {
+  assignment_state?: string | null;
+}): DriverInboxAssignmentSection | null {
+  const assignmentState = normalizeDriverStatus(order.assignment_state);
+  if (assignmentState === 'ACTIVE') return 'ACTIVE';
+  if (assignmentState !== 'PENDING_ACCEPTANCE') return null;
+
+  const driverStatus = normalizeDriverStatus(order.driver_status);
+  if (driverStatus === 'DRIVER_DELIVERED') return 'PENDING_DELIVERED';
+  if (driverStatus === 'DRIVER_FAILED') return 'PENDING_FAILED';
+  return null;
 }
 
 export function toDateKey(value: string | Date | null | undefined) {

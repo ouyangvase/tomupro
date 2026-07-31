@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUpdateOrder } from '@/hooks/useOrders';
-import { useActiveDriverAssignments } from '@/hooks/useDriverAssignments';
+import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { useDriverMarkDelivered, useDriverMarkFailed, useDriverParentRunner } from '@/hooks/useDrivers';
 import { useReasons } from '@/hooks/useReasons';
 import { useRouteSuggestion } from '@/hooks/useRouteSuggestion';
@@ -35,6 +35,8 @@ import { compressImage } from '@/lib/imageCompression';
 import { downloadXlsx } from '@/lib/xlsxExport';
 import {
   getTodayDateKey,
+  DRIVER_INBOX_ASSIGNMENT_STATES,
+  getDriverInboxAssignmentSection,
   isCompletedDriverDeliveryAccepted,
   isSameDriverOperationalDate,
   normalizeDriverStatus,
@@ -151,7 +153,11 @@ export default function DriverInbox() {
     data: assignmentOrders,
     isLoading,
     refetch: refetchAssignments,
-  } = useActiveDriverAssignments(effectiveDriverId, true);
+  } = useDriverAssignments({
+    driverId: effectiveDriverId,
+    includeItems: true,
+    states: [...DRIVER_INBOX_ASSIGNMENT_STATES],
+  });
   const orders = assignmentOrders ?? EMPTY_DRIVER_INBOX_ORDERS;
   const { data: parentRunner } = useDriverParentRunner();
   const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY');
@@ -215,13 +221,16 @@ export default function DriverInbox() {
     return new Date();
   }, []);
 
-  // Keep every active assignment visible as soon as the runner assigns it.
+  // Keep active work and unreviewed Driver outcomes visible until the Runner finalizes them.
   const filteredOrders = useMemo(
     () => filterDriverOrders(myOrders, searchQuery),
     [myOrders, searchQuery],
   );
 
-  const pendingOrders = filteredOrders;
+  const pendingOrders = useMemo(
+    () => filteredOrders.filter((order) => getDriverInboxAssignmentSection(order) === 'ACTIVE'),
+    [filteredOrders],
+  );
   const acceptedDeliveredOrders = useMemo(
     () => myOrders.filter((order) => isCompletedDriverDeliveryAccepted(order) && isSameDriverOperationalDate(order, todayDateKey)),
     [myOrders, todayDateKey],
@@ -230,8 +239,18 @@ export default function DriverInbox() {
     () => myOrders.filter((order) => normalizeDriverStatus(order.driver_status) === 'DRIVER_FAILED' && isSameDriverOperationalDate(order, todayDateKey)).length,
     [myOrders, todayDateKey],
   );
-  const deliveredPendingAcceptance: DriverInboxOrder[] = [];
-  const failedOrdersList: DriverInboxOrder[] = [];
+  const deliveredPendingAcceptance = useMemo(
+    () => filteredOrders.filter(
+      (order) => getDriverInboxAssignmentSection(order) === 'PENDING_DELIVERED',
+    ),
+    [filteredOrders],
+  );
+  const failedOrdersList = useMemo(
+    () => filteredOrders.filter(
+      (order) => getDriverInboxAssignmentSection(order) === 'PENDING_FAILED',
+    ),
+    [filteredOrders],
+  );
 
   const pendingOrderIds = useMemo(() => pendingOrders.map(o => o.id), [pendingOrders]);
 

@@ -25,6 +25,7 @@ export type DriverAssignmentQuery = {
   dateTo?: string | null;
   activeOnly?: boolean;
   includeItems?: boolean;
+  states?: DriverAssignmentState[];
 };
 
 type AssignmentRpcRow = {
@@ -47,6 +48,7 @@ export async function fetchDriverAssignments({
   dateTo,
   activeOnly = false,
   includeItems = true,
+  states,
 }: DriverAssignmentQuery = {}): Promise<DriverAssignment[]> {
   const data = await callSupabaseRpc<AssignmentRpcRow[]>('get_driver_assignment_source', {
     p_runner_id: runnerId || null,
@@ -55,6 +57,10 @@ export async function fetchDriverAssignments({
     p_date_to: dateTo || null,
     p_active_only: activeOnly,
     p_include_items: includeItems,
+  }, {
+    in: states?.length
+      ? { column: 'assignment_state', values: states }
+      : undefined,
   });
 
   return (data || []).map((row) => ({
@@ -84,6 +90,7 @@ export function useDriverAssignments(query: DriverAssignmentQuery = {}) {
       query.dateTo || 'any-end',
       query.activeOnly || false,
       query.includeItems !== false,
+      query.states || 'any-state',
     ],
     queryFn: async () => {
       if (runnerIds.length <= 1) {
@@ -95,7 +102,7 @@ export function useDriverAssignments(query: DriverAssignmentQuery = {}) {
       return Array.from(new Map(rows.map((order) => [order.id, order])).values());
     },
     enabled: Boolean(runnerIds.length || query.driverId),
-    refetchInterval: query.activeOnly ? 10_000 : false,
+    refetchInterval: query.activeOnly || query.states?.includes('ACTIVE') ? 10_000 : false,
     refetchIntervalInBackground: false,
   });
 }
