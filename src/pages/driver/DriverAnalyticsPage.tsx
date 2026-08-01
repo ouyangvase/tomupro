@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAttachments, useUploadAttachment } from '@/hooks/useAttachments';
 import {
+  groupDriverAnalyticsOrders,
   useDriverAnalytics,
   useDriverAnalyticsDay,
   type DriverAnalyticsOrder,
@@ -49,6 +50,8 @@ const periodOptions: Array<{ value: Period; label: string }> = [
   { value: 'year', label: 'Year' },
   { value: 'custom', label: 'Custom' },
 ];
+
+const EMPTY_ANALYTICS_ORDERS: DriverAnalyticsOrder[] = [];
 
 function dateKey(date: Date) {
   return format(date, 'yyyy-MM-dd');
@@ -82,7 +85,8 @@ export default function DriverAnalyticsPage() {
   const [customFrom, setCustomFrom] = useState(dateKey(startOfMonth(new Date())));
   const [customTo, setCustomTo] = useState(dateKey(new Date()));
   const [selectedDate, setSelectedDate] = useState(dateKey(new Date()));
-  const [inactiveOpen, setInactiveOpen] = useState(false);
+  const [pendingAcceptanceOpen, setPendingAcceptanceOpen] = useState(false);
+  const [failedOpen, setFailedOpen] = useState(false);
   const [correctionOrder, setCorrectionOrder] = useState<DriverAnalyticsOrder | null>(null);
   const [pendingProofOrder, setPendingProofOrder] = useState<DriverAnalyticsOrder | null>(null);
   const [pendingProofFiles, setPendingProofFiles] = useState<File[]>([]);
@@ -129,9 +133,11 @@ export default function DriverAnalyticsPage() {
 
   const selectedCalendarDay = analytics?.daily.find((day) => day.date === selectedDate);
   const selectedDay = selectedDayDetails?.summary ?? selectedCalendarDay;
-  const selectedOrders = selectedDayDetails?.orders ?? [];
-  const selectedActiveOrders = selectedOrders.filter((order) => order.assignment_state !== 'INACTIVE');
-  const selectedInactiveOrders = selectedOrders.filter((order) => order.assignment_state === 'INACTIVE');
+  const selectedOrders = selectedDayDetails?.orders ?? EMPTY_ANALYTICS_ORDERS;
+  const selectedOrderGroups = useMemo(
+    () => groupDriverAnalyticsOrders(selectedOrders),
+    [selectedOrders],
+  );
   const pendingOrderProofCount = pendingOrderAttachments.filter(
     (attachment) => attachment.type === 'delivery_photo',
   ).length;
@@ -146,6 +152,12 @@ export default function DriverAnalyticsPage() {
       return { monthIndex, ...month };
     });
   }, [analytics?.monthly, period]);
+
+  const selectAnalyticsDate = (date: string) => {
+    setSelectedDate(date);
+    setPendingAcceptanceOpen(false);
+    setFailedOpen(false);
+  };
 
   const handleCorrectToDelivered = async (
     orderId: string,
@@ -218,6 +230,94 @@ export default function DriverAnalyticsPage() {
     } finally {
       setPendingProofUploading(false);
     }
+  };
+
+  const renderOrder = (order: DriverAnalyticsOrder) => {
+    const skuItems = getOrderSkuItems(order);
+    const isPendingAcceptance = order.assignment_state === 'PENDING_ACCEPTANCE';
+    const canCorrectToDelivered =
+      isPendingAcceptance
+      && order.driver_status === 'DRIVER_FAILED'
+      && order.runner_accept_status !== 'ACCEPTED'
+      && order.runner_review_status !== 'REVIEWED';
+
+    return (
+      <div
+        key={order.id}
+        role={isPendingAcceptance ? 'button' : undefined}
+        tabIndex={isPendingAcceptance ? 0 : undefined}
+        onClick={() => {
+          if (!isPendingAcceptance) return;
+          resetPendingProofSelection();
+          setPendingProofOrder(order);
+        }}
+        onKeyDown={(event) => {
+          if (!isPendingAcceptance || (event.key !== 'Enter' && event.key !== ' ')) return;
+          event.preventDefault();
+          resetPendingProofSelection();
+          setPendingProofOrder(order);
+        }}
+        className={cn(
+          'flex items-start justify-between gap-3 py-3',
+          isPendingAcceptance && 'cursor-pointer rounded-md px-2 transition-colors hover:bg-muted/60 active:bg-muted',
+        )}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold">{order.order_code}</p>
+          {skuItems.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {skuItems.map((item) => (
+                <p key={item.id} className="break-words text-xs font-medium">
+                  {item.sku} <span className="text-muted-foreground">x {item.qty}</span>
+                </p>
+              ))}
+            </div>
+          )}
+          <p className="mt-1 truncate text-xs text-muted-foreground">{order.customer_name}</p>
+          <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+            <p>Assigned {order.effective_assignment_date || selectedDate} - {formatBruneiTimestamp(order.assignment_timestamp)}</p>
+            <p>{formatBND(Number(order.collect_amount || order.total_amount || 0))} - {order.driver_payment_method || order.payment_method || 'Payment not set'}</p>
+            <p>
+              Driver {order.driver_status || 'UNKNOWN'} - Runner {order.runner_accept_status || 'PENDING'}
+              {order.cash_settlement_status && order.cash_settlement_status !== 'NOT_APPLICABLE'
+                ? ` - Cash ${order.cash_settlement_status.replaceAll('_', ' ')}`
+                : ''}
+              {order.reassigned ? ' - Reassigned' : ''}
+            </p>
+          </div>
+          {isPendingAcceptance && (
+            <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-primary">
+              <Camera className="h-3.5 w-3.5" />
+              Open and add proof photos
+            </p>
+          )}
+          {canCorrectToDelivered && (
+            <Button
+              type="button"
+              size="sm"
+              className="mt-2"
+              onClick={(event) => {
+                event.stopPropagation();
+                setCorrectionOrder(order);
+              }}
+              disabled={markDelivered.isPending}
+            >
+              Mark Delivered
+            </Button>
+          )}
+        </div>
+        <Badge
+          variant={order.assignment_state === 'FAILED' ? 'destructive' : 'outline'}
+          className={cn(
+            'shrink-0',
+            order.assignment_state === 'DELIVERED' && 'border-emerald-600 text-emerald-700',
+            order.assignment_state === 'PENDING_ACCEPTANCE' && 'border-amber-600 text-amber-700',
+          )}
+        >
+          {order.assignment_state.replaceAll('_', ' ')}
+        </Badge>
+      </div>
+    );
   };
 
   return (
@@ -354,7 +454,7 @@ export default function DriverAnalyticsPage() {
                   onClick={() => {
                     const selectedMonth = setMonth(startOfYear(calendarMonth), month.monthIndex);
                     setCalendarMonth(selectedMonth);
-                    setSelectedDate(dateKey(startOfMonth(selectedMonth)));
+                    selectAnalyticsDate(dateKey(startOfMonth(selectedMonth)));
                     setPeriod('month');
                   }}
                 >
@@ -390,7 +490,7 @@ export default function DriverAnalyticsPage() {
               onClick={() => {
                 const month = subMonths(calendarMonth, 1);
                 setCalendarMonth(month);
-                setSelectedDate(dateKey(startOfMonth(month)));
+                selectAnalyticsDate(dateKey(startOfMonth(month)));
               }}
             >
               <ChevronLeft className="h-5 w-5" />
@@ -403,7 +503,7 @@ export default function DriverAnalyticsPage() {
               onClick={() => {
                 const month = addMonths(calendarMonth, 1);
                 setCalendarMonth(month);
-                setSelectedDate(dateKey(startOfMonth(month)));
+                selectAnalyticsDate(dateKey(startOfMonth(month)));
               }}
             >
               <ChevronRight className="h-5 w-5" />
@@ -428,8 +528,7 @@ export default function DriverAnalyticsPage() {
                 key={day.date}
                 type="button"
                 onClick={() => {
-                  setSelectedDate(day.date);
-                  setInactiveOpen(false);
+                  selectAnalyticsDate(day.date);
                 }}
                 className={cn(
                   'h-14 min-w-0 overflow-hidden border-b border-r border-border p-1 text-left transition-colors hover:bg-muted sm:aspect-square sm:h-auto',
@@ -496,13 +595,13 @@ export default function DriverAnalyticsPage() {
             </div>
           ) : (
             <div className="mt-3">
-              {selectedActiveOrders.length === 0 && (
+              {selectedOrderGroups.visible.length === 0 && (
                 <p className="border-y border-border py-5 text-center text-sm text-muted-foreground">
-                  No active assignments on this day.
+                  No active or accepted deliveries on this day.
                 </p>
               )}
               <div className="divide-y divide-border border-y border-border">
-              {selectedActiveOrders.map((order) => {
+              {selectedOrderGroups.visible.map((order) => {
                 const skuItems = getOrderSkuItems(order);
                 const isPendingAcceptance = order.assignment_state === 'PENDING_ACCEPTANCE';
                 const canCorrectToDelivered =
@@ -590,33 +689,49 @@ export default function DriverAnalyticsPage() {
               })}
               </div>
 
-              {selectedInactiveOrders.length > 0 && (
+              {selectedOrderGroups.pendingAcceptance.length > 0 && (
                 <div className="mt-3 border-y border-border">
                   <button
                     type="button"
-                    aria-expanded={inactiveOpen}
-                    onClick={() => setInactiveOpen((open) => !open)}
+                    aria-expanded={pendingAcceptanceOpen}
+                    onClick={() => setPendingAcceptanceOpen((open) => !open)}
                     className="flex min-h-12 w-full items-center justify-between gap-3 py-3 text-left"
                   >
                     <span>
-                      <span className="block text-sm font-bold">Inactive orders</span>
+                      <span className="block text-sm font-bold">Pending acceptance</span>
                       <span className="block text-xs text-muted-foreground">
-                        {selectedInactiveOrders.length} hidden
+                        {selectedOrderGroups.pendingAcceptance.length} hidden
                       </span>
                     </span>
-                    <ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', inactiveOpen && 'rotate-180')} />
+                    <ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', pendingAcceptanceOpen && 'rotate-180')} />
                   </button>
-                  {inactiveOpen && (
+                  {pendingAcceptanceOpen && (
                     <div className="divide-y divide-border border-t border-border">
-                      {selectedInactiveOrders.map((order) => (
-                        <div key={order.id} className="flex items-center justify-between gap-3 py-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-bold">{order.order_code}</p>
-                            <p className="truncate text-xs text-muted-foreground">{order.customer_name}</p>
-                          </div>
-                          <Badge variant="outline" className="shrink-0 text-muted-foreground">INACTIVE</Badge>
-                        </div>
-                      ))}
+                      {selectedOrderGroups.pendingAcceptance.map(renderOrder)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedOrderGroups.failed.length > 0 && (
+                <div className="mt-3 border-y border-border">
+                  <button
+                    type="button"
+                    aria-expanded={failedOpen}
+                    onClick={() => setFailedOpen((open) => !open)}
+                    className="flex min-h-12 w-full items-center justify-between gap-3 py-3 text-left"
+                  >
+                    <span>
+                      <span className="block text-sm font-bold">Failed</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {selectedOrderGroups.failed.length} hidden
+                      </span>
+                    </span>
+                    <ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', failedOpen && 'rotate-180')} />
+                  </button>
+                  {failedOpen && (
+                    <div className="divide-y divide-border border-t border-border">
+                      {selectedOrderGroups.failed.map(renderOrder)}
                     </div>
                   )}
                 </div>

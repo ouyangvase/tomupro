@@ -90,6 +90,23 @@ export interface DriverAnalyticsDay {
   orders: DriverAnalyticsOrder[];
 }
 
+export function groupDriverAnalyticsOrders(orders: DriverAnalyticsOrder[]) {
+  return orders.reduce<{
+    visible: DriverAnalyticsOrder[];
+    pendingAcceptance: DriverAnalyticsOrder[];
+    failed: DriverAnalyticsOrder[];
+  }>((groups, order) => {
+    if (order.assignment_state === 'PENDING_ACCEPTANCE') {
+      groups.pendingAcceptance.push(order);
+    } else if (order.assignment_state === 'FAILED') {
+      groups.failed.push(order);
+    } else {
+      groups.visible.push(order);
+    }
+    return groups;
+  }, { visible: [], pendingAcceptance: [], failed: [] });
+}
+
 type DriverAnalyticsRpc = {
   timezone?: string;
   summary?: RpcMetrics;

@@ -38,3 +38,21 @@ describe('normalizeDriverAnalyticsMetrics', () => {
     expect(result.deliveryRate).toBeCloseTo(33.3, 1);
   });
 });
+
+describe('groupDriverAnalyticsOrders', () => {
+  it('keeps current orders visible and separates review outcomes for collapsed groups', async () => {
+    const { groupDriverAnalyticsOrders } = await import('./useDriverAnalytics');
+    const orders = [
+      { id: 'active', assignment_state: 'ACTIVE' },
+      { id: 'delivered', assignment_state: 'DELIVERED' },
+      { id: 'pending', assignment_state: 'PENDING_ACCEPTANCE' },
+      { id: 'failed', assignment_state: 'FAILED' },
+    ] as never[];
+
+    const groups = groupDriverAnalyticsOrders(orders);
+
+    expect(groups.visible.map((order) => order.id)).toEqual(['active', 'delivered']);
+    expect(groups.pendingAcceptance.map((order) => order.id)).toEqual(['pending']);
+    expect(groups.failed.map((order) => order.id)).toEqual(['failed']);
+  });
+});

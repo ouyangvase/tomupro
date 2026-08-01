@@ -12,27 +12,35 @@ BEGIN
 END;
 $$;
 
--- 1. Explicit assignment date is the calendar date.
+-- 1. The actual assignment timestamp is the calendar date.
 SELECT pg_temp.assert_true(
-  private.driver_analytics_effective_date(NULL, DATE '2026-07-06', NULL, NULL, NULL) = DATE '2026-07-06',
+  private.driver_analytics_assignment_date(TIMESTAMPTZ '2026-07-05 16:30:00+00', NULL, NULL) = DATE '2026-07-06',
   '01 assignment-date grouping'
 );
 
--- 2. Assignment evidence wins over unrelated created/delivered timestamps.
+-- 2. The current order assignment timestamp wins over fallback evidence.
 SELECT pg_temp.assert_true(
-  private.driver_analytics_effective_date(NULL, DATE '2026-07-06', TIMESTAMPTZ '2026-07-20 04:00:00+00', DATE '2026-07-21', TIMESTAMPTZ '2026-07-22 04:00:00+00') = DATE '2026-07-06',
+  private.driver_analytics_assignment_date(
+    TIMESTAMPTZ '2026-07-20 04:00:00+00',
+    TIMESTAMPTZ '2026-07-21 04:00:00+00',
+    TIMESTAMPTZ '2026-07-22 04:00:00+00'
+  ) = DATE '2026-07-20',
   '02 unrelated dates excluded'
 );
 
--- 3. An accepted reschedule moves the effective date once.
+-- 3. A future business/reschedule date never moves Analytics assignment day.
 SELECT pg_temp.assert_true(
-  private.driver_analytics_effective_date(DATE '2026-07-07', DATE '2026-07-06', NULL, NULL, NULL) = DATE '2026-07-07',
-  '03 assignment-date update'
+  private.driver_analytics_assignment_date(
+    TIMESTAMPTZ '2026-07-30 10:00:00+00',
+    NULL,
+    NULL
+  ) = DATE '2026-07-30',
+  '03 reschedule does not rewrite assignment date'
 );
 
 -- 4. UTC timestamps use the Brunei calendar boundary.
 SELECT pg_temp.assert_true(
-  private.driver_analytics_effective_date(NULL, NULL, TIMESTAMPTZ '2026-07-05 16:30:00+00', NULL, NULL) = DATE '2026-07-06',
+  private.driver_analytics_assignment_date(NULL, TIMESTAMPTZ '2026-07-05 16:30:00+00', NULL) = DATE '2026-07-06',
   '04 Asia/Brunei timezone'
 );
 
@@ -64,9 +72,9 @@ SELECT pg_temp.assert_true(
   '08 Runner-direct delivery excluded'
 );
 
--- 9. Delivery Tomorrow changes date but remains pending.
+-- 9. Delivery Tomorrow remains on its actual assignment day and stays pending.
 SELECT pg_temp.assert_true(
-  private.driver_analytics_effective_date(DATE '2026-07-08', DATE '2026-07-07', NULL, NULL, NULL) = DATE '2026-07-08'
+  private.driver_analytics_assignment_date(TIMESTAMPTZ '2026-07-06 16:00:00+00', NULL, NULL) = DATE '2026-07-07'
     AND NOT private.driver_analytics_is_accepted_delivery('DRIVER_DELIVERED', 'PENDING', 'ASSIGNED'),
   '09 delivery tomorrow remains pending'
 );
@@ -110,7 +118,17 @@ SELECT pg_temp.assert_true(
   '14 accepted transfer only'
 );
 
--- 15. Daily cohort totals reconcile to month/year totals.
+-- 15. Runner-only terminal outcomes are excluded; Driver-authored outcomes remain eligible.
+SELECT pg_temp.assert_true(
+  NOT private.driver_analytics_is_outcome_eligible('ASSIGNED', 'DELIVERED', false)
+    AND NOT private.driver_analytics_is_outcome_eligible('ASSIGNED', 'FAILED_DELIVERY', false)
+    AND private.driver_analytics_is_outcome_eligible('DRIVER_DELIVERED', 'DELIVERED', true)
+    AND private.driver_analytics_is_outcome_eligible('DRIVER_FAILED', 'FAILED_DELIVERY', true)
+    AND private.driver_analytics_is_outcome_eligible('ASSIGNED', 'TAKEN', false),
+  '15 Driver actor evidence'
+);
+
+-- 16. Daily cohort totals reconcile to month/year totals.
 WITH daily(day, assigned, delivered, amount) AS (
   VALUES
     (DATE '2026-07-06', 3, 2, 165::numeric),
@@ -124,9 +142,9 @@ SELECT pg_temp.assert_true(
   (SELECT SUM(assigned) FROM daily) = (SELECT SUM(assigned) FROM monthly)
     AND (SELECT SUM(delivered) FROM daily) = (SELECT SUM(delivered) FROM monthly)
     AND (SELECT SUM(amount) FROM daily) = (SELECT SUM(amount) FROM monthly),
-  '15 daily monthly yearly reconciliation'
+  '16 daily monthly yearly reconciliation'
 );
 
-SELECT '15 Driver Analytics regression tests passed' AS result;
+SELECT '16 Driver Analytics regression tests passed' AS result;
 
 ROLLBACK;
