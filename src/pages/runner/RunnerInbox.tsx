@@ -44,6 +44,7 @@ import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
 
 interface RunnerInboxProps {
   runnerIdsOverride?: string[];
+  assistantMode?: boolean;
   initialSearch?: string;
   highlightOrderId?: string | null;
   duplicateOrdersAction?: ReactNode;
@@ -52,6 +53,7 @@ interface RunnerInboxProps {
 
 export default function RunnerInbox({
   runnerIdsOverride,
+  assistantMode,
   initialSearch = '',
   highlightOrderId = null,
   duplicateOrdersAction = null,
@@ -61,7 +63,7 @@ export default function RunnerInbox({
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { data: assistantBinding, isLoading: assistantLoading } = useMyAssistantBinding();
-  const isAssistant = role === 'runner_assistant' || Boolean(assistantBinding?.runner_id);
+  const isAssistant = assistantMode ?? (role === 'runner_assistant' || (role !== 'runner' && Boolean(assistantBinding?.runner_id)));
   const effectiveRunnerIds = useMemo(() => runnerIdsOverride?.length
     ? runnerIdsOverride
     : isAssistant

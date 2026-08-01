@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Layers, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { resolveAssistantWorkspace } from '@/lib/assistantWorkspace';
 
 // Retry dynamic import once on chunk load failure (stale deployment cache)
 function lazyRetry<T extends { default: React.ComponentType<never> }>(
@@ -84,13 +85,18 @@ export default function DispatchModule() {
   const highlightOrderId = searchParams.get('highlight') || null;
   const routeSearch = searchParams.get('search') || '';
   const [showDuplicateOrders, setShowDuplicateOrders] = useState(false);
-  const isAssistantContext = role !== 'runner' && Boolean(assistantBinding?.runner_id);
-  const requestedRunnerId = searchParams.get('runner') || 'all';
   const linkedRunnerIds = assistantBinding?.runnerIds || [];
-  const selectedRunnerId = linkedRunnerIds.includes(requestedRunnerId) ? requestedRunnerId : 'all';
-  const assistantRunnerIds = isAssistantContext
-    ? (selectedRunnerId === 'all' ? linkedRunnerIds : [selectedRunnerId])
-    : undefined;
+  const hasPrimaryDispatchWorkspace = ['runner', 'admin', 'manager', 'operator'].includes(role || '');
+  const {
+    selectedWorkspace,
+    isAssistantWorkspace: isAssistantContext,
+    runnerIdsOverride: assistantRunnerIds,
+    showWorkspaceSelector,
+  } = resolveAssistantWorkspace({
+    hasPrimaryWorkspace: hasPrimaryDispatchWorkspace,
+    linkedRunnerIds,
+    requestedWorkspace: searchParams.get('runner'),
+  });
   const setRouteParam = (key: string, value: string) => {
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -130,25 +136,29 @@ export default function DispatchModule() {
     ...(assistantBinding?.can_deliver ? [{ id: 'delivered', label: 'Delivered Orders' }] : []),
   ];
 
-  const tabs = role === 'runner' ? runnerTabs : isAssistantContext ? runnerAssistantTabs : adminTabs;
-  const canUseDriverInbox = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_inbox));
-  const canUseDriverWorkload = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_view_driver_workload));
-  const canManageDriverAssignments = role === 'runner' || role === 'admin' || (
+  const tabs = isAssistantContext ? runnerAssistantTabs : role === 'runner' ? runnerTabs : adminTabs;
+  const canUseDriverInbox = (!isAssistantContext && role === 'runner') || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_inbox));
+  const canUseDriverWorkload = (!isAssistantContext && role === 'runner') || (isAssistantContext && Boolean(assistantBinding?.can_view_driver_workload));
+  const canManageDriverAssignments = (!isAssistantContext && (role === 'runner' || role === 'admin')) || (
     isAssistantContext && Boolean(assistantBinding?.can_manage_driver_inbox)
   );
-  const canUseDriverOperations = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_operations));
-  const canUseDriverStock = role === 'runner' || (isAssistantContext && Boolean(
+  const canUseDriverOperations = (!isAssistantContext && role === 'runner') || (isAssistantContext && Boolean(assistantBinding?.can_manage_driver_operations));
+  const canUseDriverStock = (!isAssistantContext && role === 'runner') || (isAssistantContext && Boolean(
     assistantBinding?.can_manage_driver_stock || assistantBinding?.can_manage_cash_settlement
   ));
-  const canUseCashSettlement = role === 'runner' || (isAssistantContext && Boolean(assistantBinding?.can_manage_cash_settlement));
+  const canUseCashSettlement = (!isAssistantContext && role === 'runner') || (isAssistantContext && Boolean(assistantBinding?.can_manage_cash_settlement));
 
   // Redirect unknown tabs to inbox (inside useEffect to avoid render-time state updates)
   const validTabIds = tabs.map(t => t.id);
-  const assistantTabsPending = role !== 'runner' && assistantBindingLoading;
+  const assistantTabsPending = assistantBindingLoading;
   const isInvalidTab = !!role && !!activeTab && !assistantTabsPending && !validTabIds.includes(activeTab);
   useEffect(() => {
     if (isInvalidTab) {
-      setSearchParams({ tab: tabs[0]?.id || 'inbox' }, { replace: true });
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        next.set('tab', tabs[0]?.id || 'inbox');
+        return next;
+      }, { replace: true });
     }
   }, [isInvalidTab, setSearchParams, tabs]);
 
@@ -170,7 +180,7 @@ export default function DispatchModule() {
     return () => window.clearTimeout(timer);
   }, [highlightOrderId, setSearchParams]);
 
-  const duplicateOrdersAction = activeTab === 'inbox' && role === 'runner' ? (
+  const duplicateOrdersAction = activeTab === 'inbox' && role === 'runner' && !isAssistantContext ? (
     <Button
       type="button"
       variant={showDuplicateOrders ? 'default' : 'outline'}
@@ -183,7 +193,7 @@ export default function DispatchModule() {
     </Button>
   ) : null;
 
-  const duplicateOrdersPanel = showDuplicateOrders && role === 'runner' ? (
+  const duplicateOrdersPanel = showDuplicateOrders && role === 'runner' && !isAssistantContext ? (
     <Card className="mt-3 p-3 md:p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
@@ -248,15 +258,16 @@ export default function DispatchModule() {
           />
         )}
       </div>
-      {isAssistantContext && linkedRunnerIds.length > 1 && (
+      {showWorkspaceSelector && (
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground">Runner</span>
-          <Select value={selectedRunnerId} onValueChange={(value) => setRouteParam('runner', value)}>
+          <span className="text-xs font-semibold text-muted-foreground">Workspace</span>
+          <Select value={selectedWorkspace} onValueChange={(value) => setRouteParam('runner', value)}>
             <SelectTrigger className="h-9 w-full max-w-[240px] rounded-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Linked Runners</SelectItem>
+              {hasPrimaryDispatchWorkspace && <SelectItem value="self">My Workspace</SelectItem>}
+              {!hasPrimaryDispatchWorkspace && <SelectItem value="all">All Linked Runners</SelectItem>}
               {(assistantBinding?.runners || []).map((runner) => (
                 <SelectItem key={runner.id} value={runner.id}>
                   {runner.display_name || runner.email}
@@ -269,7 +280,7 @@ export default function DispatchModule() {
       <EmbeddedProvider>
         <Suspense fallback={<Loading />}>
           <div className="mt-4">
-            {activeTab === 'inbox' && role === 'admin' && (
+            {activeTab === 'inbox' && role === 'admin' && !isAssistantContext && (
               <div className="mb-4">
                 <Button
                   type="button"
@@ -308,10 +319,11 @@ export default function DispatchModule() {
                 )}
               </div>
             )}
-            {activeTab === 'inbox' && (role === 'admin' ? <AdminRunnerInbox /> : (
+            {activeTab === 'inbox' && (role === 'admin' && !isAssistantContext ? <AdminRunnerInbox /> : (
               <TabErrorBoundary>
                 <RunnerInbox
                   runnerIdsOverride={assistantRunnerIds}
+                  assistantMode={isAssistantContext}
                   initialSearch={routeSearch}
                   highlightOrderId={highlightOrderId}
                   duplicateOrdersAction={duplicateOrdersAction}
@@ -346,11 +358,11 @@ export default function DispatchModule() {
                 />
               </TabErrorBoundary>
             )}
-            {activeTab === 'failed' && role === 'runner' && (
+            {activeTab === 'failed' && role === 'runner' && !isAssistantContext && (
               <RunnerFailedOrders initialSearch={routeSearch} highlightOrderId={highlightOrderId} />
             )}
             {activeTab === 'map' && <DriverLocationsPage />}
-            {activeTab === 'delivered' && (role === 'runner' || isAssistantContext) && (
+            {activeTab === 'delivered' && ((role === 'runner' && !isAssistantContext) || isAssistantContext) && (
               <RunnerDeliveredOrders
                 initialSearch={routeSearch}
                 highlightOrderId={highlightOrderId}

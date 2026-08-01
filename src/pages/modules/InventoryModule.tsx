@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import { useMyAssistantScope } from '@/hooks/useRunnerAssistants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { resolveAssistantWorkspace } from '@/lib/assistantWorkspace';
 
 const InventoryBalance = lazy(() => import('@/pages/InventoryBalance'));
 const InboundPending = lazy(() => import('@/pages/inbound/InboundPending'));
@@ -25,13 +26,18 @@ export default function InventoryModule() {
   const { profile } = useAuth();
   const role = profile?.role;
   const { data: assistantBinding } = useMyAssistantScope();
-  const isAssistantContext = role !== 'runner' && Boolean(assistantBinding?.runner_id);
-  const requestedRunnerId = searchParams.get('runner') || 'all';
   const linkedRunnerIds = assistantBinding?.runnerIds || [];
-  const selectedRunnerId = linkedRunnerIds.includes(requestedRunnerId) ? requestedRunnerId : 'all';
-  const assistantRunnerIds = isAssistantContext
-    ? (selectedRunnerId === 'all' ? linkedRunnerIds : [selectedRunnerId])
-    : undefined;
+  const hasPrimaryInventoryWorkspace = ['admin', 'manager', 'salesperson', 'runner'].includes(role || '');
+  const {
+    selectedWorkspace,
+    isAssistantWorkspace: isAssistantContext,
+    runnerIdsOverride: assistantRunnerIds,
+    showWorkspaceSelector,
+  } = resolveAssistantWorkspace({
+    hasPrimaryWorkspace: hasPrimaryInventoryWorkspace,
+    linkedRunnerIds,
+    requestedWorkspace: searchParams.get('runner'),
+  });
   const setRouteParam = (key: string, value: string) => {
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -50,11 +56,12 @@ export default function InventoryModule() {
   ];
 
   const tabs = allTabs.filter((tab) => {
-    if (role && tab.roles.includes(role)) return true;
-    if (!isAssistantContext) return false;
-    if (tab.id === 'balance') return Boolean(assistantBinding?.can_view_stock_audit);
-    if (tab.id === 'inbound' || tab.id === 'inbound-history') return Boolean(assistantBinding?.can_manage_inbound_stock);
-    return false;
+    if (isAssistantContext) {
+      if (tab.id === 'balance') return Boolean(assistantBinding?.can_view_stock_audit);
+      if (tab.id === 'inbound' || tab.id === 'inbound-history') return Boolean(assistantBinding?.can_manage_inbound_stock);
+      return false;
+    }
+    return Boolean(role && tab.roles.includes(role));
   });
   const rawRequestedTab = searchParams.get('tab');
   const requestedTab = rawRequestedTab === 'stock-audit' || rawRequestedTab === 'stock-rebuild'
@@ -64,7 +71,11 @@ export default function InventoryModule() {
 
   useEffect(() => {
     if (rawRequestedTab === 'stock-audit' || rawRequestedTab === 'stock-rebuild') {
-      setSearchParams({ tab: 'balance' }, { replace: true });
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        next.set('tab', 'balance');
+        return next;
+      }, { replace: true });
     }
   }, [rawRequestedTab, setSearchParams]);
 
@@ -79,15 +90,16 @@ export default function InventoryModule() {
           </TabsList>
         </div>
       </Tabs>
-      {isAssistantContext && linkedRunnerIds.length > 1 && (
+      {showWorkspaceSelector && (
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground">Runner</span>
-          <Select value={selectedRunnerId} onValueChange={(value) => setRouteParam('runner', value)}>
+          <span className="text-xs font-semibold text-muted-foreground">Workspace</span>
+          <Select value={selectedWorkspace} onValueChange={(value) => setRouteParam('runner', value)}>
             <SelectTrigger className="h-9 w-full max-w-[240px] rounded-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Linked Runners</SelectItem>
+              {hasPrimaryInventoryWorkspace && <SelectItem value="self">My Workspace</SelectItem>}
+              {!hasPrimaryInventoryWorkspace && <SelectItem value="all">All Linked Runners</SelectItem>}
               {(assistantBinding?.runners || []).map((runner) => (
                 <SelectItem key={runner.id} value={runner.id}>
                   {runner.display_name || runner.email}
@@ -106,7 +118,7 @@ export default function InventoryModule() {
                 assistantRunnerIds={assistantRunnerIds}
               />
             )}
-            {activeTab === 'inbound' && ((role === 'runner' || (isAssistantContext && assistantBinding?.can_manage_inbound_stock))
+            {activeTab === 'inbound' && (((role === 'runner' && !isAssistantContext) || (isAssistantContext && assistantBinding?.can_manage_inbound_stock))
               ? isAssistantContext && assistantRunnerIds && assistantRunnerIds.length !== 1
                 ? <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Select one linked Runner before creating inbound stock.</div>
                 : <RunnerInbound runnerIdOverride={assistantRunnerIds?.[0]} />
