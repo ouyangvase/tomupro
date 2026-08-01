@@ -75,7 +75,6 @@ export function CreatePickupDialog({
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<PickupItem[]>([]);
   const [acknowledgeBlocking, setAcknowledgeBlocking] = useState(false);
-  const [acknowledgeReturn, setAcknowledgeReturn] = useState(false);
   const [forceCreate, setForceCreate] = useState(false);
 
   const { data: drivers } = useMyDrivers(runnerIdOverride);
@@ -106,7 +105,6 @@ export function CreatePickupDialog({
 
   useEffect(() => {
     setAcknowledgeBlocking(false);
-    setAcknowledgeReturn(false);
     setForceCreate(false);
   }, [selectedDriverId]);
 
@@ -174,7 +172,6 @@ export function CreatePickupDialog({
     setNotes('');
     setItems([]);
     setAcknowledgeBlocking(false);
-    setAcknowledgeReturn(false);
     setForceCreate(false);
   };
 
@@ -182,7 +179,6 @@ export function CreatePickupDialog({
     if (!selectedDriverId || (!isEditing && items.length === 0)) return;
     if (!forceCreate && !isEditing) {
       if (hasBlockingOrders && !acknowledgeBlocking) return;
-      if (hasReturnRequired && !acknowledgeReturn) return;
     }
 
     const pickupItems = items.map((item) => ({
@@ -208,7 +204,7 @@ export function CreatePickupDialog({
         items: pickupItems,
         source_order_ids: defaultOrderIds.length > 0 ? defaultOrderIds : suggestedPickup?.orderIds,
         source_order_codes: defaultOrderCodes.length > 0 ? defaultOrderCodes : suggestedPickup?.orderCodes,
-        force: forceCreate || acknowledgeBlocking || acknowledgeReturn,
+        force: forceCreate || acknowledgeBlocking,
       });
     }
 
@@ -297,9 +293,9 @@ export function CreatePickupDialog({
           {!isEditing && selectedDriverId && hasReturnRequired && (
             <Alert className="border-amber-500/50 bg-amber-500/10">
               <RotateCcw className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-700">Return Required Warning</AlertTitle>
+              <AlertTitle className="text-amber-700">Return Suggested</AlertTitle>
               <AlertDescription className="text-amber-700">
-                Driver should submit {totalMustReturn} item(s) for return before receiving a new pickup:
+                Driver has {totalMustReturn} item(s) suggested for return. This does not block a new pickup:
                 <ul className="mt-2 list-inside list-disc">
                   {mustReturnItems.slice(0, 5).map((item) => (
                     <li key={item.product_id}>
@@ -307,21 +303,11 @@ export function CreatePickupDialog({
                     </li>
                   ))}
                 </ul>
-                <div className="mt-3 flex items-center space-x-2">
-                  <Checkbox
-                    id="acknowledge-return"
-                    checked={acknowledgeReturn}
-                    onCheckedChange={(checked) => setAcknowledgeReturn(Boolean(checked))}
-                  />
-                  <label htmlFor="acknowledge-return" className="cursor-pointer text-sm">
-                    I acknowledge and want to proceed
-                  </label>
-                </div>
               </AlertDescription>
             </Alert>
           )}
 
-          {!isEditing && isAdmin && (hasBlockingOrders || hasReturnRequired) && (
+          {!isEditing && isAdmin && hasBlockingOrders && (
             <Alert className="border-primary/50 bg-primary/5">
               <ShieldAlert className="h-4 w-4 text-primary" />
               <AlertTitle className="text-primary">Admin Override</AlertTitle>
@@ -460,7 +446,6 @@ export function CreatePickupDialog({
                 || isCalculating
                 || (!isEditing && items.length === 0)
                 || (!isEditing && !forceCreate && hasBlockingOrders && !acknowledgeBlocking)
-                || (!isEditing && !forceCreate && hasReturnRequired && !acknowledgeReturn)
                 || isSaving
               }
               className="w-full sm:w-auto"
