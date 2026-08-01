@@ -30,7 +30,7 @@ import {
 import { toast } from 'sonner';
 
 export default function ClaimBatchesAdmin() {
-  const { data: batches = [], isLoading } = useClaimBatches({ status: 'ADMIN_ACK_PENDING' });
+  const { data: batches = [], isLoading } = useClaimBatches({ status: 'ADMIN_ACK_PENDING', includeOwners: true });
   const approveClaimBatch = useApproveClaimBatch();
   const rejectClaimBatch = useRejectClaimBatch();
   const removeOrderFromBatch = useRemoveOrderFromBatch();
@@ -128,6 +128,12 @@ export default function ClaimBatchesAdmin() {
       key: 'runner', header: 'Runner',
       render: (batch) => (
         <span className="font-medium">{batch.runner?.display_name || '-'}</span>
+      ),
+    },
+    {
+      key: 'owner_names', header: 'Owner',
+      render: (batch) => (
+        <span className="font-medium break-words">{batch.owner_names?.join(', ') || '-'}</span>
       ),
     },
     {

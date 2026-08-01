@@ -8,6 +8,17 @@ import type { ClaimBatch, ClaimBatchStatus, Profile } from '@/types/database';
 interface ClaimBatchFilters {
   runnerId?: string;
   status?: ClaimBatchStatus;
+  includeOwners?: boolean;
+}
+
+const QUERY_CHUNK_SIZE = 200;
+
+function chunkIds(ids: string[]) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < ids.length; index += QUERY_CHUNK_SIZE) {
+    chunks.push(ids.slice(index, index + QUERY_CHUNK_SIZE));
+  }
+  return chunks;
 }
 
 export function useClaimBatches(filters?: ClaimBatchFilters) {
@@ -49,9 +60,55 @@ export function useClaimBatches(filters?: ClaimBatchFilters) {
         });
       }
 
+      const ownerNamesByBatch = new Map<string, string[]>();
+      if (filters?.includeOwners) {
+        const orderIds = [...new Set(
+          (data || []).flatMap(batch => (batch.items || []).map(item => item.order_id))
+        )];
+        const orderOwnerRows = (await Promise.all(
+          chunkIds(orderIds).map(async ids => {
+            const { data: orders, error: ordersError } = await supabase
+              .from('orders')
+              .select('id, salesperson_id, owner_salesperson_display_name_snapshot, created_by_name_snapshot')
+              .in('id', ids);
+            if (ordersError) throw ordersError;
+            return orders || [];
+          })
+        )).flat();
+
+        const ownerIds = [...new Set(
+          orderOwnerRows.map(order => order.salesperson_id).filter((id): id is string => Boolean(id))
+        )];
+        const ownerProfiles = (await Promise.all(
+          chunkIds(ownerIds).map(async ids => {
+            const { data: profiles, error: profilesError } = await supabase
+              .from('user_directory')
+              .select('id, display_name')
+              .in('id', ids);
+            if (profilesError) throw profilesError;
+            return profiles || [];
+          })
+        )).flat();
+        const ownerNameById = new Map(ownerProfiles.map(owner => [owner.id, owner.display_name]));
+        const orderOwnerNameById = new Map(orderOwnerRows.map(order => [
+          order.id,
+          (order.salesperson_id ? ownerNameById.get(order.salesperson_id) : null)
+            || order.owner_salesperson_display_name_snapshot
+            || order.created_by_name_snapshot
+            || 'Unknown',
+        ]));
+
+        (data || []).forEach(batch => {
+          ownerNamesByBatch.set(batch.id, [...new Set(
+            (batch.items || []).map(item => orderOwnerNameById.get(item.order_id) || 'Unknown')
+          )].sort((first, second) => first.localeCompare(second)));
+        });
+      }
+
       return (data || []).map(batch => ({
         ...batch,
         runner: runnerMap[batch.runner_id],
+        owner_names: ownerNamesByBatch.get(batch.id),
       })) as unknown as ClaimBatch[];
     },
   });

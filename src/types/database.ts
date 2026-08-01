@@ -354,6 +354,7 @@ export interface ClaimBatch {
   // Joined fields
   runner?: Profile;
   items?: ClaimBatchItem[];
+  owner_names?: string[];
 }
 
 export interface ClaimBatchItem {
