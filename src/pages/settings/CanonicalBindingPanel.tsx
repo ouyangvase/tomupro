@@ -126,6 +126,15 @@ export default function CanonicalBindingPanel({ mode }: CanonicalBindingPanelPro
     });
   }, [dialogSearch, mode, statusFilter, subjects]);
 
+  const selectableDialogSubjectIds = useMemo(
+    () => dialogSubjects
+      .filter((subject) => subject.is_active && !dialogBoundIds.has(subject.id))
+      .map((subject) => subject.id),
+    [dialogBoundIds, dialogSubjects],
+  );
+  const allFilteredSubjectsSelected = selectableDialogSubjectIds.length > 0
+    && selectableDialogSubjectIds.every((id) => selectedIds.includes(id));
+
   const isLoading = usersLoading || managerRows.isLoading || runnerRows.isLoading;
   const addPending = addSalespersons.isPending || addDrivers.isPending;
   const removePending = removeSalesperson.isPending || removeDriver.isPending;
@@ -151,6 +160,18 @@ export default function CanonicalBindingPanel({ mode }: CanonicalBindingPanelPro
     setSelectedIds((current) => current.includes(subject.id)
       ? current.filter((id) => id !== subject.id)
       : [...current, subject.id]);
+  };
+
+  const toggleAllFilteredSubjects = () => {
+    if (selectableDialogSubjectIds.length === 0) return;
+
+    setSelectedIds((current) => {
+      const filteredIds = new Set(selectableDialogSubjectIds);
+      if (selectableDialogSubjectIds.every((id) => current.includes(id))) {
+        return current.filter((id) => !filteredIds.has(id));
+      }
+      return [...new Set([...current, ...selectableDialogSubjectIds])];
+    });
   };
 
   const saveBindings = async () => {
@@ -325,36 +346,58 @@ export default function CanonicalBindingPanel({ mode }: CanonicalBindingPanelPro
       )}
 
       <Dialog open={Boolean(dialogOwner)} onOpenChange={(open) => !open && closeAddDialog()}>
-        <DialogContent className="max-h-[88dvh] max-w-xl overflow-hidden p-0">
-          <DialogHeader className="border-b px-5 pb-4 pt-5">
+        <DialogContent className="flex h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-xl flex-col gap-0 overflow-hidden p-0 sm:h-[88dvh] sm:max-h-[48rem]">
+          <DialogHeader className="shrink-0 border-b px-5 pb-4 pt-5">
             <DialogTitle>Add {isSalespersonMode ? 'Salespersons' : 'Drivers'}</DialogTitle>
             <DialogDescription>
               Add to {userLabel(dialogOwner)}. Existing bindings with other {ownerSingular}s remain unchanged.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 overflow-y-auto px-5 py-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={dialogSearch}
-                onChange={(event) => setDialogSearch(event.target.value)}
-                placeholder={`Search ${subjectPlural}...`}
-                className="pl-10"
-              />
+          <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-5">
+            <div className="shrink-0 space-y-3 pb-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={dialogSearch}
+                  onChange={(event) => setDialogSearch(event.target.value)}
+                  placeholder={`Search ${subjectPlural}...`}
+                  className="pl-10"
+                />
+              </div>
+              {mode === 'driver' && (
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger aria-label="Driver status filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All driver statuses</SelectItem>
+                    <SelectItem value="active">Active drivers</SelectItem>
+                    <SelectItem value="inactive">Inactive drivers</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-between"
+                disabled={selectableDialogSubjectIds.length === 0}
+                onClick={toggleAllFilteredSubjects}
+              >
+                <span className="flex items-center gap-2">
+                  <Checkbox
+                    checked={allFilteredSubjectsSelected}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    className="pointer-events-none"
+                  />
+                  {allFilteredSubjectsSelected ? 'Clear filtered' : 'Select all'}
+                </span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {selectableDialogSubjectIds.length} available
+                </span>
+              </Button>
             </div>
-            {mode === 'driver' && (
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger aria-label="Driver status filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All driver statuses</SelectItem>
-                  <SelectItem value="active">Active drivers</SelectItem>
-                  <SelectItem value="inactive">Inactive drivers</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-            <div className="divide-y rounded-lg border">
+            <div className="min-h-0 flex-1 touch-pan-y divide-y overflow-y-auto overscroll-contain rounded-lg border">
               {dialogSubjects.length === 0 ? (
                 <p className="px-4 py-10 text-center text-sm text-muted-foreground">No matching users found.</p>
               ) : dialogSubjects.map((subject) => {
@@ -393,10 +436,10 @@ export default function CanonicalBindingPanel({ mode }: CanonicalBindingPanelPro
               })}
             </div>
           </div>
-          <DialogFooter className="border-t px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4">
+          <DialogFooter className="grid shrink-0 grid-cols-2 gap-3 border-t bg-background px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:flex sm:px-5">
             <Button variant="outline" onClick={closeAddDialog}>Cancel</Button>
             <Button disabled={selectedIds.length === 0 || addPending} onClick={saveBindings}>
-              {addPending ? 'Adding...' : `Add ${selectedIds.length || ''} ${selectedIds.length === 1 ? subjectSingular : subjectPlural}`.trim()}
+              {addPending ? 'Saving...' : selectedIds.length > 0 ? `Save (${selectedIds.length})` : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
