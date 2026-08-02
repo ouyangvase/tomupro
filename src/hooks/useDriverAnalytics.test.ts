@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 describe('normalizeDriverAnalyticsMetrics', () => {
-  it('maps server aggregate snake_case fields used by daily and monthly rows', async () => {
+  it('maps Driver delivery-event totals used by daily and monthly rows', async () => {
     const values = new Map<string, string>();
     Object.defineProperty(globalThis, 'localStorage', {
       configurable: true,
@@ -15,27 +15,41 @@ describe('normalizeDriverAnalyticsMetrics', () => {
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'test-key');
     const { normalizeDriverAnalyticsMetrics } = await import('./useDriverAnalytics');
     const result = normalizeDriverAnalyticsMetrics({
-      assigned: 102,
-      delivered: 34,
-      total_assigned_sales: '6491',
-      accepted_sales: '2295',
-      pending_sales: '4196',
-      cash_collected: '2072',
-      cash_pending: '2072',
-      transfer: '223',
+      delivered_orders: 21,
+      total_sales: '1178',
+      cash_amount: '1091',
+      cash_order_count: 19,
+      cash_on_hand: '1091',
+      cash_on_hand_count: 19,
+      transfer_amount: '87',
+      transfer_order_count: 2,
+      pending_acceptance: 21,
+      pending_acceptance_amount: '1178',
+      runner_accepted_orders: 0,
+      runner_accepted_amount: '0',
     });
 
     expect(result).toMatchObject({
-      assigned: 102,
-      delivered: 34,
-      totalAssignedSales: 6491,
-      acceptedSales: 2295,
-      pendingSales: 4196,
-      cashCollected: 2072,
-      cashPendingSettlement: 2072,
-      transfer: 223,
+      deliveredOrders: 21,
+      totalSales: 1178,
+      cashAmount: 1091,
+      cashOrderCount: 19,
+      cashOnHand: 1091,
+      cashOnHandCount: 19,
+      transferAmount: 87,
+      transferOrderCount: 2,
+      pendingAcceptance: 21,
+      pendingAcceptanceAmount: 1178,
+      runnerAcceptedOrders: 0,
+      runnerAcceptedAmount: 0,
+      assigned: 21,
+      delivered: 21,
+      totalAssignedSales: 1178,
+      cashCollected: 1091,
+      cashPendingSettlement: 1091,
+      transfer: 87,
     });
-    expect(result.deliveryRate).toBeCloseTo(33.3, 1);
+    expect(result.deliveryRate).toBe(100);
   });
 });
 

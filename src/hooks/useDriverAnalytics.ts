@@ -23,7 +23,17 @@ type RpcMetrics = Partial<Record<
   | 'cashPendingSettlement'
   | 'cashPendingSettlementCount'
   | 'transfer'
-  | 'transferCount',
+  | 'transferCount'
+  | 'deliveredOrders'
+  | 'totalSales'
+  | 'cashAmount'
+  | 'cashOrderCount'
+  | 'cashOnHand'
+  | 'cashOnHandCount'
+  | 'transferAmount'
+  | 'transferOrderCount'
+  | 'runnerAcceptedOrders'
+  | 'runnerAcceptedAmount',
   number | string | null
 >> & Partial<Record<
   | 'delivery_rate'
@@ -36,11 +46,31 @@ type RpcMetrics = Partial<Record<
   | 'cash_collected_count'
   | 'cash_pending'
   | 'cash_pending_count'
-  | 'transfer_count',
+  | 'transfer_count'
+  | 'delivered_orders'
+  | 'total_sales'
+  | 'cash_amount'
+  | 'cash_order_count'
+  | 'cash_on_hand'
+  | 'cash_on_hand_count'
+  | 'transfer_amount'
+  | 'transfer_order_count'
+  | 'runner_accepted_orders'
+  | 'runner_accepted_amount',
   number | string | null
 >>;
 
 export interface DriverAnalyticsSummary {
+  deliveredOrders: number;
+  totalSales: number;
+  cashAmount: number;
+  cashOrderCount: number;
+  cashOnHand: number;
+  cashOnHandCount: number;
+  transferAmount: number;
+  transferOrderCount: number;
+  runnerAcceptedOrders: number;
+  runnerAcceptedAmount: number;
   assigned: number;
   delivered: number;
   deliveryRate: number;
@@ -133,31 +163,48 @@ function metric(value: number | string | null | undefined) {
 }
 
 export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): DriverAnalyticsSummary {
-  const assigned = metric(source.assigned);
-  const delivered = metric(source.delivered);
-  const acceptedSales = metric(source.acceptedSales ?? source.accepted_sales);
+  const deliveredOrders = metric(source.deliveredOrders ?? source.delivered_orders ?? source.delivered ?? source.assigned);
+  const totalSales = metric(source.totalSales ?? source.total_sales ?? source.totalAssignedSales ?? source.total_assigned_sales);
+  const cashAmount = metric(source.cashAmount ?? source.cash_amount ?? source.cashCollected ?? source.cash_collected);
+  const cashOrderCount = metric(source.cashOrderCount ?? source.cash_order_count ?? source.cashCollectedCount ?? source.cash_collected_count);
+  const cashOnHand = metric(source.cashOnHand ?? source.cash_on_hand ?? source.cashPendingSettlement ?? source.cash_pending);
+  const cashOnHandCount = metric(source.cashOnHandCount ?? source.cash_on_hand_count ?? source.cashPendingSettlementCount ?? source.cash_pending_count);
+  const transferAmount = metric(source.transferAmount ?? source.transfer_amount ?? source.transfer);
+  const transferOrderCount = metric(source.transferOrderCount ?? source.transfer_order_count ?? source.transferCount ?? source.transfer_count);
+  const runnerAcceptedOrders = metric(source.runnerAcceptedOrders ?? source.runner_accepted_orders ?? source.delivered);
+  const runnerAcceptedAmount = metric(source.runnerAcceptedAmount ?? source.runner_accepted_amount ?? source.acceptedSales ?? source.accepted_sales);
+  const pendingAcceptance = metric(source.pendingAcceptance ?? source.pending_acceptance);
+  const pendingAcceptanceAmount = metric(source.pendingAcceptanceAmount ?? source.pending_acceptance_amount);
 
   return {
-    assigned,
-    delivered,
-    deliveryRate: source.deliveryRate == null && source.delivery_rate == null
-      ? (assigned > 0 ? (delivered / assigned) * 100 : 0)
-      : metric(source.deliveryRate ?? source.delivery_rate),
-    failed: metric(source.failed),
+    deliveredOrders,
+    totalSales,
+    cashAmount,
+    cashOrderCount,
+    cashOnHand,
+    cashOnHandCount,
+    transferAmount,
+    transferOrderCount,
+    runnerAcceptedOrders,
+    runnerAcceptedAmount,
+    assigned: deliveredOrders,
+    delivered: deliveredOrders,
+    deliveryRate: deliveredOrders > 0 ? 100 : 0,
+    failed: 0,
     inactive: 0,
-    pending: metric(source.pending),
-    pendingAcceptance: metric(source.pendingAcceptance ?? source.pending_acceptance),
-    pendingAcceptanceAmount: metric(source.pendingAcceptanceAmount ?? source.pending_acceptance_amount),
-    totalAssignedSales: metric(source.totalAssignedSales ?? source.total_assigned_sales),
-    acceptedSales,
-    acceptedAmount: acceptedSales,
-    pendingSales: metric(source.pendingSales ?? source.pending_sales),
-    cashCollected: metric(source.cashCollected ?? source.cash_collected),
-    cashCollectedCount: metric(source.cashCollectedCount ?? source.cash_collected_count),
-    cashPendingSettlement: metric(source.cashPendingSettlement ?? source.cash_pending),
-    cashPendingSettlementCount: metric(source.cashPendingSettlementCount ?? source.cash_pending_count),
-    transfer: metric(source.transfer),
-    transferCount: metric(source.transferCount ?? source.transfer_count),
+    pending: pendingAcceptance,
+    pendingAcceptance,
+    pendingAcceptanceAmount,
+    totalAssignedSales: totalSales,
+    acceptedSales: runnerAcceptedAmount,
+    acceptedAmount: runnerAcceptedAmount,
+    pendingSales: pendingAcceptanceAmount,
+    cashCollected: cashAmount,
+    cashCollectedCount: cashOrderCount,
+    cashPendingSettlement: cashOnHand,
+    cashPendingSettlementCount: cashOnHandCount,
+    transfer: transferAmount,
+    transferCount: transferOrderCount,
   };
 }
 

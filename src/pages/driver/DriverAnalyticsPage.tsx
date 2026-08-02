@@ -34,6 +34,7 @@ import {
   type DriverAnalyticsOrder,
 } from '@/hooks/useDriverAnalytics';
 import type { DriverAssignment } from '@/hooks/useDriverAssignments';
+import { useDriverAllocatedStock } from '@/hooks/useDriverPickups';
 import { useDriverMarkDelivered } from '@/hooks/useDrivers';
 import { compressImage } from '@/lib/imageCompression';
 import { formatBND } from '@/lib/currency';
@@ -86,7 +87,6 @@ export default function DriverAnalyticsPage() {
   const [customTo, setCustomTo] = useState(dateKey(new Date()));
   const [selectedDate, setSelectedDate] = useState(dateKey(new Date()));
   const [pendingAcceptanceOpen, setPendingAcceptanceOpen] = useState(false);
-  const [failedOpen, setFailedOpen] = useState(false);
   const [correctionOrder, setCorrectionOrder] = useState<DriverAnalyticsOrder | null>(null);
   const [pendingProofOrder, setPendingProofOrder] = useState<DriverAnalyticsOrder | null>(null);
   const [pendingProofFiles, setPendingProofFiles] = useState<File[]>([]);
@@ -95,6 +95,7 @@ export default function DriverAnalyticsPage() {
   const markDelivered = useDriverMarkDelivered();
   const uploadAttachment = useUploadAttachment();
   const { data: pendingOrderAttachments = [] } = useAttachments({ orderId: pendingProofOrder?.id });
+  const { data: stockOnHand = [] } = useDriverAllocatedStock();
 
   const range = useMemo(() => {
     const now = new Date();
@@ -141,6 +142,10 @@ export default function DriverAnalyticsPage() {
   const pendingOrderProofCount = pendingOrderAttachments.filter(
     (attachment) => attachment.type === 'delivery_photo',
   ).length;
+  const stockOnHandQty = stockOnHand.reduce(
+    (total, item) => total + Number(item.allocated_qty || 0),
+    0,
+  );
   const leadingDays = (getDay(startOfMonth(calendarMonth)) + 6) % 7;
   const summary = analytics?.summary;
   const yearMonths = useMemo(() => {
@@ -156,7 +161,6 @@ export default function DriverAnalyticsPage() {
   const selectAnalyticsDate = (date: string) => {
     setSelectedDate(date);
     setPendingAcceptanceOpen(false);
-    setFailedOpen(false);
   };
 
   const handleCorrectToDelivered = async (
@@ -275,7 +279,7 @@ export default function DriverAnalyticsPage() {
           )}
           <p className="mt-1 truncate text-xs text-muted-foreground">{order.customer_name}</p>
           <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
-            <p>Assigned {order.effective_assignment_date || selectedDate} - {formatBruneiTimestamp(order.assignment_timestamp)}</p>
+            <p>Driver delivered {formatBruneiTimestamp(order.assignment_timestamp)}</p>
             <p>{formatBND(Number(order.collect_amount || order.total_amount || 0))} - {order.driver_payment_method || order.payment_method || 'Payment not set'}</p>
             <p>
               Driver {order.driver_status || 'UNKNOWN'} - Runner {order.runner_accept_status || 'PENDING'}
@@ -326,7 +330,7 @@ export default function DriverAnalyticsPage() {
         <header className="border-b border-border pb-4">
           <p className="text-xs font-bold uppercase text-primary">Performance</p>
           <h1 className="mt-1 text-2xl font-bold">Delivery calendar</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Delivered / assigned for each day</p>
+          <p className="mt-1 text-sm text-muted-foreground">Grouped by when you tapped Delivered.</p>
         </header>
 
         <div className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1">
@@ -374,52 +378,35 @@ export default function DriverAnalyticsPage() {
             <Button variant="outline" size="sm" onClick={() => void refetchAnalytics()}>Retry</Button>
           </section>
         ) : summary ? (
-        <section className="border-b border-border pb-4">
-          <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Delivered</p>
-              <p className="mt-1 text-xl font-bold sm:text-2xl">{summary?.delivered ?? 0} / {summary?.assigned ?? 0}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Delivery rate</p>
-              <p className="mt-1 text-xl font-bold sm:text-2xl">{(summary?.deliveryRate ?? 0).toFixed(1)}%</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Cash collected</p>
-              <p className="mt-1 break-words text-lg font-bold sm:text-xl">BND {(summary?.cashCollected ?? 0).toFixed(2)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Failed</p>
-              <p className="mt-1 text-xl font-bold text-destructive">{summary?.failed ?? 0}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Pending</p>
-              <p className="mt-1 text-xl font-bold">{summary.pending}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Pending acceptance</p>
-              <p className="mt-1 text-xl font-bold">{summary?.pendingAcceptance ?? 0}</p>
-            </div>
+        <section className="grid grid-cols-2 gap-x-4 gap-y-4 border-b border-border pb-4 sm:grid-cols-3">
+          <div>
+            <p className="text-xs text-muted-foreground">Delivered orders</p>
+            <p className="mt-1 text-xl font-bold sm:text-2xl">{summary.deliveredOrders}</p>
+            <p className="text-[11px] text-muted-foreground">{summary.pendingAcceptance} pending acceptance</p>
           </div>
-
-          <div className="mt-5 border-t border-border pt-4">
-            <p className="mb-3 text-xs font-bold uppercase text-muted-foreground">Period finances</p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-              {[
-                ['Total assigned sales', summary.totalAssignedSales, `${summary.assigned} orders`],
-                ['Runner-accepted sales', summary.acceptedSales, `${summary.delivered} accepted`],
-                ['Pending sales', summary.pendingSales, `${summary.pending} unresolved`],
-                ['Cash collected', summary.cashCollected, `${summary.cashCollectedCount} orders`],
-                ['Cash pending', summary.cashPendingSettlement, `${summary.cashPendingSettlementCount} unsettled`],
-                ['Transfer', summary.transfer, `${summary.transferCount} orders`],
-              ].map(([label, amount, detail]) => (
-                <div key={String(label)} className="min-w-0">
-                  <p className="text-[11px] font-semibold text-muted-foreground">{label}</p>
-                  <p className="mt-1 break-words text-base font-bold tabular-nums">{formatBND(Number(amount))}</p>
-                  <p className="text-[11px] text-muted-foreground">{detail}</p>
-                </div>
-              ))}
-            </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Delivered sales</p>
+            <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.totalSales)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Cash</p>
+            <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.cashAmount)}</p>
+            <p className="text-[11px] text-muted-foreground">{summary.cashOrderCount} orders</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Transfer</p>
+            <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.transferAmount)}</p>
+            <p className="text-[11px] text-muted-foreground">{summary.transferOrderCount} orders</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Cash on hand</p>
+            <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.cashOnHand)}</p>
+            <p className="text-[11px] text-muted-foreground">{summary.cashOnHandCount} unsettled</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Stock on hand</p>
+            <p className="mt-1 text-xl font-bold sm:text-2xl">{stockOnHandQty}</p>
+            <p className="text-[11px] text-muted-foreground">{stockOnHand.length} products</p>
           </div>
         </section>
         ) : null}
@@ -459,22 +446,16 @@ export default function DriverAnalyticsPage() {
                   }}
                 >
                   <span className="text-sm font-semibold">{format(setMonth(startOfYear(calendarMonth), month.monthIndex), 'MMM')}</span>
-                  <span className="mt-3 block text-xl font-bold">{month.delivered ?? 0} / {month.assigned ?? 0}</span>
-                  <span className="text-xs text-muted-foreground">{(month.deliveryRate ?? 0).toFixed(1)}% accepted</span>
+                  <span className="mt-3 block text-xl font-bold">{month.deliveredOrders ?? 0}</span>
+                  <span className="text-xs text-muted-foreground">delivered orders</span>
                   <span className="mt-2 block text-[10px] text-muted-foreground">
-                    Total {formatBND(month.totalAssignedSales ?? 0)}
+                    Sales {formatBND(month.totalSales ?? 0)}
                   </span>
                   <span className="block text-[10px] text-muted-foreground">
-                    Accepted {formatBND(month.acceptedSales ?? 0)}
+                    Cash {formatBND(month.cashAmount ?? 0)} ({month.cashOrderCount ?? 0})
                   </span>
                   <span className="block text-[10px] text-muted-foreground">
-                    Pending {formatBND(month.pendingSales ?? 0)}
-                  </span>
-                  <span className="block text-[10px] text-muted-foreground">
-                    Cash {formatBND(month.cashCollected ?? 0)} · Pending {formatBND(month.cashPendingSettlement ?? 0)}
-                  </span>
-                  <span className="block text-[10px] text-muted-foreground">
-                    Transfer {formatBND(month.transfer ?? 0)}
+                    Transfer {formatBND(month.transferAmount ?? 0)} ({month.transferOrderCount ?? 0})
                   </span>
                 </button>
               ))}
@@ -539,11 +520,10 @@ export default function DriverAnalyticsPage() {
                 <span
                   className={cn(
                     'mt-1 block whitespace-nowrap text-center text-[10px] font-bold sm:text-sm',
-                    day.failed > 0 && 'text-destructive',
-                    day.assigned > 0 && day.delivered === day.assigned && 'text-emerald-700',
+                    day.deliveredOrders > 0 && 'text-emerald-700',
                   )}
                 >
-                  {day.delivered} / {day.assigned}
+                  {day.deliveredOrders}
                 </span>
               </button>
             ))}
@@ -571,122 +551,52 @@ export default function DriverAnalyticsPage() {
             </div>
           ) : selectedDay ? (
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-y border-border py-4 sm:grid-cols-3">
-              {[
-                ['Total assigned sales', selectedDay.totalAssignedSales, `${selectedDay.assigned} orders`],
-                ['Runner-accepted sales', selectedDay.acceptedSales, `${selectedDay.delivered} accepted`],
-                ['Pending sales', selectedDay.pendingSales, `${selectedDay.pending} unresolved`],
-                ['Cash collected', selectedDay.cashCollected, `${selectedDay.cashCollectedCount} orders`],
-                ['Cash pending settlement', selectedDay.cashPendingSettlement, `${selectedDay.cashPendingSettlementCount} unsettled`],
-                ['Transfer', selectedDay.transfer, `${selectedDay.transferCount} orders`],
-              ].map(([label, amount, detail]) => (
-                <div key={String(label)} className="min-w-0">
-                  <p className="text-[11px] font-semibold text-muted-foreground">{label}</p>
-                  <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(Number(amount))}</p>
-                  <p className="text-[11px] text-muted-foreground">{detail}</p>
-                </div>
-              ))}
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Delivered orders</p>
+                <p className="mt-1 text-2xl font-bold">{selectedDay.deliveredOrders}</p>
+                <p className="text-[11px] text-muted-foreground">{selectedDay.pendingAcceptance} pending acceptance</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Delivered sales</p>
+                <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.totalSales)}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Cash</p>
+                <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.cashAmount)}</p>
+                <p className="text-[11px] text-muted-foreground">{selectedDay.cashOrderCount} orders</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Transfer</p>
+                <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.transferAmount)}</p>
+                <p className="text-[11px] text-muted-foreground">{selectedDay.transferOrderCount} orders</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Cash on hand</p>
+                <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.cashOnHand)}</p>
+                <p className="text-[11px] text-muted-foreground">{selectedDay.cashOnHandCount} unsettled</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Stock on hand</p>
+                <p className="mt-1 text-2xl font-bold">{stockOnHandQty}</p>
+                <p className="text-[11px] text-muted-foreground">current custody</p>
+              </div>
             </div>
           ) : null}
 
           {isSelectedDayLoading || isSelectedDayError ? null : selectedOrders.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground">
               <CalendarDays className="mx-auto mb-2 h-7 w-7" />
-              No assigned orders on this day.
+              No Driver-delivered orders on this day.
             </div>
           ) : (
             <div className="mt-3">
               {selectedOrderGroups.visible.length === 0 && (
                 <p className="border-y border-border py-5 text-center text-sm text-muted-foreground">
-                  No active or accepted deliveries on this day.
+                  No Runner-accepted deliveries on this day.
                 </p>
               )}
               <div className="divide-y divide-border border-y border-border">
-              {selectedOrderGroups.visible.map((order) => {
-                const skuItems = getOrderSkuItems(order);
-                const isPendingAcceptance = order.assignment_state === 'PENDING_ACCEPTANCE';
-                const canCorrectToDelivered =
-                  isPendingAcceptance
-                  && order.driver_status === 'DRIVER_FAILED'
-                  && order.runner_accept_status !== 'ACCEPTED'
-                  && order.runner_review_status !== 'REVIEWED';
-                return (
-                  <div
-                    key={order.id}
-                    role={isPendingAcceptance ? 'button' : undefined}
-                    tabIndex={isPendingAcceptance ? 0 : undefined}
-                    onClick={() => {
-                      if (!isPendingAcceptance) return;
-                      resetPendingProofSelection();
-                      setPendingProofOrder(order);
-                    }}
-                    onKeyDown={(event) => {
-                      if (!isPendingAcceptance || (event.key !== 'Enter' && event.key !== ' ')) return;
-                      event.preventDefault();
-                      resetPendingProofSelection();
-                      setPendingProofOrder(order);
-                    }}
-                    className={cn(
-                      'flex items-start justify-between gap-3 py-3',
-                      isPendingAcceptance && 'cursor-pointer rounded-md px-2 transition-colors hover:bg-muted/60 active:bg-muted',
-                    )}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold">{order.order_code}</p>
-                      {skuItems.length > 0 && (
-                        <div className="mt-1 space-y-0.5">
-                          {skuItems.map((item) => (
-                            <p key={item.id} className="break-words text-xs font-medium">
-                              {item.sku} <span className="text-muted-foreground">x {item.qty}</span>
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{order.customer_name}</p>
-                      <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
-                        <p>Assigned {order.effective_assignment_date || selectedDate} · {formatBruneiTimestamp(order.assignment_timestamp)}</p>
-                        <p>{formatBND(Number(order.collect_amount || order.total_amount || 0))} · {order.driver_payment_method || order.payment_method || 'Payment not set'}</p>
-                        <p>
-                          Driver {order.driver_status || 'UNKNOWN'} · Runner {order.runner_accept_status || 'PENDING'}
-                          {order.cash_settlement_status && order.cash_settlement_status !== 'NOT_APPLICABLE'
-                            ? ` · Cash ${order.cash_settlement_status.replaceAll('_', ' ')}`
-                            : ''}
-                          {order.reassigned ? ' · Reassigned' : ''}
-                        </p>
-                      </div>
-                      {isPendingAcceptance && (
-                        <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-primary">
-                          <Camera className="h-3.5 w-3.5" />
-                          Open and add proof photos
-                        </p>
-                      )}
-                      {canCorrectToDelivered && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="mt-2"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setCorrectionOrder(order);
-                          }}
-                          disabled={markDelivered.isPending}
-                        >
-                          Mark Delivered
-                        </Button>
-                      )}
-                    </div>
-                    <Badge
-                      variant={order.assignment_state === 'FAILED' ? 'destructive' : 'outline'}
-                      className={cn(
-                        'shrink-0',
-                        order.assignment_state === 'DELIVERED' && 'border-emerald-600 text-emerald-700',
-                        order.assignment_state === 'PENDING_ACCEPTANCE' && 'border-amber-600 text-amber-700',
-                      )}
-                    >
-                      {order.assignment_state.replaceAll('_', ' ')}
-                    </Badge>
-                  </div>
-                );
-              })}
+                {selectedOrderGroups.visible.map(renderOrder)}
               </div>
 
               {selectedOrderGroups.pendingAcceptance.length > 0 && (
@@ -713,29 +623,6 @@ export default function DriverAnalyticsPage() {
                 </div>
               )}
 
-              {selectedOrderGroups.failed.length > 0 && (
-                <div className="mt-3 border-y border-border">
-                  <button
-                    type="button"
-                    aria-expanded={failedOpen}
-                    onClick={() => setFailedOpen((open) => !open)}
-                    className="flex min-h-12 w-full items-center justify-between gap-3 py-3 text-left"
-                  >
-                    <span>
-                      <span className="block text-sm font-bold">Failed</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {selectedOrderGroups.failed.length} hidden
-                      </span>
-                    </span>
-                    <ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', failedOpen && 'rotate-180')} />
-                  </button>
-                  {failedOpen && (
-                    <div className="divide-y divide-border border-t border-border">
-                      {selectedOrderGroups.failed.map(renderOrder)}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </section>
