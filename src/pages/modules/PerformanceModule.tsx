@@ -1,9 +1,10 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
+import { canAccessPerformance } from '@/lib/performanceAccess';
 
 const LeaderboardPage = lazy(() => import('@/pages/leaderboard/LeaderboardPage'));
 const ManagerRankingBoard = lazy(() => import('@/pages/manager/ManagerRankingBoard'));
@@ -22,8 +23,20 @@ export default function PerformanceModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const role = profile?.role;
-  const { data: leaderboardSettings } = useLeaderboardSettings();
+  const {
+    data: leaderboardSettings,
+    isLoading: settingsLoading,
+    isError: settingsError,
+  } = useLeaderboardSettings();
   const hidePerformanceUI = !!(leaderboardSettings?.filters_default as any)?.hide_performance_ui;
+
+  if (!role || (role !== 'admin' && settingsLoading)) {
+    return <Loading />;
+  }
+
+  if (!canAccessPerformance(role, hidePerformanceUI || settingsError)) {
+    return <Navigate to="/" replace />;
+  }
 
   const getTabs = () => {
     if (role === 'driver') return [{ id: 'ranking', label: 'Ranking' }];
