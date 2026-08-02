@@ -21,6 +21,13 @@ const manualAssignmentMigration = readFileSync(
   ),
   'utf8',
 );
+const sharedRunnerCorrectionMigration = readFileSync(
+  resolve(
+    projectRoot,
+    'supabase/migrations/20260802123437_allow_bound_runners_to_correct_delivery_zones.sql',
+  ),
+  'utf8',
+);
 
 describe('Driver Inbox business-area isolation', () => {
   it('does not use the canonical business area as a Driver Inbox zone fallback', () => {
@@ -69,6 +76,25 @@ describe('Driver Inbox business-area isolation', () => {
     );
     expect(manualAssignmentMigration).not.toContain(
       "IN ('SELF_PICKUP', 'CANCELLED', 'NEEDS_REVIEW')",
+    );
+  });
+
+  it('lets a runner correct zones for actively bound drivers without opening unrelated orders', () => {
+    expect(sharedRunnerCorrectionMigration).toContain(
+      'runner_can_manage_delivery_area_order',
+    );
+    expect(sharedRunnerCorrectionMigration).toContain(
+      'rd.runner_id = p_runner_id',
+    );
+    expect(sharedRunnerCorrectionMigration).toContain(
+      'rd.driver_id = p_driver_id',
+    );
+    expect(sharedRunnerCorrectionMigration).toContain('rd.is_active = true');
+    expect(sharedRunnerCorrectionMigration).toContain(
+      'p_order_runner_id = p_runner_id',
+    );
+    expect(sharedRunnerCorrectionMigration).toContain(
+      'REVOKE ALL ON FUNCTION public.runner_can_manage_delivery_area_order',
     );
   });
 });
