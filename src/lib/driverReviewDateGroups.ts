@@ -7,6 +7,9 @@ export type DriverReviewOrder = {
   driver_id?: string | null;
   driver_status?: string | null;
   payment_method?: string | null;
+  driver_payment_method?: string | null;
+  driver_cash_amount?: number | null;
+  driver_transfer_amount?: number | null;
   total_amount?: number | null;
   driver_delivered_at?: string | null;
   driver_failed_at?: string | null;
@@ -29,8 +32,46 @@ export type DriverReviewDateGroup<T extends DriverReviewOrder> = {
   failedOrders: T[];
   deliveredAmount: number;
   cashAmount: number;
+  cashOrderCount: number;
   transferAmount: number;
+  transferOrderCount: number;
 };
+
+export function getDriverReportedPaymentComponents(order: DriverReviewOrder) {
+  const orderAmount = Math.max(0, Number(order.total_amount || 0));
+  const paymentMethod = String(order.payment_method || '').toUpperCase();
+  const driverPaymentMethod = String(order.driver_payment_method || '').toUpperCase();
+
+  const cashAmount = Math.max(0, Number(
+    order.driver_cash_amount != null
+      ? order.driver_cash_amount
+      : driverPaymentMethod === 'CASH'
+        ? orderAmount
+        : driverPaymentMethod === 'TRANSFER'
+          ? 0
+          : driverPaymentMethod === 'CASH_TRANSFER'
+            ? orderAmount - Number(order.driver_transfer_amount || 0)
+            : ['COD', 'CASH'].includes(paymentMethod)
+              ? orderAmount
+              : 0,
+  ));
+
+  const transferAmount = Math.max(0, Number(
+    order.driver_transfer_amount != null
+      ? order.driver_transfer_amount
+      : driverPaymentMethod === 'TRANSFER'
+        ? orderAmount
+        : driverPaymentMethod === 'CASH'
+          ? 0
+          : driverPaymentMethod === 'CASH_TRANSFER'
+            ? orderAmount - Number(order.driver_cash_amount || 0)
+            : ['TRANSFER', 'BANK_TRANSFER'].includes(paymentMethod)
+              ? orderAmount
+              : 0,
+  ));
+
+  return { cashAmount, transferAmount };
+}
 
 function getBruneiDateKey(timestamp: string) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -80,18 +121,20 @@ export function groupDriverReviewOrdersByDate<T extends DriverReviewOrder>(
       failedOrders: [],
       deliveredAmount: 0,
       cashAmount: 0,
+      cashOrderCount: 0,
       transferAmount: 0,
+      transferOrderCount: 0,
     };
     const amount = Number(order.total_amount || 0);
 
     if (order.driver_status === 'DRIVER_DELIVERED') {
       group.deliveredOrders.push(order);
       group.deliveredAmount += amount;
-      if (order.payment_method === 'TRANSFER') {
-        group.transferAmount += amount;
-      } else if (order.payment_method === 'COD' || order.payment_method === 'CASH') {
-        group.cashAmount += amount;
-      }
+      const payment = getDriverReportedPaymentComponents(order);
+      group.cashAmount += payment.cashAmount;
+      group.transferAmount += payment.transferAmount;
+      if (payment.cashAmount > 0) group.cashOrderCount += 1;
+      if (payment.transferAmount > 0) group.transferOrderCount += 1;
     } else if (order.driver_status === 'DRIVER_FAILED') {
       group.failedOrders.push(order);
     }

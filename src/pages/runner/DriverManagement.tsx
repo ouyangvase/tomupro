@@ -48,6 +48,7 @@ import { getSignedStorageUrl } from '@/lib/storageUrls';
 import {
   formatDriverActionDate,
   formatDriverActionDateTime,
+  getDriverReportedPaymentComponents,
   getDriverActionTimestamp,
   groupDriverReviewOrdersByDate,
   isPendingDriverReviewOrder,
@@ -71,7 +72,9 @@ type DriverReviewGroup = {
   failedOrders: Order[];
   deliveredAmount: number;
   cashAmount: number;
+  cashOrderCount: number;
   transferAmount: number;
+  transferOrderCount: number;
   dateGroups: DriverReviewDateGroup<Order>[];
 };
 
@@ -198,7 +201,9 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
         failedOrders: [],
         deliveredAmount: 0,
         cashAmount: 0,
+        cashOrderCount: 0,
         transferAmount: 0,
+        transferOrderCount: 0,
         dateGroups: [],
       };
       return existing;
@@ -209,11 +214,11 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
       existing.deliveredOrders.push(order);
       const amount = Number(order.total_amount || 0);
       existing.deliveredAmount += amount;
-      if (order.payment_method === 'TRANSFER') {
-        existing.transferAmount += amount;
-      } else if (order.payment_method === 'COD') {
-        existing.cashAmount += amount;
-      }
+      const payment = getDriverReportedPaymentComponents(order);
+      existing.cashAmount += payment.cashAmount;
+      existing.transferAmount += payment.transferAmount;
+      if (payment.cashAmount > 0) existing.cashOrderCount += 1;
+      if (payment.transferAmount > 0) existing.transferOrderCount += 1;
       groups.set(existing.driverId, existing);
     });
 
@@ -242,10 +247,17 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     [pendingAcceptanceOrders]
   );
 
-  const failedTotalAmount = useMemo(
-    () => failedReviewOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0),
-    [failedReviewOrders]
-  );
+  const pendingPaymentSummary = useMemo(() => reviewGroups.reduce((summary, group) => ({
+    cashAmount: summary.cashAmount + group.cashAmount,
+    cashOrderCount: summary.cashOrderCount + group.cashOrderCount,
+    transferAmount: summary.transferAmount + group.transferAmount,
+    transferOrderCount: summary.transferOrderCount + group.transferOrderCount,
+  }), {
+    cashAmount: 0,
+    cashOrderCount: 0,
+    transferAmount: 0,
+    transferOrderCount: 0,
+  }), [reviewGroups]);
 
   const activeAssignedCount = useMemo(
     () => Object.values(activeDriverWorkloads).reduce((sum, workload) => sum + workload.count, 0),
@@ -348,6 +360,11 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     const proofs = proofsByOrder[order.id] || [];
     const isDelivered = order.driver_status === 'DRIVER_DELIVERED';
     const actionTimestamp = getDriverActionTimestamp(order);
+    const payment = getDriverReportedPaymentComponents(order);
+    const paymentLabel = [
+      payment.cashAmount > 0 ? `Cash ${formatBND(payment.cashAmount)}` : null,
+      payment.transferAmount > 0 ? `Transfer ${formatBND(payment.transferAmount)}` : null,
+    ].filter(Boolean).join(' + ') || order.driver_payment_method || order.payment_method;
 
     return (
       <div key={order.id} className="grid gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
@@ -385,7 +402,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
           <div className="flex w-full items-center justify-between gap-2 md:justify-end">
             <div className="text-left md:text-right">
               <p className="text-lg font-black tabular-nums">{formatBND(Number(order.total_amount || 0))}</p>
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{order.payment_method}</p>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{paymentLabel}</p>
             </div>
             <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setDetailOrderId(order.id)}>
               {proofs.length > 0 ? <ImageIcon className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -442,8 +459,8 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {[
             { label: 'Waiting accept', value: String(pendingAcceptanceOrders.length), meta: `${formatBND(pendingTotalAmount)} delivered amount`, icon: Clock },
-            { label: 'Failed reports', value: String(failedReviewOrders.length), meta: `${formatBND(failedTotalAmount)} failed amount`, icon: AlertTriangle },
-            { label: 'Driver batches', value: String(reviewGroups.length), meta: `${reviewGroups.reduce((sum, group) => sum + group.proofCount, 0)} proof photo(s)`, icon: ClipboardCheck },
+            { label: 'Cash amount', value: formatBND(pendingPaymentSummary.cashAmount), meta: `${pendingPaymentSummary.cashOrderCount} cash order(s)`, icon: ClipboardCheck },
+            { label: 'Transfer amount', value: formatBND(pendingPaymentSummary.transferAmount), meta: `${pendingPaymentSummary.transferOrderCount} transfer order(s)`, icon: ClipboardCheck },
             { label: 'Active workload', value: String(activeAssignedCount), meta: `${drivers.length} driver(s) linked`, icon: Truck },
           ].map((metric) => (
             <Card key={metric.label} className="overflow-hidden border shadow-sm">
@@ -518,10 +535,12 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                                 <div className="rounded-xl bg-secondary/40 p-2">
                                   <p className="text-[10px] uppercase text-muted-foreground">Cash amount</p>
                                   <p className="font-black">{formatBND(group.cashAmount)}</p>
+                                  <p className="text-[10px] text-muted-foreground">{group.cashOrderCount} order(s)</p>
                                 </div>
                                 <div className="rounded-xl bg-secondary/40 p-2">
                                   <p className="text-[10px] uppercase text-muted-foreground">Transfer amount</p>
                                   <p className="font-black">{formatBND(group.transferAmount)}</p>
+                                  <p className="text-[10px] text-muted-foreground">{group.transferOrderCount} order(s)</p>
                                 </div>
                               </div>
                             </div>
@@ -588,10 +607,12 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                                       <div className="rounded-lg bg-amber-500/10 p-2">
                                         <p className="text-[10px] uppercase text-muted-foreground">Cash amount</p>
                                         <p className="font-black text-amber-700">{formatBND(dateGroup.cashAmount)}</p>
+                                        <p className="text-[10px] text-muted-foreground">{dateGroup.cashOrderCount} order(s)</p>
                                       </div>
                                       <div className="rounded-lg bg-sky-500/10 p-2">
                                         <p className="text-[10px] uppercase text-muted-foreground">Transfer amount</p>
                                         <p className="font-black text-sky-700">{formatBND(dateGroup.transferAmount)}</p>
+                                        <p className="text-[10px] text-muted-foreground">{dateGroup.transferOrderCount} order(s)</p>
                                       </div>
                                       <div className="rounded-lg bg-secondary/50 p-2">
                                         <p className="text-[10px] uppercase text-muted-foreground">Date total</p>
