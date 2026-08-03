@@ -619,7 +619,12 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
   const products = ownerProducts;
 
-  const { data: existingItems = [], isFetched: existingItemsFetched } = useOrderItems(order?.id);
+  const {
+    data: existingItems = [],
+    isSuccess: existingItemsLoaded,
+    isPending: existingItemsPending,
+    isError: existingItemsError,
+  } = useOrderItems(order?.id);
   const createOrder = useCreateOrder();
   const updateOrder = useUpdateOrder();
   const runnerUpdateArea = useRunnerUpdateArea();
@@ -718,6 +723,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         payment_method: order.payment_method,
         expected_pickup_date: order.expected_pickup_date ? new Date(order.expected_pickup_date) : undefined,
       });
+      setItems([]);
       setItemsInitialized(false);
       setDeletedItemIds([]);
     } else if (mode === 'create') {
@@ -741,8 +747,12 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   }, [open, order, mode, form]);
 
   useEffect(() => {
-    if (mode === 'edit' && existingItemsFetched && !itemsInitialized) {
-      setItems(existingItems.map(item => ({
+    const nestedItems = order?.order_items || [];
+    const itemsToLoad = existingItemsLoaded ? existingItems : nestedItems;
+    const canInitialize = existingItemsLoaded || nestedItems.length > 0;
+
+    if (open && mode === 'edit' && order?.id && canInitialize && !itemsInitialized) {
+      setItems(itemsToLoad.map(item => ({
         id: item.id,
         product_id: item.product_id,
         sku_label: item.sku_label || '',
@@ -754,7 +764,16 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       })));
       setItemsInitialized(true);
     }
-  }, [mode, existingItems, existingItemsFetched, itemsInitialized]);
+  }, [existingItems, existingItemsLoaded, itemsInitialized, mode, open, order?.id, order?.order_items]);
+
+  const hasNestedOrderItems = Boolean(order?.order_items?.length);
+  const isOrderItemsLoading = mode === 'edit'
+    && !itemsInitialized
+    && existingItemsPending
+    && !hasNestedOrderItems;
+  const hasOrderItemsLoadError = mode === 'edit'
+    && existingItemsError
+    && !hasNestedOrderItems;
 
   const addItem = () => {
     setItems([...items, { product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
@@ -1506,9 +1525,23 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                 </SectionCard>
 
                 {/* ─── Section 4: Order Items Builder ─── */}
-                <SectionCard icon={ShoppingCart} title="Order Items" subtitle={`${items.length} item${items.length !== 1 ? 's' : ''} added`}>
+                <SectionCard
+                  icon={ShoppingCart}
+                  title="Order Items"
+                  subtitle={isOrderItemsLoading ? 'Loading items...' : `${items.length} item${items.length !== 1 ? 's' : ''} added`}
+                >
                   <div className="space-y-3">
-                    {items.length === 0 ? (
+                    {isOrderItemsLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading order items...
+                      </div>
+                    ) : hasOrderItemsLoadError ? (
+                      <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>Unable to load order items. Close this order and try again.</span>
+                      </div>
+                    ) : items.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
                         <img src={capybaraEmptyCart} alt="No items" className="h-24 w-24 object-contain mb-3 opacity-80" />
                         <p className="text-sm font-medium text-muted-foreground">No items yet</p>
@@ -1536,6 +1569,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                       type="button"
                       variant="outline"
                       onClick={addItem}
+                      disabled={isOrderItemsLoading || hasOrderItemsLoadError}
                       className="w-full h-11 rounded-xl border-dashed border-2 border-border/60 text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/5 transition-all"
                     >
                       <Plus className="h-4 w-4 mr-2" />

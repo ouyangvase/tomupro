@@ -6,43 +6,33 @@ import type { OrderItem } from '@/types/database';
  * Get SKU code from order item - prefers product.sku_code, falls back to sku_label
  */
 function getSkuCode(item: OrderItem): string {
-  // First try the linked product's sku_code
-  if (item.product?.sku_code) {
-    return item.product.sku_code;
-  }
-  // Fall back to sku_label if available
-  if (item.sku_label) {
-    return item.sku_label;
-  }
-  return 'UNKNOWN';
+  return item.product?.sku_code || item.sku_label || 'UNKNOWN';
 }
 
 /**
  * Get product name from order item
  */
 function getProductName(item: OrderItem): string {
-  // First try the linked product's sku_name
-  if (item.product?.sku_name) {
-    return item.product.sku_name;
-  }
-  // If sku_label exists and is different from sku_code, might be product name
-  // Otherwise return UNKNOWN
-  return 'UNKNOWN';
+  return item.product?.sku_name || 'UNKNOWN';
 }
 
 /**
  * Format a single order item for display
- * Returns format: "SKU_CODE/PRODUCT_NAME × QTY"
+ * Returns format: "SKU_CODE/PRODUCT_NAME x QTY"
  */
 function formatSingleItem(item: OrderItem): string {
   const skuCode = getSkuCode(item);
   const productName = getProductName(item);
-  return `${skuCode}/${productName} × ${item.qty}`;
+  const label = productName === 'UNKNOWN' || productName === skuCode
+    ? skuCode
+    : `${skuCode}/${productName}`;
+
+  return `${label} x ${item.qty}`;
 }
 
 /**
  * Format order items for display in data grids
- * Returns format: "TY04/MACHINE × 1, TY03/CONDOM × 2" or with "+N more" for long lists
+ * Returns format: "TY04/MACHINE x 1, TY03/CONDOM x 2"
  */
 export function formatOrderItemsDisplay(orderItems: OrderItem[] | undefined): {
   displayText: string;
@@ -71,7 +61,7 @@ export function formatOrderItemsDisplay(orderItems: OrderItem[] | undefined): {
     displayText,
     fullText: displayText,
     hasError: itemsWithMissingData.length > 0,
-    errorMessage: itemsWithMissingData.length > 0 
+    errorMessage: itemsWithMissingData.length > 0
       ? `${itemsWithMissingData.length} item(s) missing product data`
       : undefined,
   };

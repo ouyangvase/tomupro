@@ -29,6 +29,7 @@ import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { useToast } from '@/hooks/use-toast';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
+import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import type { Order } from '@/types/database';
 import { Package, Truck, Loader2, DollarSign, Search, Download, Upload, Clock, Eye, ChevronLeft, ChevronRight, Phone, AlertTriangle, Calendar, CheckCircle, UserPlus, UserRound, ImageIcon } from 'lucide-react';
 import { OrderEditor } from '@/components/orders/OrderEditor';
@@ -677,6 +678,10 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
   const isReceiptBlocked = order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed';
   const canAcceptReceipt = canConfirmReceipt && !canDeliver && order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed' && order.receipt_status !== 'rejected';
   const assignedDriverName = order.driver_id ? (driverName?.trim() || 'Unknown Driver') : null;
+  const itemSummary = useMemo(
+    () => formatOrderItemsDisplay(order.order_items),
+    [order.order_items]
+  );
 
   const isMobileRejected = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
 
@@ -738,6 +743,12 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
               </div>
             )}
             <p className="text-xs text-muted-foreground truncate">{order.address || 'No address'}</p>
+            {order.order_items?.length ? (
+              <div className="flex min-w-0 items-start gap-1.5 pt-0.5 text-xs" title={itemSummary.fullText}>
+                <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="line-clamp-2 font-medium text-foreground">{itemSummary.displayText}</span>
+              </div>
+            ) : null}
             {assignedDriverName && (
               <div className="flex min-w-0 items-center gap-1.5 pt-0.5 text-xs">
                 <UserRound className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -881,6 +892,12 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.address || 'No address'}</p>
+          {order.order_items?.length ? (
+            <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs" title={itemSummary.fullText}>
+              <Package className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <span className="truncate font-medium text-foreground">{itemSummary.displayText}</span>
+            </div>
+          ) : null}
           {order.runner?.display_name && (
             <p className="mt-1 truncate text-[11px] font-semibold text-primary">
               Runner: {order.runner.display_name}
