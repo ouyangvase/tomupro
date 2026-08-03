@@ -5,10 +5,15 @@ import type { RunnerDriver, Profile } from '@/types/database';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { DRIVER_WORKLOAD_STATUSES, isDriverWorkloadOrder } from '@/lib/driverOrderScope';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  resolveDriverAssignmentAction,
+  type DriverAssignmentAction,
+} from '@/lib/driverAssignmentAction';
 
 type AssignmentBatchResult = {
   success: boolean;
   assigned_count?: number;
+  assignment_action?: DriverAssignmentAction;
 };
 
 type DriverReviewResult = {
@@ -27,21 +32,37 @@ type DriverAssignmentRpcClient = {
 const driverAssignmentSupabase = supabase as unknown as DriverAssignmentRpcClient;
 
 async function assignOrdersToDriver(orderIds: string[], driverId: string) {
+  const uniqueOrderIds = [...new Set(orderIds)];
+  if (uniqueOrderIds.length === 0) {
+    throw new Error('Select at least one order.');
+  }
+
+  const { data: selectedOrders, error: selectedOrdersError } = await supabase
+    .from('orders')
+    .select('id, driver_id')
+    .in('id', uniqueOrderIds);
+
+  if (selectedOrdersError) throw selectedOrdersError;
+  if (!selectedOrders || selectedOrders.length !== uniqueOrderIds.length) {
+    throw new Error('Some selected orders are no longer available. Refresh and retry.');
+  }
+
+  const assignmentAction = resolveDriverAssignmentAction(selectedOrders);
   const { data, error } = await driverAssignmentSupabase.rpc<AssignmentBatchResult>(
     'apply_driver_assignment_batch',
     {
-      p_order_ids: orderIds,
+      p_order_ids: uniqueOrderIds,
       p_driver_id: driverId,
       p_operational_date: null,
-      p_action: 'ASSIGN',
+      p_action: assignmentAction,
     },
   );
 
   if (error) throw error;
-  if (!data?.success || Number(data.assigned_count || 0) !== orderIds.length) {
+  if (!data?.success || Number(data.assigned_count || 0) !== uniqueOrderIds.length) {
     throw new Error('The assignment was not fully saved. Please retry.');
   }
-  return data;
+  return { ...data, assignment_action: assignmentAction };
 }
 
 function flushTelegramEventQueue(body?: Record<string, unknown>) {
@@ -293,9 +314,11 @@ export function useAssignOrderToDriver() {
     mutationFn: async ({ orderId, driverId }: { orderId: string; driverId: string }) => {
       return assignOrdersToDriver([orderId], driverId);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidateOrderQueries(queryClient);
-      toast.success('Order assigned to driver');
+      toast.success(result.assignment_action === 'REASSIGN'
+        ? 'Order reassigned to driver'
+        : 'Order assigned to driver');
     },
     onError: (error: Error) => {
       toast.error(`Failed to assign order: ${error.message}`);
@@ -311,9 +334,9 @@ export function useBulkAssignOrdersToDriver() {
     mutationFn: async ({ orderIds, driverId }: { orderIds: string[]; driverId: string }) => {
       return assignOrdersToDriver(orderIds, driverId);
     },
-    onSuccess: (_, { orderIds }) => {
+    onSuccess: (result, { orderIds }) => {
       invalidateOrderQueries(queryClient);
-      toast.success(`${orderIds.length} orders assigned to driver`);
+      toast.success(`${orderIds.length} orders ${result.assignment_action === 'REASSIGN' ? 'reassigned' : 'assigned'} to driver`);
     },
     onError: (error: Error) => {
       toast.error(`Failed to assign orders: ${error.message}`);

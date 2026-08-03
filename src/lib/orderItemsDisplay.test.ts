@@ -28,9 +28,12 @@ describe('formatOrderItemsDisplay', () => {
   });
 
   it('falls back to the saved SKU label when the product relation is unavailable', () => {
-    expect(formatOrderItemsDisplay([
+    const display = formatOrderItemsDisplay([
       makeOrderItem({ product: undefined, product_id: null }),
-    ]).displayText).toBe('MDTOX x 3');
+    ]);
+
+    expect(display.displayText).toBe('MDTOX x 3');
+    expect(display.hasError).toBe(false);
   });
 
   it('keeps every item visible in a multi-item order', () => {

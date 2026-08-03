@@ -138,10 +138,7 @@ export function usePaginatedOrders(
         .from('orders')
         .select(`
           *,
-          order_items(
-            *,
-            product:products(id, sku_code, sku_name)
-          )
+          order_items(*)
         `, { count: 'exact' })
         .range(offset, offset + pageSize - 1);
 

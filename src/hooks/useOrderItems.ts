@@ -14,10 +14,7 @@ export function useOrderItems(orderId?: string, enabled = true) {
       if (!orderId) return [];
       const { data, error } = await supabase
         .from('order_items')
-        .select(`
-          *,
-          product:products(id, sku_code, sku_name)
-        `)
+        .select('*')
         .eq('order_id', orderId)
         .order('created_at', { ascending: true });
       if (error) throw error;

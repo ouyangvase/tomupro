@@ -48,9 +48,9 @@ export function formatOrderItemsDisplay(orderItems: OrderItem[] | undefined): {
     };
   }
 
-  // Check for missing product data
+  // The saved SKU label is the immutable order snapshot when product access is unavailable.
   const itemsWithMissingData = orderItems.filter(
-    item => !item.product?.sku_code || !item.product?.sku_name
+    item => !item.product?.sku_code && !item.sku_label
   );
 
   // Format all items in a single line, comma-separated
