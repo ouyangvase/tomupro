@@ -619,7 +619,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   const { data: ownerProducts = [] } = useOrderOwnerProducts(orderOwnerId);
   const products = ownerProducts;
 
-  const { data: existingItems = [] } = useOrderItems(order?.id);
+  const { data: existingItems = [], isFetched: existingItemsFetched } = useOrderItems(order?.id);
   const createOrder = useCreateOrder();
   const updateOrder = useUpdateOrder();
   const runnerUpdateArea = useRunnerUpdateArea();
@@ -741,7 +741,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   }, [open, order, mode, form]);
 
   useEffect(() => {
-    if (mode === 'edit' && existingItems.length > 0 && !itemsInitialized) {
+    if (mode === 'edit' && existingItemsFetched && !itemsInitialized) {
       setItems(existingItems.map(item => ({
         id: item.id,
         product_id: item.product_id,
@@ -754,7 +754,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       })));
       setItemsInitialized(true);
     }
-  }, [mode, existingItems, itemsInitialized]);
+  }, [mode, existingItems, existingItemsFetched, itemsInitialized]);
 
   const addItem = () => {
     setItems([...items, { product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);

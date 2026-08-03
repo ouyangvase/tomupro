@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { format } from 'date-fns';
-import { AlertCircle, Plus, RotateCcw, ShieldAlert, Sparkles } from 'lucide-react';
+import { AlertCircle, Plus, RotateCcw, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -74,6 +74,7 @@ export function CreatePickupDialog({
   const [selectedDriverId, setSelectedDriverId] = useState(defaultDriverId);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<PickupItem[]>([]);
+  const [removedProductIds, setRemovedProductIds] = useState<string[]>([]);
   const [acknowledgeBlocking, setAcknowledgeBlocking] = useState(false);
   const [forceCreate, setForceCreate] = useState(false);
 
@@ -95,6 +96,7 @@ export function CreatePickupDialog({
     if (!dialogOpen) return;
     setSelectedDriverId(pickup?.driver_id || defaultDriverId || '');
     setNotes(pickup?.notes || '');
+    setRemovedProductIds([]);
     setItems(defaultItems.map((item) => ({
       product_id: item.product_id,
       qty: item.required_qty,
@@ -119,7 +121,8 @@ export function CreatePickupDialog({
     const previousBuffers = new Map(
       (pickup?.items || []).map((item) => [item.product_id, Number(item.buffer_qty || 0)]),
     );
-    setItems((suggestedPickup?.items || []).map((suggestion) => {
+    const removed = new Set(removedProductIds);
+    setItems((suggestedPickup?.items || []).filter((suggestion) => !removed.has(suggestion.product_id)).map((suggestion) => {
       const bufferQty = previousBuffers.get(suggestion.product_id) || 0;
       return {
         product_id: suggestion.product_id,
@@ -133,6 +136,7 @@ export function CreatePickupDialog({
     fetchingSuggestion,
     loadingSuggestion,
     pickup?.items,
+    removedProductIds,
     selectedDriverId,
     suggestedPickup,
   ]);
@@ -166,11 +170,17 @@ export function CreatePickupDialog({
     )));
   };
 
+  const removeItem = (productId: string) => {
+    setRemovedProductIds((current) => current.includes(productId) ? current : [...current, productId]);
+    setItems((current) => current.filter((item) => item.product_id !== productId));
+  };
+
   const resetAndClose = () => {
     setDialogOpen(false);
     setSelectedDriverId('');
     setNotes('');
     setItems([]);
+    setRemovedProductIds([]);
     setAcknowledgeBlocking(false);
     setForceCreate(false);
   };
@@ -376,6 +386,7 @@ export function CreatePickupDialog({
                         <TableHead className="w-24 text-center">Required</TableHead>
                         <TableHead className="w-24 text-center">Buffer</TableHead>
                         <TableHead className="w-24 text-center">Pickup</TableHead>
+                        {isEditing && <TableHead className="w-14 text-center">Remove</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -397,6 +408,19 @@ export function CreatePickupDialog({
                           <TableCell className="text-center">
                             <Badge>{item.qty}</Badge>
                           </TableCell>
+                          {isEditing && (
+                            <TableCell className="text-center">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Remove ${getProductName(item.product_id)}`}
+                                onClick={() => removeItem(item.product_id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -408,6 +432,18 @@ export function CreatePickupDialog({
                     <div key={item.product_id} className="rounded-2xl border border-border/70 bg-card p-3">
                       <p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">Product</p>
                       <p className="mt-1 break-words text-sm font-bold">{getProductName(item.product_id)}</p>
+                      {isEditing && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="mt-2 text-destructive"
+                          onClick={() => removeItem(item.product_id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Remove item
+                        </Button>
+                      )}
                       <div className="mt-3 grid grid-cols-3 gap-2">
                         <div className="rounded-xl bg-muted/50 p-2 text-center">
                           <p className="text-[10px] font-black uppercase text-muted-foreground">Required</p>

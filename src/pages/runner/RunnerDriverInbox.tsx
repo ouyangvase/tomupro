@@ -256,7 +256,7 @@ function getLocalityLabel(order: RunnerOrder, areaCode: string) {
   for (const rule of LOCALITY_RULES.find((candidate) => candidate.code === areaCode)?.terms || []) {
     if (normalized.includes(rule)) return rule.replace(/\b\w/g, (char) => char.toUpperCase());
   }
-  return getAreaLabel(areaCode, [...NORMAL_AREAS, ...SPECIAL_AREAS]);
+  return `Unspecified within ${getAreaLabel(areaCode, [...NORMAL_AREAS, ...SPECIAL_AREAS])}`;
 }
 
 function makeEmptySummary(area: DeliveryArea): DispatchAreaSummary {
@@ -675,16 +675,21 @@ export default function RunnerDriverInbox({
     ));
   }, [activeAreaCode, dispatchAreaOrders, todayDateKey]);
 
+  const assignmentAreaOrders = useMemo(() => {
+    if (!isNormalArea(activeAreaCode)) return [];
+    return dispatchAreaOrders.filter((order) => inferAreaFromOrder(order) === activeAreaCode);
+  }, [activeAreaCode, dispatchAreaOrders]);
+
   const assignmentAreaLocalityGroups = useMemo(() => {
     const grouped = new Map<string, RunnerOrder[]>();
-    assignmentAreaUnassignedOrders.forEach((order) => {
+    assignmentAreaOrders.forEach((order) => {
       const label = getLocalityLabel(order, activeAreaCode);
       grouped.set(label, [...(grouped.get(label) || []), order]);
     });
     return Array.from(grouped.entries())
       .map(([label, orders]) => ({ label, orders }))
       .sort((left, right) => left.label.localeCompare(right.label));
-  }, [activeAreaCode, assignmentAreaUnassignedOrders]);
+  }, [activeAreaCode, assignmentAreaOrders]);
 
   const assignmentAreaStaleOrders = useMemo(() => {
     if (!isNormalArea(activeAreaCode)) return [];
@@ -1070,19 +1075,15 @@ export default function RunnerDriverInbox({
       })
       .then((snapshots) => {
         if (assignmentSnapshotRequestRef.current !== requestId) return;
-        if (snapshots.length === 0) {
-          clearSelection();
-          setAssignmentDialogOpen(false);
-          toast.error('No assignable orders in this area');
-          return;
+        if (snapshots.length > 0) {
+          selectOrders(snapshots.map((order) => order.order_id), snapshots);
+        } else {
+          toast.warning('Using the orders already shown while the latest server snapshot is unavailable.');
         }
-        selectOrders(snapshots.map((order) => order.order_id), snapshots);
       })
       .catch((error) => {
         if (assignmentSnapshotRequestRef.current !== requestId) return;
-        clearSelection();
-        setAssignmentDialogOpen(false);
-        toast.error(error instanceof Error ? error.message : 'Unable to load assignable orders');
+        toast.warning(error instanceof Error ? error.message : 'Unable to refresh assignable orders; using the current list.');
       })
       .finally(() => {
         if (assignmentSnapshotRequestRef.current === requestId) {
@@ -2034,7 +2035,6 @@ export default function RunnerDriverInbox({
                       variant="outline"
                       size="sm"
                       onClick={() => selectAssignmentSubset(assignmentAreaUnassignedOrders, 'ASSIGN')}
-                      disabled={assignmentSnapshotLoading}
                     >
                       All remaining ({assignmentAreaUnassignedOrders.length})
                     </Button>
@@ -2044,8 +2044,10 @@ export default function RunnerDriverInbox({
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => selectAssignmentSubset(group.orders, 'ASSIGN')}
-                        disabled={assignmentSnapshotLoading}
+                        onClick={() => selectAssignmentSubset(
+                          group.orders,
+                          group.orders.some((order) => !isActiveQueueUnassigned(order, todayDateKey)) ? 'REASSIGN' : 'ASSIGN',
+                        )}
                       >
                         {group.label} ({group.orders.length})
                       </Button>
@@ -2066,7 +2068,6 @@ export default function RunnerDriverInbox({
                           variant="outline"
                           size="sm"
                           onClick={() => selectAssignmentSubset(assignmentAreaStaleOrders, 'REASSIGN')}
-                          disabled={assignmentSnapshotLoading}
                         >
                           Reassign previous-day ({assignmentAreaStaleOrders.length})
                         </Button>
@@ -2078,7 +2079,6 @@ export default function RunnerDriverInbox({
                             [...assignmentAreaUnassignedOrders, ...assignmentAreaStaleOrders],
                             'REASSIGN',
                           )}
-                          disabled={assignmentSnapshotLoading}
                         >
                           Move all ({assignmentAreaUnassignedOrders.length + assignmentAreaStaleOrders.length})
                         </Button>
@@ -2103,7 +2103,7 @@ export default function RunnerDriverInbox({
                       size="icon"
                       className="h-10 w-10 shrink-0 rounded-full"
                       onClick={() => setAssignmentOrderLimit(Math.max(1, cappedAssignmentLimit - 1))}
-                      disabled={assignmentSnapshotLoading || cappedAssignmentLimit <= 1}
+                      disabled={cappedAssignmentLimit <= 1}
                     >
                       -
                     </Button>
@@ -2115,7 +2115,6 @@ export default function RunnerDriverInbox({
                       max={selectedRows.length}
                       value={cappedAssignmentLimit}
                       onChange={(event) => handleAssignmentLimitChange(event.target.value)}
-                      disabled={assignmentSnapshotLoading}
                       className="h-10 w-20 rounded-full text-center text-base font-bold tabular-nums"
                     />
                     <Button
@@ -2124,7 +2123,7 @@ export default function RunnerDriverInbox({
                       size="icon"
                       className="h-10 w-10 shrink-0 rounded-full"
                       onClick={() => setAssignmentOrderLimit(Math.min(selectedRows.length, cappedAssignmentLimit + 1))}
-                      disabled={assignmentSnapshotLoading || cappedAssignmentLimit >= selectedRows.length}
+                      disabled={cappedAssignmentLimit >= selectedRows.length}
                     >
                       +
                     </Button>
@@ -2204,8 +2203,8 @@ export default function RunnerDriverInbox({
             </div>
             <DialogFooter className="gap-2 pt-2 sm:gap-3 sm:pt-4">
               <Button variant="outline" onClick={() => handleAssignmentDialogOpenChange(false)} className="h-11 rounded-full">Cancel</Button>
-              <Button onClick={handleConfirmAssignment} disabled={assignmentSnapshotLoading || !targetDriver || assignmentOrderIds.length === 0 || applyBatch.isPending} className="h-11 rounded-full">
-                {assignmentSnapshotLoading || applyBatch.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" />}
+              <Button onClick={handleConfirmAssignment} disabled={!targetDriver || assignmentOrderIds.length === 0 || applyBatch.isPending} className="h-11 rounded-full">
+                {applyBatch.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" />}
                 Confirm {cappedAssignmentLimit} {assignmentAction === 'REASSIGN' ? 'Reassignment' : 'Assignment'}
               </Button>
             </DialogFooter>
