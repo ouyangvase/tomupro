@@ -1,11 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { orderItemsQueryKey } from '@/lib/orderItemsQuery';
 import type { OrderItem } from '@/types/database';
 
-export function useOrderItems(orderId?: string) {
+export function useOrderItems(orderId?: string, enabled = true) {
+  const { user } = useAuth();
+
   return useQuery({
-    queryKey: ['order-items', orderId],
+    queryKey: orderItemsQueryKey(user?.id, orderId),
     queryFn: async () => {
       if (!orderId) return [];
       const { data, error } = await supabase
@@ -19,7 +23,10 @@ export function useOrderItems(orderId?: string) {
       if (error) throw error;
       return data as OrderItem[];
     },
-    enabled: !!orderId,
+    enabled: enabled && !!user?.id && !!orderId,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnReconnect: true,
   });
 }
 
@@ -38,7 +45,7 @@ export function useCreateOrderItem() {
       return data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['order-items', variables.order_id] });
+      queryClient.invalidateQueries({ queryKey: ['order-items'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
     onError: (error: Error) => {

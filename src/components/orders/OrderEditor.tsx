@@ -67,6 +67,7 @@ import {
 import { useOrderOwnerProducts } from '@/hooks/useProductsByOwner';
 import { useInventoryOrderSources } from '@/hooks/useWarehouseSharing';
 import { useOrderItems, useCreateOrderItem, useUpdateOrderItem, useDeleteOrderItem, calculateOrderTotals } from '@/hooks/useOrderItems';
+import { resolveOrderItemsForEditor } from '@/lib/orderItemsQuery';
 import { useUpdateOrder, useCreateOrder, useRunnerUpdateArea } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderClaimsHistory } from '@/components/orders/OrderClaimsHistory';
@@ -623,8 +624,9 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
     data: existingItems = [],
     isSuccess: existingItemsLoaded,
     isPending: existingItemsPending,
+    isFetching: existingItemsFetching,
     isError: existingItemsError,
-  } = useOrderItems(order?.id);
+  } = useOrderItems(order?.id, open && mode === 'edit');
   const createOrder = useCreateOrder();
   const updateOrder = useUpdateOrder();
   const runnerUpdateArea = useRunnerUpdateArea();
@@ -748,11 +750,16 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
   useEffect(() => {
     const nestedItems = order?.order_items || [];
-    const itemsToLoad = existingItemsLoaded ? existingItems : nestedItems;
-    const canInitialize = existingItemsLoaded || nestedItems.length > 0;
+    const itemSource = resolveOrderItemsForEditor({
+      queriedItems: existingItems,
+      nestedItems,
+      querySucceeded: existingItemsLoaded,
+      queryFetching: existingItemsFetching,
+      queryFailed: existingItemsError,
+    });
 
-    if (open && mode === 'edit' && order?.id && canInitialize && !itemsInitialized) {
-      setItems(itemsToLoad.map(item => ({
+    if (open && mode === 'edit' && order?.id && itemSource.ready && !itemsInitialized) {
+      setItems(itemSource.items.map(item => ({
         id: item.id,
         product_id: item.product_id,
         sku_label: item.sku_label || '',
@@ -764,13 +771,22 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       })));
       setItemsInitialized(true);
     }
-  }, [existingItems, existingItemsLoaded, itemsInitialized, mode, open, order?.id, order?.order_items]);
+  }, [
+    existingItems,
+    existingItemsError,
+    existingItemsFetching,
+    existingItemsLoaded,
+    itemsInitialized,
+    mode,
+    open,
+    order?.id,
+    order?.order_items,
+  ]);
 
   const hasNestedOrderItems = Boolean(order?.order_items?.length);
   const isOrderItemsLoading = mode === 'edit'
     && !itemsInitialized
-    && existingItemsPending
-    && !hasNestedOrderItems;
+    && (existingItemsPending || existingItemsFetching);
   const hasOrderItemsLoadError = mode === 'edit'
     && existingItemsError
     && !hasNestedOrderItems;
