@@ -60,6 +60,7 @@ import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { downloadXlsx } from '@/lib/xlsxExport';
+import { groupRemainingOrdersByLocality } from '@/lib/driverInboxAreaCounts';
 import {
   getDriverOperationalDateKey,
   getTodayDateKey,
@@ -675,21 +676,13 @@ export default function RunnerDriverInbox({
     ));
   }, [activeAreaCode, dispatchAreaOrders, todayDateKey]);
 
-  const assignmentAreaOrders = useMemo(() => {
-    if (!isNormalArea(activeAreaCode)) return [];
-    return dispatchAreaOrders.filter((order) => inferAreaFromOrder(order) === activeAreaCode);
-  }, [activeAreaCode, dispatchAreaOrders]);
-
-  const assignmentAreaLocalityGroups = useMemo(() => {
-    const grouped = new Map<string, RunnerOrder[]>();
-    assignmentAreaOrders.forEach((order) => {
-      const label = getLocalityLabel(order, activeAreaCode);
-      grouped.set(label, [...(grouped.get(label) || []), order]);
-    });
-    return Array.from(grouped.entries())
-      .map(([label, orders]) => ({ label, orders }))
-      .sort((left, right) => left.label.localeCompare(right.label));
-  }, [activeAreaCode, assignmentAreaOrders]);
+  const assignmentAreaLocalityGroups = useMemo(
+    () => groupRemainingOrdersByLocality(
+      assignmentAreaUnassignedOrders,
+      (order) => getLocalityLabel(order, activeAreaCode),
+    ),
+    [activeAreaCode, assignmentAreaUnassignedOrders],
+  );
 
   const assignmentAreaStaleOrders = useMemo(() => {
     if (!isNormalArea(activeAreaCode)) return [];
@@ -2044,10 +2037,7 @@ export default function RunnerDriverInbox({
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => selectAssignmentSubset(
-                          group.orders,
-                          group.orders.some((order) => !isActiveQueueUnassigned(order, todayDateKey)) ? 'REASSIGN' : 'ASSIGN',
-                        )}
+                        onClick={() => selectAssignmentSubset(group.orders, 'ASSIGN')}
                       >
                         {group.label} ({group.orders.length})
                       </Button>
