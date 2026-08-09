@@ -97,4 +97,11 @@ describe('Driver Inbox business-area isolation', () => {
       'REVOKE ALL ON FUNCTION public.runner_can_manage_delivery_area_order',
     );
   });
+
+  it('keeps a delivery-zone correction action visible for already-classified orders', () => {
+    expect(driverInboxSource).toContain("'Change Delivery Zone'");
+    expect(driverInboxSource).toContain("'Resolve Delivery Zone'");
+    expect(driverInboxSource).toContain('handleOpenAreaCorrection([order.id])');
+    expect(driverInboxSource).not.toContain('!isNormalArea(areaCode) ? (');
+  });
 });

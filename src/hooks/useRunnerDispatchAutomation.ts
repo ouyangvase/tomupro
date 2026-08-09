@@ -88,6 +88,18 @@ export interface BulkRevertDriverOrdersResult {
   notification_id?: string | null;
 }
 
+export interface BulkUnassignRunnerDriverOrdersResult {
+  success: boolean;
+  batch_id: string | null;
+  runner_ids: string[];
+  expected_count: number;
+  reverted_count: number;
+  skipped_count: number;
+  reverted_collect_amount: number;
+  reverted_order_ids: string[];
+  affected_driver_ids: string[];
+}
+
 type RpcResult<T> = Promise<{ data: T | null; error: Error | null }>;
 type DispatchSupabaseClient = {
   rpc: <T = unknown>(fn: string, args?: Record<string, unknown>) => RpcResult<T>;
@@ -374,6 +386,84 @@ export function useBulkRevertDriverAppOrders() {
     },
     onError: (error: Error) => {
       toast.error(`Revert orders failed: ${error.message}`);
+    },
+  });
+}
+
+export function useBulkUnassignRunnerDriverOrders() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      runnerIds,
+      orderIds,
+      operationalDate,
+    }: {
+      runnerIds: string[];
+      orderIds: string[];
+      operationalDate: string | null;
+    }) => {
+      const { data, error } = await dispatchSupabase.rpc<BulkUnassignRunnerDriverOrdersResult>(
+        'bulk_unassign_runner_driver_orders',
+        {
+          p_runner_ids: runnerIds,
+          p_operational_date: operationalDate,
+        },
+      );
+
+      if (!error && data) {
+        return {
+          ...data,
+          runner_ids: data.runner_ids || [],
+          expected_count: Number(data.expected_count || 0),
+          reverted_count: Number(data.reverted_count || 0),
+          skipped_count: Number(data.skipped_count || 0),
+          reverted_collect_amount: Number(data.reverted_collect_amount || 0),
+          reverted_order_ids: data.reverted_order_ids || [],
+          affected_driver_ids: data.affected_driver_ids || [],
+        };
+      }
+
+      // Older production databases may not have the new atomic RPC yet. The
+      // existing batch RPC is still server-side, all-or-nothing, and scoped
+      // to the same active Runner queue, so it is a safe short-lived bridge.
+      if (error && !/bulk_unassign_runner_driver_orders|PGRST202|does not exist|not found/i.test(error.message)) {
+        throw error;
+      }
+
+      const legacy = await dispatchSupabase.rpc<AssignmentBatchResult>('remove_driver_assignment_batch', {
+        p_order_ids: orderIds,
+        p_operational_date: operationalDate,
+      });
+      if (legacy.error) throw legacy.error;
+      if (!legacy.data) throw new Error('Bulk unassign returned no result');
+
+      return {
+        success: true,
+        batch_id: legacy.data.batch_id || null,
+        runner_ids: runnerIds,
+        expected_count: orderIds.length,
+        reverted_count: Number(legacy.data.unassigned_count || 0),
+        skipped_count: 0,
+        reverted_collect_amount: Number(legacy.data.collect_amount || 0),
+        reverted_order_ids: orderIds,
+        affected_driver_ids: [],
+      } satisfies BulkUnassignRunnerDriverOrdersResult;
+    },
+    onSuccess: async (result) => {
+      invalidateOrderQueries(queryClient);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['runner-driver-orders'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-area-summary'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-locality-summary'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['runner-dispatch-driver-workloads'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['driver-assignments'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['driver-order-count'], refetchType: 'active' }),
+      ]);
+      toast.success(`${result.reverted_count} active Driver order(s) returned to Unassigned.`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Return Driver orders failed: ${error.message}`);
     },
   });
 }

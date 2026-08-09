@@ -105,7 +105,7 @@
     --secondary-foreground: 210 15% 80%;
 
     --muted: 225 10% 18%;
-    --muted-foreground: 210 10% 50%;
+    --muted-foreground: 210 15% 72%;
 
     --accent: 34 60% 55%;
     --accent-foreground: 225 14% 7%;
@@ -125,7 +125,7 @@
     --status-warning: 25 90% 58%;
 
     --sidebar-background: 225 14% 7%;
-    --sidebar-foreground: 210 15% 75%;
+    --sidebar-foreground: 210 16% 84%;
     --sidebar-primary: 34 60% 55%;
     --sidebar-primary-foreground: 225 14% 7%;
     --sidebar-accent: 34 60% 55%;

@@ -1,8 +1,9 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, QueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { subscribeWithReconnect } from '@/lib/subscribeWithReconnect';
 
 interface RealtimePayload {
   eventType: 'INSERT' | 'UPDATE' | 'DELETE';
@@ -66,7 +67,6 @@ export function useRealtimeOrderUpdates(enabled = true) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { profile } = useAuth();
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const handleOrderChange = useCallback((payload: RealtimePayload) => {
     const { eventType, new: newRecord, old: oldRecord } = payload;
@@ -171,8 +171,8 @@ export function useRealtimeOrderUpdates(enabled = true) {
       return undefined;
     })();
 
-    const timeoutId = setTimeout(() => {
-      const channel = supabase
+    return subscribeWithReconnect(
+      () => supabase
         .channel(`orders-realtime-${profile.id}`)
         .on(
           'postgres_changes',
@@ -185,19 +185,9 @@ export function useRealtimeOrderUpdates(enabled = true) {
           (payload) => {
             handleOrderChange(payload as unknown as RealtimePayload);
           }
-        )
-        .subscribe();
-
-      channelRef.current = channel;
-    }, 150);
-
-    return () => {
-      clearTimeout(timeoutId);
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
+        ),
+      { name: `orders-realtime-${profile.id}` },
+    );
   }, [enabled, profile?.id, profile?.role, handleOrderChange]);
 }
 
@@ -210,8 +200,9 @@ export function useRealtimePickupUpdates(enabled = true) {
     if (!enabled) return;
     if (!profile) return;
 
-    const channel = supabase
-      .channel('pickups-realtime')
+    return subscribeWithReconnect(
+      () => supabase
+        .channel(`pickups-realtime-${profile.id}`)
       .on(
         'postgres_changes',
         {
@@ -256,12 +247,9 @@ export function useRealtimePickupUpdates(enabled = true) {
             });
           }
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      ),
+      { name: `pickups-realtime-${profile.id}` },
+    );
   }, [enabled, profile, queryClient, toast]);
 }
 
@@ -274,8 +262,9 @@ export function useRealtimeReturnUpdates(enabled = true) {
     if (!enabled) return;
     if (!profile) return;
 
-    const channel = supabase
-      .channel('returns-realtime')
+    return subscribeWithReconnect(
+      () => supabase
+        .channel(`returns-realtime-${profile.id}`)
       .on(
         'postgres_changes',
         {
@@ -321,12 +310,9 @@ export function useRealtimeReturnUpdates(enabled = true) {
             });
           }
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      ),
+      { name: `returns-realtime-${profile.id}` },
+    );
   }, [enabled, profile, queryClient, toast]);
 }
 

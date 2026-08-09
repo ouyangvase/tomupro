@@ -4,8 +4,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { useUpdateOrder, useBulkUpdateOrders } from '@/hooks/useOrders';
 import { usePaginatedOrders, useAllOrderIds } from '@/hooks/usePaginatedOrders';
 import { useCancelOrders } from '@/hooks/useCancelOrder';
-import { useBindings } from '@/hooks/useBindings';
-import { useManagerRunnerBindings } from '@/hooks/useManagerRunnerBindings';
+import { useAssignableRunners } from '@/hooks/useAssignableRunners';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
@@ -29,7 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Plus, UserCheck, Search, X, Upload, Download, ShoppingCart, Zap, Loader2 } from 'lucide-react';
+import { Plus, UserCheck, Search, X, Upload, Download, ShoppingCart, Zap, Loader2, ArrowRight } from 'lucide-react';
 import { PageHero } from '@/components/dashboard/PageHero';
 import { DispatchStatusCards } from '@/components/orders/DispatchStatusCards';
 import { DispatchBoard } from '@/components/orders/DispatchBoard';
@@ -42,6 +41,7 @@ import {
 } from '@/components/ui/tooltip';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { CancelOrderDialog } from '@/components/orders/CancelOrderDialog';
+import { BulkActionResolutionDialog } from '@/components/sales/BulkActionResolutionDialog';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { OrderFiltersPanel, OrderFilters, applyOrderFilters } from '@/components/filters/OrderFiltersPanel';
 import { TeamViewToggle, useTeamViewState } from '@/components/filters/TeamViewToggle';
@@ -62,20 +62,15 @@ import type { OrderStockResult } from '@/hooks/useStockCalculation';
 import { KitaniInvitationButton } from '@/components/orders/KitaniInvitationButton';
 import { useKitaniOrderLinks } from '@/hooks/useKitaniOrderLinks';
 
-type RunnerBindingOptionSource = {
-  runner_id: string;
-  runner?: {
-    display_name?: string | null;
-    email?: string | null;
-  } | null;
-};
-
 export default function ReadySales({ highlightOrderId }: { highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const { data: userDirectory = [] } = useUserDirectory();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
+  const [bookingOrders, setBookingOrders] = useState<Order[]>([]);
+  const [loadingBookingOrders, setLoadingBookingOrders] = useState(false);
   const [selectedRunner, setSelectedRunner] = useState<string>('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -179,32 +174,23 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     return userDirectory.filter(u => spIds.includes(u.id));
   }, [orders, userDirectory, role]);
   
-  // For runner assignment: managers/salespersons only see their own bound runners
-  const useOwnBindings = role === 'manager' || role === 'salesperson';
-  const bindingSalespersonId = useOwnBindings ? profile?.id : (managerSelectedSalesperson || autoDetectedSalespersonId);
-  const bindingOwnerIsManager = role === 'manager';
+  const runnerAssignmentScope = useMemo(() => {
+    if (role === 'manager' && profile?.id) {
+      return { type: 'manager' as const, managerId: profile.id };
+    }
+    if (role === 'salesperson' && profile?.id) {
+      return { type: 'salesperson' as const, salespersonId: profile.id };
+    }
+    if (role === 'admin' && (managerSelectedSalesperson || autoDetectedSalespersonId)) {
+      return {
+        type: 'salesperson' as const,
+        salespersonId: managerSelectedSalesperson || autoDetectedSalespersonId!,
+      };
+    }
+    return null;
+  }, [autoDetectedSalespersonId, managerSelectedSalesperson, profile?.id, role]);
 
-  const { data: bindings = [], isLoading: bindingsLoading } = useBindings(
-    bindingSalespersonId && !bindingOwnerIsManager
-      ? { salespersonId: bindingSalespersonId, active: true }
-      : undefined
-  );
-
-  const { data: managerRunnerBindings = [], isLoading: managerRunnerBindingsLoading } = useManagerRunnerBindings(
-    bindingSalespersonId && bindingOwnerIsManager
-      ? { managerId: bindingSalespersonId }
-      : undefined
-  );
-
-  const runnerOptions = useMemo(() => {
-    const source: RunnerBindingOptionSource[] = bindingOwnerIsManager ? managerRunnerBindings : bindings;
-    return source.map((b) => ({
-      id: b.runner_id,
-      label: b.runner?.display_name || b.runner?.email || 'Unknown Runner',
-    }));
-  }, [bindingOwnerIsManager, managerRunnerBindings, bindings]);
-
-  const runnersLoading = bindingOwnerIsManager ? managerRunnerBindingsLoading : bindingsLoading;
+  const { data: runnerOptions = [], isLoading: runnersLoading } = useAssignableRunners(runnerAssignmentScope);
 
   const updateOrder = useUpdateOrder();
   const bulkUpdateOrders = useBulkUpdateOrders();
@@ -220,6 +206,15 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
 
   const handleAssignRunner = () => {
     if (!selectedRunner || selectedRows.length === 0) return;
+    if (!runnerOptions.some((runner) => runner.id === selectedRunner)) {
+      toast({
+        title: 'Runner binding changed',
+        description: 'Refresh the runner list and choose a Runner you are allowed to use.',
+        variant: 'destructive',
+      });
+      setSelectedRunner('');
+      return;
+    }
     const orderIds = [...selectedRows];
     const runnerId = selectedRunner;
     bulkUpdateOrders.mutate(
@@ -237,6 +232,41 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     setAssignDialogOpen(false);
     setSelectedRunner('');
     setSelectedRows([]);
+  };
+
+  const handleOpenConvertToBooking = async () => {
+    if (selectedRows.length === 0 || loadingBookingOrders) return;
+
+    const selectedIds = [...selectedRows];
+    setLoadingBookingOrders(true);
+
+    try {
+      const selectedOrders = await fetchOrdersForExport(orderFilters, selectedIds, role);
+      const eligibleOrders = selectedOrders.filter((order) => (
+        order.status === 'READY' &&
+        order.runner_status !== 'DELIVERED' &&
+        order.runner_status !== 'FAILED_DELIVERY'
+      ));
+
+      if (eligibleOrders.length !== selectedIds.length) {
+        toast({
+          title: 'Selection changed',
+          description: 'Some selected orders are no longer ready. Refresh and select them again.',
+          variant: 'destructive',
+        });
+        setSelectedRows([]);
+        await refetch();
+        return;
+      }
+
+      setBookingOrders(eligibleOrders as Order[]);
+      setBookingDialogOpen(true);
+    } catch (error) {
+      const detail = error instanceof ExportError ? error.detail : (error instanceof Error ? error.message : 'Unknown error');
+      toast({ title: 'Unable to load selected orders', description: detail, variant: 'destructive' });
+    } finally {
+      setLoadingBookingOrders(false);
+    }
   };
 
   const handleCancelConfirm = (reason: string, notes: string) => {
@@ -431,6 +461,16 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                   <UserCheck className="h-4 w-4 mr-1" />
                   Assign Runner
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenConvertToBooking}
+                  disabled={loadingBookingOrders}
+                  className="rounded-full"
+                >
+                  {loadingBookingOrders ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ArrowRight className="h-4 w-4 mr-1" />}
+                  Convert to Booking
+                </Button>
                 <Button size="sm" variant="outline" onClick={handleExportSelected} className="rounded-full" disabled={exporting}>
                   {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
                   Export
@@ -579,6 +619,21 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
         loading={cancelOrders.isPending}
       />
 
+      <BulkActionResolutionDialog
+        orders={bookingOrders}
+        open={bookingDialogOpen}
+        onOpenChange={(open) => {
+          setBookingDialogOpen(open);
+          if (!open) setBookingOrders([]);
+        }}
+        initialResolutionType="CONVERT_TO_BOOKING"
+        allowedResolutionTypes={['CONVERT_TO_BOOKING']}
+        onSuccess={() => {
+          setSelectedRows([]);
+          void refetch();
+        }}
+      />
+
       {/* Assign Runner Dialog */}
       <Dialog open={assignDialogOpen} onOpenChange={(open) => {
         setAssignDialogOpen(open);
@@ -642,7 +697,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                 <SelectContent>
                 {runnersLoading ? (
                   <div className="p-2 text-sm text-muted-foreground">Loading runners...</div>
-                ) : !bindingSalespersonId ? (
+                ) : !runnerAssignmentScope ? (
                   <div className="p-2 text-sm text-muted-foreground">
                     {hasMixedSalespersons
                       ? 'Select a salesperson first to see available runners.'
@@ -659,7 +714,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                 ) : (
                   runnerOptions.map((opt) => (
                     <SelectItem key={opt.id} value={opt.id}>
-                      {opt.label}
+                      {opt.display_name || opt.email || 'Unknown Runner'}
                     </SelectItem>
                   ))
                 )}

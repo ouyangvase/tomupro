@@ -4884,6 +4884,10 @@ export type Database = {
         }[]
       }
       can_access_order_items: { Args: { p_order_id: string }; Returns: boolean }
+      cancel_delivery_charge_proposal: {
+        Args: { p_charge_id: string }
+        Returns: string
+      }
       can_access_order_v2: {
         Args: { p_order_runner_id?: string; p_order_salesperson_id: string }
         Returns: boolean
@@ -4900,6 +4904,15 @@ export type Database = {
       can_view_stock: {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
+      }
+      change_driver_failed_status: {
+        Args: {
+          p_actor_id: string
+          p_next_delivery_date?: string | null
+          p_order_id: string
+          p_reason: string
+        }
+        Returns: Json
       }
       check_stock_integrity: {
         Args: never
@@ -5428,7 +5441,7 @@ export type Database = {
         | "other"
       claim_batch_status: "ADMIN_ACK_PENDING" | "CLAIMED"
       claim_method: "TRANSFER" | "CASH" | "OTHER"
-      delivery_charge_status: "PENDING" | "APPROVED" | "REJECTED"
+      delivery_charge_status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED"
       failed_next_step: "RESCHEDULE" | "SALESPERSON_CONTACT"
       inbound_status: "PENDING_SP_ACK" | "ACKNOWLEDGED" | "DISPUTE"
       movement_type:
@@ -5618,7 +5631,7 @@ export const Constants = {
       ],
       claim_batch_status: ["ADMIN_ACK_PENDING", "CLAIMED"],
       claim_method: ["TRANSFER", "CASH", "OTHER"],
-      delivery_charge_status: ["PENDING", "APPROVED", "REJECTED"],
+      delivery_charge_status: ["PENDING", "APPROVED", "REJECTED", "CANCELLED"],
       failed_next_step: ["RESCHEDULE", "SALESPERSON_CONTACT"],
       inbound_status: ["PENDING_SP_ACK", "ACKNOWLEDGED", "DISPUTE"],
       movement_type: [

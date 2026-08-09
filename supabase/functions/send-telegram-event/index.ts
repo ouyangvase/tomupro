@@ -1,7 +1,9 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.89.0';
 
-const FUNCTION_VERSION = '20260730_multi_telegram_destinations_v4';
+const FUNCTION_VERSION = '20260806_telegram_driver_delivery_resilience_v1';
 const DELIVERY_PHOTO_BUCKET = 'delivery-photos';
+const TELEGRAM_MAX_ATTEMPTS = 3;
+const TELEGRAM_RETRY_DELAYS_MS = [300, 900];
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +14,7 @@ type RecipientKind = 'runner' | 'assistant' | 'order_owner' | 'team_manager';
 
 interface TelegramResponse {
   ok: boolean;
+  error_code?: number;
   description?: string;
   result?: {
     message_id?: number;
@@ -78,42 +81,76 @@ interface SendTelegramEventRequest {
 
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
 
+function isRetryableTelegramResponse(status: number, response: TelegramResponse): boolean {
+  return status === 429 || status >= 500 || response.error_code === 429 || (response.error_code || 0) >= 500;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function callTelegram(
+  botToken: string,
+  method: string,
+  payload: Record<string, unknown>,
+): Promise<TelegramResponse> {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < TELEGRAM_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const response = await res.json() as TelegramResponse;
+
+      if (res.ok || !isRetryableTelegramResponse(res.status, response) || attempt === TELEGRAM_MAX_ATTEMPTS - 1) {
+        return response;
+      }
+
+      console.warn(`[send-telegram-event] Retrying Telegram ${method} after HTTP ${res.status}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === TELEGRAM_MAX_ATTEMPTS - 1) throw error;
+      console.warn(`[send-telegram-event] Retrying Telegram ${method} after transient network error`);
+    }
+
+    await wait(TELEGRAM_RETRY_DELAYS_MS[attempt] || TELEGRAM_RETRY_DELAYS_MS.at(-1)!);
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Telegram request failed');
+}
+
 async function sendTelegramMessage(botToken: string, chatId: string, text: string): Promise<TelegramResponse> {
-  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    }),
+  return callTelegram(botToken, 'sendMessage', {
+    chat_id: chatId,
+    text,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
   });
-  return res.json();
 }
 
 async function sendTelegramPhoto(botToken: string, chatId: string, photoUrl: string): Promise<TelegramResponse> {
-  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      photo: photoUrl,
-    }),
+  return callTelegram(botToken, 'sendPhoto', {
+    chat_id: chatId,
+    photo: photoUrl,
   });
-  return res.json();
 }
 
 async function sendTelegramMediaGroup(botToken: string, chatId: string, photoUrls: string[]): Promise<TelegramResponse> {
-  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMediaGroup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      media: photoUrls.map((url) => ({ type: 'photo', media: url })),
-    }),
+  return callTelegram(botToken, 'sendMediaGroup', {
+    chat_id: chatId,
+    media: photoUrls.map((url) => ({ type: 'photo', media: url })),
   });
-  return res.json();
+}
+
+function isInactiveDestinationError(description: string): boolean {
+  const normalized = description.toLowerCase();
+  return normalized.includes('chat not found')
+    || normalized.includes('bot was kicked')
+    || normalized.includes('user is deactivated')
+    || normalized.includes('forbidden');
 }
 
 function extractStorageObjectPath(url: string, bucket: string): string | null {
@@ -385,6 +422,8 @@ Deno.serve(async (req) => {
       if (requestBody.event_type) {
         eventQuery = eventQuery.eq('event_type', requestBody.event_type);
       }
+    } else if (requestBody.event_type) {
+      eventQuery = eventQuery.eq('event_type', requestBody.event_type);
     }
 
     const { data: rawEvents, error: evError } = await eventQuery;
@@ -720,6 +759,7 @@ Deno.serve(async (req) => {
           }
 
           const errors: string[] = [];
+          let inactiveDestination = false;
           try {
             const photoUrls = isDriver
               ? await resolveTelegramPhotoUrls(supabase, photos)
@@ -730,17 +770,39 @@ Deno.serve(async (req) => {
               if (batch.length > 1) {
                 const groupResult = await sendTelegramMediaGroup(botToken, chatId, batch);
                 if (groupResult.ok) continue;
-                console.warn('[send-telegram-event] Media group failed, falling back to individual photos:', groupResult.description);
+                const description = groupResult.description || 'Media group send failed';
+                if (isInactiveDestinationError(description)) {
+                  inactiveDestination = true;
+                  errors.push(description);
+                  break;
+                }
+                console.warn('[send-telegram-event] Media group failed, falling back to individual photos:', description);
               }
 
               for (const photoUrl of batch) {
                 const photoResult = await sendTelegramPhoto(botToken, chatId, photoUrl);
-                if (!photoResult.ok) errors.push(photoResult.description || 'Photo send failed');
+                if (!photoResult.ok) {
+                  const description = photoResult.description || 'Photo send failed';
+                  errors.push(description);
+                  if (isInactiveDestinationError(description)) {
+                    inactiveDestination = true;
+                    break;
+                  }
+                }
               }
+
+              if (inactiveDestination) break;
             }
 
-            const messageResult = await sendTelegramMessage(botToken, chatId, message);
-            if (!messageResult.ok) errors.push(messageResult.description || 'Message send failed');
+            let messageResult: TelegramResponse = { ok: false };
+            if (!inactiveDestination) {
+              messageResult = await sendTelegramMessage(botToken, chatId, message);
+              if (!messageResult.ok) {
+                const description = messageResult.description || 'Message send failed';
+                errors.push(description);
+                if (isInactiveDestinationError(description)) inactiveDestination = true;
+              }
+            }
 
             const ok = errors.length === 0;
             await supabase
@@ -753,8 +815,28 @@ Deno.serve(async (req) => {
               })
               .eq('id', claim.log_id);
 
-            if (ok) sentCount++;
-            else eventHadFailure = true;
+            if (inactiveDestination) {
+              const destinationUpdate = destination.id
+                ? supabase
+                  .from('user_telegram_destinations')
+                  .update({ active: false, is_primary: false, updated_at: new Date().toISOString() })
+                  .eq('id', destination.id)
+                  .eq('chat_id', chatId)
+                : supabase
+                  .from('user_telegram_settings')
+                  .update({ chat_id: null, telegram_enabled: false, updated_at: new Date().toISOString() })
+                  .eq('user_id', recipient.userId)
+                  .eq('chat_id', chatId);
+              await destinationUpdate;
+              if (destination.id) {
+                await supabase.rpc('sync_primary_telegram_chat_id', { p_user_id: recipient.userId });
+              }
+              console.warn(`[send-telegram-event] Deactivated unreachable Telegram destination ${chatId}`);
+            } else if (ok) {
+              sentCount++;
+            } else {
+              eventHadFailure = true;
+            }
           } catch (err) {
             eventHadFailure = true;
             console.error(`[send-telegram-event] Failed to send to ${recipient.userId}:`, err);

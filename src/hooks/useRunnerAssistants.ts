@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { subscribeWithReconnect } from '@/lib/subscribeWithReconnect';
 import type { RunnerAssistant, Profile } from '@/types/database';
 
 const ASSISTANT_REQUEST_TIMEOUT_MS = 10000;
@@ -135,11 +136,13 @@ export function useRunnerAssistants(runnerId?: string) {
 export function useMyAssistantBinding() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const channelInstanceId = useId().replace(/:/g, '-');
 
   useEffect(() => {
     if (!user?.id) return;
-    const channel = supabase
-      .channel(`assistant-scope:${user.id}`)
+    const channelName = `assistant-scope:${user.id}:${channelInstanceId}`;
+    return subscribeWithReconnect(() => supabase
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -149,12 +152,10 @@ export function useMyAssistantBinding() {
           filter: `assistant_id=eq.${user.id}`,
         },
         () => invalidateAssistantQueries(queryClient),
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient, user?.id]);
+      ),
+      { name: channelName },
+    );
+  }, [channelInstanceId, queryClient, user?.id]);
 
   return useQuery({
     queryKey: ['my-assistant-binding', user?.id],

@@ -15,6 +15,11 @@ export type DriverAssignment = Order & {
   is_active_assignment: boolean;
   collect_amount: number;
   driver_name: string;
+  effective_assignment_date?: string | null;
+  assignment_timestamp?: string | null;
+  assignment_source?: string | null;
+  current_assignment_id?: string | null;
+  canonical_lifecycle_state?: DriverAssignmentState | null;
 };
 
 export type DriverAssignmentQuery = {

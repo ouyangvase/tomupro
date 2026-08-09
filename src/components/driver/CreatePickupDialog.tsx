@@ -117,6 +117,7 @@ export function CreatePickupDialog({
 
   useEffect(() => {
     if (!dialogOpen || !selectedDriverId || loadingSuggestion || fetchingSuggestion) return;
+    if (isEditing && (suggestedPickup?.items || []).length === 0) return;
 
     const previousBuffers = new Map(
       (pickup?.items || []).map((item) => [item.product_id, Number(item.buffer_qty || 0)]),
@@ -134,6 +135,7 @@ export function CreatePickupDialog({
   }, [
     dialogOpen,
     fetchingSuggestion,
+    isEditing,
     loadingSuggestion,
     pickup?.items,
     removedProductIds,

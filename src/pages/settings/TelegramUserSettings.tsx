@@ -21,6 +21,7 @@ import {
   useSetPrimaryTelegramDestination, sendTelegramDestinationTest,
   sendAllTelegramDestinationsTest,
 } from '@/hooks/useTelegram';
+import { getTelegramErrorMessage } from '@/lib/telegramError';
 
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
 
@@ -51,6 +52,7 @@ export default function TelegramUserSettings() {
   const [testing, setTesting] = useState(false);
   const [testingDestinationId, setTestingDestinationId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [groupGuideOpen, setGroupGuideOpen] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -119,7 +121,10 @@ export default function TelegramUserSettings() {
       setTestResult({ ok: true, message: 'Telegram verified and connected.' });
       toast.success('Telegram verified and connected');
     } catch (e: any) {
-      const msg = e.message || 'Verification failed. Start @ADDFD3BOT in the chat and try again.';
+      const msg = await getTelegramErrorMessage(
+        e,
+        'Verification failed. Open @userinfobot, copy your Chat ID, and try again.',
+      );
       setTestResult({ ok: false, message: msg });
       toast.error(msg);
     }
@@ -133,7 +138,7 @@ export default function TelegramUserSettings() {
       setTestResult({ ok: true, message: 'Message sent! Check your Telegram.' });
       toast.success('Test message sent! Check your Telegram.');
     } catch (e: any) {
-      const msg = e.message || 'Test failed. Make sure you have started @ADDFD3BOT on Telegram first.';
+      const msg = await getTelegramErrorMessage(e, 'Test failed. Check your Chat ID and try again.');
       setTestResult({ ok: false, message: msg });
       toast.error(msg);
     }
@@ -152,7 +157,7 @@ export default function TelegramUserSettings() {
       if (allSucceeded) toast.success(`Test delivered to ${successful} of ${total} chats`);
       else toast.error(`Test delivered to ${successful} of ${total} chats`);
     } catch (e: any) {
-      const msg = e.message || 'Telegram test failed';
+      const msg = await getTelegramErrorMessage(e, 'Telegram test failed');
       setTestResult({ ok: false, message: msg });
       toast.error(msg);
     }
@@ -180,8 +185,6 @@ export default function TelegramUserSettings() {
   };
 
   const isConnected = destinations.length > 0;
-  const canStock = true;
-  const canDelivered = true;
 
   if (isLoading || destinationsLoading) {
     return (
@@ -304,30 +307,65 @@ export default function TelegramUserSettings() {
               {destinations.length < 2 ? (
                 <div className="space-y-3 rounded-xl border border-dashed border-primary/40 p-3">
                   <div>
-                    <p className="text-sm font-semibold">
-                      {destinations.length === 0 ? 'Connect Telegram' : 'Add Secondary Telegram'}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      A verification message must succeed before the chat is connected.
+                    <p className="text-sm font-semibold">How to get your Telegram Chat ID</p>
+                    <ol className="mt-2 space-y-1.5 text-[11px] text-muted-foreground">
+                      <li><span className="mr-1.5 font-semibold text-foreground">①</span>Open Telegram and search <span className="font-semibold text-foreground">@userinfobot</span>.</li>
+                      <li><span className="mr-1.5 font-semibold text-foreground">②</span>Tap <span className="font-semibold text-foreground">Start</span> or send <span className="font-mono font-semibold text-foreground">/start</span>.</li>
+                      <li><span className="mr-1.5 font-semibold text-foreground">③</span>Copy the Chat ID it shows you.</li>
+                      <li><span className="mr-1.5 font-semibold text-foreground">④</span>Paste it below.</li>
+                    </ol>
+                    <a
+                      href="https://t.me/userinfobot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/30 px-2.5 text-[11px] font-medium text-primary hover:bg-primary/5"
+                    >
+                      Open @userinfobot <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Then open <a href="https://t.me/ADDFD3BOT" target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">@ADDFD3BOT</a> and tap Start so TomuPro can send messages.
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-left text-[11px] font-medium text-primary hover:underline"
+                    aria-expanded={groupGuideOpen}
+                    onClick={() => setGroupGuideOpen(open => !open)}
+                  >
+                    Using a Telegram group instead?
+                    <ArrowRight className={`h-3 w-3 transition-transform ${groupGuideOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  {groupGuideOpen && (
+                    <div className="space-y-1.5 rounded-lg bg-secondary/30 px-2.5 py-2 text-[11px] text-muted-foreground">
+                      <p>1. Add <span className="font-semibold text-foreground">@userinfobot</span> to the Telegram group.</p>
+                      <p>2. Send <span className="font-mono font-semibold text-foreground">/start</span> in the group.</p>
+                      <p>3. Copy the group Chat ID shown by the bot.</p>
+                      <p>4. Paste it here.</p>
+                      <p className="pt-1 font-medium text-foreground">Note: Group Chat IDs usually start with <span className="font-mono">-100</span>.</p>
+                    </div>
+                  )}
                   <Input
                     value={newLabel}
                     onChange={event => setNewLabel(event.target.value)}
-                    placeholder={destinations.length === 0 ? 'Primary Telegram' : 'Secondary Telegram'}
+                    placeholder="Name (optional)"
+                    aria-label="Telegram name (optional)"
                     className="h-10 rounded-xl"
                     maxLength={40}
                   />
-                  <Input
-                    value={newChatId}
-                    onChange={event => setNewChatId(event.target.value)}
-                    placeholder="Personal: 123456789 · Group: -1001234567890"
-                    className="h-10 rounded-xl font-mono"
-                    inputMode="numeric"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                  />
+                  <div className="space-y-1.5">
+                    <Label htmlFor="telegram-chat-id" className="text-xs font-medium">Chat ID</Label>
+                    <Input
+                      id="telegram-chat-id"
+                      value={newChatId}
+                      onChange={event => setNewChatId(event.target.value)}
+                      placeholder="Paste your Chat ID here"
+                      className="h-10 rounded-xl font-mono"
+                      inputMode="numeric"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                    />
+                  </div>
                   <Button
                     type="button"
                     onClick={handleAddDestination}
@@ -337,12 +375,8 @@ export default function TelegramUserSettings() {
                     {verifyDestination.isPending
                       ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       : <Plus className="mr-2 h-4 w-4" />}
-                    Verify & Add Telegram
+                    Save & Test
                   </Button>
-                  <div className="space-y-1 text-[11px] text-muted-foreground">
-                    <p>Personal: send <span className="font-mono font-semibold">/start</span> to <span className="font-semibold">@ADDFD3BOT</span>.</p>
-                    <p>Group: add <span className="font-semibold">@ADDFD3BOT</span>, allow messages, then enter its negative ID (usually <span className="font-mono font-semibold">-100...</span>).</p>
-                  </div>
                 </div>
               ) : (
                 <p className="rounded-xl bg-secondary/30 px-3 py-2.5 text-center text-xs font-medium text-muted-foreground">
@@ -409,7 +443,7 @@ export default function TelegramUserSettings() {
 
           <div className="p-5 space-y-3">
             {/* Stock Balance */}
-            <div className={`flex items-center justify-between p-3 rounded-xl border border-border/40 transition-opacity ${!canStock ? 'opacity-50' : 'bg-secondary/20'}`}>
+            <div className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-secondary/20">
               <div className="space-y-0.5">
                 <Label className="font-medium text-sm">Stock Balance Report</Label>
                 <p className="text-[11px] text-muted-foreground">
@@ -417,14 +451,13 @@ export default function TelegramUserSettings() {
                 </p>
               </div>
               <Switch
-                checked={receiveStock && canStock}
+                checked={receiveStock}
                 onCheckedChange={v => setReceiveStock(v)}
-                disabled={!canStock}
               />
             </div>
 
             {/* Delivered Not Claimed */}
-            <div className={`flex items-center justify-between p-3 rounded-xl border border-border/40 transition-opacity ${!canDelivered ? 'opacity-50' : 'bg-secondary/20'}`}>
+            <div className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-secondary/20">
               <div className="space-y-0.5">
                 <Label className="font-medium text-sm">Delivery Report</Label>
                 <p className="text-[11px] text-muted-foreground">
@@ -432,14 +465,13 @@ export default function TelegramUserSettings() {
                 </p>
               </div>
               <Switch
-                checked={receiveDelivered && canDelivered}
+                checked={receiveDelivered}
                 onCheckedChange={v => setReceiveDelivered(v)}
-                disabled={!canDelivered}
               />
             </div>
 
             {/* Failed Delivery Report */}
-            <div className={`flex items-center justify-between p-3 rounded-xl border border-border/40 transition-opacity ${!canDelivered ? 'opacity-50' : 'bg-secondary/20'}`}>
+            <div className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-secondary/20">
               <div className="space-y-0.5">
                 <Label className="font-medium text-sm">Failed Delivery Report</Label>
                 <p className="text-[11px] text-muted-foreground">
@@ -447,14 +479,13 @@ export default function TelegramUserSettings() {
                 </p>
               </div>
               <Switch
-                checked={receiveFailedDelivery && canDelivered}
+                checked={receiveFailedDelivery}
                 onCheckedChange={v => setReceiveFailedDelivery(v)}
-                disabled={!canDelivered}
               />
             </div>
 
             {/* Hide Zero Stock */}
-            <div className={`flex items-center justify-between p-3 rounded-xl border border-border/40 transition-opacity ${!canStock ? 'opacity-50' : 'bg-secondary/20'}`}>
+            <div className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-secondary/20">
               <div className="space-y-0.5">
                 <Label className="font-medium text-sm">Hide Zero-Stock SKUs</Label>
                 <p className="text-[11px] text-muted-foreground">
@@ -462,13 +493,15 @@ export default function TelegramUserSettings() {
                 </p>
               </div>
               <Switch
-                checked={hideZeroStock && canStock}
+                checked={hideZeroStock}
                 onCheckedChange={v => setHideZeroStock(v)}
-                disabled={!canStock}
               />
             </div>
 
           </div>
+          <p className="px-5 pb-4 text-[11px] text-muted-foreground">
+            Telegram reports are available to all users. Your report contains your own data and any shared scope configured for your account.
+          </p>
         </Card>
 
         {/* Event Notifications — for runner/runner_assistant roles */}

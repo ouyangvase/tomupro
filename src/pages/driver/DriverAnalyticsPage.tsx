@@ -38,6 +38,10 @@ import { useDriverAllocatedStock } from '@/hooks/useDriverPickups';
 import { useDriverMarkDelivered } from '@/hooks/useDrivers';
 import { compressImage } from '@/lib/imageCompression';
 import { formatBND } from '@/lib/currency';
+import {
+  getDriverAnalyticsCalendarCell,
+  summarizeDriverAnalyticsDay,
+} from '@/lib/driverAnalytics';
 import { cn } from '@/lib/utils';
 import { AlertCircle, CalendarDays, Camera, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
 import { toast } from 'sonner';
@@ -138,6 +142,10 @@ export default function DriverAnalyticsPage() {
   const selectedOrderGroups = useMemo(
     () => groupDriverAnalyticsOrders(selectedOrders),
     [selectedOrders],
+  );
+  const selectedDayBreakdown = useMemo(
+    () => summarizeDriverAnalyticsDay(selectedOrders, selectedDay?.assignedOrders ?? 0),
+    [selectedDay?.assignedOrders, selectedOrders],
   );
   const pendingOrderProofCount = pendingOrderAttachments.filter(
     (attachment) => attachment.type === 'delivery_photo',
@@ -330,7 +338,7 @@ export default function DriverAnalyticsPage() {
         <header className="border-b border-border pb-4">
           <p className="text-xs font-bold uppercase text-primary">Performance</p>
           <h1 className="mt-1 text-2xl font-bold">Delivery calendar</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Grouped by when you tapped Delivered.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Grouped by effective Driver assignment date.</p>
         </header>
 
         <div className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1">
@@ -380,12 +388,21 @@ export default function DriverAnalyticsPage() {
         ) : summary ? (
         <section className="grid grid-cols-2 gap-x-4 gap-y-4 border-b border-border pb-4 sm:grid-cols-3">
           <div>
-            <p className="text-xs text-muted-foreground">Delivered orders</p>
-            <p className="mt-1 text-xl font-bold sm:text-2xl">{summary.deliveredOrders}</p>
-            <p className="text-[11px] text-muted-foreground">{summary.pendingAcceptance} pending acceptance</p>
+            {(() => {
+              const summaryCell = getDriverAnalyticsCalendarCell(summary.deliveredOrders, summary.assignedOrders);
+              return (
+                <>
+                  <p className="text-xs text-muted-foreground">Runner-accepted delivered / assigned</p>
+                  <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">{summaryCell.label}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {Math.round(summaryCell.percentage)}% complete · {summary.pendingAcceptance} awaiting Runner
+                  </p>
+                </>
+              );
+            })()}
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Delivered sales</p>
+            <p className="text-xs text-muted-foreground">Accepted delivered sales</p>
             <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.totalSales)}</p>
           </div>
           <div>
@@ -397,6 +414,15 @@ export default function DriverAnalyticsPage() {
             <p className="text-xs text-muted-foreground">Transfer</p>
             <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.transferAmount)}</p>
             <p className="text-[11px] text-muted-foreground">{summary.transferOrderCount} orders</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Pending cash / transfer</p>
+            <p className="mt-1 break-words text-lg font-bold tabular-nums">
+              {formatBND(summary.pendingCashAmount)} / {formatBND(summary.pendingTransferAmount)}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {summary.pendingCashOrderCount} cash · {summary.pendingTransferOrderCount} transfer
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Cash on hand</p>
@@ -446,8 +472,18 @@ export default function DriverAnalyticsPage() {
                   }}
                 >
                   <span className="text-sm font-semibold">{format(setMonth(startOfYear(calendarMonth), month.monthIndex), 'MMM')}</span>
-                  <span className="mt-3 block text-xl font-bold">{month.deliveredOrders ?? 0}</span>
-                  <span className="text-xs text-muted-foreground">delivered orders</span>
+                  {(() => {
+                    const monthCell = getDriverAnalyticsCalendarCell(month.deliveredOrders, month.assignedOrders);
+                    return (
+                      <>
+                        <span className="mt-3 block text-xl font-bold tabular-nums">{monthCell.label}</span>
+                        <span className="text-xs text-muted-foreground">accepted delivered / assigned</span>
+                        <span className="block text-[10px] text-muted-foreground">
+                          {Math.round(monthCell.percentage)}% complete
+                        </span>
+                      </>
+                    );
+                  })()}
                   <span className="mt-2 block text-[10px] text-muted-foreground">
                     Sales {formatBND(month.totalSales ?? 0)}
                   </span>
@@ -508,6 +544,7 @@ export default function DriverAnalyticsPage() {
               <button
                 key={day.date}
                 type="button"
+                aria-label={`${format(parseISO(day.date), 'd MMMM yyyy')}: ${getDriverAnalyticsCalendarCell(day.deliveredOrders, day.assignedOrders).label}`}
                 onClick={() => {
                   selectAnalyticsDate(day.date);
                 }}
@@ -515,16 +552,24 @@ export default function DriverAnalyticsPage() {
                   'h-14 min-w-0 overflow-hidden border-b border-r border-border p-1 text-left transition-colors hover:bg-muted sm:aspect-square sm:h-auto',
                   selectedDate === day.date && 'bg-primary/10 ring-2 ring-inset ring-primary',
                 )}
-              >
-                <span className="block text-xs font-semibold">{format(parseISO(day.date), 'd')}</span>
-                <span
-                  className={cn(
-                    'mt-1 block whitespace-nowrap text-center text-[10px] font-bold sm:text-sm',
-                    day.deliveredOrders > 0 && 'text-emerald-700',
-                  )}
                 >
-                  {day.deliveredOrders}
-                </span>
+                  <span className="block text-xs font-semibold">{format(parseISO(day.date), 'd')}</span>
+                {(() => {
+                  const cell = getDriverAnalyticsCalendarCell(day.deliveredOrders, day.assignedOrders);
+                  return (
+                    <span
+                      className={cn(
+                        'mt-1 block whitespace-nowrap text-center text-[10px] font-bold tabular-nums sm:text-sm',
+                        cell.status === 'complete' && 'text-emerald-700 dark:text-emerald-400',
+                        cell.status === 'partial' && 'text-amber-700 dark:text-amber-400',
+                        cell.status === 'zero' && 'text-red-700 dark:text-red-400',
+                        cell.status === 'empty' && 'text-muted-foreground',
+                      )}
+                    >
+                      {cell.label}
+                    </span>
+                  );
+                })()}
               </button>
             ))}
           </div>
@@ -552,12 +597,39 @@ export default function DriverAnalyticsPage() {
           ) : selectedDay ? (
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-y border-border py-4 sm:grid-cols-3">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Delivered orders</p>
-                <p className="mt-1 text-2xl font-bold">{selectedDay.deliveredOrders}</p>
-                <p className="text-[11px] text-muted-foreground">{selectedDay.pendingAcceptance} pending acceptance</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Assigned</p>
+                <p className="mt-1 text-2xl font-bold">{selectedDayBreakdown.assignedOrders}</p>
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Delivered sales</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Runner-accepted delivered</p>
+                <p className="mt-1 text-2xl font-bold">{selectedDayBreakdown.deliveredOrders}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Remaining</p>
+                <p className="mt-1 text-2xl font-bold">{selectedDayBreakdown.remainingOrders}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Awaiting Runner acceptance</p>
+                <p className="mt-1 text-lg font-bold">{selectedDayBreakdown.pendingAcceptanceOrders}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Failed</p>
+                <p className="mt-1 text-lg font-bold">{selectedDayBreakdown.acceptedFailedOrders}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Rescheduled</p>
+                <p className="mt-1 text-lg font-bold">{selectedDayBreakdown.rescheduledOrders}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Active / pending</p>
+                <p className="mt-1 text-lg font-bold">{selectedDayBreakdown.activePendingOrders}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Rejected / reopened</p>
+                <p className="mt-1 text-lg font-bold">{selectedDayBreakdown.rejectedReopenedOrders}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Accepted delivered sales</p>
                 <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.totalSales)}</p>
               </div>
               <div className="min-w-0">
@@ -569,6 +641,15 @@ export default function DriverAnalyticsPage() {
                 <p className="text-[11px] font-semibold text-muted-foreground">Transfer</p>
                 <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.transferAmount)}</p>
                 <p className="text-[11px] text-muted-foreground">{selectedDay.transferOrderCount} orders</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">Pending cash / transfer</p>
+                <p className="mt-1 break-words text-lg font-bold tabular-nums">
+                  {formatBND(selectedDay.pendingCashAmount)} / {formatBND(selectedDay.pendingTransferAmount)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {selectedDay.pendingCashOrderCount} cash · {selectedDay.pendingTransferOrderCount} transfer
+                </p>
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold text-muted-foreground">Cash on hand</p>
@@ -586,7 +667,7 @@ export default function DriverAnalyticsPage() {
           {isSelectedDayLoading || isSelectedDayError ? null : selectedOrders.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground">
               <CalendarDays className="mx-auto mb-2 h-7 w-7" />
-              No Driver-delivered orders on this day.
+              No assigned orders on this day.
             </div>
           ) : (
             <div className="mt-3">

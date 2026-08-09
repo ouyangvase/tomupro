@@ -6,6 +6,7 @@ import type { Profile, AppRole } from '@/types/database';
 import type { ProfileStatus } from '@/components/auth/ProfileGate';
 import { clearVisibleOwnerIdsCache } from '@/lib/visibleOwnerIdsCache';
 import { lifecycleTrace } from '@/lib/lifecycleTrace';
+import { subscribeWithReconnect } from '@/lib/subscribeWithReconnect';
 
 // Extended Profile type to include new status fields
 type UserStatus = 'active' | 'disabled' | 'resigned';
@@ -35,7 +36,7 @@ interface AuthContextType {
   retryProfile: () => Promise<void>;
   resetSession: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string, inviteCode?: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -58,8 +59,8 @@ const getSupabaseProjectRef = () => {
 };
 
 const SUPABASE_PROJECT_REF = getSupabaseProjectRef();
-const PROFILE_FETCH_TIMEOUT_MS = 5000;
-const PROFILE_FETCH_MAX_RETRIES = 0;
+const PROFILE_FETCH_TIMEOUT_MS = 8000;
+const PROFILE_FETCH_MAX_RETRIES = 2;
 const PROFILE_FETCH_BASE_DELAY_MS = 300;
 const PROFILE_CACHE_PREFIX = `tomupro-profile-cache:${SUPABASE_PROJECT_REF}:`;
 const VALID_ROLES: AppRole[] = ['admin', 'manager', 'salesperson', 'runner', 'driver', 'runner_assistant', 'finance_viewer'];
@@ -147,6 +148,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Clear stale tokens function - used when session refresh fails
   const clearAuthState = useCallback(() => {
+    // Invalidate any in-flight profile request before clearing the session.
+    // Otherwise a late response from the previous user can overwrite the new
+    // auth state or surface a misleading load error during sign-in.
+    profileRequestSeqRef.current += 1;
+    isFetchingRef.current = false;
+    profileUserIdRef.current = null;
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
     clearProfileCache();
@@ -409,7 +416,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setProfileStatus('ready');
               setProfileError(null);
               setLoading(false);
-              void fetchProfile(newSession.user.id, { force: true, background: true });
+              window.setTimeout(() => {
+                void fetchProfile(newSession.user.id, { force: true, background: true });
+              }, 0);
             } else {
               const sessionProfile = buildProfileFromSession(newSession);
               if (sessionProfile) {
@@ -419,9 +428,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setProfileStatus('ready');
                 setProfileError(null);
                 setLoading(false);
-                void fetchProfile(newSession.user.id, { force: true, background: true });
+                window.setTimeout(() => {
+                  void fetchProfile(newSession.user.id, { force: true, background: true });
+                }, 0);
               } else {
-                await fetchProfile(newSession.user.id);
+                setProfileStatus('loading');
+                setProfileError(null);
+                window.setTimeout(() => {
+                  void fetchProfile(newSession.user.id);
+                }, 0);
               }
             }
           }
@@ -454,8 +469,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!ENABLE_PROFILE_REALTIME) return;
     if (!user?.id) return;
 
-    const channel = supabase
-      .channel(`profile-changes-${user.id}`)
+    const channelName = `profile-changes-${user.id}`;
+    return subscribeWithReconnect(() => supabase
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -484,12 +500,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           writeCachedProfile(newProfile);
           previousRoleRef.current = newProfile.role;
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      ),
+      { name: channelName },
+    );
   }, [user?.id, handleAccountDisabled]);
 
   // ─── Auth methods ───────────────────────────────────────────────────
@@ -498,7 +511,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: error as Error | null };
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string) => {
+  const signUp = useCallback(async (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string, inviteCode?: string) => {
     const redirectUrl = `${window.location.origin}/`;
 
     const { error } = await supabase.auth.signUp({
@@ -510,6 +523,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           display_name: displayName,
           role: role,
           ...(runnerCode ? { runner_code: runnerCode } : {}),
+          ...(inviteCode ? { invite_code: inviteCode } : {}),
         },
       },
     });
@@ -538,6 +552,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearVisibleOwnerIdsCache();
     sessionStorage.clear();
 
+    profileRequestSeqRef.current += 1;
+    isFetchingRef.current = false;
+    profileUserIdRef.current = null;
     setUser(null);
     setSession(null);
     setProfile(null);

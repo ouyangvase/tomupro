@@ -17,10 +17,55 @@ type AssignmentBatchResult = {
 };
 
 type DriverReviewResult = {
+  order_id?: string;
   success?: boolean;
   error?: string;
   action?: string;
+  next_delivery_date?: string | null;
 };
+
+export type RunnerDriverBatchItemResult = {
+  orderId: string;
+  success: boolean;
+  action?: string;
+  error?: string;
+};
+
+export type RunnerDriverBatchResult = {
+  processed: RunnerDriverBatchItemResult[];
+  failed: RunnerDriverBatchItemResult[];
+};
+
+type ScheduleDriverTomorrowRpcResult = {
+  success?: boolean;
+  error?: string;
+  tomorrow?: string;
+  processed?: Array<{ order_id: string; order_code?: string | null; next_delivery_date?: string | null }>;
+  processed_count?: number;
+  skipped?: Array<{ order_id: string; order_code?: string | null; reason?: string }>;
+  skipped_count?: number;
+  stock_unchanged?: boolean;
+};
+
+async function reviewDriverDeliveryRpc(
+  orderId: string,
+  actorId: string,
+  accept: boolean,
+  reason: string | null,
+) {
+  const { data, error } = await supabase.rpc('review_driver_delivery', {
+    p_order_id: orderId,
+    p_actor_id: actorId,
+    p_accept: accept,
+    p_reason: reason,
+  });
+  if (error) throw error;
+  const result = data as DriverReviewResult;
+  if (!result?.success) {
+    throw new Error(result?.error || (accept ? 'Unable to accept Driver report' : 'Unable to reject Driver report'));
+  }
+  return result;
+}
 
 type DriverAssignmentRpcClient = {
   rpc: <T = unknown>(
@@ -136,8 +181,38 @@ export function useMyDrivers(runnerIdOverride?: string | string[]) {
   });
 }
 
+// Get every active Runner-Driver link in the requested scope.
+// Unlike useMyDrivers, this intentionally keeps multiple links for one driver
+// so multi-runner assignment can verify every selected order's Runner.
+export function useRunnerDriverLinks(runnerIdOverride?: string | string[], enabled = true) {
+  const { user } = useAuth();
+  const runnerScopeIds = Array.isArray(runnerIdOverride)
+    ? runnerIdOverride
+    : [runnerIdOverride || user?.id].filter((id): id is string => Boolean(id));
+
+  return useQuery({
+    queryKey: ['runner-driver-links', runnerScopeIds],
+    queryFn: async () => {
+      if (runnerScopeIds.length === 0) return [];
+
+      let query = supabase
+        .from('runner_drivers')
+        .select('runner_id, driver_id, is_active')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+      query = runnerScopeIds.length === 1
+        ? query.eq('runner_id', runnerScopeIds[0])
+        : query.in('runner_id', runnerScopeIds);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []) as Pick<RunnerDriver, 'runner_id' | 'driver_id' | 'is_active'>[];
+    },
+    enabled: enabled && runnerScopeIds.length > 0,
+  });
+}
+
 // Get all drivers (for admin)
-export function useAllDrivers() {
+export function useAllDrivers(enabled = true) {
   return useQuery({
     queryKey: ['all-drivers'],
     queryFn: async () => {
@@ -154,6 +229,7 @@ export function useAllDrivers() {
       if (error) throw error;
       return data as unknown as RunnerDriver[];
     },
+    enabled,
   });
 }
 
@@ -368,12 +444,15 @@ export function useDriverMarkDelivered() {
       // Get order details including runner_id
       const { data: order, error: orderError } = await supabase
         .from('orders')
-        .select('driver_id, driver_status, runner_id, runner_accept_status, runner_review_status, order_code, customer_name, total_amount')
+        .select('driver_id, driver_status, runner_id, runner_status, runner_accept_status, runner_review_status, order_code, customer_name, total_amount')
         .eq('id', orderId)
         .single();
       
       if (orderError) throw orderError;
       if (order.driver_id !== user.id) throw new Error('This order is not assigned to you');
+      if (!['ASSIGNED', 'TAKEN'].includes(String(order.runner_status || '').toUpperCase())) {
+        throw new Error('This order is no longer active for delivery');
+      }
       const isFailedCorrection = order.driver_status === 'DRIVER_FAILED';
       if (
         isFailedCorrection
@@ -419,7 +498,8 @@ export function useDriverMarkDelivered() {
         .from('orders')
         .update(updatePayload)
         .eq('id', orderId)
-        .eq('driver_id', user.id);
+        .eq('driver_id', user.id)
+        .in('runner_status', ['ASSIGNED', 'TAKEN']);
 
       if (isFailedCorrection) {
         updateQuery = updateQuery
@@ -452,9 +532,47 @@ export function useDriverMarkDelivered() {
   });
 }
 
+// Driver toggles only the operational delivery status of their own order.
+export function useDriverUpdateStatus() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      driverStatus,
+    }: {
+      orderId: string;
+      driverStatus: 'ASSIGNED' | 'OUT_FOR_DELIVERY';
+    }) => {
+      if (!user?.id) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('orders')
+        .update({ driver_status: driverStatus })
+        .eq('id', orderId)
+        .eq('driver_id', user.id)
+        .in('runner_status', ['ASSIGNED', 'TAKEN'])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      invalidateOrderQueries(queryClient);
+      toast.success('Order status updated');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update order status: ${error.message}`);
+    },
+  });
+}
+
 // Driver marks order as failed
 export function useDriverMarkFailed() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   return useMutation({
     mutationFn: async ({
@@ -468,6 +586,7 @@ export function useDriverMarkFailed() {
       remark?: string;
       nextDeliveryDate?: string;
     }) => {
+      if (!user?.id) throw new Error('Not authenticated');
       const driverFailedAt = new Date().toISOString();
       const { data, error } = await supabase
         .from('orders')
@@ -490,6 +609,8 @@ export function useDriverMarkFailed() {
           updated_at: driverFailedAt,
         })
         .eq('id', orderId)
+        .eq('driver_id', user.id)
+        .in('runner_status', ['ASSIGNED', 'TAKEN'])
         .select()
         .single();
       
@@ -514,6 +635,50 @@ export function useDriverMarkFailed() {
   });
 }
 
+// Driver or Runner can correct a pending failed-delivery option without sending
+// the order through the rejection flow.
+export function useChangeDriverFailedStatus() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      reason,
+      nextDeliveryDate,
+    }: {
+      orderId: string;
+      reason: string;
+      nextDeliveryDate?: string;
+    }) => {
+      if (!user?.id) throw new Error('Not authenticated');
+
+      const { data, error } = await driverAssignmentSupabase.rpc<DriverReviewResult>(
+        'change_driver_failed_status',
+        {
+          p_order_id: orderId,
+          p_actor_id: user.id,
+          p_reason: reason,
+          p_next_delivery_date: nextDeliveryDate || null,
+        },
+      );
+
+      if (error) throw error;
+      if (!data?.success) {
+        throw new Error(data?.error || 'Unable to change the failed-delivery status');
+      }
+      return data;
+    },
+    onSuccess: () => {
+      invalidateOrderQueries(queryClient);
+      toast.success('Failed delivery status updated');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to change status: ${error.message}`);
+    },
+  });
+}
+
 // Runner accepts driver delivery. The RPC creates any cash liability atomically.
 export function useRunnerAcceptDelivery() {
   const queryClient = useQueryClient();
@@ -522,17 +687,7 @@ export function useRunnerAcceptDelivery() {
   return useMutation({
     mutationFn: async (orderId: string) => {
       if (!user?.id) throw new Error('Not authenticated');
-      const { data, error } = await supabase.rpc('review_driver_delivery', {
-        p_order_id: orderId,
-        p_actor_id: user.id,
-        p_accept: true,
-        p_reason: null,
-      });
-      if (error) throw error;
-      if (!(data as DriverReviewResult)?.success) {
-        throw new Error((data as DriverReviewResult)?.error || 'Unable to accept Driver report');
-      }
-      return data as DriverReviewResult;
+      return reviewDriverDeliveryRpc(orderId, user.id, true, null);
     },
     onSuccess: (data) => {
       invalidateOrderQueries(queryClient);
@@ -561,19 +716,9 @@ export function useBulkRunnerAcceptDelivery() {
     mutationFn: async (orderIds: string[]) => {
       if (orderIds.length === 0) throw new Error('No orders selected');
       if (!user?.id) throw new Error('Not authenticated');
-      const results = await Promise.all(orderIds.map(async (orderId) => {
-        const { data, error } = await supabase.rpc('review_driver_delivery', {
-          p_order_id: orderId,
-          p_actor_id: user.id,
-          p_accept: true,
-          p_reason: null,
-        });
-        if (error) throw error;
-        if (!(data as DriverReviewResult)?.success) {
-          throw new Error((data as DriverReviewResult)?.error || 'Unable to accept Driver report');
-        }
-        return data as DriverReviewResult;
-      }));
+      const results = await Promise.all(orderIds.map((orderId) => (
+        reviewDriverDeliveryRpc(orderId, user.id, true, null)
+      )));
       return results;
     },
     onSuccess: (data) => {
@@ -604,17 +749,7 @@ export function useRunnerRejectDelivery() {
   return useMutation({
     mutationFn: async ({ orderId, reason }: { orderId: string; reason: string }) => {
       if (!user?.id) throw new Error('Not authenticated');
-      const { data, error } = await supabase.rpc('review_driver_delivery', {
-        p_order_id: orderId,
-        p_actor_id: user.id,
-        p_accept: false,
-        p_reason: reason,
-      });
-      if (error) throw error;
-      if (!(data as { success?: boolean; error?: string })?.success) {
-        throw new Error((data as { error?: string })?.error || 'Unable to reject Driver report');
-      }
-      return data;
+      return reviewDriverDeliveryRpc(orderId, user.id, false, reason);
     },
     onSuccess: () => {
       invalidateOrderQueries(queryClient);
@@ -643,6 +778,95 @@ export function useDriverOrderCount(driverId?: string) {
       return (data || []).filter(isDriverWorkloadOrder).length;
     },
     enabled: !!driverId,
+  });
+}
+
+// Batch review still calls the same canonical per-order RPC, but returns every
+// order result so one stale report cannot hide the remaining actionable errors.
+export function useRunnerBatchReviewDriverDeliveries() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({
+      orderIds,
+      accept,
+      rejectReason,
+    }: {
+      orderIds: string[];
+      accept: boolean;
+      rejectReason?: string;
+    }): Promise<RunnerDriverBatchResult> => {
+      if (!user?.id) throw new Error('Not authenticated');
+      const uniqueOrderIds = [...new Set(orderIds)].filter(Boolean);
+      if (uniqueOrderIds.length === 0) throw new Error('No orders selected');
+      if (!accept && !rejectReason?.trim()) throw new Error('A rejection reason is required');
+
+      const results = await Promise.allSettled(uniqueOrderIds.map(async (orderId) => {
+        try {
+          const result = await reviewDriverDeliveryRpc(
+            orderId,
+            user.id,
+            accept,
+            accept ? null : rejectReason!.trim(),
+          );
+          return { orderId, success: true, action: result.action } satisfies RunnerDriverBatchItemResult;
+        } catch (error) {
+          return {
+            orderId,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unable to review Driver report',
+          } satisfies RunnerDriverBatchItemResult;
+        }
+      }));
+
+      const items = results.map((result, index) => (
+        result.status === 'fulfilled'
+          ? result.value
+          : {
+              orderId: uniqueOrderIds[index],
+              success: false,
+              error: result.reason instanceof Error ? result.reason.message : 'Unable to review Driver report',
+            }
+      ));
+      return {
+        processed: items.filter((item) => item.success),
+        failed: items.filter((item) => !item.success),
+      };
+    },
+    onSuccess: () => {
+      invalidateOrderQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-accepted-driver-deliveries'] });
+    },
+  });
+}
+
+export function useScheduleDriverFailedOrdersForTomorrow() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ orderIds, driverId }: { orderIds: string[]; driverId?: string | null }) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      const uniqueOrderIds = [...new Set(orderIds)].filter(Boolean);
+      if (uniqueOrderIds.length === 0) throw new Error('No orders selected');
+
+      const { data, error } = await supabase.rpc('schedule_driver_failed_orders_for_tomorrow', {
+        p_order_ids: uniqueOrderIds,
+        p_actor_id: user.id,
+        p_driver_id: driverId || null,
+      });
+      if (error) throw error;
+      const result = data as ScheduleDriverTomorrowRpcResult;
+      if (!result?.success) throw new Error(result?.error || 'Unable to schedule failed orders');
+      return result;
+    },
+    onSuccess: () => {
+      invalidateOrderQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
+      queryClient.invalidateQueries({ queryKey: ['runner-accepted-driver-deliveries'] });
+    },
   });
 }
 

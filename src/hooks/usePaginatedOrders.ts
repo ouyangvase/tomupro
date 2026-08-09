@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 import { lifecycleTrace } from '@/lib/lifecycleTrace';
+import { CANONICAL_ACTION_REQUIRED_OR } from '@/lib/actionRequired';
 import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/types/database';
 
 export interface PaginatedOrderFilters {
@@ -192,7 +193,7 @@ export function usePaginatedOrders(
       // - FAILED_DELIVERY only for READY orders (not stale BOOKING ones)
       // - salesperson_action_required excludes already-DELIVERED orders
       if (filters.actionRequired) {
-        query = query.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
+        query = query.or(CANONICAL_ACTION_REQUIRED_OR);
         query = query.neq('status', 'CANCELLED');
       }
 
@@ -290,7 +291,7 @@ export function usePaginatedOrders(
         if (order.driver_id) userIds.add(order.driver_id);
       });
 
-      let usersMap: Record<string, { id: string; display_name: string; email: string | null }> = {};
+      const usersMap: Record<string, { id: string; display_name: string; email: string | null }> = {};
       if (userIds.size > 0) {
         const { data: usersData } = await supabase
           .from('user_directory')
@@ -422,7 +423,7 @@ export function useAllOrderIds(
           query = query.eq('salesperson_action_required', true);
         }
         if (filters.actionRequired) {
-          query = query.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
+        query = query.or(CANONICAL_ACTION_REQUIRED_OR);
           query = query.neq('status', 'CANCELLED');
         }
 

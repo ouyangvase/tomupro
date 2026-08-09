@@ -4,6 +4,9 @@ export type DriverOrderScopeFields = {
   driver_status?: string | null;
   runner_status?: string | null;
   runner_accept_status?: string | null;
+  runner_review_status?: string | null;
+  runner_final_outcome?: string | null;
+  salesperson_action_required?: boolean | null;
   order_date?: string | null;
   expected_pickup_date?: string | null;
   next_delivery_date?: string | null;
@@ -15,13 +18,20 @@ const FINAL_DRIVER_HIDDEN_STATUSES = new Set([
   'DELIVERED',
   'FAILED',
   'FAILED_DELIVERY',
-  'DRIVER_DELIVERED',
-  'DRIVER_FAILED',
   'DELIVERED_FINAL',
   'CANCELLED',
   'CANCELED',
   'APPROVED',
   'COMPLETED',
+  'RETURNED',
+  'REFUNDED',
+]);
+
+const FINAL_RUNNER_STATUSES = new Set([
+  'DELIVERED',
+  'FAILED_DELIVERY',
+  'CANCELLED',
+  'CANCELED',
   'RETURNED',
   'REFUNDED',
 ]);
@@ -36,23 +46,49 @@ export const DRIVER_WORKLOAD_STATUSES = [
   'OUT_FOR_DELIVERY',
 ] as const;
 
-export const DRIVER_INBOX_ASSIGNMENT_STATES = [
+export const DRIVER_VISIBLE_ASSIGNMENT_STATES = [
   'ACTIVE',
   'PENDING_ACCEPTANCE',
 ] as const;
+
+export const DRIVER_INBOX_ASSIGNMENT_STATES = DRIVER_VISIBLE_ASSIGNMENT_STATES;
 
 export type DriverInboxAssignmentSection =
   | 'ACTIVE'
   | 'PENDING_DELIVERED'
   | 'PENDING_FAILED';
 
+const ACTION_REQUIRED_OUTCOMES = new Set([
+  'NEED_SALESPERSON_FOLLOWUP',
+]);
+
 export function normalizeDriverStatus(value: string | null | undefined) {
   return String(value || '').trim().toUpperCase();
+}
+
+/**
+ * A Driver submission remains current until the Runner explicitly processes it.
+ * This deliberately takes precedence over stale legacy runner_status values.
+ */
+export function isPendingDriverOutcome(order: DriverOrderScopeFields) {
+  const driverStatus = normalizeDriverStatus(order.driver_status);
+  return (
+    (driverStatus === 'DRIVER_DELIVERED' || driverStatus === 'DRIVER_FAILED')
+    && !['CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'].includes(normalizeDriverStatus(order.status))
+    && normalizeDriverStatus(order.runner_accept_status) !== 'ACCEPTED'
+    && normalizeDriverStatus(order.runner_review_status) !== 'REVIEWED'
+    && !['CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'].includes(normalizeDriverStatus(order.runner_status))
+    && !['DELIVERED_FINAL', 'CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'].includes(normalizeDriverStatus(order.operational_status))
+    && order.salesperson_action_required !== true
+    && normalizeDriverStatus(order.runner_review_status) !== 'ACTION_REQUIRED'
+    && normalizeDriverStatus(order.runner_final_outcome) !== 'NEED_SALESPERSON_FOLLOWUP'
+  );
 }
 
 export function getDriverInboxAssignmentSection(order: DriverOrderScopeFields & {
   assignment_state?: string | null;
 }): DriverInboxAssignmentSection | null {
+  if (isHiddenFromDriverApps(order)) return null;
   const assignmentState = normalizeDriverStatus(order.assignment_state);
   if (assignmentState === 'ACTIVE') return 'ACTIVE';
   if (assignmentState !== 'PENDING_ACCEPTANCE') return null;
@@ -61,6 +97,16 @@ export function getDriverInboxAssignmentSection(order: DriverOrderScopeFields & 
   if (driverStatus === 'DRIVER_DELIVERED') return 'PENDING_DELIVERED';
   if (driverStatus === 'DRIVER_FAILED') return 'PENDING_FAILED';
   return null;
+}
+
+export function getDriverInboxVisibleOrders<
+  T extends DriverOrderScopeFields & { assignment_state?: string | null },
+>(orders: T[]) {
+  return orders.filter((order) => getDriverInboxAssignmentSection(order) !== null);
+}
+
+export function isFinalRunnerAssignment(order: DriverOrderScopeFields) {
+  return FINAL_RUNNER_STATUSES.has(normalizeDriverStatus(order.runner_status));
 }
 
 export function toDateKey(value: string | Date | null | undefined) {
@@ -99,11 +145,16 @@ export function getDriverOperationalDateKey(order: DriverOrderScopeFields) {
 }
 
 export function isHiddenFromDriverApps(order: DriverOrderScopeFields) {
+  if (isPendingDriverOutcome(order)) return false;
+
   return (
     FINAL_DRIVER_HIDDEN_STATUSES.has(normalizeDriverStatus(order.status))
     || FINAL_DRIVER_HIDDEN_STATUSES.has(normalizeDriverStatus(order.operational_status))
     || FINAL_DRIVER_HIDDEN_STATUSES.has(normalizeDriverStatus(order.runner_status))
     || FINAL_DRIVER_HIDDEN_STATUSES.has(normalizeDriverStatus(order.driver_status))
+    || order.salesperson_action_required === true
+    || normalizeDriverStatus(order.runner_review_status) === 'ACTION_REQUIRED'
+    || ACTION_REQUIRED_OUTCOMES.has(normalizeDriverStatus(order.runner_final_outcome))
   );
 }
 

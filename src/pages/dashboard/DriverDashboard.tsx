@@ -9,6 +9,7 @@ import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { useDriverAllocatedStock, useDriverPickups } from '@/hooks/useDriverPickups';
 import { useDriverReturnRequired } from '@/hooks/useDriverReturnRequired';
 import { useDriverReturns } from '@/hooks/useDriverReturns';
+import { DRIVER_VISIBLE_ASSIGNMENT_STATES } from '@/lib/driverOrderScope';
 import {
   Boxes,
   CalendarDays,
@@ -23,7 +24,8 @@ import {
 
 export function DriverDashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { profile, user } = useAuth();
+  const effectiveDriverId = profile?.id || user?.id;
   const today = format(new Date(), 'yyyy-MM-dd');
   const { data: analytics, isLoading } = useDriverAnalytics(user?.id, {
     dateFrom: today,
@@ -31,11 +33,11 @@ export function DriverDashboard() {
     calendarFrom: today,
     calendarTo: today,
   });
-  const { data: activeJobs = [], isLoading: isLoadingActiveJobs } = useDriverAssignments({
-    driverId: user?.id,
-    dateTo: today,
+  const { data: assignedJobs = [], isLoading: isLoadingAssignedJobs } = useDriverAssignments({
+    driverId: effectiveDriverId,
     activeOnly: true,
     includeItems: false,
+    states: [...DRIVER_VISIBLE_ASSIGNMENT_STATES],
   });
   const { data: pickups = [] } = useDriverPickups();
   const { data: returns = [] } = useDriverReturns();
@@ -47,6 +49,7 @@ export function DriverDashboard() {
     && (pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED'));
   const pendingReturn = returns.find((driverReturn) => driverReturn.status === 'PENDING_RUNNER_ACK');
   const stockQty = allocatedStock.reduce((sum, item) => sum + Number(item.allocated_qty || 0), 0);
+  const activeJobs = assignedJobs.filter((job) => job.assignment_state === 'ACTIVE');
 
   const nextStep = pendingPickup
     ? {
@@ -120,9 +123,9 @@ export function DriverDashboard() {
 
       <section className="grid grid-cols-2 gap-x-5 gap-y-5 border-b border-border pb-5">
         <div>
-          <p className="text-sm text-muted-foreground">Today's jobs</p>
-          {isLoadingActiveJobs ? <Skeleton className="mt-2 h-8 w-20" /> : (
-            <p className="mt-1 text-3xl font-bold">{activeJobs.length}</p>
+          <p className="text-sm text-muted-foreground">Assigned deliveries</p>
+          {isLoadingAssignedJobs ? <Skeleton className="mt-2 h-8 w-20" /> : (
+            <p className="mt-1 text-3xl font-bold">{assignedJobs.length}</p>
           )}
         </div>
         <div>

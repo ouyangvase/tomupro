@@ -24,7 +24,7 @@ import {
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Plus, Clock, CheckCircle, XCircle, History, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDeliveryCharges, useActiveDeliveryCharges, useCreateDeliveryCharge, useDeleteDeliveryChargesByArea } from '@/hooks/useDeliveryCharges';
+import { useDeliveryCharges, useActiveDeliveryCharges, useCreateDeliveryCharge, useCancelPendingDeliveryCharge } from '@/hooks/useDeliveryCharges';
 import { format } from 'date-fns';
 import type { DeliveryChargeStatus } from '@/types/delivery-charges';
 
@@ -32,6 +32,7 @@ const statusConfig: Record<DeliveryChargeStatus, { label: string; icon: React.Re
   PENDING: { label: 'Pending', icon: <Clock className="h-3 w-3" />, variant: 'secondary' },
   APPROVED: { label: 'Approved', icon: <CheckCircle className="h-3 w-3" />, variant: 'default' },
   REJECTED: { label: 'Rejected', icon: <XCircle className="h-3 w-3" />, variant: 'destructive' },
+  CANCELLED: { label: 'Cancelled', icon: <XCircle className="h-3 w-3" />, variant: 'outline' },
 };
 
 export default function RunnerDeliveryCharges() {
@@ -40,20 +41,23 @@ export default function RunnerDeliveryCharges() {
   const [historyArea, setHistoryArea] = useState<string | null>(null);
   const [newArea, setNewArea] = useState('');
   const [newAmount, setNewAmount] = useState('');
-  const [deleteArea, setDeleteArea] = useState<string | null>(null);
+  const [cancelProposal, setCancelProposal] = useState<{ area: string; chargeId: string } | null>(null);
 
   const { data: allCharges = [], isLoading } = useDeliveryCharges({ runnerId: profile?.id });
   const { data: activeCharges = [] } = useActiveDeliveryCharges(profile?.id);
   const createCharge = useCreateDeliveryCharge();
-  const deleteCharges = useDeleteDeliveryChargesByArea();
+  const cancelCharge = useCancelPendingDeliveryCharge();
 
   // Group charges by area for display
   const chargesByArea = allCharges.reduce((acc, charge) => {
+    if (charge.status !== 'PENDING' && !(charge.status === 'APPROVED' && !charge.superseded_at)) {
+      return acc;
+    }
+
     if (!acc[charge.area]) {
       acc[charge.area] = {
         active: null as typeof charge | null,
         pending: null as typeof charge | null,
-        history: [] as typeof allCharges,
       };
     }
     
@@ -62,10 +66,8 @@ export default function RunnerDeliveryCharges() {
     } else if (charge.status === 'PENDING') {
       acc[charge.area].pending = charge;
     }
-    acc[charge.area].history.push(charge);
-    
     return acc;
-  }, {} as Record<string, { active: typeof allCharges[0] | null; pending: typeof allCharges[0] | null; history: typeof allCharges }>);
+  }, {} as Record<string, { active: typeof allCharges[0] | null; pending: typeof allCharges[0] | null }>);
 
   const handleSubmit = async () => {
     if (!newArea.trim() || !newAmount) return;
@@ -80,7 +82,7 @@ export default function RunnerDeliveryCharges() {
     setDialogOpen(false);
   };
 
-  const areaHistory = historyArea ? chargesByArea[historyArea]?.history || [] : [];
+  const areaHistory = historyArea ? allCharges.filter((charge) => charge.area === historyArea) : [];
 
   return (
     <AppLayout>
@@ -214,14 +216,17 @@ export default function RunnerDeliveryCharges() {
                               Edit
                             </Button>
                           )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => setDeleteArea(area)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {data.pending && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              aria-label={`Cancel pending proposal for ${area}`}
+                              onClick={() => setCancelProposal({ area, chargeId: data.pending!.id })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -325,9 +330,9 @@ export default function RunnerDeliveryCharges() {
                     <TableCell className="text-sm">
                       {charge.approved_at ? (
                         <span>{format(new Date(charge.approved_at), 'dd MMM yyyy HH:mm')}</span>
-                      ) : charge.status === 'REJECTED' ? (
+                      ) : charge.status === 'REJECTED' || charge.status === 'CANCELLED' ? (
                         <span className="text-destructive">
-                          {charge.rejection_remark || 'Rejected'}
+                          {charge.rejection_remark || statusConfig[charge.status].label}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">Pending</span>
@@ -341,27 +346,32 @@ export default function RunnerDeliveryCharges() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteArea} onOpenChange={() => setDeleteArea(null)}>
+      {/* Cancel Proposal Confirmation Dialog */}
+      <AlertDialog open={!!cancelProposal} onOpenChange={() => setCancelProposal(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete area charge: {deleteArea}</AlertDialogTitle>
+            <AlertDialogTitle>Cancel pending proposal: {cancelProposal?.area}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all delivery charge records (active, pending, and history) for this area. This action cannot be undone.
+              This removes the pending proposal from the current charges. Approved rates and the audit history for this area will remain unchanged.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                if (deleteArea && profile?.id) {
-                  deleteCharges.mutate({ runnerId: profile.id, area: deleteArea });
-                  setDeleteArea(null);
+              disabled={cancelCharge.isPending}
+              onClick={async (event) => {
+                if (!cancelProposal) return;
+                event.preventDefault();
+                try {
+                  await cancelCharge.mutateAsync(cancelProposal.chargeId);
+                  setCancelProposal(null);
+                } catch {
+                  // The mutation displays the backend error.
                 }
               }}
             >
-              Delete
+              {cancelCharge.isPending ? 'Cancelling...' : 'Cancel proposal'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

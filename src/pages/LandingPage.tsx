@@ -1548,7 +1548,7 @@ function LoginModal({
 }: {
   open: boolean; initialTab: 'login' | 'signup'; onClose: () => void;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string, inviteCode?: string) => Promise<{ error: any }>;
   navigate: (path: string) => void; toast: (opts: any) => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -1579,6 +1579,9 @@ function LoginModal({
     if (lower.includes('email') && lower.includes('invalid')) return 'Please enter a valid email address.';
     if (lower.includes('password') && (lower.includes('weak') || lower.includes('short') || lower.includes('least'))) return 'Password is too weak. Use at least 8 characters.';
     if (lower.includes('rate limit') || lower.includes('too many')) return 'Too many attempts. Please wait a moment and try again.';
+    if (lower.includes('invalid or expired invite code')) return 'This admin code is invalid, expired, or already fully used.';
+    if (lower.includes('unsupported registration role')) return 'This admin code is not valid for registration.';
+    if (lower.includes('database error saving new user')) return 'Registration could not be completed. Please check the code and try again.';
     if (lower.includes('database')) return 'Signup failed. Please try again.';
     return msg;
   };
@@ -1602,6 +1605,7 @@ function LoginModal({
     setLoading(true);
     let assignedRole: AppRole = 'driver';
     let runnerCode: string | undefined;
+    let adminInviteCode: string | undefined;
     if (inviteCode.trim()) {
       setCodeStatus('validating');
       const normalizedCode = inviteCode.trim().toUpperCase();
@@ -1622,6 +1626,7 @@ function LoginModal({
         const validatedRole = await validateInviteCode(normalizedCode);
         if (validatedRole) {
           assignedRole = validatedRole as AppRole;
+          adminInviteCode = normalizedCode;
           setCodeStatus('valid');
           toast({ title: 'Admin Code Applied', description: `Role: ${assignedRole}` });
         } else {
@@ -1632,7 +1637,7 @@ function LoginModal({
         }
       }
     }
-    const { error } = await signUp(signupEmail, signupPassword, displayName, assignedRole, runnerCode);
+    const { error } = await signUp(signupEmail, signupPassword, displayName, assignedRole, runnerCode, adminInviteCode);
     setLoading(false);
     if (error) {
       toast({ variant: 'destructive', title: 'Signup Failed', description: friendlyError(error.message) });
@@ -1779,6 +1784,7 @@ function LoginModal({
                   />
                   {codeStatus === 'valid' && <p className="text-xs text-[#22C55E]">Valid code applied</p>}
                   {codeStatus === 'invalid' && <p className="text-xs text-[#EF4444]">Invalid or expired code</p>}
+                  {codeStatus === 'idle' && <p className="text-xs text-[#94A3B8]">Without an admin code, you will register as a driver and link to a runner on first login.</p>}
                 </div>
                 <Button type="submit" className="w-full h-11 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white font-medium shadow-sm" disabled={loading}>
                   {loading ? 'Creating account...' : 'Create Account'}

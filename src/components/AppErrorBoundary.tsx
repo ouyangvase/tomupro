@@ -1,13 +1,13 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  isChunkLoadFailure,
+  recoverFromChunkLoadFailure,
+  resetChunkRecovery,
+} from "@/lib/chunkRecovery";
 
 type AppErrorBoundaryState = {
   error: Error | null;
-};
-
-const isChunkLoadError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return /Loading chunk|ChunkLoadError|dynamically imported module|Failed to fetch/i.test(message);
 };
 
 export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBoundaryState> {
@@ -20,24 +20,17 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErro
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("App render failed", error, errorInfo);
 
-    if (isChunkLoadError(error)) {
-      const key = "tomupro_chunk_recovery_reload";
-      const lastReload = Number(sessionStorage.getItem(key) || 0);
-
-      if (Date.now() - lastReload > 10_000) {
-        sessionStorage.setItem(key, String(Date.now()));
-        window.location.reload();
-      }
+    if (isChunkLoadFailure(error)) {
+      recoverFromChunkLoadFailure();
     }
   }
 
   private reload = () => {
-    window.location.reload();
+    resetChunkRecovery();
   };
 
   private clearAndReload = () => {
-    sessionStorage.removeItem("tomupro_chunk_recovery_reload");
-    window.location.reload();
+    resetChunkRecovery();
   };
 
   render() {
@@ -68,4 +61,3 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErro
     );
   }
 }
-

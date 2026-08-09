@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Layers, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { resolveAssistantWorkspace } from '@/lib/assistantWorkspace';
+import { lazyWithChunkRecovery } from '@/lib/chunkRecovery';
 
 // Retry dynamic import once on chunk load failure (stale deployment cache)
 function lazyRetry<T extends { default: React.ComponentType<never> }>(
@@ -29,15 +30,15 @@ function lazyRetry<T extends { default: React.ComponentType<never> }>(
   );
 }
 
-const RunnerInbox = lazyRetry(() => import('@/pages/runner/RunnerInbox'));
-const AdminRunnerInbox = lazyRetry(() => import('@/pages/admin/AdminRunnerInbox'));
-const DriverLocationsPage = lazyRetry(() => import('@/pages/runner/DriverLocationsPage'));
-const RunnerDriverInbox = lazyRetry(() => import('@/pages/runner/RunnerDriverInbox'));
-const DriverManagement = lazyRetry(() => import('@/pages/runner/DriverManagement'));
-const RunnerDriverStockWorkspace = lazyRetry(() => import('@/pages/runner/RunnerDriverStockWorkspace'));
-const RunnerFailedOrders = lazyRetry(() => import('@/pages/runner/RunnerFailedOrders'));
-const RunnerDeliveredOrders = lazyRetry(() => import('@/pages/runner/RunnerDeliveredOrders'));
-const SmartMergeTab = lazyRetry(() => import('@/pages/runner/SmartMergeTab'));
+const RunnerInbox = lazyWithChunkRecovery(() => import('@/pages/runner/RunnerInbox'));
+const AdminRunnerInbox = lazyWithChunkRecovery(() => import('@/pages/admin/AdminRunnerInbox'));
+const DriverLocationsPage = lazyWithChunkRecovery(() => import('@/pages/runner/DriverLocationsPage'));
+const RunnerDriverInbox = lazyWithChunkRecovery(() => import('@/pages/runner/RunnerDriverInbox'));
+const DriverManagement = lazyWithChunkRecovery(() => import('@/pages/runner/DriverManagement'));
+const RunnerDriverStockWorkspace = lazyWithChunkRecovery(() => import('@/pages/runner/RunnerDriverStockWorkspace'));
+const RunnerFailedOrders = lazyWithChunkRecovery(() => import('@/pages/runner/RunnerFailedOrders'));
+const RunnerDeliveredOrders = lazyWithChunkRecovery(() => import('@/pages/runner/RunnerDeliveredOrders'));
+const SmartMergeTab = lazyWithChunkRecovery(() => import('@/pages/runner/SmartMergeTab'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">

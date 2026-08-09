@@ -108,11 +108,11 @@ describe('groupDriverReviewOrdersByDate', () => {
   });
 
   it.each([
-    ['DELIVERED', 'DRIVER_DELIVERED'],
-    ['FAILED_DELIVERY', 'DRIVER_FAILED'],
     ['CANCELLED', 'DRIVER_DELIVERED'],
+    ['CANCELED', 'DRIVER_FAILED'],
+    ['RETURNED', 'DRIVER_DELIVERED'],
   ] as const)(
-    'excludes final Runner outcome %s from the pending review queue',
+    'excludes non-reviewable Runner status %s from the pending review queue',
     (runnerStatus, driverStatus) => {
       expect(isPendingDriverReviewOrder({
         id: 'final-order',
@@ -133,4 +133,20 @@ describe('groupDriverReviewOrdersByDate', () => {
       runner_status: 'ASSIGNED',
     }, 'DRIVER_DELIVERED')).toBe(true);
   });
+
+  it.each([
+    ['DELIVERED', 'DRIVER_DELIVERED'],
+    ['FAILED_DELIVERY', 'DRIVER_FAILED'],
+  ] as const)(
+    'keeps an unreviewed Driver outcome visible when Runner status is already %s',
+    (runnerStatus, driverStatus) => {
+      expect(isPendingDriverReviewOrder({
+        id: 'stale-final-status-order',
+        assignment_state: 'PENDING_ACCEPTANCE',
+        driver_id: 'driver-1',
+        driver_status: driverStatus,
+        runner_status: runnerStatus,
+      }, driverStatus)).toBe(true);
+    },
+  );
 });

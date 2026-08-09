@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCancelReasons } from '@/hooks/useCancelReasons';
-import { useBindings } from '@/hooks/useBindings';
+import { useAssignableRunners } from '@/hooks/useAssignableRunners';
 import { useUpdateOrder } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -30,6 +30,8 @@ import { toast } from 'sonner';
 import type { Order } from '@/types/database';
 
 type ResolutionType = 'AUTO_RESCHEDULE' | 'CONVERT_TO_BOOKING' | 'CANCEL';
+
+const defaultResolutionTypes: ResolutionType[] = ['AUTO_RESCHEDULE', 'CONVERT_TO_BOOKING', 'CANCEL'];
 
 interface ResultItem {
   orderId: string;
@@ -43,9 +45,18 @@ interface BulkActionResolutionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  initialResolutionType?: ResolutionType;
+  allowedResolutionTypes?: ResolutionType[];
 }
 
-export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSuccess }: BulkActionResolutionDialogProps) {
+export function BulkActionResolutionDialog({
+  orders,
+  open,
+  onOpenChange,
+  onSuccess,
+  initialResolutionType,
+  allowedResolutionTypes = defaultResolutionTypes,
+}: BulkActionResolutionDialogProps) {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const updateOrder = useUpdateOrder();
@@ -72,22 +83,29 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
   // Fetch cancel reasons from cancel_reasons table
   const { data: cancelReasons = [] } = useCancelReasons(true);
 
-  // Fetch bound runners for this salesperson
-  const { data: bindings = [] } = useBindings({ salespersonId: profile?.id, active: true });
-
-  const boundRunners = useMemo(() => {
-    return bindings.map(b => b.runner).filter(Boolean);
-  }, [bindings]);
+  const runnerScope = profile?.role === 'admin'
+    ? { type: 'all' as const }
+    : profile?.role === 'manager' && profile.id
+      ? { type: 'manager' as const, managerId: profile.id }
+      : profile?.role === 'salesperson' && profile.id
+        ? { type: 'salesperson' as const, salespersonId: profile.id }
+        : null;
+  const { data: boundRunners = [] } = useAssignableRunners(runnerScope);
 
   // Auto-select Auto Reschedule when dialog opens and orders have reschedule dates
   useEffect(() => {
     if (open && orders.length > 0 && !results) {
+      if (initialResolutionType) {
+        setResolutionType(initialResolutionType);
+        return;
+      }
+
       const hasRescheduleDates = orders.some(o => o.next_delivery_date != null);
       if (hasRescheduleDates) {
         setResolutionType('AUTO_RESCHEDULE');
       }
     }
-  }, [open, orders]);
+  }, [open, orders, results, initialResolutionType]);
 
   // Check delivered orders
   const deliveredOrders = useMemo(() => 
@@ -500,7 +518,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
             onValueChange={(v) => setResolutionType(v as ResolutionType)}
             className="space-y-3"
           >
-            <div className={cn(
+            {allowedResolutionTypes.includes('AUTO_RESCHEDULE') && <div className={cn(
               "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
               resolutionType === 'AUTO_RESCHEDULE' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
             )}>
@@ -520,9 +538,9 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
                     ` — ${ordersWithoutRescheduleDate.length} without dates will use your selected date`}
                 </p>
               </div>
-            </div>
+            </div>}
 
-            <div className={cn(
+            {allowedResolutionTypes.includes('CONVERT_TO_BOOKING') && <div className={cn(
               "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
               resolutionType === 'CONVERT_TO_BOOKING' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
             )}>
@@ -536,9 +554,9 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
                 </Label>
                 <p className="text-xs text-muted-foreground">Move all orders to Booking Sales with a new date</p>
               </div>
-            </div>
+            </div>}
 
-            <div className={cn(
+            {allowedResolutionTypes.includes('CANCEL') && <div className={cn(
               "flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors",
               resolutionType === 'CANCEL' ? "border-primary bg-primary/5" : "hover:bg-muted/50"
             )}>
@@ -552,7 +570,7 @@ export function BulkActionResolutionDialog({ orders, open, onOpenChange, onSucce
                 </Label>
                 <p className="text-xs text-muted-foreground">Move orders to Cancelled Sales</p>
               </div>
-            </div>
+            </div>}
           </RadioGroup>
         </div>
 

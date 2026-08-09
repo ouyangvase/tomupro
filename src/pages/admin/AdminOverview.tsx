@@ -1,506 +1,199 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { addMonths, endOfMonth, endOfYear, format, getDay, getDaysInMonth, startOfMonth, startOfYear, subMonths } from 'date-fns';
+import { CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardList, PackageCheck, RefreshCw, Truck, TriangleAlert } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
+import { useAuth } from '@/contexts/AuthContext';
+import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import {
-  AlertTriangle, XCircle, Calendar, MessageSquare, ExternalLink,
-  Construction, Package, DollarSign, CheckCircle, Truck,
-  Clock, Users, ArrowRight, Activity, TrendingUp, ShoppingCart,
-  AlertCircle, Zap
-} from 'lucide-react';
-import { useDailyTaskSnapshots } from '@/hooks/useNotificationSystem';
-import { useOrders } from '@/hooks/useOrders';
-import { useUserDirectory } from '@/hooks/useUserDirectory';
-import { useClaimBatches } from '@/hooks/useClaimBatches';
-import { useAdminActionRequiredStats } from '@/hooks/useActionRequiredStats';
-import { useMaintenanceMode } from '@/hooks/useMaintenanceMode';
-import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
+  useFinanceOverviewAreas,
+  useFinanceOverviewDay,
+  useFinanceOverviewReport,
+  useFinanceOverviewRunners,
+  type FinanceOverviewDay,
+  type FinanceOverviewOrder,
+} from '@/hooks/useFinanceOverview';
+import { useSearchParams } from 'react-router-dom';
+
+type ViewMode = 'month' | 'year';
+type DetailFilter = 'ALL' | 'ASSIGNED' | 'DELIVERED' | 'FAILED_DELIVERY' | 'RESCHEDULED' | 'OTHER';
+
+const emptySummary = {
+  assigned: 0, delivered: 0, failed: 0, rescheduled: 0, otherActionRequired: 0,
+  openCurrent: 0, deliveredAmount: 0, codCount: 0, codAmount: 0, transferCount: 0, transferAmount: 0,
+};
+
+function MetricCard({ label, value, hint, icon: Icon, tone = 'text-foreground' }: { label: string; value: string; hint?: string; icon: typeof Truck; tone?: string }) {
+  return (
+    <Card className="border-border/60 bg-card/80">
+      <CardContent className="flex items-start justify-between gap-3 p-4 md:p-5">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+          <p className={cn('mt-2 text-xl font-semibold md:text-2xl', tone)}>{value}</p>
+          {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+        </div>
+        <div className="rounded-xl bg-muted p-2 text-muted-foreground"><Icon className="h-4 w-4" /></div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CalendarDayCell({ day, metric, onSelect }: { day: number; metric?: FinanceOverviewDay; onSelect: () => void }) {
+  const hasData = Boolean(metric && (metric.assigned || metric.delivered || metric.failed || metric.rescheduled || metric.otherActionRequired || metric.codAmount || metric.transferAmount));
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={`Day ${day}: ${metric?.assigned || 0} assigned, ${metric?.delivered || 0} delivered, ${metric?.failed || 0} failed, ${metric?.rescheduled || 0} rescheduled`}
+      className={cn('min-h-[112px] min-w-0 overflow-hidden rounded-xl border p-1.5 text-left transition-colors hover:border-primary/60 hover:bg-muted/60 sm:min-h-[136px] sm:p-2', hasData ? 'border-border bg-card' : 'border-border/50 bg-muted/15')}
+    >
+      <span className="text-xs font-semibold sm:text-sm">{day}</span>
+      {hasData ? (
+        <div className="mt-2 space-y-1 text-[10px] leading-tight sm:text-[11px]">
+          <p className="font-medium text-slate-700">A {metric?.assigned || 0}</p>
+          <p className="font-medium text-emerald-700">D {metric?.delivered || 0}</p>
+          <p className="font-medium text-red-700">F {metric?.failed || 0}</p>
+          <p className="font-medium text-amber-700">R {metric?.rescheduled || 0}</p>
+          {(metric?.codAmount || 0) > 0 && <p className="truncate font-medium text-sky-700">COD {formatBND(metric?.codAmount || 0)}</p>}
+        </div>
+      ) : <p className="mt-3 text-[10px] text-muted-foreground sm:text-xs">No results</p>}
+    </button>
+  );
+}
+
+function DetailOrder({ order }: { order: FinanceOverviewOrder }) {
+  const labels: Record<FinanceOverviewOrder['classification'], string> = {
+    ASSIGNED: 'Assigned', DELIVERED: 'Delivered', FAILED_DELIVERY: 'Failed', RESCHEDULED: 'Rescheduled', RUNNER_FLAGGED: 'Other action', MANUAL: 'Other action',
+  };
+  const tones: Record<FinanceOverviewOrder['classification'], string> = {
+    ASSIGNED: 'border-slate-200 bg-slate-50 text-slate-700', DELIVERED: 'border-emerald-200 bg-emerald-50 text-emerald-700', FAILED_DELIVERY: 'border-red-200 bg-red-50 text-red-700', RESCHEDULED: 'border-amber-200 bg-amber-50 text-amber-700', RUNNER_FLAGGED: 'border-blue-200 bg-blue-50 text-blue-700', MANUAL: 'border-blue-200 bg-blue-50 text-blue-700',
+  };
+  return (
+    <div className="rounded-xl border border-border/70 bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><p className="font-mono text-sm font-semibold">{order.orderCode}</p><p className="mt-1 text-sm font-medium">{order.customerName || 'Unnamed customer'}</p>{order.area && <p className="mt-1 text-xs text-muted-foreground">{order.area}</p>}</div>
+        <Badge className={cn('border', tones[order.classification])}>{labels[order.classification]}</Badge>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+        <div><p className="text-xs text-muted-foreground">Order total</p><p className="font-semibold">{formatBND(order.totalAmount)}</p></div>
+        <div><p className="text-xs text-muted-foreground">Payment</p><p className="font-medium">{order.paymentMethod || '-'}</p></div>
+        <div><p className="text-xs text-muted-foreground">Source</p><p className="font-medium">{order.source.replaceAll('_', ' ')}</p></div>
+        {order.rescheduleDate && <div><p className="text-xs text-muted-foreground">Next delivery</p><p className="font-medium text-amber-700">{order.rescheduleDate}</p></div>}
+      </div>
+      {order.reason && <p className="mt-3 text-xs text-muted-foreground">{order.reason}</p>}
+    </div>
+  );
+}
 
 export default function AdminOverview() {
-  const navigate = useNavigate();
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [generatingDigest, setGeneratingDigest] = useState(false);
-  const { data: snapshots = [], isLoading: snapshotsLoading, refetch } = useDailyTaskSnapshots(selectedDate);
-  const { data: orders = [] } = useOrders();
-  const { data: userDirectory = [] } = useUserDirectory();
-  const { data: claimBatches = [] } = useClaimBatches();
-  const { data: actionStats, isLoading: actionStatsLoading } = useAdminActionRequiredStats();
-  const { isMaintenanceMode, toggleMaintenance, isToggling } = useMaintenanceMode();
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [runnerId, setRunnerId] = useState('');
+  const [area, setArea] = useState('');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [detailFilter, setDetailFilter] = useState<DetailFilter>('ALL');
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const { data: runners = [], isLoading: runnersLoading } = useFinanceOverviewRunners();
+  const { data: areas = [], isLoading: areasLoading } = useFinanceOverviewAreas();
 
-  const pendingClaimBatches = claimBatches.filter(b => b.status === 'ADMIN_ACK_PENDING');
-  const today = new Date().toISOString().split('T')[0];
-  const twoDaysFromNow = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-  const bookingOrders = orders.filter(o => o.status === 'BOOKING');
-  const readyOrders = orders.filter(o => o.status === 'READY');
-  const deliveredOrders = orders.filter(o => o.runner_status === 'DELIVERED');
-  const disputeOrders = orders.filter(o => o.reconciliation_status === 'DISPUTE');
-  const salespersons = userDirectory.filter(u => u.role === 'salesperson');
-  const runners = userDirectory.filter(u => u.role === 'runner');
-
-  const metrics = {
-    totalOrders: orders.length,
-    bookingCount: bookingOrders.length,
-    readyCount: readyOrders.length,
-    deliveredCount: deliveredOrders.length,
-    bookingOverdue: bookingOrders.filter(o => o.expected_pickup_date && o.expected_pickup_date < today).length,
-    readyNotAssigned: readyOrders.filter(o => o.runner_status === 'UNASSIGNED').length,
-    disputeOpen: disputeOrders.length,
-    pendingClaimBatches: pendingClaimBatches.length,
-    pendingClaimTotal: pendingClaimBatches.reduce((sum, b) => sum + Number(b.total_amount), 0),
-  };
-
-  const generateDailyDigest = async () => {
-    setGeneratingDigest(true);
-    try {
-      const { error } = await supabase.functions.invoke('generate-daily-digest');
-      if (error) throw error;
-      toast.success('Daily digest generated successfully');
-      refetch();
-    } catch {
-      toast.error('Failed to generate daily digest');
-    } finally {
-      setGeneratingDigest(false);
+  useEffect(() => {
+    if (!user?.id || preferencesReady) return;
+    const saved = JSON.parse(localStorage.getItem(`tomu:finance-overview:${user.id}`) || '{}') as { runnerId?: string; area?: string; month?: string; viewMode?: ViewMode };
+    const month = searchParams.get('month') || saved.month;
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const [year, monthNumber] = month.split('-').map(Number);
+      setCalendarMonth(new Date(year, monthNumber - 1, 1));
     }
-  };
+    setRunnerId(searchParams.get('runner') ?? saved.runnerId ?? '');
+    setArea(searchParams.get('area') ?? saved.area ?? '');
+    setViewMode((searchParams.get('view') as ViewMode) || saved.viewMode || 'month');
+    setPreferencesReady(true);
+  }, [preferencesReady, searchParams, user?.id]);
+
+  useEffect(() => {
+    if (!preferencesReady || !user?.id) return;
+    const month = format(calendarMonth, 'yyyy-MM');
+    localStorage.setItem(`tomu:finance-overview:${user.id}`, JSON.stringify({ runnerId, area, month, viewMode }));
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'overview');
+    next.set('month', month);
+    next.set('view', viewMode);
+    if (runnerId) next.set('runner', runnerId); else next.delete('runner');
+    if (area) next.set('area', area); else next.delete('area');
+    setSearchParams(next, { replace: true });
+  }, [area, calendarMonth, preferencesReady, runnerId, searchParams, setSearchParams, user?.id, viewMode]);
+
+  useEffect(() => {
+    if (runners.length && runnerId && !runners.some((runner) => runner.id === runnerId)) setRunnerId('');
+  }, [runnerId, runners]);
+  useEffect(() => {
+    if (areas.length && area && !areas.includes(area)) setArea('');
+  }, [area, areas]);
+
+  const fromDate = format(viewMode === 'year' ? startOfYear(calendarMonth) : startOfMonth(calendarMonth), 'yyyy-MM-dd');
+  const toDate = format(viewMode === 'year' ? endOfYear(calendarMonth) : endOfMonth(calendarMonth), 'yyyy-MM-dd');
+  const reportQuery = useFinanceOverviewReport({ runnerId: runnerId || null, area: area || null, fromDate, toDate });
+  const dayQuery = useFinanceOverviewDay({ runnerId: runnerId || null, area: area || null, date: selectedDate });
+  const report = reportQuery.data;
+  const summary = report?.summary || emptySummary;
+  const daysByDate = useMemo(() => new Map((report?.days || []).map((day) => [day.date, day])), [report?.days]);
+  const yearMonths = useMemo(() => viewMode === 'year' ? Array.from({ length: 12 }, (_, month) => {
+    const prefix = `${format(calendarMonth, 'yyyy')}-${String(month + 1).padStart(2, '0')}`;
+    const monthDays = (report?.days || []).filter((day) => day.date.startsWith(prefix));
+    return { month, assigned: monthDays.reduce((n, day) => n + day.assigned, 0), delivered: monthDays.reduce((n, day) => n + day.delivered, 0), failed: monthDays.reduce((n, day) => n + day.failed, 0), rescheduled: monthDays.reduce((n, day) => n + day.rescheduled, 0), cod: monthDays.reduce((n, day) => n + day.codAmount, 0) };
+  }) : [], [calendarMonth, report?.days, viewMode]);
+  const detailOrders = useMemo(() => {
+    const orders = dayQuery.data?.orders || [];
+    if (detailFilter === 'ALL') return orders;
+    if (detailFilter === 'OTHER') return orders.filter((order) => order.classification === 'RUNNER_FLAGGED' || order.classification === 'MANUAL');
+    return orders.filter((order) => order.classification === detailFilter);
+  }, [dayQuery.data?.orders, detailFilter]);
+
+  const movePeriod = (direction: -1 | 1) => { setSelectedDate(null); setCalendarMonth((current) => direction === 1 ? addMonths(current, viewMode === 'year' ? 12 : 1) : subMonths(current, viewMode === 'year' ? 12 : 1)); };
+  const monthDays = viewMode === 'month' ? getDaysInMonth(calendarMonth) : 0;
+  const firstWeekday = viewMode === 'month' ? (getDay(startOfMonth(calendarMonth)) + 6) % 7 : 0;
+  const runnerName = runnerId ? runners.find((runner) => runner.id === runnerId)?.display_name || runnerId : 'All permitted runners';
+  const detailSummary = dayQuery.data?.summary;
+  const detailTabs: Array<{ key: DetailFilter; label: string; count: number }> = [
+    { key: 'ALL', label: 'All', count: detailOrders.length },
+    { key: 'ASSIGNED', label: 'Assigned', count: detailSummary?.assigned || 0 },
+    { key: 'DELIVERED', label: 'Delivered', count: detailSummary?.delivered || 0 },
+    { key: 'FAILED_DELIVERY', label: 'Failed', count: detailSummary?.failed || 0 },
+    { key: 'RESCHEDULED', label: 'Rescheduled', count: detailSummary?.rescheduled || 0 },
+    { key: 'OTHER', label: 'Other action', count: detailSummary?.otherActionRequired || 0 },
+  ];
 
   return (
     <AppLayout>
-      <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
-        {/* Page Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-primary/10">
-              <Activity className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Operations Center</h1>
-              <p className="text-sm text-muted-foreground">System-wide metrics and performance monitoring</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm",
-              isMaintenanceMode ? "border-destructive/50 bg-destructive/5" : "border-border"
-            )}>
-              <Construction className={cn("h-3.5 w-3.5", isMaintenanceMode ? "text-destructive" : "text-muted-foreground")} />
-              <span className="font-medium">Maintenance</span>
-              <Switch
-                checked={isMaintenanceMode}
-                disabled={isToggling}
-                onCheckedChange={(checked) => {
-                  toggleMaintenance(checked, {
-                    onSuccess: () => toast.success(checked ? 'Maintenance mode enabled' : 'Maintenance mode disabled'),
-                    onError: () => toast.error('Failed to toggle maintenance mode'),
-                  });
-                }}
-              />
-            </div>
-            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-36 h-9" />
-            <Button size="sm" onClick={generateDailyDigest} disabled={generatingDigest}>
-              {generatingDigest ? 'Generating...' : 'Generate Digest'}
-            </Button>
-          </div>
-        </div>
+      <div className="mx-auto max-w-[1400px] space-y-5 p-1 md:p-2">
+        <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Finance overview</p><h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl">Operational results</h1><p className="mt-1 text-sm text-muted-foreground">Delivered and Action Required metrics use the same canonical order sources as Orders.</p></div>
 
-        {/* ── Top Section: Action Required Cards ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <ActionCard
-            label="Action Required"
-            value={actionStats?.systemTotal ?? 0}
-            icon={AlertTriangle}
-            loading={actionStatsLoading}
-            variant="critical"
-            onClick={() => navigate('/sales/action-required')}
-          />
-          <ActionCard
-            label="Failed Delivery"
-            value={actionStats?.failedDelivery ?? 0}
-            icon={XCircle}
-            loading={actionStatsLoading}
-            variant="error"
-            onClick={() => navigate('/sales/action-required')}
-          />
-          <ActionCard
-            label="Reschedule Requests"
-            value={actionStats?.rescheduled ?? 0}
-            icon={Calendar}
-            loading={actionStatsLoading}
-            variant="warning"
-          />
-          <ActionCard
-            label="Runner Notes"
-            value={actionStats?.runnerFlagged ?? 0}
-            icon={MessageSquare}
-            loading={actionStatsLoading}
-            variant="info"
-          />
-        </div>
+        <Card className="border-border/60 bg-card/80"><CardContent className="flex flex-wrap items-center gap-2 p-4">
+          <select aria-label="Runner" value={runnerId} onChange={(event) => { setRunnerId(event.target.value); setSelectedDate(null); }} disabled={runnersLoading} className="h-10 min-w-[190px] rounded-lg border border-border bg-background px-3 text-sm"><option value="">All permitted runners</option>{runners.map((runner) => <option key={runner.id} value={runner.id}>{runner.display_name || runner.email || runner.id}</option>)}</select>
+          <select aria-label="Area" value={area} onChange={(event) => { setArea(event.target.value); setSelectedDate(null); }} disabled={areasLoading} className="h-10 min-w-[170px] rounded-lg border border-border bg-background px-3 text-sm"><option value="">All areas</option>{areas.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <input type="month" aria-label="Report month" value={format(calendarMonth, 'yyyy-MM')} onChange={(event) => { const [year, month] = event.target.value.split('-').map(Number); if (year && month) { setCalendarMonth(new Date(year, month - 1, 1)); setViewMode('month'); setSelectedDate(null); } }} className="h-10 rounded-lg border border-border bg-background px-3 text-sm" />
+          <div className="flex rounded-lg border border-border bg-muted/40 p-1" role="group" aria-label="Report view">{(['month', 'year'] as const).map((mode) => <button key={mode} type="button" onClick={() => { setViewMode(mode); setSelectedDate(null); }} className={cn('rounded-md px-3 py-1.5 text-sm capitalize', viewMode === mode ? 'bg-background font-semibold shadow-sm' : 'text-muted-foreground')}>{mode}</button>)}</div>
+          <Button variant="outline" size="sm" onClick={() => { setRunnerId(''); setArea(''); setCalendarMonth(new Date()); setViewMode('month'); setSelectedDate(null); }}>Reset</Button>
+          <Button variant="ghost" size="icon" aria-label="Refresh report" onClick={() => void reportQuery.refetch()}><RefreshCw className={cn(reportQuery.isFetching && 'animate-spin')} /></Button>
+        </CardContent></Card>
 
-        {/* ── Operations Issues ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <IssueCard
-            label="Overdue Orders"
-            value={metrics.bookingOverdue}
-            alert={metrics.bookingOverdue > 0}
-            alertLabel="Requires attention"
-            icon={AlertCircle}
-            onClick={() => navigate('/sales/booking')}
-          />
-          <IssueCard
-            label="Unassigned Ready"
-            value={metrics.readyNotAssigned}
-            alert={metrics.readyNotAssigned > 0}
-            alertLabel="Needs runner"
-            icon={Truck}
-            onClick={() => navigate('/sales/ready')}
-          />
-          <IssueCard
-            label="Pending Claims"
-            value={metrics.pendingClaimBatches}
-            alert={metrics.pendingClaimBatches > 0}
-            alertLabel={`$${metrics.pendingClaimTotal.toLocaleString()}`}
-            icon={DollarSign}
-            onClick={() => navigate('/admin/claim-batches')}
-          />
-        </div>
-
-        {/* ── Orders Pipeline ── */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-primary" />
-              <CardTitle className="text-base">Orders Pipeline</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <PipelineStage label="Booking" value={metrics.bookingCount} icon={Package} color="primary" onClick={() => navigate('/sales/booking')} />
-              <PipelineStage label="Ready" value={metrics.readyCount} icon={ShoppingCart} color="warning" onClick={() => navigate('/sales/ready')} />
-              <PipelineStage label="Dispatch" value={readyOrders.filter(o => o.runner_status !== 'UNASSIGNED').length} icon={Truck} color="info" onClick={() => navigate('/runner/inbox')} />
-              <PipelineStage label="Delivered" value={metrics.deliveredCount} icon={CheckCircle} color="success" onClick={() => navigate('/reconciliation/admin')} />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ── Salesperson Accountability ── */}
-        {(actionStats?.systemTotal ?? 0) > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-base">Salesperson Accountability</CardTitle>
-                </div>
-                <p className="text-xs text-muted-foreground">Sorted by highest failed deliveries</p>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Salesperson</TableHead>
-                    <TableHead className="text-center">Total</TableHead>
-                    <TableHead className="text-center">Failed</TableHead>
-                    <TableHead className="text-center">Reschedule</TableHead>
-                    <TableHead className="text-center">Notes</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {actionStats?.bySalesperson.filter(sp => sp.total > 0).map((sp) => {
-                    const isHighRisk = sp.failedDelivery >= 10;
-                    return (
-                      <TableRow key={sp.salespersonId} className={cn(isHighRisk && "bg-destructive/[0.03]")}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div>
-                              <p className="font-medium">{sp.salespersonName}</p>
-                              <p className="text-xs text-muted-foreground">{sp.email}</p>
-                            </div>
-                            {isHighRisk && <Badge variant="error" className="text-[10px]">High Risk</Badge>}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="destructive" className="text-sm px-3 font-bold">{sp.total}</Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {sp.failedDelivery > 0 ? (
-                            <span className="text-sm font-bold text-destructive">{sp.failedDelivery}</span>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {sp.rescheduled > 0 ? (
-                            <span className="text-sm font-medium text-[hsl(var(--status-warning))]">{sp.rescheduled}</span>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {sp.runnerFlagged > 0 ? (
-                            <span className="text-sm font-medium text-primary">{sp.runnerFlagged}</span>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => navigate('/sales/action-required')}>
-                            <ExternalLink className="h-3 w-3" /> View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {actionStats?.bySalesperson.filter(sp => sp.total > 0).length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                        No action required items
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ── Team Metrics ── */}
-        <Tabs defaultValue="salespersons">
-          <TabsList>
-            <TabsTrigger value="salespersons">Salespersons ({salespersons.length})</TabsTrigger>
-            <TabsTrigger value="runners">Runners ({runners.length})</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="salespersons" className="mt-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Salesperson Metrics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Salesperson</TableHead>
-                      <TableHead className="text-center">Booking</TableHead>
-                      <TableHead className="text-center">Ready</TableHead>
-                      <TableHead className="text-center">Overdue</TableHead>
-                      
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {salespersons.map((sp) => {
-                      const spOrders = orders.filter(o => o.salesperson_id === sp.id);
-                      const spBooking = spOrders.filter(o => o.status === 'BOOKING').length;
-                      const spReady = spOrders.filter(o => o.status === 'READY').length;
-                      const spOverdue = spOrders.filter(o => o.status === 'BOOKING' && o.expected_pickup_date && o.expected_pickup_date < today).length;
-                      
-
-                      return (
-                        <TableRow key={sp.id}>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{sp.display_name}</p>
-                              <p className="text-xs text-muted-foreground">{sp.email}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">{spBooking}</TableCell>
-                          <TableCell className="text-center">{spReady}</TableCell>
-                          <TableCell className="text-center">
-                            {spOverdue > 0 ? <Badge variant="destructive">{spOverdue}</Badge> : '—'}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="runners" className="mt-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Runner Metrics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Runner</TableHead>
-                      <TableHead className="text-center">Assigned</TableHead>
-                      <TableHead className="text-center">Delivered</TableHead>
-                      <TableHead className="text-center">Failed</TableHead>
-                      <TableHead className="text-center">Pending Claims</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {runners.map((runner) => {
-                      const runnerOrders = orders.filter(o => o.runner_id === runner.id);
-                      const assigned = runnerOrders.filter(o => ['ASSIGNED', 'TAKEN'].includes(o.runner_status)).length;
-                      const delivered = runnerOrders.filter(o => o.runner_status === 'DELIVERED').length;
-                      const failed = runnerOrders.filter(o => o.runner_status === 'FAILED_DELIVERY').length;
-                      const pendingClaims = claimBatches.filter(b => b.runner_id === runner.id && b.status === 'ADMIN_ACK_PENDING').length;
-
-                      return (
-                        <TableRow key={runner.id}>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{runner.display_name}</p>
-                              <p className="text-xs text-muted-foreground">{runner.email}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">{assigned}</TableCell>
-                          <TableCell className="text-center">{delivered}</TableCell>
-                          <TableCell className="text-center">
-                            {failed > 0 ? <Badge variant="destructive">{failed}</Badge> : '—'}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {pendingClaims > 0 ? <Badge variant="secondary">{pendingClaims}</Badge> : '—'}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        {reportQuery.isError ? <Card className="border-red-200 bg-red-50/50"><CardContent className="flex items-center justify-between gap-3 p-5 text-sm text-red-800"><span>Finance Overview could not be loaded. No zero values were substituted for this error.</span><Button variant="outline" size="sm" onClick={() => void reportQuery.refetch()}>Retry</Button></CardContent></Card> : reportQuery.isLoading || !report ? <Skeleton className="h-[420px] w-full" /> : <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><MetricCard label="Delivered" value={String(summary.delivered)} hint={formatBND(summary.deliveredAmount)} icon={PackageCheck} tone="text-emerald-700" /><MetricCard label="Failed" value={String(summary.failed)} hint="Canonical Action Required" icon={TriangleAlert} tone="text-red-700" /><MetricCard label="Rescheduled" value={String(summary.rescheduled)} hint="Delivery Tomorrow / reschedule" icon={ClipboardList} tone="text-amber-700" /><MetricCard label="Delivered amount" value={formatBND(summary.deliveredAmount)} hint={`COD ${formatBND(summary.codAmount)} · Transfer ${formatBND(summary.transferAmount)}`} icon={CircleDollarSign} /></div>
+          <Card className="border-border/60 bg-card/80"><CardHeader className="p-4 pb-2"><CardTitle className="flex items-center gap-2 text-base"><Truck className="h-4 w-4 text-primary" /> Open / In Progress</CardTitle><p className="text-sm text-muted-foreground">Current active workload snapshot; it is not a historical Pending subtraction.</p></CardHeader><CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4"><div><p className="text-2xl font-semibold">{summary.openCurrent}</p><p className="text-xs text-muted-foreground">Open orders</p></div>{[['Booking', report.open.booking], ['Ready', report.open.ready], ['Assigned / Delivery', report.open.assignedDelivery], ['Awaiting Runner Acceptance', report.open.awaitingRunnerAcceptance], ['Future Scheduled', report.open.futureScheduled], ['Other unresolved', report.open.otherUnresolved]].map(([label, value]) => <div key={label as string} className="rounded-lg border border-border/60 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-semibold">{value}</p></div>)}</CardContent></Card>
+          <Card className="min-w-0 overflow-hidden border-border/60 bg-card/80"><CardHeader className="flex flex-row items-center justify-between p-4 pb-3 sm:p-6 sm:pb-3"><CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4 text-primary" /> {viewMode === 'year' ? format(calendarMonth, 'yyyy') : format(calendarMonth, 'MMMM yyyy')}</CardTitle><div className="flex items-center gap-2"><Button variant="outline" size="icon" aria-label="Previous period" onClick={() => movePeriod(-1)}><ChevronLeft /></Button><Button variant="outline" size="icon" aria-label="Next period" onClick={() => movePeriod(1)}><ChevronRight /></Button></div></CardHeader><CardContent className="px-0 pb-4 sm:p-6 sm:pt-0">
+            {viewMode === 'month' ? <><div className="mb-2 grid grid-cols-7 gap-1 text-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:gap-2 sm:text-xs">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <span key={day}>{day}</span>)}</div><div className="grid grid-cols-7 gap-1 sm:gap-2">{Array.from({ length: firstWeekday }, (_, index) => <div key={`blank-${index}`} />)}{Array.from({ length: monthDays }, (_, index) => { const day = index + 1; const date = format(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day), 'yyyy-MM-dd'); return <CalendarDayCell key={date} day={day} metric={daysByDate.get(date)} onSelect={() => { setSelectedDate(date); setDetailFilter('ALL'); }} />; })}</div></> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{yearMonths.map((month) => <button key={month.month} type="button" onClick={() => { setCalendarMonth(new Date(calendarMonth.getFullYear(), month.month, 1)); setViewMode('month'); }} className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/40"><div className="flex items-center justify-between"><h2 className="font-semibold">{format(new Date(calendarMonth.getFullYear(), month.month, 1), 'MMMM')}</h2><span className="text-xs text-muted-foreground">COD {formatBND(month.cod)}</span></div><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-muted-foreground">Assigned</p><p className="font-semibold">{month.assigned}</p></div><div><p className="text-xs text-muted-foreground">Delivered</p><p className="font-semibold text-emerald-700">{month.delivered}</p></div><div><p className="text-xs text-muted-foreground">Failed</p><p className="font-semibold text-red-700">{month.failed}</p></div><div><p className="text-xs text-muted-foreground">Rescheduled</p><p className="font-semibold text-amber-700">{month.rescheduled}</p></div></div></button>)}</div>}
+          </CardContent></Card>
+        </>}
       </div>
+
+      <Sheet open={Boolean(selectedDate)} onOpenChange={(open) => { if (!open) setSelectedDate(null); }}><SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto rounded-t-2xl px-4 pb-8 sm:px-6"><SheetHeader className="mx-auto w-full max-w-4xl pb-4 text-left"><SheetTitle>Daily operational results · {selectedDate}</SheetTitle><SheetDescription>Each tab is the exact order/event list behind the selected count. Runner: {runnerName}. Area: {area || 'All areas'}.</SheetDescription></SheetHeader><div className="mx-auto w-full max-w-4xl space-y-4">{dayQuery.isLoading ? <Skeleton className="h-32 w-full" /> : dayQuery.isError ? <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">Daily details could not be loaded. Please retry.</div> : dayQuery.data && <><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{detailTabs.map((tab) => <button key={tab.key} type="button" onClick={() => setDetailFilter(tab.key)} className={cn('rounded-lg border px-3 py-2 text-left text-xs', detailFilter === tab.key ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground')}><span className="block font-medium">{tab.label}</span><span className="mt-1 block text-base font-semibold">{tab.count}</span></button>)}</div><div className="flex items-center justify-between text-xs text-muted-foreground"><span>{detailOrders.length} row(s) shown</span><span>Asia/Brunei · {dayQuery.data.date}</span></div><div className="space-y-3">{detailOrders.map((order) => <DetailOrder key={`${order.eventId}-${order.orderId}`} order={order} />)}</div>{detailOrders.length === 0 && <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No records for this filter.</div>}</>}</div></SheetContent></Sheet>
     </AppLayout>
-  );
-}
-
-/* ── Sub-components ── */
-
-function ActionCard({ label, value, icon: Icon, loading, variant, onClick }: {
-  label: string;
-  value: number;
-  icon: React.ComponentType<{ className?: string }>;
-  loading: boolean;
-  variant: 'critical' | 'error' | 'warning' | 'info';
-  onClick?: () => void;
-}) {
-  const styles = {
-    critical: {
-      border: value > 0 ? 'border-destructive/40' : 'border-border',
-      bg: value > 0 ? 'bg-destructive/5' : '',
-      icon: value > 0 ? 'text-destructive' : 'text-muted-foreground',
-      pulse: value > 0,
-    },
-    error: {
-      border: value > 0 ? 'border-destructive/30' : 'border-border',
-      bg: value > 0 ? 'bg-destructive/[0.03]' : '',
-      icon: 'text-destructive',
-      pulse: false,
-    },
-    warning: {
-      border: value > 0 ? 'border-[hsl(var(--status-warning)/0.3)]' : 'border-border',
-      bg: value > 0 ? 'bg-[hsl(var(--status-warning)/0.03)]' : '',
-      icon: 'text-[hsl(var(--status-warning))]',
-      pulse: false,
-    },
-    info: {
-      border: value > 0 ? 'border-primary/30' : 'border-border',
-      bg: value > 0 ? 'bg-primary/[0.03]' : '',
-      icon: 'text-primary',
-      pulse: false,
-    },
-  }[variant];
-
-  return (
-    <Card
-      className={cn(styles.border, styles.bg, onClick && "cursor-pointer hover:shadow-md transition-shadow")}
-      onClick={onClick}
-    >
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
-            {loading ? (
-              <Skeleton className="h-10 w-16 mt-1" />
-            ) : (
-              <p className={cn("text-4xl font-bold tracking-tight mt-1", value > 0 && styles.icon)}>
-                <AnimatedCounter value={value} />
-              </p>
-            )}
-          </div>
-          <Icon className={cn("h-7 w-7", styles.icon, styles.pulse && "animate-pulse")} />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function IssueCard({ label, value, alert, alertLabel, icon: Icon, onClick }: {
-  label: string;
-  value: number;
-  alert: boolean;
-  alertLabel: string;
-  icon: React.ComponentType<{ className?: string }>;
-  onClick?: () => void;
-}) {
-  return (
-    <Card
-      className={cn(
-        "transition-all",
-        alert && "border-destructive/20",
-        onClick && "cursor-pointer hover:shadow-sm"
-      )}
-      onClick={onClick}
-    >
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={cn("p-2 rounded-lg", alert ? "bg-destructive/10" : "bg-secondary")}>
-            <Icon className={cn("h-4 w-4", alert ? "text-destructive" : "text-muted-foreground")} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold">{value}</p>
-          </div>
-        </div>
-        {alert && (
-          <Badge variant="destructive" className="mt-2 text-[10px]">{alertLabel}</Badge>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function PipelineStage({ label, value, icon: Icon, color, onClick }: {
-  label: string;
-  value: number;
-  icon: React.ComponentType<{ className?: string }>;
-  color: 'primary' | 'warning' | 'info' | 'success';
-  onClick?: () => void;
-}) {
-  const colorMap = {
-    primary: { bg: 'bg-primary/10', text: 'text-primary' },
-    warning: { bg: 'bg-[hsl(var(--status-warning)/0.1)]', text: 'text-[hsl(var(--status-warning))]' },
-    info: { bg: 'bg-[hsl(var(--status-pending)/0.1)]', text: 'text-[hsl(var(--status-pending))]' },
-    success: { bg: 'bg-[hsl(var(--status-success)/0.1)]', text: 'text-[hsl(var(--status-success))]' },
-  }[color];
-
-  return (
-    <div
-      className={cn("rounded-xl border bg-card p-4 transition-all", onClick && "cursor-pointer hover:shadow-sm")}
-      onClick={onClick}
-    >
-      <div className="flex items-center gap-3">
-        <div className={cn("p-2 rounded-lg", colorMap.bg)}>
-          <Icon className={cn("h-5 w-5", colorMap.text)} />
-        </div>
-        <div>
-          <p className="text-2xl font-bold tabular-nums"><AnimatedCounter value={value} /></p>
-          <p className="text-xs text-muted-foreground font-medium">{label}</p>
-        </div>
-      </div>
-    </div>
   );
 }

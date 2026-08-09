@@ -55,6 +55,7 @@ type AllocatedStockItem = {
 
 type PickupNeedDisplay = RunnerDriverPickupNeed & {
   existingPickup?: DriverPickup;
+  activePickup?: DriverPickup;
 };
 
 const currency = new Intl.NumberFormat('en-BN', {
@@ -134,12 +135,25 @@ function PickupNeedsPanel({
                       <p className="truncate text-lg font-black text-foreground">{need.driver_name}</p>
                       <p className="truncate text-xs font-bold text-primary">Runner: {need.runner_name}</p>
                       <p className="text-sm font-semibold text-muted-foreground">
-                        {need.order_count} active order(s) - {need.total_qty} item qty
+                        {need.order_count} pickup source order(s) - {need.total_qty} required item qty
                       </p>
                     </div>
-                    <Button size="sm" className="shrink-0 rounded-xl" onClick={() => onCreatePickup(need)}>
-                      {need.existingPickup ? <Pencil className="mr-1 h-4 w-4" /> : <Truck className="mr-1 h-4 w-4" />}
-                      {need.existingPickup ? 'Edit pickup' : 'Pickup'}
+                    <Button
+                      size="sm"
+                      className="shrink-0 rounded-xl"
+                      disabled={need.activePickup?.status === 'DRIVER_ACKED'}
+                      onClick={() => onCreatePickup(need)}
+                    >
+                      {need.activePickup?.status === 'DRIVER_ACKED' ? (
+                        <CheckCircle2 className="mr-1 h-4 w-4" />
+                      ) : need.existingPickup ? (
+                        <Pencil className="mr-1 h-4 w-4" />
+                      ) : (
+                        <Truck className="mr-1 h-4 w-4" />
+                      )}
+                      {need.activePickup?.status === 'DRIVER_ACKED'
+                        ? 'Acknowledged'
+                        : need.existingPickup ? 'Edit pickup' : 'Pickup'}
                     </Button>
                   </div>
 
@@ -319,14 +333,16 @@ export default function RunnerDriverStockWorkspace({
   }, [driverNameById, normalizedQuery, stockItems]);
 
   const unscheduledPickupNeeds = useMemo<PickupNeedDisplay[]>(() => {
-    const editableToday = (pickups || []).filter((pickup) =>
+    const activeToday = (pickups || []).filter((pickup) =>
       pickup.pickup_date.slice(0, 10) === todayDate
-      && pickup.status === 'PENDING_DRIVER_ACK');
+      && (pickup.status === 'PENDING_DRIVER_ACK' || pickup.status === 'DRIVER_ACKED'),
+    );
 
     return (pickupNeeds || []).map((need) => ({
       ...need,
-      existingPickup: editableToday.find((pickup) =>
-        pickup.driver_id === need.driver_id && pickup.runner_id === need.runner_id),
+      activePickup: activeToday.find((pickup) => pickup.driver_id === need.driver_id),
+      existingPickup: activeToday.find((pickup) =>
+        pickup.driver_id === need.driver_id && pickup.status === 'PENDING_DRIVER_ACK'),
     }));
   }, [pickupNeeds, pickups, todayDate]);
 
@@ -418,7 +434,7 @@ export default function RunnerDriverStockWorkspace({
             <CardContent className="p-3">
               <PackagePlus className="mb-2 h-4 w-4 text-primary" />
               <p className="text-2xl font-black">{pendingPickups}</p>
-              <p className="text-xs font-semibold text-muted-foreground">{activePickupOrderCount} active order(s)</p>
+              <p className="text-xs font-semibold text-muted-foreground">{activePickupOrderCount} pickup source order(s)</p>
             </CardContent>
           </Card>}
           {!hideDriverStock && <Card className="rounded-2xl border-border/60">

@@ -218,8 +218,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get all users who self-enabled Telegram. Admin permission rows are no
-    // longer required for a user to receive their own Telegram notifications.
+    // Telegram report delivery is self-service. Users opt in from their own
+    // settings; an optional permission row only provides additional data scope.
+    const { data: permissionRows } = await supabase
+      .from('telegram_notification_permissions')
+      .select('*');
+
     const { data: userSettings } = await supabase
       .from('user_telegram_settings')
       .select('*')
@@ -233,6 +237,7 @@ Deno.serve(async (req) => {
     }
 
     const testUserId = body.test_user_id;
+    const permissionsMap = new Map((permissionRows || []).map((permission) => [permission.user_id, permission]));
     const userIds = (userSettings as any[]).map((setting) => setting.user_id);
     const destinationsByUser = new Map<string, TelegramDestination[]>();
     const { data: destinations } = await supabase
@@ -291,6 +296,25 @@ Deno.serve(async (req) => {
 
     console.log(`[DEBUG] unclaimed orders: ${unclaimedOrders.length}`);
 
+    // Include both runner-accepted failures and newly reported Driver failures
+    // so the existing Failed Delivery preference reflects real failed work.
+    let failedOrders: any[] = [];
+    offset = 0;
+    while (true) {
+      const { data: batch } = await supabase
+        .from('orders')
+        .select('id, total_amount, salesperson_id, runner_id, area, status, runner_status, driver_status')
+        .or('runner_status.eq.FAILED_DELIVERY,driver_status.eq.DRIVER_FAILED')
+        .neq('status', 'CANCELLED')
+        .range(offset, offset + pageSize - 1);
+      if (!batch || batch.length === 0) break;
+      failedOrders = failedOrders.concat(batch);
+      if (batch.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    console.log(`[DEBUG] failed orders: ${failedOrders.length}`);
+
     // ── Fetch approved delivery charges (same as useDeliveryCharges hook) ──
     // Key: runner_id + area → charge_amount
     const { data: deliveryChargesData } = await supabase
@@ -309,6 +333,11 @@ Deno.serve(async (req) => {
     console.log(`[DEBUG] delivery charges loaded: ${chargeMap.size} entries`);
 
     // Get active bindings for runner→salesperson lookup
+    const { data: bindingsData } = await supabase
+      .from('bindings')
+      .select('runner_id, salesperson_id')
+      .eq('active', true);
+
     // Get warehouses to auto-derive warehouse IDs from stock owner IDs
     const { data: warehousesData } = await supabase
       .from('warehouses')
@@ -324,19 +353,37 @@ Deno.serve(async (req) => {
     for (const userSetting of (userSettings as any[])) {
       const userId = userSetting.user_id;
       if (testUserId && userId !== testUserId) continue;
+
+      const configuredPermission = permissionsMap.get(userId);
+      const perm = configuredPermission?.admin_enabled ? configuredPermission : {
+        user_id: userId,
+        can_view_all_data: false,
+        see_all_stock: false,
+        allowed_stock_owner_ids: [],
+        allowed_warehouse_ids: [],
+        allowed_runner_ids: [],
+        allowed_team_user_ids: [],
+      };
       const userDestinations = destinationsByUser.get(userId) || [];
       if (userDestinations.length === 0) continue;
 
+      const seeAll = !!perm.can_view_all_data || !!perm.see_all_stock;
       const wantsStock = !!userSetting.receive_stock_balance;
       const wantsDelivered = !!userSetting.receive_delivered_not_claimed;
+      const wantsFailed = !!userSetting.receive_failed_delivery;
 
-      if (!wantsStock && !wantsDelivered) continue;
+      if (!wantsStock && !wantsDelivered && !wantsFailed) continue;
 
       // ── Pre-compute allowed IDs ──
+      const allowedOwnerIds: string[] = perm.allowed_stock_owner_ids || [];
+      const allowedWarehouseIds: string[] = perm.allowed_warehouse_ids || [];
+      const allowedRunnerIds: string[] = perm.allowed_runner_ids || [];
+      const allowedTeamUserIds: string[] = perm.allowed_team_user_ids || [];
+
       // Auto-derive warehouse IDs from allowed stock owners + user's own warehouses
       const derivedWarehouseIds: string[] = [];
       if (warehousesData) {
-        const ownerSet = new Set<string>([userId]);
+        const ownerSet = new Set<string>([userId, ...allowedOwnerIds, ...allowedTeamUserIds]);
         for (const wh of warehousesData) {
           if (ownerSet.has(wh.owner_user_id)) {
             derivedWarehouseIds.push(wh.id);
@@ -344,7 +391,21 @@ Deno.serve(async (req) => {
         }
       }
 
-      const allAllowedOwners = new Set<string>([userId]);
+      const runnerBoundOwnerIds = new Set<string>();
+      if (allowedRunnerIds.length > 0 && bindingsData) {
+        for (const binding of bindingsData) {
+          if (allowedRunnerIds.includes(binding.runner_id)) {
+            runnerBoundOwnerIds.add(binding.salesperson_id);
+          }
+        }
+      }
+
+      const allAllowedOwners = new Set<string>([
+        userId,
+        ...allowedOwnerIds,
+        ...allowedTeamUserIds,
+        ...runnerBoundOwnerIds,
+      ]);
 
       // ── Build combined message ──
       let msg = `<b>TomuPro Daily Report</b>\n\nDate: ${dateStr}\n`;
@@ -354,7 +415,15 @@ Deno.serve(async (req) => {
       if (wantsDelivered) {
         let filteredOrders = unclaimedOrders;
 
-        filteredOrders = filteredOrders.filter(o => o.salesperson_id === userId || o.runner_id === userId);
+        if (!seeAll) {
+          filteredOrders = filteredOrders.filter(o => {
+            if (o.salesperson_id === userId || o.runner_id === userId) return true;
+            if (allowedOwnerIds.includes(o.salesperson_id)) return true;
+            if (allowedRunnerIds.includes(o.runner_id)) return true;
+            if (allowedTeamUserIds.includes(o.salesperson_id)) return true;
+            return false;
+          });
+        }
 
         // Calculate exactly like Submit Claim Batch modal (useClaimPreview):
         // Gross = SUM(total_amount)
@@ -404,16 +473,55 @@ Deno.serve(async (req) => {
         };
       }
 
+      // ── Failed Delivery Section ──
+      if (wantsFailed) {
+        let filteredFailed = failedOrders;
+
+        if (!seeAll) {
+          filteredFailed = filteredFailed.filter(o => {
+            if (o.salesperson_id === userId || o.runner_id === userId) return true;
+            if (allowedOwnerIds.includes(o.salesperson_id)) return true;
+            if (allowedRunnerIds.includes(o.runner_id)) return true;
+            if (allowedTeamUserIds.includes(o.salesperson_id)) return true;
+            return false;
+          });
+        }
+
+        const failedCount = filteredFailed.length;
+        const failedAmount = filteredFailed.reduce(
+          (total, order) => total + (Number(order.total_amount) || 0),
+          0,
+        );
+
+        if (failedCount > 0) {
+          msg += `\nFailed Delivery:`;
+          msg += `\nOrders: ${failedCount}`;
+          msg += `\nAmount: BND ${failedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
+        } else {
+          msg += `\nNo failed deliveries.\n`;
+        }
+
+        debugInfo[userId] = {
+          ...(debugInfo[userId] || {}),
+          failedTotal: failedOrders.length,
+          failedFiltered: failedCount,
+          failedAmount,
+        };
+      }
+
       // ── Stock Balance Section (grouped by OWNER) ──
       if (wantsStock) {
         let filteredStock = allStock || [];
 
-        filteredStock = filteredStock.filter(s => {
-          const ownerId = s.owner_user_id;
-          if (ownerId && allAllowedOwners.has(ownerId)) return true;
-          if (derivedWarehouseIds.length > 0 && derivedWarehouseIds.includes(s.warehouse_id)) return true;
-          return false;
-        });
+        if (!seeAll) {
+          filteredStock = filteredStock.filter(s => {
+            const ownerId = s.owner_user_id;
+            if (ownerId && allAllowedOwners.has(ownerId)) return true;
+            if (allowedWarehouseIds.includes(s.warehouse_id)) return true;
+            if (derivedWarehouseIds.length > 0 && derivedWarehouseIds.includes(s.warehouse_id)) return true;
+            return false;
+          });
+        }
 
         console.log(`[DEBUG] User ${userId}: stock total=${(allStock || []).length}, filtered=${filteredStock.length}`);
 

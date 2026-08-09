@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { subscribeWithReconnect } from '@/lib/subscribeWithReconnect';
 import { useEffect, useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -159,8 +160,8 @@ export function useRealtimeNotifications() {
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase
-      .channel('notifications-realtime')
+    return subscribeWithReconnect(() => supabase
+      .channel(`notifications-realtime-${user.id}`)
       .on(
         'postgres_changes',
         {
@@ -198,12 +199,9 @@ export function useRealtimeNotifications() {
             });
           }
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      ),
+      { name: `notifications-realtime-${user.id}` },
+    );
   }, [user, queryClient]);
 }
 

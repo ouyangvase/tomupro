@@ -30,6 +30,8 @@ export function invalidateOrderQueries(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ['runner-route-overview'] });
   queryClient.invalidateQueries({ queryKey: ['driver-analytics'] });
   queryClient.invalidateQueries({ queryKey: ['runner-drivers-analytics'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-performance'] });
+  queryClient.invalidateQueries({ queryKey: ['runner-performance-day'] });
 
   // Admin ready order stats
   queryClient.invalidateQueries({ queryKey: ['ready-order-stats'] });

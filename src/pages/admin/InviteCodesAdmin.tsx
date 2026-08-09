@@ -124,7 +124,7 @@ export default function InviteCodesAdmin() {
               Invite Codes
             </h1>
             <p className="text-muted-foreground mt-1">
-              Create and manage registration codes for new salespersons
+              Create and manage registration codes for new team members
             </p>
           </div>
 
@@ -139,7 +139,7 @@ export default function InviteCodesAdmin() {
               <DialogHeader>
                 <DialogTitle>Create Invite Code</DialogTitle>
                 <DialogDescription>
-                  Generate a new registration code for users to sign up as salesperson.
+                  Generate a registration code for a specific team role. Users without a code register as drivers.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">

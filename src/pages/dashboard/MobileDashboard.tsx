@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBND } from '@/lib/currency';
 import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
-import { useActiveDriverAssignments } from '@/hooks/useDriverAssignments';
+import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { cn } from '@/lib/utils';
 import { GlobalSearchBar } from '@/components/GlobalSearchBar';
 import capybaraAdmin from '@/assets/capybara-admin.png';
@@ -26,6 +26,7 @@ import capybaraDriver from '@/assets/capybara-driver.png';
 import capybaraSales from '@/assets/capybara-sales.png';
 import capybaraManager from '@/assets/capybara-manager.png';
 import capybaraLoading from '@/assets/capybara-loading.png';
+import { DRIVER_VISIBLE_ASSIGNMENT_STATES } from '@/lib/driverOrderScope';
 import {
   ShoppingCart,
   Package,
@@ -463,10 +464,15 @@ function RunnerMobileDashboard() {
 function DriverMobileDashboard() {
   const { profile, user } = useAuth();
   const effectiveDriverId = profile?.id || user?.id;
-  const { data: activeJobs = [], isLoading } = useActiveDriverAssignments(effectiveDriverId);
+  const { data: assignedJobs = [], isLoading } = useDriverAssignments({
+    driverId: effectiveDriverId,
+    activeOnly: true,
+    includeItems: false,
+    states: [...DRIVER_VISIBLE_ASSIGNMENT_STATES],
+  });
 
   const quickActions: QuickAction[] = [
-    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/delivery/inbox', badge: activeJobs.length },
+    { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" />, href: '/delivery/inbox', badge: assignedJobs.length },
     { id: 'pickups', label: 'Pickups', icon: <PackageCheck className="h-5 w-5" />, href: '/delivery/pickups' },
     { id: 'returns', label: 'Returns', icon: <RotateCcw className="h-5 w-5" />, href: '/delivery/returns' },
     { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-5 w-5" />, href: '/delivery/analytics' },
@@ -476,9 +482,9 @@ function DriverMobileDashboard() {
   return (
     <div className="p-4 space-y-6">
       <HeroSummaryCard
-        title="Active Deliveries"
-        value={activeJobs.length}
-        subtitle="All assigned jobs waiting"
+        title="Assigned Deliveries"
+        value={assignedJobs.length}
+        subtitle="Matches the Driver Inbox"
         viewAllLink="/delivery/inbox"
         viewAllLabel="Start Delivering"
         icon={<Truck className="h-5 w-5" />}

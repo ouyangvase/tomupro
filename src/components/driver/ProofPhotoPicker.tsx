@@ -51,6 +51,8 @@ export function ProofPhotoPicker({
                   src={previewUrl}
                   alt={`${label} preview ${index + 1}`}
                   className="h-44 w-full object-contain"
+                  decoding="async"
+                  loading="lazy"
                 />
                 <Button
                   type="button"

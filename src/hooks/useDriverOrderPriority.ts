@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { subscribeWithReconnect } from "@/lib/subscribeWithReconnect";
 
 export interface DriverOrderPriority {
   id: string;
@@ -115,8 +116,8 @@ export const useDriverOrderPriority = (orderIds?: string[]) => {
   useEffect(() => {
     if (!user?.id) return;
 
-    const channel = supabase
-      .channel("driver_priority_changes")
+    return subscribeWithReconnect(() => supabase
+      .channel(`driver_priority_changes:${user.id}`)
       .on(
         "postgres_changes",
         {
@@ -129,12 +130,9 @@ export const useDriverOrderPriority = (orderIds?: string[]) => {
           // Refetch on any change to keep in sync
           fetchPriorities();
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      ),
+      { name: `driver_priority_changes:${user.id}` },
+    );
   }, [user?.id, fetchPriorities]);
 
   return {

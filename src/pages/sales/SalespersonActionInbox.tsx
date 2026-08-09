@@ -42,6 +42,7 @@ import { OrdersLoadError } from '@/components/orders/OrdersLoadError';
 import { exportOrderLines } from '@/lib/csv';
 import { toast } from 'sonner';
 import { getSignedStorageUrl } from '@/lib/storageUrls';
+import { CANONICAL_ACTION_REQUIRED_OR, classifyActionRequired } from '@/lib/actionRequired';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,11 +68,7 @@ const sourceLabels: Record<ActionRequiredSource, string> = {
 };
 
 function getActionSource(order: Order): ActionRequiredSource | null {
-  const runnerStatus = order.runner_status as string;
-  if (runnerStatus === 'FAILED_DELIVERY') return 'FAILED_DELIVERY';
-  if (order.next_delivery_date) return 'RESCHEDULED';
-  if (order.runner_failed_reason_id || order.runner_comment) return 'RUNNER_FLAGGED';
-  return 'MANUAL';
+  return classifyActionRequired(order);
 }
 
 function needsSalespersonAction(order: Order): boolean {
@@ -279,58 +276,46 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   const canViewAll = role === 'admin';
   const canViewGroup = role === 'manager';
 
-  // ── Server-side stats query (accurate totals across all pages) ──
-  // Uses head:true count queries — no row limit, no client-side iteration
+  // ── Action-required stats query (same predicate and classifier as the list) ──
+  // Fetch only classification fields in batches so the breakdown cannot drift
+  // from the paginated order list when a reschedule also has FAILED_DELIVERY.
   const { data: serverStats } = useQuery({
     queryKey: ['action-required-stats', orderFilters.salespersonId, orderFilters.salespersonIds],
     queryFn: async () => {
-      // Helper: build a base query with the action-required filter + salesperson scope
       const buildBase = () => {
-        let q = supabase.from('orders').select('id', { count: 'exact', head: true });
-        q = q.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
+        let q = supabase.from('orders').select('id, runner_status, next_delivery_date, driver_next_delivery_date, salesperson_action_type, runner_final_outcome, driver_failed_reason, runner_failed_reason_id, runner_comment');
+        q = q.or(CANONICAL_ACTION_REQUIRED_OR);
         q = q.neq('status', 'CANCELLED');
         if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
         if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
         return q;
       };
 
-      // Run all count queries in parallel
-      const [totalRes, failedRes, rescheduledRes, flaggedRes, highPriorityRes] = await Promise.all([
-        // Total action-required
-        buildBase().then(r => r.count || 0),
-        // Failed deliveries (runner_status=FAILED_DELIVERY AND status=READY)
-        (() => {
-          let q = supabase.from('orders').select('id', { count: 'exact', head: true });
-          q = q.eq('runner_status', 'FAILED_DELIVERY').eq('status', 'READY');
-          if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
-          if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
-          return q.then(r => r.count || 0);
-        })(),
-        // Rescheduled (has next_delivery_date, action required, not failed delivery)
-        (() => {
-          let q = supabase.from('orders').select('id', { count: 'exact', head: true });
-          q = q.eq('salesperson_action_required', true).neq('runner_status', 'DELIVERED').neq('runner_status', 'FAILED_DELIVERY');
-          q = q.neq('status', 'CANCELLED').not('next_delivery_date', 'is', null);
-          if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
-          if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
-          return q.then(r => r.count || 0);
-        })(),
-        // Runner flagged (has runner comment/reason, not failed delivery, not rescheduled)
-        (() => {
-          let q = supabase.from('orders').select('id', { count: 'exact', head: true });
-          q = q.eq('salesperson_action_required', true).neq('runner_status', 'DELIVERED').neq('runner_status', 'FAILED_DELIVERY');
-          q = q.neq('status', 'CANCELLED').is('next_delivery_date', null);
-          q = q.or('runner_failed_reason_id.not.is.null,runner_comment.not.is.null');
-          if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
-          if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
-          return q.then(r => r.count || 0);
-        })(),
-        // Over 7 days (updated_at >= 7 days ago)
+      const BATCH_SIZE = 1000;
+      const actionRequired: Array<{
+        runner_status: string | null;
+        next_delivery_date: string | null;
+        driver_next_delivery_date: string | null;
+        salesperson_action_type: string | null;
+        runner_final_outcome: string | null;
+        driver_failed_reason: string | null;
+        runner_failed_reason_id: string | null;
+        runner_comment: string | null;
+      }> = [];
+      for (let offset = 0; ; offset += BATCH_SIZE) {
+        const { data, error } = await buildBase().range(offset, offset + BATCH_SIZE - 1);
+        if (error) throw error;
+        actionRequired.push(...(data || []));
+        if (!data || data.length < BATCH_SIZE) break;
+      }
+
+      const [highPriorityRes] = await Promise.all([
+        // Over 7 days (priority display only; not a historical report date)
         (() => {
           const sevenDaysAgo = new Date();
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
           let q = supabase.from('orders').select('id', { count: 'exact', head: true });
-          q = q.or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)');
+          q = q.or(CANONICAL_ACTION_REQUIRED_OR);
           q = q.neq('status', 'CANCELLED').lte('updated_at', sevenDaysAgo.toISOString());
           if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
           if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
@@ -338,11 +323,21 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
         })(),
       ]);
 
+      let failed = 0;
+      let rescheduled = 0;
+      let flagged = 0;
+      actionRequired.forEach(order => {
+        const category = classifyActionRequired(order as never);
+        if (category === 'FAILED_DELIVERY') failed++;
+        else if (category === 'RESCHEDULED') rescheduled++;
+        else flagged++;
+      });
+
       return {
-        total: totalRes as number,
-        failed: failedRes as number,
-        rescheduled: rescheduledRes as number,
-        flagged: flaggedRes as number,
+        total: actionRequired.length,
+        failed,
+        rescheduled,
+        flagged,
         highPriority: highPriorityRes as number,
       };
     },
@@ -420,7 +415,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
       let query = supabase
         .from('orders')
         .select('salesperson_id')
-        .or('and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)')
+        .or(CANONICAL_ACTION_REQUIRED_OR)
         .neq('status', 'CANCELLED')
         .not('salesperson_id', 'is', null)
         .limit(10000);

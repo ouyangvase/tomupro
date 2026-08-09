@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { subscribeWithReconnect } from "@/lib/subscribeWithReconnect";
 
 export interface DriverRemark {
   id: string;
@@ -141,8 +142,8 @@ export const useDriverRemarks = (orderIds?: string[]) => {
   useEffect(() => {
     if (!user?.id) return;
 
-    const channel = supabase
-      .channel("driver_remarks_changes")
+    return subscribeWithReconnect(() => supabase
+      .channel(`driver_remarks_changes:${user.id}`)
       .on(
         "postgres_changes",
         {
@@ -167,12 +168,9 @@ export const useDriverRemarks = (orderIds?: string[]) => {
             }));
           }
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      ),
+      { name: `driver_remarks_changes:${user.id}` },
+    );
   }, [user?.id]);
 
   return {

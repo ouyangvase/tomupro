@@ -243,25 +243,24 @@ export function useRejectDeliveryCharge() {
   });
 }
 
-export function useDeleteDeliveryChargesByArea() {
+export function useCancelPendingDeliveryCharge() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ runnerId, area }: { runnerId: string; area: string }) => {
-      const { error } = await supabase
-        .from('delivery_charges')
-        .delete()
-        .eq('runner_id', runnerId)
-        .eq('area', area);
+    mutationFn: async (chargeId: string) => {
+      const { data, error } = await supabase.rpc('cancel_delivery_charge_proposal', {
+        p_charge_id: chargeId,
+      });
 
       if (error) throw error;
+      return data as string;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['delivery-charges'] });
-      toast.success('Area charge deleted');
+      toast.success('Pending delivery charge cancelled');
     },
     onError: (error) => {
-      toast.error(`Failed to delete: ${error.message}`);
+      toast.error(`Failed to cancel proposal: ${error.message}`);
     },
   });
 }

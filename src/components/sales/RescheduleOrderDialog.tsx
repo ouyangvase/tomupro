@@ -27,8 +27,7 @@ import { CalendarIcon, Clock, User, ChevronDown } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useSetAutoReschedule } from '@/hooks/useAutoReschedule';
-import { useUserDirectory } from '@/hooks/useUserDirectory';
-import { useBindings } from '@/hooks/useBindings';
+import { useAssignableRunners } from '@/hooks/useAssignableRunners';
 import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -63,15 +62,14 @@ export function RescheduleOrderDialog({
   const { profile } = useAuth();
   const role = profile?.role;
   const setAutoReschedule = useSetAutoReschedule();
-  const { data: users = [] } = useUserDirectory();
-  const { data: bindings = [] } = useBindings(
-    role === 'salesperson' ? { salespersonId: profile?.id, active: true } : undefined
-  );
-
-  // Salesperson: only show bound runners. Admin/manager: show all runners.
-  const runners = role === 'salesperson'
-    ? bindings.map(b => b.runner).filter(Boolean) as { id: string; display_name: string | null }[]
-    : users.filter((u) => u.role === 'runner');
+  const runnerScope = role === 'admin'
+    ? { type: 'all' as const }
+    : role === 'manager' && profile?.id
+      ? { type: 'manager' as const, managerId: profile.id }
+      : role === 'salesperson' && profile?.id
+        ? { type: 'salesperson' as const, salespersonId: profile.id }
+        : null;
+  const { data: runners = [] } = useAssignableRunners(runnerScope);
 
   // Initialize runner when order changes
   useEffect(() => {

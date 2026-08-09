@@ -33,7 +33,9 @@ type RpcMetrics = Partial<Record<
   | 'transferAmount'
   | 'transferOrderCount'
   | 'runnerAcceptedOrders'
-  | 'runnerAcceptedAmount',
+  | 'runnerAcceptedAmount'
+  | 'assignedOrders'
+  | 'acceptedFailedOrders',
   number | string | null
 >> & Partial<Record<
   | 'delivery_rate'
@@ -56,7 +58,9 @@ type RpcMetrics = Partial<Record<
   | 'transfer_amount'
   | 'transfer_order_count'
   | 'runner_accepted_orders'
-  | 'runner_accepted_amount',
+  | 'runner_accepted_amount'
+  | 'assigned_orders'
+  | 'accepted_failed_orders',
   number | string | null
 >>;
 
@@ -89,6 +93,12 @@ export interface DriverAnalyticsSummary {
   cashPendingSettlementCount: number;
   transfer: number;
   transferCount: number;
+  assignedOrders: number;
+  acceptedFailedOrders: number;
+  pendingCashAmount: number;
+  pendingCashOrderCount: number;
+  pendingTransferAmount: number;
+  pendingTransferOrderCount: number;
 }
 
 export interface DriverDailyAnalytics extends DriverAnalyticsSummary {
@@ -163,16 +173,30 @@ function metric(value: number | string | null | undefined) {
 }
 
 export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): DriverAnalyticsSummary {
-  const deliveredOrders = metric(source.deliveredOrders ?? source.delivered_orders ?? source.delivered ?? source.assigned);
-  const totalSales = metric(source.totalSales ?? source.total_sales ?? source.totalAssignedSales ?? source.total_assigned_sales);
-  const cashAmount = metric(source.cashAmount ?? source.cash_amount ?? source.cashCollected ?? source.cash_collected);
-  const cashOrderCount = metric(source.cashOrderCount ?? source.cash_order_count ?? source.cashCollectedCount ?? source.cash_collected_count);
-  const cashOnHand = metric(source.cashOnHand ?? source.cash_on_hand ?? source.cashPendingSettlement ?? source.cash_pending);
-  const cashOnHandCount = metric(source.cashOnHandCount ?? source.cash_on_hand_count ?? source.cashPendingSettlementCount ?? source.cash_pending_count);
-  const transferAmount = metric(source.transferAmount ?? source.transfer_amount ?? source.transfer);
-  const transferOrderCount = metric(source.transferOrderCount ?? source.transfer_order_count ?? source.transferCount ?? source.transfer_count);
-  const runnerAcceptedOrders = metric(source.runnerAcceptedOrders ?? source.runner_accepted_orders ?? source.delivered);
-  const runnerAcceptedAmount = metric(source.runnerAcceptedAmount ?? source.runner_accepted_amount ?? source.acceptedSales ?? source.accepted_sales);
+  const runnerAcceptedOrders = metric(
+    source.runnerAcceptedOrders
+      ?? source.runner_accepted_orders
+      ?? source.deliveredOrders
+      ?? source.delivered_orders,
+  );
+  const runnerAcceptedAmount = metric(
+    source.runnerAcceptedAmount
+      ?? source.runner_accepted_amount
+      ?? source.acceptedSales
+      ?? source.accepted_sales
+      ?? source.totalSales
+      ?? source.total_sales,
+  );
+  const deliveredOrders = runnerAcceptedOrders;
+  const totalSales = runnerAcceptedAmount;
+  const assignedOrders = metric(source.assignedOrders ?? source.assigned_orders ?? source.assigned);
+  const acceptedFailedOrders = metric(source.acceptedFailedOrders ?? source.accepted_failed_orders);
+  const cashAmount = metric(source.cashAmount ?? source.cash_amount);
+  const cashOrderCount = metric(source.cashOrderCount ?? source.cash_order_count);
+  const cashOnHand = metric(source.cashOnHand ?? source.cash_on_hand);
+  const cashOnHandCount = metric(source.cashOnHandCount ?? source.cash_on_hand_count);
+  const transferAmount = metric(source.transferAmount ?? source.transfer_amount);
+  const transferOrderCount = metric(source.transferOrderCount ?? source.transfer_order_count);
   const pendingAcceptance = metric(source.pendingAcceptance ?? source.pending_acceptance);
   const pendingAcceptanceAmount = metric(source.pendingAcceptanceAmount ?? source.pending_acceptance_amount);
 
@@ -187,10 +211,10 @@ export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): Driver
     transferOrderCount,
     runnerAcceptedOrders,
     runnerAcceptedAmount,
-    assigned: deliveredOrders,
+    assigned: assignedOrders,
     delivered: deliveredOrders,
-    deliveryRate: deliveredOrders > 0 ? 100 : 0,
-    failed: 0,
+    deliveryRate: assignedOrders > 0 ? (deliveredOrders / assignedOrders) * 100 : 0,
+    failed: acceptedFailedOrders,
     inactive: 0,
     pending: pendingAcceptance,
     pendingAcceptance,
@@ -205,6 +229,12 @@ export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): Driver
     cashPendingSettlementCount: cashOnHandCount,
     transfer: transferAmount,
     transferCount: transferOrderCount,
+    assignedOrders,
+    acceptedFailedOrders,
+    pendingCashAmount: 0,
+    pendingCashOrderCount: 0,
+    pendingTransferAmount: 0,
+    pendingTransferOrderCount: 0,
   };
 }
 
@@ -272,15 +302,18 @@ export function useDriverAnalyticsDay(driverId?: string, date?: string) {
         p_driver_id: driverId,
         p_date: date,
       });
+      const rpcOrders = data?.orders || [];
+      const normalizedRpcOrders = rpcOrders
+        .map((order) => ({
+          ...order,
+          is_active_assignment: order.assignment_state === 'ACTIVE',
+          collect_amount: metric(order.collect_amount as number | string | null | undefined),
+        }));
 
       return {
         date: data?.date || date,
         summary: normalizeDriverAnalyticsMetrics(data?.summary),
-        orders: (data?.orders || []).map((order) => ({
-          ...order,
-          is_active_assignment: order.assignment_state === 'ACTIVE',
-          collect_amount: metric(order.collect_amount as number | string | null | undefined),
-        })) as DriverAnalyticsOrder[],
+        orders: normalizedRpcOrders as DriverAnalyticsOrder[],
       };
     },
     enabled: Boolean(driverId && date),

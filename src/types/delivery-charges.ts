@@ -1,4 +1,4 @@
-export type DeliveryChargeStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type DeliveryChargeStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 export interface DeliveryCharge {
   id: string;

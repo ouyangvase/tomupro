@@ -16,9 +16,7 @@ export type DriverReviewOrder = {
   updated_at?: string | null;
 };
 
-const FINAL_RUNNER_OUTCOMES = new Set([
-  'DELIVERED',
-  'FAILED_DELIVERY',
+const NON_REVIEWABLE_RUNNER_STATUSES = new Set([
   'CANCELLED',
   'CANCELED',
   'RETURNED',
@@ -101,7 +99,11 @@ export function isPendingDriverReviewOrder(
   return order.assignment_state === 'PENDING_ACCEPTANCE'
     && order.driver_status === expectedDriverStatus
     && Boolean(order.driver_id)
-    && !FINAL_RUNNER_OUTCOMES.has(String(order.runner_status || '').toUpperCase());
+    // A legacy/inconsistent row can already have a final runner_status while
+    // the Driver report is still waiting for Runner review. The assignment
+    // source marks that row as PENDING_ACCEPTANCE, so the driver event remains
+    // the source of truth until the Runner accepts or rejects it.
+    && !NON_REVIEWABLE_RUNNER_STATUSES.has(String(order.runner_status || '').toUpperCase());
 }
 
 export function groupDriverReviewOrdersByDate<T extends DriverReviewOrder>(

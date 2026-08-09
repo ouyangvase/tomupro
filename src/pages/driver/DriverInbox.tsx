@@ -1,8 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUpdateOrder } from '@/hooks/useOrders';
 import { useDriverAssignments } from '@/hooks/useDriverAssignments';
-import { useDriverMarkDelivered, useDriverMarkFailed, useDriverParentRunner } from '@/hooks/useDrivers';
+import { useChangeDriverFailedStatus, useDriverMarkDelivered, useDriverMarkFailed, useDriverParentRunner, useDriverUpdateStatus } from '@/hooks/useDrivers';
 import { useReasons } from '@/hooks/useReasons';
 import { useRouteSuggestion } from '@/hooks/useRouteSuggestion';
 import { useDriverRemarks } from '@/hooks/useDriverRemarks';
@@ -17,11 +16,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp, Search, Clock, AlertTriangle, Camera, Download } from 'lucide-react';
+import { Check, X, MapPin, Package, User, Calendar, Loader2, Truck, Navigation, ChevronDown, ChevronUp, Search, Clock, AlertTriangle, Download, RefreshCw } from 'lucide-react';
 import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import LocationTracker from '@/components/driver/LocationTracker';
 import { DeliveryPaymentDialog, type DriverPaymentMethod, type DriverPaymentSplit } from '@/components/driver/DeliveryPaymentDialog';
 import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
+import { ChangeFailedStatusDialog, type ChangeFailedStatusValues } from '@/components/driver/ChangeFailedStatusDialog';
 import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import { AddressActions } from '@/components/driver/AddressActions';
 import { RouteSuggestionBadge } from '@/components/driver/RouteSuggestionBadge';
@@ -34,9 +34,17 @@ import { cn } from '@/lib/utils';
 import { compressImage } from '@/lib/imageCompression';
 import { downloadXlsx } from '@/lib/xlsxExport';
 import {
+  CUSTOMER_RESCHEDULE_REASON,
+  DELIVERY_TOMORROW_REASON,
+  getTomorrowDateKey,
+  normalizeFailedReason,
+  sortFailedStatusReasons,
+} from '@/lib/driverFailedStatus';
+import {
   getTodayDateKey,
   DRIVER_INBOX_ASSIGNMENT_STATES,
   getDriverInboxAssignmentSection,
+  getDriverInboxVisibleOrders,
   isCompletedDriverDeliveryAccepted,
   isSameDriverOperationalDate,
   normalizeDriverStatus,
@@ -53,13 +61,6 @@ type DriverOrderItem = OrderItem & {
 };
 
 const EMPTY_DRIVER_INBOX_ORDERS: DriverInboxOrder[] = [];
-const DELIVERY_TOMORROW_REASON = 'Delivery Tomorrow';
-const CUSTOMER_RESCHEDULE_REASON = 'Customer requested reschedule';
-
-function normalizeFailureReason(value: string) {
-  return value.trim().toLowerCase();
-}
-
 function firstText(...values: Array<string | null | undefined>) {
   for (const value of values) {
     const text = value?.trim();
@@ -152,9 +153,9 @@ export default function DriverInbox() {
   const {
     data: assignmentOrders,
     isLoading,
-    refetch: refetchAssignments,
   } = useDriverAssignments({
     driverId: effectiveDriverId,
+    activeOnly: true,
     includeItems: true,
     states: [...DRIVER_INBOX_ASSIGNMENT_STATES],
   });
@@ -162,27 +163,18 @@ export default function DriverInbox() {
   const { data: parentRunner } = useDriverParentRunner();
   const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY');
   const orderedFailedReasons = useMemo(
-    () => [...failedReasons].sort((left, right) => {
-      const leftLabel = normalizeFailureReason(left.label);
-      const rightLabel = normalizeFailureReason(right.label);
-      if (leftLabel === normalizeFailureReason(DELIVERY_TOMORROW_REASON)) {
-        return rightLabel === normalizeFailureReason('Other') ? -1 : 0;
-      }
-      if (rightLabel === normalizeFailureReason(DELIVERY_TOMORROW_REASON)) {
-        return leftLabel === normalizeFailureReason('Other') ? 1 : 0;
-      }
-      return 0;
-    }),
+    () => sortFailedStatusReasons(failedReasons),
     [failedReasons],
   );
   const markDelivered = useDriverMarkDelivered();
   const markFailed = useDriverMarkFailed();
-  const updateOrder = useUpdateOrder();
+  const changeFailedStatus = useChangeDriverFailedStatus();
+  const updateDriverStatus = useDriverUpdateStatus();
   const uploadAttachment = useUploadAttachment();
   const { data: driverPickups = [] } = useDriverPickups();
 
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
-  const [failedProofDialogOpen, setFailedProofDialogOpen] = useState(false);
+  const [changeStatusDialogOpen, setChangeStatusDialogOpen] = useState(false);
   const [deliveredDialogOpen, setDeliveredDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<DriverInboxOrder | null>(null);
@@ -197,11 +189,11 @@ export default function DriverInbox() {
   const [failedProofPreviews, setFailedProofPreviews] = useState<string[]>([]);
   const [proofUploading, setProofUploading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const isDeliveryTomorrow = normalizeFailureReason(failedReason)
-    === normalizeFailureReason(DELIVERY_TOMORROW_REASON);
-  const isCustomerReschedule = normalizeFailureReason(failedReason)
-    === normalizeFailureReason(CUSTOMER_RESCHEDULE_REASON);
-  const tomorrowDateKey = useMemo(() => format(addDays(new Date(), 1), 'yyyy-MM-dd'), []);
+  const isDeliveryTomorrow = normalizeFailedReason(failedReason)
+    === normalizeFailedReason(DELIVERY_TOMORROW_REASON);
+  const isCustomerReschedule = normalizeFailedReason(failedReason)
+    === normalizeFailedReason(CUSTOMER_RESCHEDULE_REASON);
+  const tomorrowDateKey = useMemo(() => getTomorrowDateKey(), []);
   const failedSubmissionDate = isDeliveryTomorrow
     ? tomorrowDateKey
     : isCustomerReschedule
@@ -210,7 +202,9 @@ export default function DriverInbox() {
   const failedSubmissionDisabled = !failedReason
     || (isCustomerReschedule && (!nextDeliveryDate || nextDeliveryDate < tomorrowDateKey));
   const myOrders = useMemo<DriverInboxOrder[]>(() => {
-    return orders as DriverInboxOrder[];
+    // Keep a client-side final-state boundary as a defense against stale
+    // cached rows or an older RPC response during rollout.
+    return getDriverInboxVisibleOrders(orders as DriverInboxOrder[]);
   }, [orders]);
 
   // Get delivery date for an order (use next_delivery_date if set, else expected_pickup_date, else order_date)
@@ -236,7 +230,12 @@ export default function DriverInbox() {
     [myOrders, todayDateKey],
   );
   const failedOrdersCount = useMemo(
-    () => myOrders.filter((order) => normalizeDriverStatus(order.driver_status) === 'DRIVER_FAILED' && isSameDriverOperationalDate(order, todayDateKey)).length,
+    () => myOrders.filter((order) => (
+      normalizeDriverStatus(order.driver_status) === 'DRIVER_FAILED'
+      && normalizeDriverStatus(order.runner_accept_status) === 'ACCEPTED'
+      && normalizeDriverStatus(order.runner_status) === 'FAILED_DELIVERY'
+      && isSameDriverOperationalDate(order, todayDateKey)
+    )).length,
     [myOrders, todayDateKey],
   );
   const deliveredPendingAcceptance = useMemo(
@@ -308,6 +307,11 @@ export default function DriverInbox() {
     return ordersCopy;
   }, [pendingOrders, priorities, suggestions, getDeliveryDate]);
 
+  // Export the same visible order snapshot currently rendered in the app.
+  // Do not refetch here: a second snapshot could contain orders that the driver
+  // did not see when tapping Export.
+  const exportableOrders = filteredOrders;
+
   const pickedProductQty = useMemo(() => {
     const totals = new Map<string, number>();
     driverPickups.forEach((pickup) => {
@@ -343,22 +347,17 @@ export default function DriverInbox() {
     return true;
   }, [pickedProductQty]);
 
-  const handleExportOrders = useCallback(async () => {
+  const handleExportOrders = useCallback(() => {
     if (!effectiveDriverId || isExporting) return;
 
     setIsExporting(true);
     try {
-      const refreshed = await refetchAssignments();
-      if (refreshed.error) throw refreshed.error;
-
-      const currentOrders = (refreshed.data ?? []) as DriverInboxOrder[];
-      const exportOrders = filterDriverOrders(currentOrders, searchQuery);
-      if (exportOrders.length === 0) {
+      if (exportableOrders.length === 0) {
         toast.info('No current driver orders to export');
         return;
       }
 
-      const rows = exportOrders.map(order => {
+      const rows = exportableOrders.map(order => {
         const items = getOrderItemsForDisplay(order);
         const productSkuText = items.length > 0
           ? items.map(item => item.productSkuLabel).join('; ')
@@ -384,12 +383,12 @@ export default function DriverInbox() {
 
       downloadXlsx([headers, ...rows], `driver_orders_${dateKey}.xlsx`, 'Driver Orders');
     } catch (error) {
-      console.error('Unable to refresh driver orders for export:', error);
+      console.error('Unable to export current driver orders:', error);
       toast.error('Unable to export current driver orders');
     } finally {
       setIsExporting(false);
     }
-  }, [effectiveDriverId, isExporting, refetchAssignments, searchQuery]);
+  }, [effectiveDriverId, exportableOrders, isExporting]);
 
   const setProofSelection = useCallback((
     files: File[],
@@ -505,11 +504,11 @@ export default function DriverInbox() {
 
   const handleToggleOutForDelivery = useCallback(async (orderId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'ASSIGNED' ? 'OUT_FOR_DELIVERY' : 'ASSIGNED';
-    await updateOrder.mutateAsync({
-      id: orderId,
-      driver_status: newStatus,
+    await updateDriverStatus.mutateAsync({
+      orderId,
+      driverStatus: newStatus,
     });
-  }, [updateOrder]);
+  }, [updateDriverStatus]);
 
   const handleOpenFailedDialog = useCallback((order: DriverInboxOrder) => {
     if (!hasPickupForOrder(order)) {
@@ -526,12 +525,11 @@ export default function DriverInbox() {
     setFailedDialogOpen(true);
   }, [hasPickupForOrder, resetProofSelection]);
 
-  const handleOpenFailedProofDialog = useCallback((order: DriverInboxOrder) => {
+  const handleOpenChangeStatusDialog = useCallback((order: DriverInboxOrder) => {
     setSelectedOrder(order.id);
     setSelectedOrderDetails(order);
-    resetProofSelection('failed');
-    setFailedProofDialogOpen(true);
-  }, [resetProofSelection]);
+    setChangeStatusDialogOpen(true);
+  }, []);
 
   const toggleCardExpanded = (id: string) => {
     setExpandedCards(prev => {
@@ -570,14 +568,16 @@ export default function DriverInbox() {
     resetProofSelection('failed');
   };
 
-  const handleSubmitFailedProof = async () => {
-    if (!selectedOrder || failedProofFiles.length === 0) return;
-
-    await uploadDeliveryProofs(selectedOrder, failedProofFiles);
-    setFailedProofDialogOpen(false);
+  const handleChangeFailedStatus = async ({ reason, nextDeliveryDate }: ChangeFailedStatusValues) => {
+    if (!selectedOrder) return;
+    await changeFailedStatus.mutateAsync({
+      orderId: selectedOrder,
+      reason,
+      nextDeliveryDate,
+    });
+    setChangeStatusDialogOpen(false);
     setSelectedOrder(null);
     setSelectedOrderDetails(null);
-    resetProofSelection('failed');
   };
 
   const getDateLabel = useCallback((order: DriverInboxOrder) => {
@@ -847,24 +847,33 @@ export default function DriverInbox() {
         <LocationTracker />
 
         {/* ─── Stats Pills ─── */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {/* Pending */}
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          {/* Active delivery */}
           <div className="glass-card p-3 text-center">
             <div className="text-3xl font-bold tabular-nums tracking-tight">{pendingOrders.length}</div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
-              Pending
+              To Deliver
             </div>
           </div>
-          {/* Delivered */}
+          {/* Driver-submitted outcomes awaiting Runner processing */}
+          <div className="glass-card p-3 text-center border-[hsl(var(--status-pending)/0.3)]">
+            <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-pending))]">
+              {deliveredPendingAcceptance.length + failedOrdersList.length}
+            </div>
+            <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
+              Awaiting Runner
+            </div>
+          </div>
+          {/* Runner-finalized delivered orders are intentionally outside the current Driver inbox. */}
           <div className="glass-card p-3 text-center border-[hsl(var(--status-pending)/0.3)]">
             <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-pending))]">
               {acceptedDeliveredOrders.length}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
-              Delivered
+              Completed
             </div>
           </div>
-          {/* Failed */}
+          {/* Runner-finalized failed orders are intentionally outside the current Driver inbox. */}
           <div className="glass-card p-3 text-center border-[hsl(var(--status-error)/0.3)]">
             <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-error))]">
               {failedOrdersCount}
@@ -976,11 +985,22 @@ export default function DriverInbox() {
           </div>
         )}
 
+        {(deliveredPendingAcceptance.length + failedOrdersList.length) > 0 && (
+          <div className="glass-card border-[hsl(var(--status-pending)/0.3)] p-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Pending Acceptance ({deliveredPendingAcceptance.length + failedOrdersList.length})
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Delivered and failed submissions awaiting Runner decision.
+            </p>
+          </div>
+        )}
+
         {/* ─── Delivered (Pending Acceptance) ─── */}
         {deliveredPendingAcceptance.length > 0 && (
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3 px-1">
-              Pending Acceptance ({deliveredPendingAcceptance.length})
+              Delivered awaiting acceptance ({deliveredPendingAcceptance.length})
             </h2>
             <div className="space-y-2.5">
               {deliveredPendingAcceptance.map(order => {
@@ -1041,7 +1061,7 @@ export default function DriverInbox() {
         {failedOrdersList.length > 0 && (
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3 px-1">
-              Failed Deliveries ({failedOrdersList.length})
+              Failed awaiting acceptance ({failedOrdersList.length})
             </h2>
             <div className="space-y-2.5">
               {failedOrdersList.map(order => {
@@ -1098,11 +1118,11 @@ export default function DriverInbox() {
                           <Button
                             variant="outline"
                             className="h-11 rounded-xl text-sm font-semibold"
-                            onClick={() => handleOpenFailedProofDialog(order)}
-                            disabled={markFailed.isPending || proofUploading}
+                            onClick={() => handleOpenChangeStatusDialog(order)}
+                            disabled={changeFailedStatus.isPending}
                           >
-                            <Camera className="h-4 w-4 mr-2" />
-                            Add Proof
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Change Status
                           </Button>
                           <Button
                             className="h-11 rounded-xl text-sm font-semibold"
@@ -1180,7 +1200,7 @@ export default function DriverInbox() {
                 value={failedReason}
                 onValueChange={(value) => {
                   setFailedReason(value);
-                  if (normalizeFailureReason(value) !== normalizeFailureReason(CUSTOMER_RESCHEDULE_REASON)) {
+                  if (normalizeFailedReason(value) !== normalizeFailedReason(CUSTOMER_RESCHEDULE_REASON)) {
                     setNextDeliveryDate('');
                   }
                 }}
@@ -1232,58 +1252,22 @@ export default function DriverInbox() {
           </div>
         </MobileActionSheet>
 
-        <MobileActionSheet
-          open={failedProofDialogOpen}
+        <ChangeFailedStatusDialog
+          open={changeStatusDialogOpen}
           onOpenChange={(open) => {
-            setFailedProofDialogOpen(open);
+            setChangeStatusDialogOpen(open);
             if (!open) {
-              resetProofSelection('failed');
               setSelectedOrder(null);
               setSelectedOrderDetails(null);
             }
           }}
-          title="Add Failed Delivery Proof"
-          description="Attach a proof photo for this failed delivery"
-          confirmLabel={proofUploading ? 'Uploading...' : 'Save Proof'}
-          onConfirm={handleSubmitFailedProof}
-          isLoading={proofUploading}
-          confirmDisabled={failedProofFiles.length === 0}
-        >
-          <div className="space-y-4 py-2">
-            {selectedOrderDetails && (
-              <div className="rounded-xl bg-secondary/30 p-4 text-sm">
-                <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Order</span>
-                  <span className="font-semibold">{selectedOrderDetails.order_code}</span>
-                </div>
-                <div className="mt-2 flex justify-between gap-3">
-                  <span className="text-muted-foreground">Customer</span>
-                  <span className="font-semibold text-right">
-                    {selectedOrderDetails.customer_name || '-'}
-                  </span>
-                </div>
-                {selectedOrderDetails.driver_failed_reason && (
-                  <div className="mt-2 flex justify-between gap-3 border-t pt-2">
-                    <span className="text-muted-foreground">Reason</span>
-                    <span className="font-medium text-right">
-                      {selectedOrderDetails.driver_failed_reason}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-            <ProofPhotoPicker
-              label="Failed Delivery Photos"
-              previews={failedProofPreviews}
-              onFilesChange={(files) => appendProofSelection(files, 'failed')}
-              onRemoveFile={(index) => removeProofSelection('failed', index)}
-              multiple
-              disabled={proofUploading}
-              emptyTitle="Take photos or choose from album"
-              helperText="Multiple images are allowed and visible to authorized users in Action Required."
-            />
-          </div>
-        </MobileActionSheet>
+          orderCode={selectedOrderDetails?.order_code}
+          initialReason={selectedOrderDetails?.driver_failed_reason}
+          initialNextDeliveryDate={selectedOrderDetails?.driver_next_delivery_date}
+          reasons={orderedFailedReasons}
+          isPending={changeFailedStatus.isPending}
+          onApply={handleChangeFailedStatus}
+        />
       </div>
     </AppLayout>
   );

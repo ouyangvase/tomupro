@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
+import { CANONICAL_ACTION_REQUIRED_OR, classifyActionRequired } from '@/lib/actionRequired';
 
 export interface ActionRequiredStats {
   total: number;
@@ -20,8 +21,8 @@ export interface ActionRequiredBySalesperson {
   runnerFlagged: number;
 }
 
-const ACTION_REQUIRED_SELECT = 'id, status, salesperson_id, runner_status, next_delivery_date, runner_failed_reason_id, runner_comment, salesperson_action_required';
-const ACTION_REQUIRED_OR = 'and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)';
+const ACTION_REQUIRED_SELECT = 'id, status, salesperson_id, runner_status, next_delivery_date, driver_next_delivery_date, salesperson_action_type, runner_final_outcome, driver_failed_reason, runner_failed_reason_id, runner_comment, salesperson_action_required';
+const ACTION_REQUIRED_OR = CANONICAL_ACTION_REQUIRED_OR;
 
 // For salesperson: Get their own action required stats
 export function useSalespersonActionRequiredStats() {
@@ -50,12 +51,10 @@ export function useSalespersonActionRequiredStats() {
       let runnerFlagged = 0;
 
       actionRequired.forEach(order => {
-        const runnerStatus = order.runner_status as string;
-
-        // Categorize for display
-        if (runnerStatus === 'FAILED_DELIVERY') {
+        const category = classifyActionRequired(order as never);
+        if (category === 'FAILED_DELIVERY') {
           failedDelivery++;
-        } else if (order.next_delivery_date) {
+        } else if (category === 'RESCHEDULED') {
           rescheduled++;
         } else if (order.runner_failed_reason_id || order.runner_comment) {
           runnerFlagged++;
@@ -175,15 +174,15 @@ export function useManagerActionRequiredStats() {
       let totalRunnerFlagged = 0;
 
       actionRequired.forEach(order => {
-        const runnerStatus = order.runner_status as string;
         const spId = order.salesperson_id;
 
         let category: 'failedDelivery' | 'rescheduled' | 'runnerFlagged';
 
-        if (runnerStatus === 'FAILED_DELIVERY') {
+        const categorySource = classifyActionRequired(order as never);
+        if (categorySource === 'FAILED_DELIVERY') {
           category = 'failedDelivery';
           totalFailed++;
-        } else if (order.next_delivery_date) {
+        } else if (categorySource === 'RESCHEDULED') {
           category = 'rescheduled';
           totalRescheduled++;
         } else {
@@ -263,16 +262,16 @@ export function useAdminActionRequiredStats() {
       let totalRunnerFlagged = 0;
 
       actionRequired.forEach(order => {
-        const runnerStatus = order.runner_status as string;
         const spId = order.salesperson_id;
 
         let category: 'failedDelivery' | 'rescheduled' | 'runnerFlagged';
 
         // Categorize for display
-        if (runnerStatus === 'FAILED_DELIVERY') {
+        const categorySource = classifyActionRequired(order as never);
+        if (categorySource === 'FAILED_DELIVERY') {
           category = 'failedDelivery';
           totalFailed++;
-        } else if (order.next_delivery_date) {
+        } else if (categorySource === 'RESCHEDULED') {
           category = 'rescheduled';
           totalRescheduled++;
         } else {

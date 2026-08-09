@@ -9,9 +9,13 @@ import {
   useRunnerAcceptDelivery,
   useRunnerRejectDelivery,
   useBulkRunnerAcceptDelivery,
+  useRunnerBatchReviewDriverDeliveries,
+  useScheduleDriverFailedOrdersForTomorrow,
   useGenerateDriverCode,
+  useChangeDriverFailedStatus,
 } from '@/hooks/useDrivers';
 import { useDriverAssignments } from '@/hooks/useDriverAssignments';
+import { useReasons } from '@/hooks/useReasons';
 import { useRunnerReviewOrder } from '@/hooks/useRunnerReview';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -19,6 +23,8 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -37,6 +43,7 @@ import {
   WifiOff,
   Eye,
   Image as ImageIcon,
+  RefreshCw,
   ClipboardCheck,
   AlertTriangle,
   ChevronDown,
@@ -45,6 +52,8 @@ import {
 import { toast } from 'sonner';
 import { formatBND } from '@/lib/currency';
 import { getSignedStorageUrl } from '@/lib/storageUrls';
+import { sortFailedStatusReasons } from '@/lib/driverFailedStatus';
+import { ChangeFailedStatusDialog, type ChangeFailedStatusValues } from '@/components/driver/ChangeFailedStatusDialog';
 import {
   formatDriverActionDate,
   formatDriverActionDateTime,
@@ -77,6 +86,15 @@ type DriverReviewGroup = {
   transferOrderCount: number;
   dateGroups: DriverReviewDateGroup<Order>[];
 };
+
+type DriverBatchScope = {
+  driverId: string | null;
+  driverName: string;
+  deliveredOrders: Order[];
+  failedOrders: Order[];
+};
+
+type DriverBatchStep = 'choose' | 'failed' | 'select';
 
 function getDriverName(order: Order, fallbackUsers: Map<string, { display_name?: string | null }>) {
   if (!order.driver_id) return 'No driver';
@@ -115,8 +133,12 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   const acceptDelivery = useRunnerAcceptDelivery();
   const bulkAcceptDelivery = useBulkRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
+  const changeFailedStatus = useChangeDriverFailedStatus();
   const reviewOrder = useRunnerReviewOrder();
+  const batchReview = useRunnerBatchReviewDriverDeliveries();
+  const scheduleFailedOrders = useScheduleDriverFailedOrdersForTomorrow();
   const generateCode = useGenerateDriverCode();
+  const { data: failedReasons = [] } = useReasons('FAILED_DELIVERY');
 
   const [addDriverOpen, setAddDriverOpen] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState('');
@@ -124,10 +146,18 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   const [rejectOrderId, setRejectOrderId] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [changeStatusOrderId, setChangeStatusOrderId] = useState<string | null>(null);
   const [openGroupIds, setOpenGroupIds] = useState<string[]>([]);
   const [openDateGroupIds, setOpenDateGroupIds] = useState<string[]>([]);
   const [openFailedDateGroupIds, setOpenFailedDateGroupIds] = useState<string[]>([]);
   const [driverSummaryOpen, setDriverSummaryOpen] = useState(false);
+  const [batchScope, setBatchScope] = useState<DriverBatchScope | null>(null);
+  const [batchStep, setBatchStep] = useState<DriverBatchStep>('choose');
+  const [selectedBatchFailedIds, setSelectedBatchFailedIds] = useState<string[]>([]);
+  const [batchFailedReasonFilter, setBatchFailedReasonFilter] = useState('ALL');
+  const [batchScheduleConfirm, setBatchScheduleConfirm] = useState(false);
+  const [batchRejectMode, setBatchRejectMode] = useState(false);
+  const [batchRejectReason, setBatchRejectReason] = useState('');
 
   const availableDrivers = useMemo(() => {
     const assignedDriverIds = drivers.map((d) => d.driver_id);
@@ -141,6 +171,11 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   const failedReviewOrders = useMemo(() => (
     assignments.filter((order) => isPendingDriverReviewOrder(order, 'DRIVER_FAILED'))
   ), [assignments]);
+
+  const orderedFailedReasons = useMemo(
+    () => sortFailedStatusReasons(failedReasons),
+    [failedReasons],
+  );
 
   const pendingOrderIds = useMemo(
     () => [...pendingAcceptanceOrders, ...failedReviewOrders].map((order) => order.id),
@@ -269,6 +304,33 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     [pendingAcceptanceOrders, failedReviewOrders, detailOrderId]
   );
   const detailProofs = detailOrder ? proofsByOrder[detailOrder.id] || [] : [];
+  const changeStatusOrder = useMemo(
+    () => failedReviewOrders.find((order) => order.id === changeStatusOrderId) || null,
+    [changeStatusOrderId, failedReviewOrders],
+  );
+
+  const batchFilteredFailedOrders = useMemo(() => {
+    if (!batchScope) return [];
+    if (batchFailedReasonFilter === 'ALL') return batchScope.failedOrders;
+    return batchScope.failedOrders.filter((order) => (
+      (order.driver_failed_reason || 'Unspecified') === batchFailedReasonFilter
+    ));
+  }, [batchFailedReasonFilter, batchScope]);
+
+  const batchFailedReasons = useMemo(() => {
+    if (!batchScope) return [];
+    return [...new Set(batchScope.failedOrders.map((order) => order.driver_failed_reason || 'Unspecified'))]
+      .sort((a, b) => a.localeCompare(b));
+  }, [batchScope]);
+
+  const tomorrowDateLabel = useMemo(() => (
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kuala_Lumpur',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }).format(new Date(Date.now() + 24 * 60 * 60 * 1000))
+  ), []);
 
   const handleAddDriver = async () => {
     if (!selectedDriverId || !profile?.id) return;
@@ -304,15 +366,99 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     }
   };
 
-  const handleAcceptReviewGroup = async (deliveredOrders: Order[], failedOrders: Order[]) => {
-    await Promise.all([
-      deliveredOrders.length > 0
-        ? handleAcceptOrders(deliveredOrders.map((order) => order.id))
-        : Promise.resolve(),
-      failedOrders.length > 0
-        ? handleAcceptFailedOrders(failedOrders)
-        : Promise.resolve(),
-    ]);
+  const openBatchActions = (scope: DriverBatchScope) => {
+    setBatchScope(scope);
+    setBatchStep('choose');
+    setSelectedBatchFailedIds(scope.failedOrders.map((order) => order.id));
+    setBatchFailedReasonFilter('ALL');
+    setBatchScheduleConfirm(false);
+    setBatchRejectMode(false);
+    setBatchRejectReason('');
+  };
+
+  const closeBatchActions = () => {
+    setBatchScope(null);
+    setBatchStep('choose');
+    setSelectedBatchFailedIds([]);
+    setBatchScheduleConfirm(false);
+    setBatchRejectMode(false);
+    setBatchRejectReason('');
+  };
+
+  const showBatchResult = (label: string, result: { processed: Array<{ orderId: string }>; failed: Array<{ orderId: string; error?: string }> }) => {
+    if (result.failed.length === 0) {
+      toast.success(`${label}: ${result.processed.length} order(s) processed`);
+    } else {
+      const failedLabels = result.failed.map((item) => {
+        const order = assignments.find((candidate) => candidate.id === item.orderId);
+        return `${order?.order_code || item.orderId}: ${item.error || 'Needs review'}`;
+      });
+      toast.error(`${label}: ${result.processed.length} processed; ${result.failed.length} need review — ${failedLabels.join(' | ')}`);
+    }
+    closeBatchActions();
+  };
+
+  const runBatchReview = async (orderIds: string[], label: string, accept: boolean, rejectReason?: string) => {
+    if (!orderIds.length) return;
+    const result = await batchReview.mutateAsync({ orderIds, accept, rejectReason });
+    showBatchResult(label, result);
+  };
+
+  const handleBatchAcceptAll = () => {
+    if (!batchScope) return;
+    void runBatchReview(
+      [...batchScope.deliveredOrders, ...batchScope.failedOrders].map((order) => order.id),
+      'Accept All',
+      true,
+    );
+  };
+
+  const handleBatchAcceptDeliveredOnly = () => {
+    if (!batchScope) return;
+    void runBatchReview(
+      batchScope.deliveredOrders.map((order) => order.id),
+      'Accept Delivered Only',
+      true,
+    );
+  };
+
+  const handleBatchOriginalFailedReasons = () => {
+    if (!batchScope) return;
+    void runBatchReview(
+      batchScope.failedOrders.map((order) => order.id),
+      'Process by Original Reasons',
+      true,
+    );
+  };
+
+  const handleBatchScheduleTomorrow = (orderIds: string[]) => {
+    if (!batchScope || !orderIds.length) return;
+    if (!batchScheduleConfirm) {
+      setBatchScheduleConfirm(true);
+      return;
+    }
+    void scheduleFailedOrders.mutateAsync({ orderIds, driverId: batchScope.driverId }).then((result) => {
+      const processed = (result.processed || []).map((item) => ({ orderId: item.order_id }));
+      const failed = (result.skipped || []).map((item) => ({ orderId: item.order_id, error: item.reason }));
+      showBatchResult('Schedule for Tomorrow', { processed, failed });
+    });
+  };
+
+  const toggleBatchFailedOrder = (orderId: string) => {
+    setSelectedBatchFailedIds((current) => (
+      current.includes(orderId)
+        ? current.filter((id) => id !== orderId)
+        : [...current, orderId]
+    ));
+  };
+
+  const handleBatchRejectSelected = () => {
+    if (!selectedBatchFailedIds.length) return;
+    if (!batchRejectMode) {
+      setBatchRejectMode(true);
+      return;
+    }
+    void runBatchReview(selectedBatchFailedIds, 'Reject Selected', false, batchRejectReason);
   };
 
   const handleOpenRejectDialog = (orderId: string) => {
@@ -322,12 +468,27 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   };
 
   const handleRejectDelivery = async () => {
-    if (!rejectOrderId || !rejectReason) return;
-    await rejectDelivery.mutateAsync({ orderId: rejectOrderId, reason: rejectReason });
+    const reason = rejectReason.trim();
+    if (!rejectOrderId || !reason) return;
+    await rejectDelivery.mutateAsync({ orderId: rejectOrderId, reason });
     if (detailOrderId === rejectOrderId) setDetailOrderId(null);
     setRejectDialogOpen(false);
     setRejectOrderId('');
     setRejectReason('');
+  };
+
+  const handleOpenChangeStatus = (orderId: string) => {
+    setChangeStatusOrderId(orderId);
+  };
+
+  const handleChangeFailedStatus = async ({ reason, nextDeliveryDate }: ChangeFailedStatusValues) => {
+    if (!changeStatusOrderId) return;
+    await changeFailedStatus.mutateAsync({
+      orderId: changeStatusOrderId,
+      reason,
+      nextDeliveryDate,
+    });
+    setChangeStatusOrderId(null);
   };
 
   const toggleGroupOpen = (driverId: string) => {
@@ -354,7 +515,8 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     ));
   };
 
-  const isAccepting = acceptDelivery.isPending || bulkAcceptDelivery.isPending || reviewOrder.isPending;
+  const isBatchProcessing = batchReview.isPending || scheduleFailedOrders.isPending;
+  const isAccepting = acceptDelivery.isPending || bulkAcceptDelivery.isPending || reviewOrder.isPending || isBatchProcessing;
 
   const renderReviewOrderRow = (order: Order) => {
     const proofs = proofsByOrder[order.id] || [];
@@ -404,9 +566,22 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
               <p className="text-lg font-black tabular-nums">{formatBND(Number(order.total_amount || 0))}</p>
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{paymentLabel}</p>
             </div>
-            <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setDetailOrderId(order.id)}>
-              {proofs.length > 0 ? <ImageIcon className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </Button>
+            {isDelivered ? (
+              <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setDetailOrderId(order.id)}>
+                {proofs.length > 0 ? <ImageIcon className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 rounded-full px-3"
+                onClick={() => handleOpenChangeStatus(order.id)}
+                disabled={changeFailedStatus.isPending}
+              >
+                <RefreshCw className="mr-1.5 h-4 w-4" />
+                Change Status
+              </Button>
+            )}
           </div>
           {isDelivered ? (
             <div className="grid grid-cols-2 gap-2 md:w-[220px]">
@@ -490,7 +665,12 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                   </p>
                 </div>
                 <Button
-                  onClick={() => handleAcceptReviewGroup(pendingAcceptanceOrders, failedReviewOrders)}
+                  onClick={() => openBatchActions({
+                    driverId: null,
+                    driverName: 'All Drivers',
+                    deliveredOrders: pendingAcceptanceOrders,
+                    failedOrders: failedReviewOrders,
+                  })}
                   disabled={pendingOrderIds.length === 0 || isAccepting}
                   className="h-10 rounded-full px-4"
                 >
@@ -555,7 +735,12 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                               {isOpen ? 'Hide' : 'Open'}
                             </Button>
                             <Button
-                              onClick={() => handleAcceptReviewGroup(group.deliveredOrders, group.failedOrders)}
+                              onClick={() => openBatchActions({
+                                driverId: group.driverId === 'no-driver' ? null : group.driverId,
+                                driverName: group.driverName,
+                                deliveredOrders: group.deliveredOrders,
+                                failedOrders: group.failedOrders,
+                              })}
                               disabled={reviewCount === 0 || isAccepting}
                               className="h-10 rounded-full"
                             >
@@ -783,6 +968,171 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
           </aside>
         </div>
 
+        <Dialog open={Boolean(batchScope)} onOpenChange={(open) => !open && closeBatchActions()}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+            {batchScope && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>
+                    {batchStep === 'choose'
+                      ? `Accept ${batchScope.driverName} Batch`
+                      : batchStep === 'failed'
+                        ? `Handle ${batchScope.failedOrders.length} Failed Orders`
+                        : 'Review Failed Orders'}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {batchStep === 'choose'
+                      ? 'Choose which pending Driver results to process. Every order is revalidated before the canonical review action runs.'
+                      : batchStep === 'failed'
+                        ? 'Keep each Driver-submitted reason, or intentionally release the current Driver and schedule the selected orders for tomorrow.'
+                        : 'Select only the failed submissions you want to process. Stale or already-reviewed orders will be reported individually.'}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid grid-cols-3 gap-2 rounded-2xl border bg-secondary/20 p-3 text-center">
+                  <div>
+                    <p className="text-2xl font-black text-emerald-700">{batchScope.deliveredOrders.length}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Delivered</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-red-700">{batchScope.failedOrders.length}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Failed</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black">{batchScope.deliveredOrders.length + batchScope.failedOrders.length}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Total</p>
+                  </div>
+                </div>
+
+                {batchStep === 'choose' && (
+                  <div className="grid gap-2">
+                    <Button onClick={handleBatchAcceptAll} disabled={isBatchProcessing} className="h-11 rounded-full">
+                      <Check className="mr-2 h-4 w-4" />
+                      Accept All
+                    </Button>
+                    <Button variant="outline" onClick={handleBatchAcceptDeliveredOnly} disabled={isBatchProcessing || batchScope.deliveredOrders.length === 0} className="h-11 rounded-full">
+                      Accept Delivered Only
+                    </Button>
+                    <Button variant="outline" onClick={() => setBatchStep('failed')} disabled={batchScope.failedOrders.length === 0} className="h-11 rounded-full">
+                      Handle Failed Orders
+                    </Button>
+                  </div>
+                )}
+
+                {batchStep === 'failed' && (
+                  <div className="space-y-3">
+                    {batchScheduleConfirm ? (
+                      <div className="space-y-3 rounded-2xl border border-amber-400/60 bg-amber-500/10 p-4">
+                        <p className="font-black">Schedule {batchScope.failedOrders.length} failed order(s) for tomorrow?</p>
+                        <p className="text-sm text-muted-foreground">Tomorrow: <span className="font-bold text-foreground">{tomorrowDateLabel}</span>. The current Driver will be cleared, the order will remain in Ready/Runner Dispatch, and stock will not be duplicated.</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button variant="outline" onClick={() => setBatchScheduleConfirm(false)} disabled={scheduleFailedOrders.isPending} className="rounded-full">Back</Button>
+                          <Button onClick={() => handleBatchScheduleTomorrow(batchScope.failedOrders.map((order) => order.id))} disabled={scheduleFailedOrders.isPending} className="rounded-full">
+                            {scheduleFailedOrders.isPending ? 'Scheduling...' : 'Confirm Schedule'}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-2">
+                        <Button onClick={handleBatchOriginalFailedReasons} disabled={isBatchProcessing} className="h-11 rounded-full">
+                          Process by Original Reasons
+                        </Button>
+                        <Button variant="outline" onClick={() => handleBatchScheduleTomorrow(batchScope.failedOrders.map((order) => order.id))} disabled={isBatchProcessing} className="h-11 rounded-full">
+                          Schedule All for Tomorrow
+                        </Button>
+                        <Button variant="outline" onClick={() => setBatchStep('select')} className="h-11 rounded-full">
+                          Review / Select Orders
+                        </Button>
+                      </div>
+                    )}
+                    <Button variant="ghost" onClick={() => setBatchStep('choose')} disabled={isBatchProcessing} className="w-full rounded-full">Back</Button>
+                  </div>
+                )}
+
+                {batchStep === 'select' && (
+                  <div className="space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="flex items-center gap-2 text-sm font-semibold">
+                        <Checkbox
+                          checked={batchFilteredFailedOrders.length > 0 && batchFilteredFailedOrders.every((order) => selectedBatchFailedIds.includes(order.id))}
+                          onCheckedChange={(checked) => setSelectedBatchFailedIds((current) => (
+                            checked === true
+                              ? [...new Set([...current, ...batchFilteredFailedOrders.map((order) => order.id)])]
+                              : current.filter((id) => !batchFilteredFailedOrders.some((order) => order.id === id))
+                          ))}
+                        />
+                        Select visible ({batchFilteredFailedOrders.length})
+                      </label>
+                      <Select value={batchFailedReasonFilter} onValueChange={setBatchFailedReasonFilter}>
+                        <SelectTrigger className="h-9 rounded-full sm:w-[220px]">
+                          <SelectValue placeholder="Filter by reason" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">All reasons</SelectItem>
+                          {batchFailedReasons.map((reason) => <SelectItem key={reason} value={reason}>{reason}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="max-h-[38vh] space-y-2 overflow-y-auto pr-1">
+                      {batchFilteredFailedOrders.map((order) => (
+                        <label key={order.id} className="flex cursor-pointer gap-3 rounded-2xl border p-3 transition-colors hover:bg-secondary/30">
+                          <Checkbox checked={selectedBatchFailedIds.includes(order.id)} onCheckedChange={() => toggleBatchFailedOrder(order.id)} className="mt-0.5" />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="font-black">{order.order_code}</span>
+                              <Badge variant="outline" className="rounded-full">{order.driver_failed_reason || 'Unspecified'}</Badge>
+                            </span>
+                            <span className="mt-1 block truncate text-sm font-semibold">{order.customer_name}</span>
+                            <span className="mt-1 block text-xs text-muted-foreground">{order.driver_failed_remark || 'No remark'} · {formatBND(Number(order.total_amount || 0))}</span>
+                            <span className="mt-1 block text-xs text-muted-foreground">{getOrderSkuText(order)} · Stock remains with current Driver until returned/transferred.</span>
+                            {order.driver_next_delivery_date && <span className="mt-1 block text-xs font-semibold text-primary">Reschedule date: {order.driver_next_delivery_date}</span>}
+                          </span>
+                        </label>
+                      ))}
+                      {batchFilteredFailedOrders.length === 0 && <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">No failed orders match this reason.</p>}
+                    </div>
+
+                    <p className="text-sm font-semibold text-muted-foreground">{selectedBatchFailedIds.length} selected</p>
+                    {batchScheduleConfirm && (
+                      <div className="space-y-3 rounded-2xl border border-amber-400/60 bg-amber-500/10 p-4">
+                        <p className="font-black">Schedule {selectedBatchFailedIds.length} selected order(s) for tomorrow?</p>
+                        <p className="text-sm text-muted-foreground">Tomorrow: <span className="font-bold text-foreground">{tomorrowDateLabel}</span>. Current Driver assignments will be removed without changing stock.</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button variant="outline" onClick={() => setBatchScheduleConfirm(false)} disabled={scheduleFailedOrders.isPending} className="rounded-full">Back</Button>
+                          <Button onClick={() => handleBatchScheduleTomorrow(selectedBatchFailedIds)} disabled={scheduleFailedOrders.isPending || selectedBatchFailedIds.length === 0} className="rounded-full">
+                            {scheduleFailedOrders.isPending ? 'Scheduling...' : 'Confirm Schedule'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {batchRejectMode && (
+                      <div className="space-y-2 rounded-2xl border border-destructive/30 bg-destructive/5 p-3">
+                        <Label htmlFor="driver-batch-reject-reason">Rejection reason <span className="text-destructive">*</span></Label>
+                        <Textarea id="driver-batch-reject-reason" value={batchRejectReason} onChange={(event) => setBatchRejectReason(event.target.value)} placeholder="Explain what must be corrected..." className="rounded-xl" />
+                      </div>
+                    )}
+                    {!batchScheduleConfirm && (
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Button onClick={() => void runBatchReview(selectedBatchFailedIds, 'Accept Using Original Reasons', true)} disabled={isBatchProcessing || selectedBatchFailedIds.length === 0} className="rounded-full">Accept Original Reasons</Button>
+                        <Button variant="outline" onClick={() => handleBatchScheduleTomorrow(selectedBatchFailedIds)} disabled={isBatchProcessing || selectedBatchFailedIds.length === 0} className="rounded-full">Schedule Selected</Button>
+                        <Button variant="destructive" onClick={handleBatchRejectSelected} disabled={isBatchProcessing || selectedBatchFailedIds.length === 0 || (batchRejectMode && !batchRejectReason.trim())} className="rounded-full">{batchRejectMode ? 'Confirm Reject' : 'Reject Selected'}</Button>
+                      </div>
+                    )}
+                    <Button variant="ghost" onClick={() => { setBatchStep('failed'); setBatchScheduleConfirm(false); setBatchRejectMode(false); }} disabled={isBatchProcessing} className="w-full rounded-full">Back</Button>
+                  </div>
+                )}
+
+                {batchStep !== 'choose' && !batchScheduleConfirm && (
+                  <DialogFooter>
+                    <Button variant="outline" onClick={closeBatchActions} disabled={isBatchProcessing}>Cancel</Button>
+                  </DialogFooter>
+                )}
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={!!detailOrder} onOpenChange={(open) => !open && setDetailOrderId(null)}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
@@ -900,21 +1250,37 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
           </DialogContent>
         </Dialog>
 
+        <ChangeFailedStatusDialog
+          open={Boolean(changeStatusOrder)}
+          onOpenChange={(open) => !open && setChangeStatusOrderId(null)}
+          orderCode={changeStatusOrder?.order_code}
+          initialReason={changeStatusOrder?.driver_failed_reason}
+          initialNextDeliveryDate={changeStatusOrder?.driver_next_delivery_date}
+          reasons={orderedFailedReasons}
+          isPending={changeFailedStatus.isPending}
+          onApply={handleChangeFailedStatus}
+        />
+
         <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Reject Delivery</DialogTitle>
-              <DialogDescription>This returns the order to the driver for correction or re-delivery.</DialogDescription>
+              <DialogDescription>This returns the order to the driver for correction or re-delivery. A reason is required.</DialogDescription>
             </DialogHeader>
-            <Textarea
-              value={rejectReason}
-              onChange={(event) => setRejectReason(event.target.value)}
-              placeholder="Explain why you are rejecting this delivery..."
-              className="rounded-xl"
-            />
+            <div className="space-y-2">
+              <Label htmlFor="driver-management-reject-reason">Rejection reason <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="driver-management-reject-reason"
+                value={rejectReason}
+                onChange={(event) => setRejectReason(event.target.value)}
+                placeholder="Explain what must be corrected..."
+                aria-required="true"
+                className="rounded-xl"
+              />
+            </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
-              <Button variant="destructive" onClick={handleRejectDelivery} disabled={!rejectReason || rejectDelivery.isPending}>
+              <Button variant="destructive" onClick={handleRejectDelivery} disabled={!rejectReason.trim() || rejectDelivery.isPending}>
                 {rejectDelivery.isPending ? 'Rejecting...' : 'Reject'}
               </Button>
             </DialogFooter>

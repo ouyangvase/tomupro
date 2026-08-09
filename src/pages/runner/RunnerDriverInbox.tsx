@@ -11,11 +11,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { useRunnerDriverOrders, useMyDrivers, useRunnerAcceptDelivery, useRunnerRejectDelivery, useBulkRunnerAcceptDelivery } from '@/hooks/useDrivers';
+import { useRunnerDriverOrders, useMyDrivers, useRunnerDriverLinks, useAllDrivers, useRunnerAcceptDelivery, useRunnerRejectDelivery, useBulkRunnerAcceptDelivery } from '@/hooks/useDrivers';
 import {
   fetchRunnerDispatchAreaOrderIds,
   useApplyDriverAssignmentBatch,
   useBulkRevertDriverAppOrders,
+  useBulkUnassignRunnerDriverOrders,
   useCorrectOrderDeliveryArea,
   useDeliveryAreas,
   useRunnerDispatchDriverWorkloads,
@@ -61,6 +62,7 @@ import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { downloadXlsx } from '@/lib/xlsxExport';
 import { groupRemainingOrdersByLocality } from '@/lib/driverInboxAreaCounts';
+import { getAssignableDriverIdsForRunners } from '@/lib/driverAssignmentScope';
 import {
   getDriverOperationalDateKey,
   getTodayDateKey,
@@ -448,6 +450,8 @@ export default function RunnerDriverInbox({
   );
   const { data: orders = [], isLoading } = useRunnerDriverOrders(runnerScopeIds);
   const { data: myDrivers = [] } = useMyDrivers(runnerScopeIds);
+  const { data: scopedDriverLinks = [], isLoading: scopedDriverLinksLoading } = useRunnerDriverLinks(runnerScopeIds, !isAdmin);
+  const { data: allDriverLinks = [], isLoading: allDriverLinksLoading } = useAllDrivers(isAdmin);
   const { data: dbDeliveryAreas = [] } = useDeliveryAreas();
   const acceptDelivery = useRunnerAcceptDelivery();
   const rejectDelivery = useRunnerRejectDelivery();
@@ -456,6 +460,7 @@ export default function RunnerDriverInbox({
   const revertDelivery = useRevertDelivery();
   const applyBatch = useApplyDriverAssignmentBatch();
   const bulkRevertDriverOrders = useBulkRevertDriverAppOrders();
+  const bulkUnassignDriverOrders = useBulkUnassignRunnerDriverOrders();
   const correctArea = useCorrectOrderDeliveryArea();
 
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
@@ -500,6 +505,8 @@ export default function RunnerDriverInbox({
   const [bulkRevertSnapshotLoading, setBulkRevertSnapshotLoading] = useState(false);
   const [bulkRevertConfirmation, setBulkRevertConfirmation] = useState('');
   const bulkRevertRequestRef = useRef(0);
+  const [bulkUnassignDialogOpen, setBulkUnassignDialogOpen] = useState(false);
+  const [bulkUnassignConfirmation, setBulkUnassignConfirmation] = useState('');
 
   const { data: dbDriverWorkloads = [], isFetching: driverWorkloadFetching } = useRunnerDispatchDriverWorkloads(activeQueueScopeDate);
   const performanceRange = useMemo(() => getDateRange(performanceAnchorDate, performancePeriod), [performanceAnchorDate, performancePeriod]);
@@ -535,6 +542,10 @@ export default function RunnerDriverInbox({
     [allRunnerOrders, todayDateKey],
   );
   const dispatchAreaOrders = allRunnerOrders;
+  const activeDriverAssignments = useMemo(
+    () => dispatchAreaOrders.filter((order) => isDriverWorkloadOrder(order, todayDateKey)),
+    [dispatchAreaOrders, todayDateKey],
+  );
   const staleActiveCollect = useMemo(
     () => staleActiveAssignments.reduce((sum, order) => sum + getCollectAmount(order), 0),
     [staleActiveAssignments],
@@ -689,10 +700,43 @@ export default function RunnerDriverInbox({
     return staleActiveAssignments.filter((order) => inferAreaFromOrder(order) === activeAreaCode);
   }, [activeAreaCode, staleActiveAssignments]);
 
+  const assignmentSelectedAreaGroups = useMemo(
+    () => groupRemainingOrdersByLocality(
+      selectedOrders,
+      (order) => getAreaLabel(inferAreaFromOrder(order), deliveryAreas),
+    ),
+    [deliveryAreas, selectedOrders],
+  );
+
   const selectedTotalCollect = selectedRows.reduce((sum, orderId) => sum + getSelectedCollectAmount(orderId), 0);
   const cappedAssignmentLimit = selectedRows.length ? Math.min(Math.max(assignmentOrderLimit || selectedRows.length, 1), selectedRows.length) : 0;
   const assignmentOrderIds = selectedRows.slice(0, cappedAssignmentLimit);
   const assignmentTotalCollect = assignmentOrderIds.reduce((sum, orderId) => sum + getSelectedCollectAmount(orderId), 0);
+  const selectedRunnerIds = useMemo(
+    () => Array.from(new Set(
+      selectedRows
+        .map((orderId) => dispatchOrderById.get(orderId)?.runner_id)
+        .filter((runnerId): runnerId is string => Boolean(runnerId)),
+    )),
+    [dispatchOrderById, selectedRows],
+  );
+  const assignmentRunnerIds = useMemo(
+    () => Array.from(new Set(
+      assignmentOrderIds
+        .map((orderId) => dispatchOrderById.get(orderId)?.runner_id)
+        .filter((runnerId): runnerId is string => Boolean(runnerId)),
+    )),
+    [assignmentOrderIds, dispatchOrderById],
+  );
+  const assignmentDriverLinks = isAdmin ? allDriverLinks : scopedDriverLinks;
+  const selectedAssignableDriverIds = useMemo(
+    () => getAssignableDriverIdsForRunners(assignmentDriverLinks, selectedRunnerIds),
+    [assignmentDriverLinks, selectedRunnerIds],
+  );
+  const assignmentAssignableDriverIds = useMemo(
+    () => getAssignableDriverIdsForRunners(assignmentDriverLinks, assignmentRunnerIds),
+    [assignmentDriverLinks, assignmentRunnerIds],
+  );
   const selectedHasAssigned = selectedRows.some((orderId) => {
     const order = dispatchOrderById.get(orderId);
     return order ? isAssignedForAreaSummary(order, todayDateKey) : false;
@@ -769,6 +813,12 @@ export default function RunnerDriverInbox({
       };
     });
   }, [assignmentOrdersByDriver, canUseDbDriverWorkloads, dbDriverWorkloads, deliveryAreas, myDrivers, performanceByDriver]);
+
+  const assignableDriverWorkloads = useMemo(
+    () => driverWorkloads.filter((driver) => assignmentAssignableDriverIds.has(driver.driver_id)),
+    [assignmentAssignableDriverIds, driverWorkloads],
+  );
+  const assignmentDriverLinksLoading = isAdmin ? allDriverLinksLoading : scopedDriverLinksLoading;
 
   const visibleDriverWorkloads = useMemo(() => {
     const query = driverSearch.trim().toLowerCase();
@@ -987,6 +1037,36 @@ export default function RunnerDriverInbox({
     }
   };
 
+  const handleBulkUnassignDialogOpenChange = (open: boolean) => {
+    setBulkUnassignDialogOpen(open);
+    if (!open) setBulkUnassignConfirmation('');
+  };
+
+  const handleOpenBulkUnassign = () => {
+    if (!canManageDriverAssignments || runnerScopeIds.length === 0) return;
+    if (activeDriverAssignments.length === 0) {
+      toast.info('No active Driver orders are currently assigned.');
+      return;
+    }
+    setBulkUnassignConfirmation('');
+    setBulkUnassignDialogOpen(true);
+  };
+
+  const handleConfirmBulkUnassign = () => {
+    if (!canManageDriverAssignments || runnerScopeIds.length === 0 || activeDriverAssignments.length === 0) return;
+
+    bulkUnassignDriverOrders.mutate({
+      runnerIds: runnerScopeIds,
+      orderIds: activeDriverAssignments.map((order) => order.id),
+      operationalDate: activeQueueScopeDate,
+    }, {
+      onSuccess: () => {
+        clearSelection();
+        handleBulkUnassignDialogOpenChange(false);
+      },
+    });
+  };
+
   const handleOpenBulkRevert = (driver: DriverWorkloadView) => {
     if (!runnerScopeId || !canManageDriverAssignments || driver.orderCount === 0) return;
 
@@ -1137,6 +1217,10 @@ export default function RunnerDriverInbox({
 
   const handleConfirmAssignment = () => {
     if (!targetDriver || assignmentOrderIds.length === 0) return;
+    if (!assignmentAssignableDriverIds.has(targetDriver)) {
+      toast.error('Link this Driver to every selected order Runner before assigning.');
+      return;
+    }
     applyBatch.mutate({
       orderIds: assignmentOrderIds,
       driverId: targetDriver,
@@ -1150,11 +1234,12 @@ export default function RunnerDriverInbox({
     });
   };
 
-  const handleOpenAreaCorrection = () => {
-    if (selectedRows.length === 0) {
+  const handleOpenAreaCorrection = (orderIds = selectedRows) => {
+    if (orderIds.length === 0) {
       toast.error('Select orders first');
       return;
     }
+    selectOrders(orderIds);
     setCorrectionAreaCode(normalAreas[0]?.code || '');
     setAreaCorrectionDialogOpen(true);
   };
@@ -1353,6 +1438,34 @@ export default function RunnerDriverInbox({
                             className="shrink-0 rounded-full border-amber-300 bg-white"
                           >
                             Reassign old orders
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {canManageDriverAssignments && (
+                      <div className="mb-3 rounded-[1rem] border border-red-200 bg-red-50/70 px-3 py-2 text-sm text-red-950">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <div className="min-w-0">
+                            <p className="font-bold">Return current Driver orders</p>
+                            <p className="text-xs font-medium text-red-800">
+                              {activeDriverAssignments.length} active order(s) currently assigned to Drivers. Return them to the Unassigned queue.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleOpenBulkUnassign}
+                            disabled={activeDriverAssignments.length === 0 || bulkUnassignDriverOrders.isPending}
+                            className="shrink-0 rounded-full border-red-300 bg-white text-red-800 hover:bg-red-100 hover:text-red-900"
+                          >
+                            {bulkUnassignDriverOrders.isPending ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Undo2 className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Return all to Unassigned
                           </Button>
                         </div>
                       </div>
@@ -1580,16 +1693,16 @@ export default function RunnerDriverInbox({
                           isSelected={selectedRows.includes(order.id)}
                           selectable
                           onSelect={(checked) => handleSelectRow(order.id, !!checked)}
-                          actions={
-                            !isNormalArea(areaCode) ? (
-                              <Button size="sm" variant="outline" onClick={() => {
-                                selectOrders([order.id]);
-                                handleOpenAreaCorrection();
-                              }}>
-                                <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Resolve Delivery Zone
-                              </Button>
-                            ) : undefined
-                          }
+                          actions={(
+                            <Button size="sm" variant="outline" onClick={() => {
+                              handleOpenAreaCorrection([order.id]);
+                            }}>
+                              {isNormalArea(areaCode)
+                                ? <MapPin className="mr-1 h-3.5 w-3.5" />
+                                : <AlertTriangle className="mr-1 h-3.5 w-3.5" />}
+                              {isNormalArea(areaCode) ? 'Change Delivery Zone' : 'Resolve Delivery Zone'}
+                            </Button>
+                          )}
                         />
                       );
                     })
@@ -1712,7 +1825,10 @@ export default function RunnerDriverInbox({
                       <div className="rounded-[1.1rem] border border-dashed border-white/18 bg-white/[0.04] p-4 text-sm text-white/58">No Driver matches this filter.</div>
                     ) : (
                       visibleDriverWorkloads.map((driver) => {
-                        const canAssignSelected = selectedRows.length > 0 && !selectedHasSpecial && driver.isAvailable;
+                        const canAssignSelected = selectedRows.length > 0
+                          && !selectedHasSpecial
+                          && driver.isAvailable
+                          && selectedAssignableDriverIds.has(driver.driver_id);
                         return (
                           <div
                             key={driver.driver_id}
@@ -1842,6 +1958,76 @@ export default function RunnerDriverInbox({
               </aside>
             </div>
         </section>
+
+        <Dialog open={bulkUnassignDialogOpen} onOpenChange={handleBulkUnassignDialogOpenChange}>
+          <DialogContent className="bottom-0 top-auto max-h-[88dvh] w-screen max-w-none translate-y-0 overflow-y-auto rounded-b-none rounded-t-[1.5rem] border-red-100 bg-white p-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:bottom-auto sm:top-[50%] sm:w-[min(92vw,31rem)] sm:max-w-lg sm:translate-y-[-50%] sm:rounded-2xl sm:p-6">
+            <DialogHeader className="space-y-2 pr-7 text-left">
+              <DialogTitle className="text-xl leading-tight">
+                Return all current Driver orders?
+              </DialogTitle>
+              <DialogDescription className="leading-relaxed">
+                This removes active assignments from every Driver in the current Runner scope and returns them to Unassigned. Delivered, failed, cancelled, and completed orders are not changed.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="rounded-xl border border-red-100 bg-red-50/60 p-4">
+                <p className="text-3xl font-black tabular-nums text-foreground">
+                  {activeDriverAssignments.length}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  active Driver order(s) will return to Unassigned
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  The operation is recorded as one batch and the server rechecks every order immediately before changing it.
+                </p>
+              </div>
+
+              {activeDriverAssignments.length > 20 && (
+                <div className="space-y-2">
+                  <Label htmlFor="bulk-unassign-confirmation">Type UNASSIGN to confirm</Label>
+                  <Input
+                    id="bulk-unassign-confirmation"
+                    autoComplete="off"
+                    value={bulkUnassignConfirmation}
+                    onChange={(event) => setBulkUnassignConfirmation(event.target.value)}
+                    placeholder="UNASSIGN"
+                    className="h-11"
+                  />
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleBulkUnassignDialogOpenChange(false)}
+                className="h-11 rounded-full"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleConfirmBulkUnassign}
+                disabled={
+                  bulkUnassignDriverOrders.isPending
+                  || activeDriverAssignments.length === 0
+                  || (activeDriverAssignments.length > 20 && bulkUnassignConfirmation.trim().toUpperCase() !== 'UNASSIGN')
+                }
+                className="h-11 rounded-full whitespace-nowrap"
+              >
+                {bulkUnassignDriverOrders.isPending ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <Undo2 className="mr-1.5 h-4 w-4" />
+                )}
+                Return {activeDriverAssignments.length}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={bulkRevertDialogOpen} onOpenChange={handleBulkRevertDialogOpenChange}>
           <DialogContent className="bottom-0 top-auto max-h-[88dvh] w-screen max-w-none translate-y-0 overflow-y-auto rounded-b-none rounded-t-[1.5rem] border-red-100 bg-white p-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:bottom-auto sm:top-[50%] sm:w-[min(92vw,31rem)] sm:max-w-lg sm:translate-y-[-50%] sm:rounded-2xl sm:p-6">
@@ -2014,7 +2200,37 @@ export default function RunnerDriverInbox({
                 </div>
               </div>
 
-              {isNormalArea(activeAreaCode) && (
+              {assignmentAction === 'REASSIGN' ? (
+                <div className="space-y-3 rounded-xl border border-[#e3ddd4] bg-[#fbfaf7] p-3">
+                  <div>
+                    <p className="text-sm font-semibold">Choose an area to reassign</p>
+                    <p className="text-xs text-muted-foreground">
+                      These previous-day orders are grouped by delivery area. Select one area or keep all selected.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectAssignmentSubset(selectedOrders, 'REASSIGN')}
+                    >
+                      All selected ({selectedOrders.length})
+                    </Button>
+                    {assignmentSelectedAreaGroups.map((group) => (
+                      <Button
+                        key={group.label}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => selectAssignmentSubset(group.orders, 'REASSIGN')}
+                      >
+                        {group.label} ({group.orders.length})
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : isNormalArea(activeAreaCode) && (
                 <div className="space-y-3 rounded-xl border border-[#e3ddd4] bg-[#fbfaf7] p-3">
                   <div>
                     <p className="text-sm font-semibold">Choose a smaller area</p>
@@ -2139,13 +2355,20 @@ export default function RunnerDriverInbox({
                     <SelectValue placeholder="Select a Driver..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {driverWorkloads.map((driver) => (
+                    {assignableDriverWorkloads.map((driver) => (
                       <SelectItem key={driver.driver_id} value={driver.driver_id}>
                         {driver.name} - {driver.orderCount} orders - {formatBND(driver.collectAmount)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {assignmentDriverLinksLoading
+                    ? 'Checking active Runner–Driver links...'
+                    : assignableDriverWorkloads.length > 0
+                      ? 'Only Drivers linked to every selected order Runner can be assigned.'
+                      : 'No active Driver link covers every selected order Runner.'}
+                </p>
               </div>
 
               {targetDriverWorkload && (
@@ -2205,7 +2428,7 @@ export default function RunnerDriverInbox({
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Correct Delivery Zone</DialogTitle>
-              <DialogDescription>Move selected orders out of Needs Review or into the correct delivery zone.</DialogDescription>
+              <DialogDescription>Set or change the delivery zone for selected orders. Existing runner and driver assignments are preserved.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="rounded-xl border bg-muted/20 p-3 text-sm">
@@ -2242,12 +2465,12 @@ export default function RunnerDriverInbox({
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Reject Delivery</DialogTitle>
-              <DialogDescription>Please provide a reason for rejecting this delivery.</DialogDescription>
+              <DialogDescription>Please provide a reason for rejecting this delivery. A reason is required before sending it back to the driver.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
-                <Label>Rejection Reason *</Label>
-                <Textarea value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Enter reason..." />
+              <div className="space-y-2">
+                <Label htmlFor="driver-inbox-reject-reason">Rejection reason <span className="text-destructive">*</span></Label>
+                <Textarea id="driver-inbox-reject-reason" value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Explain what must be corrected..." aria-required="true" />
               </div>
             </div>
             <DialogFooter>

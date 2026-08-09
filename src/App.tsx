@@ -15,24 +15,8 @@ import { ProfileGate } from "@/components/auth/ProfileGate";
 import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
 import { MaintenanceOverlay } from "@/components/MaintenanceOverlay";
 import { ResponsiveLayout } from "@/components/layout/ResponsiveLayout";
-import { lazy, Suspense } from "react";
-
-// Retry dynamic import once on chunk load failure (stale deployment cache)
-function lazyRetry<T extends { default: React.ComponentType<never> }>(
-  importFn: () => Promise<T>,
-) {
-  return lazy(() =>
-    importFn().catch(() => {
-      const key = 'chunk_reload';
-      const last = sessionStorage.getItem(key);
-      if (!last || Date.now() - Number(last) > 10_000) {
-        sessionStorage.setItem(key, String(Date.now()));
-        window.location.reload();
-      }
-      return importFn();
-    }),
-  );
-}
+import { Suspense } from "react";
+import { lazyWithChunkRecovery } from "@/lib/chunkRecovery";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -40,47 +24,47 @@ import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 
 // Module pages
-const OrdersModule = lazyRetry(() => import("./pages/modules/OrdersModule"));
-const DispatchModule = lazyRetry(() => import("./pages/modules/DispatchModule"));
-const DeliveryModule = lazyRetry(() => import("./pages/modules/DeliveryModule"));
-const PerformanceModule = lazyRetry(() => import("./pages/modules/PerformanceModule"));
-const TeamModule = lazyRetry(() => import("./pages/modules/TeamModule"));
-const FinanceModule = lazyRetry(() => import("./pages/modules/FinanceModule"));
-const InventoryModule = lazyRetry(() => import("./pages/modules/InventoryModule"));
-const SystemModule = lazyRetry(() => import("./pages/modules/SystemModule"));
+const OrdersModule = lazyWithChunkRecovery(() => import("./pages/modules/OrdersModule"));
+const DispatchModule = lazyWithChunkRecovery(() => import("./pages/modules/DispatchModule"));
+const DeliveryModule = lazyWithChunkRecovery(() => import("./pages/modules/DeliveryModule"));
+const PerformanceModule = lazyWithChunkRecovery(() => import("./pages/modules/PerformanceModule"));
+const TeamModule = lazyWithChunkRecovery(() => import("./pages/modules/TeamModule"));
+const FinanceModule = lazyWithChunkRecovery(() => import("./pages/modules/FinanceModule"));
+const InventoryModule = lazyWithChunkRecovery(() => import("./pages/modules/InventoryModule"));
+const SystemModule = lazyWithChunkRecovery(() => import("./pages/modules/SystemModule"));
 
 // SEO landing pages
-const LogisticsServiceBrunei = lazyRetry(() => import("./pages/seo/LogisticsServiceBrunei"));
-const LastMileDeliveryBrunei = lazyRetry(() => import("./pages/seo/LastMileDeliveryBrunei"));
-const FulfillmentServiceBrunei = lazyRetry(() => import("./pages/seo/FulfillmentServiceBrunei"));
-const DeliveryManagementSystem = lazyRetry(() => import("./pages/seo/DeliveryManagementSystem"));
-const LogisticsCompanyBrunei = lazyRetry(() => import("./pages/seo/LogisticsCompanyBrunei"));
-const CourierServiceBrunei = lazyRetry(() => import("./pages/seo/CourierServiceBrunei"));
-const SameDayDeliveryBrunei = lazyRetry(() => import("./pages/seo/SameDayDeliveryBrunei"));
-const EcommerceDeliveryBrunei = lazyRetry(() => import("./pages/seo/EcommerceDeliveryBrunei"));
-const ParcelDeliveryBrunei = lazyRetry(() => import("./pages/seo/ParcelDeliveryBrunei"));
-const DeliveryAppBrunei = lazyRetry(() => import("./pages/seo/DeliveryAppBrunei"));
+const LogisticsServiceBrunei = lazyWithChunkRecovery(() => import("./pages/seo/LogisticsServiceBrunei"));
+const LastMileDeliveryBrunei = lazyWithChunkRecovery(() => import("./pages/seo/LastMileDeliveryBrunei"));
+const FulfillmentServiceBrunei = lazyWithChunkRecovery(() => import("./pages/seo/FulfillmentServiceBrunei"));
+const DeliveryManagementSystem = lazyWithChunkRecovery(() => import("./pages/seo/DeliveryManagementSystem"));
+const LogisticsCompanyBrunei = lazyWithChunkRecovery(() => import("./pages/seo/LogisticsCompanyBrunei"));
+const CourierServiceBrunei = lazyWithChunkRecovery(() => import("./pages/seo/CourierServiceBrunei"));
+const SameDayDeliveryBrunei = lazyWithChunkRecovery(() => import("./pages/seo/SameDayDeliveryBrunei"));
+const EcommerceDeliveryBrunei = lazyWithChunkRecovery(() => import("./pages/seo/EcommerceDeliveryBrunei"));
+const ParcelDeliveryBrunei = lazyWithChunkRecovery(() => import("./pages/seo/ParcelDeliveryBrunei"));
+const DeliveryAppBrunei = lazyWithChunkRecovery(() => import("./pages/seo/DeliveryAppBrunei"));
 
 // Blog pages
-const BlogIndex = lazyRetry(() => import("./pages/blog/BlogIndex"));
-const BlogPost = lazyRetry(() => import("./pages/blog/BlogPost"));
+const BlogIndex = lazyWithChunkRecovery(() => import("./pages/blog/BlogIndex"));
+const BlogPost = lazyWithChunkRecovery(() => import("./pages/blog/BlogPost"));
 
 // Auth pages
-const ResetPassword = lazyRetry(() => import("./pages/auth/ResetPassword"));
+const ResetPassword = lazyWithChunkRecovery(() => import("./pages/auth/ResetPassword"));
 
 // Standalone pages (lazy-loaded — rarely visited)
-const ProfilePage = lazyRetry(() => import("./pages/settings/ProfilePage"));
-const NotificationCenter = lazyRetry(() => import("./pages/notifications/NotificationCenter"));
-const TelegramUserSettings = lazyRetry(() => import("./pages/settings/TelegramUserSettings"));
-const TelegramLogsPage = lazyRetry(() => import("./pages/settings/TelegramLogsPage"));
-const DriverOnboarding = lazyRetry(() => import("./pages/driver/DriverOnboarding"));
-const EventCreate = lazyRetry(() => import("./pages/admin/EventCreate"));
-const EventDetail = lazyRetry(() => import("./pages/admin/EventDetail"));
-const UserEventsPage = lazyRetry(() => import("./pages/events/UserEventsPage"));
-const GuideCenterPage = lazyRetry(() => import("./pages/guide/GuideCenterPage"));
-const OrderNotFound = lazyRetry(() => import("./pages/orders/OrderNotFound"));
-const EventPopupModal = lazyRetry(() => import("./components/events/EventPopupModal").then(m => ({ default: m.EventPopupModal })));
-const OnboardingFlow = lazyRetry(() => import("./components/guide/OnboardingFlow").then(m => ({ default: m.OnboardingFlow })));
+const ProfilePage = lazyWithChunkRecovery(() => import("./pages/settings/ProfilePage"));
+const NotificationCenter = lazyWithChunkRecovery(() => import("./pages/notifications/NotificationCenter"));
+const TelegramUserSettings = lazyWithChunkRecovery(() => import("./pages/settings/TelegramUserSettings"));
+const TelegramLogsPage = lazyWithChunkRecovery(() => import("./pages/settings/TelegramLogsPage"));
+const DriverOnboarding = lazyWithChunkRecovery(() => import("./pages/driver/DriverOnboarding"));
+const EventCreate = lazyWithChunkRecovery(() => import("./pages/admin/EventCreate"));
+const EventDetail = lazyWithChunkRecovery(() => import("./pages/admin/EventDetail"));
+const UserEventsPage = lazyWithChunkRecovery(() => import("./pages/events/UserEventsPage"));
+const GuideCenterPage = lazyWithChunkRecovery(() => import("./pages/guide/GuideCenterPage"));
+const OrderNotFound = lazyWithChunkRecovery(() => import("./pages/orders/OrderNotFound"));
+const EventPopupModal = lazyWithChunkRecovery(() => import("./components/events/EventPopupModal").then(m => ({ default: m.EventPopupModal })));
+const OnboardingFlow = lazyWithChunkRecovery(() => import("./components/guide/OnboardingFlow").then(m => ({ default: m.OnboardingFlow })));
 
 const queryClient = new QueryClient({
   defaultOptions: {

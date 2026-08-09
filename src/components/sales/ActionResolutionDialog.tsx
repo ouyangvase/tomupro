@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon, Package, User, MapPin, Phone, AlertCircle, Loader2, Calendar as CalendarCheck, XCircle, ArrowRight, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBND } from '@/lib/currency';
-import { useBindings } from '@/hooks/useBindings';
+import { useAssignableRunners } from '@/hooks/useAssignableRunners';
 import { useCancelReasons } from '@/hooks/useCancelReasons';
 import { useUpdateOrder } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,8 +62,14 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
   // Fetch cancel reasons from cancel_reasons table
   const { data: cancelReasons = [] } = useCancelReasons(true);
 
-  // Fetch bound runners for this salesperson
-  const { data: bindings = [] } = useBindings({ salespersonId: profile?.id, active: true });
+  const runnerScope = profile?.role === 'admin'
+    ? { type: 'all' as const }
+    : profile?.role === 'manager' && profile.id
+      ? { type: 'manager' as const, managerId: profile.id }
+      : profile?.role === 'salesperson' && profile.id
+        ? { type: 'salesperson' as const, salespersonId: profile.id }
+        : null;
+  const { data: boundRunners = [] } = useAssignableRunners(runnerScope);
   const { data: attachments = [] } = useAttachments({ orderId: order?.id });
 
   const rawDeliveryProofs = useMemo(
@@ -81,10 +87,6 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
     enabled: rawDeliveryProofs.length > 0,
     staleTime: 30000,
   });
-
-  const boundRunners = useMemo(() => {
-    return bindings.map(b => b.runner).filter(Boolean);
-  }, [bindings]);
 
   // Check if order has a runner-suggested reschedule date
   const hasRunnerDate = order?.next_delivery_date != null;

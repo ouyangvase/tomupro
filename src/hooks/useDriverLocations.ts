@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { subscribeWithReconnect } from "@/lib/subscribeWithReconnect";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect } from "react";
@@ -55,7 +56,7 @@ export const useDriverLatestLocations = (driverIds?: string[]) => {
   useEffect(() => {
     if (!isAllowed || isFirebaseEnabled) return;
 
-    const channel = supabase
+    return subscribeWithReconnect(() => supabase
       .channel("driver-locations-updates")
       .on(
         "postgres_changes",
@@ -67,12 +68,9 @@ export const useDriverLatestLocations = (driverIds?: string[]) => {
         () => {
           queryClient.invalidateQueries({ queryKey: ["driver-latest-locations"] });
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      ),
+      { name: "driver-locations-updates" },
+    );
   }, [isAllowed, queryClient]);
 
   // When Firebase is enabled, adapt Firebase data to match the Supabase format

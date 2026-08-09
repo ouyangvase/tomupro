@@ -3,7 +3,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 type Theme = 'dark' | 'light';
 const THEME_PREFERENCE_KEY = 'theme-preference';
 const THEME_USER_CHOICE_KEY = 'theme-user-choice';
-const LIGHT_THEME_RESET_KEY = 'tomupro-light-theme-reset-20260713';
 
 interface ThemeContextType {
   theme: Theme;
@@ -23,58 +22,55 @@ export const useTheme = () => {
 
 // Apply theme immediately on page load (before React hydrates)
 const getInitialTheme = (): Theme => {
-  // Check localStorage for cached preference (faster than waiting for DB)
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
-      localStorage.setItem(LIGHT_THEME_RESET_KEY, 'done');
-      localStorage.removeItem(THEME_USER_CHOICE_KEY);
+      const storedTheme = localStorage.getItem(THEME_USER_CHOICE_KEY)
+        || localStorage.getItem(THEME_PREFERENCE_KEY);
+
+      if (storedTheme === 'dark' || storedTheme === 'light') {
+        return storedTheme;
+      }
     } catch {
       // Theme cache is non-critical.
     }
   }
-  return 'light'; // Default
+
+  return 'light';
 };
 
-// Force the production app back to the original light shell before React hydrates.
+const initialTheme = getInitialTheme();
+
+const applyTheme = (newTheme: Theme) => {
+  document.documentElement.classList.toggle('dark', newTheme === 'dark');
+  document.documentElement.style.colorScheme = newTheme;
+};
+
+// Apply the cached theme before React renders to avoid a flash of the wrong theme.
 if (typeof document !== 'undefined') {
-  getInitialTheme();
-  document.documentElement.classList.remove('dark');
+  document.documentElement.classList.toggle('dark', initialTheme === 'dark');
+  document.documentElement.style.colorScheme = initialTheme;
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setThemeState] = useState<Theme>('light');
+  const [theme, setThemeState] = useState<Theme>(initialTheme);
 
-  // Keep the app in the previous light theme even if an old profile/browser value says dark.
   useEffect(() => {
-    applyTheme('light');
-    try {
-      localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
-      localStorage.setItem(LIGHT_THEME_RESET_KEY, 'done');
-      localStorage.removeItem(THEME_USER_CHOICE_KEY);
-    } catch {
-      // Theme cache is non-critical.
-    }
-  }, []);
+    applyTheme(theme);
+  }, [theme]);
 
-  // Apply theme to document. Dark is intentionally disabled for this production shell.
-  const applyTheme = (_newTheme: Theme) => {
-    document.documentElement.classList.remove('dark');
-  };
-
-  const setTheme = (_newTheme: Theme) => {
-    setThemeState('light');
-    applyTheme('light');
+  const setTheme = (newTheme: Theme) => {
+    setThemeState(newTheme);
+    applyTheme(newTheme);
     try {
-      localStorage.setItem(THEME_PREFERENCE_KEY, 'light');
-      localStorage.removeItem(THEME_USER_CHOICE_KEY);
+      localStorage.setItem(THEME_PREFERENCE_KEY, newTheme);
+      localStorage.setItem(THEME_USER_CHOICE_KEY, newTheme);
     } catch {
       // Theme cache is non-critical.
     }
   };
 
   const toggleTheme = () => {
-    setTheme('light');
+    setTheme(theme === 'light' ? 'dark' : 'light');
   };
 
   return (

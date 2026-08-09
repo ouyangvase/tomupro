@@ -7,13 +7,14 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { RoleHeroBanner } from '@/components/dashboard/RoleHeroBanner';
 import capybaraLoading from '@/assets/capybara-loading.png';
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyWithChunkRecovery } from '@/lib/chunkRecovery';
 
-const AdminDashboard = lazy(() => import('@/pages/dashboard/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
-const SalespersonDashboard = lazy(() => import('@/pages/dashboard/SalespersonDashboard').then(m => ({ default: m.SalespersonDashboard })));
-const RunnerDashboard = lazy(() => import('@/pages/dashboard/RunnerDashboard').then(m => ({ default: m.RunnerDashboard })));
-const ManagerDashboard = lazy(() => import('@/pages/dashboard/ManagerDashboard').then(m => ({ default: m.ManagerDashboard })));
-const DriverDashboard = lazy(() => import('@/pages/dashboard/DriverDashboard').then(m => ({ default: m.DriverDashboard })));
+const AdminDashboard = lazyWithChunkRecovery(() => import('@/pages/dashboard/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const SalespersonDashboard = lazyWithChunkRecovery(() => import('@/pages/dashboard/SalespersonDashboard').then(m => ({ default: m.SalespersonDashboard })));
+const RunnerDashboard = lazyWithChunkRecovery(() => import('@/pages/dashboard/RunnerDashboard').then(m => ({ default: m.RunnerDashboard })));
+const ManagerDashboard = lazyWithChunkRecovery(() => import('@/pages/dashboard/ManagerDashboard').then(m => ({ default: m.ManagerDashboard })));
+const DriverDashboard = lazyWithChunkRecovery(() => import('@/pages/dashboard/DriverDashboard').then(m => ({ default: m.DriverDashboard })));
 
 function DashboardLoading() {
   return (
