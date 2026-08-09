@@ -4,6 +4,8 @@ export type DriverReviewOrder = {
   id: string;
   assignment_state?: string | null;
   runner_status?: string | null;
+  runner_accept_status?: string | null;
+  runner_review_status?: string | null;
   driver_id?: string | null;
   driver_status?: string | null;
   payment_method?: string | null;
@@ -99,6 +101,10 @@ export function isPendingDriverReviewOrder(
   return order.assignment_state === 'PENDING_ACCEPTANCE'
     && order.driver_status === expectedDriverStatus
     && Boolean(order.driver_id)
+    // The derived assignment state must not override the raw final outcome.
+    // This protects the queue from stale RPC/cache rows after a Runner accepts.
+    && String(order.runner_accept_status || '').toUpperCase() !== 'ACCEPTED'
+    && String(order.runner_review_status || '').toUpperCase() !== 'REVIEWED'
     // A legacy/inconsistent row can already have a final runner_status while
     // the Driver report is still waiting for Runner review. The assignment
     // source marks that row as PENDING_ACCEPTANCE, so the driver event remains

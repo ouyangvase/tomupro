@@ -135,6 +135,20 @@ describe('groupDriverReviewOrdersByDate', () => {
   });
 
   it.each([
+    { runner_accept_status: 'ACCEPTED', runner_review_status: 'NOT_REVIEWED' },
+    { runner_accept_status: 'PENDING', runner_review_status: 'REVIEWED' },
+  ])('excludes a Driver outcome already accepted or reviewed', (finalState) => {
+    expect(isPendingDriverReviewOrder({
+      id: 'already-processed-order',
+      assignment_state: 'PENDING_ACCEPTANCE',
+      driver_id: 'driver-1',
+      driver_status: 'DRIVER_DELIVERED',
+      runner_status: 'DELIVERED',
+      ...finalState,
+    }, 'DRIVER_DELIVERED')).toBe(false);
+  });
+
+  it.each([
     ['DELIVERED', 'DRIVER_DELIVERED'],
     ['FAILED_DELIVERY', 'DRIVER_FAILED'],
   ] as const)(
