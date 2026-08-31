@@ -7,6 +7,19 @@ import {
 } from '@/lib/driverReviewDateGroups';
 
 describe('groupDriverReviewOrdersByDate', () => {
+  it('uses the complete COD total for collection and zero for bank transfer', () => {
+    expect(getDriverReportedPaymentComponents({
+      id: 'kitani-cod',
+      payment_method: 'COD',
+      total_amount: 20,
+    })).toEqual({ cashAmount: 20, transferAmount: 0 });
+    expect(getDriverReportedPaymentComponents({
+      id: 'kitani-transfer',
+      payment_method: 'TRANSFER',
+      total_amount: 20,
+    })).toEqual({ cashAmount: 0, transferAmount: 20 });
+  });
+
   it('groups delivered and failed orders by the Brunei driver-action date', () => {
     const groups = groupDriverReviewOrdersByDate([
       {

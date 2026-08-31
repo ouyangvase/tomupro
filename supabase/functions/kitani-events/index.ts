@@ -1,4 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  validateKitaniOrderReadyEvent,
+  type KitaniOrderReadyEvent,
+} from "./validation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,13 +92,13 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "Invalid signature" }, 401);
   }
 
-  let event: KitaniLocationConfirmedEvent;
+  let event: KitaniLocationConfirmedEvent | KitaniOrderReadyEvent;
   try {
     event = JSON.parse(bodyText);
   } catch {
     return jsonResponse({ success: false, error: "Invalid JSON body" }, 400);
   }
-  if (event.event_type !== "delivery.location_confirmed") {
+  if (event.event_type !== "delivery.location_confirmed" && event.event_type !== "delivery.order_ready") {
     return jsonResponse({ success: true, status: "ignored" });
   }
 
@@ -102,6 +106,31 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  if (event.event_type === "delivery.order_ready") {
+    try {
+      validateKitaniOrderReadyEvent(event);
+    } catch (error) {
+      return jsonResponse({ success: false, error: error instanceof Error ? error.message : "Invalid KITANI order" }, 400);
+    }
+    const systemProfileId = Deno.env.get("KITANI_SYSTEM_PROFILE_ID");
+    if (!systemProfileId) {
+      return jsonResponse({ success: false, error: "KITANI system profile is not configured" }, 500);
+    }
+    const { data: result, error } = await supabase.rpc("ingest_kitani_order", {
+      p_event: event,
+      p_system_profile_id: systemProfileId,
+      p_idempotency_key: idempotencyKey,
+    });
+    if (error) return jsonResponse({ success: false, error: error.message }, 500);
+    return jsonResponse({
+      success: true,
+      status: result?.status || "created",
+      order_id: result?.order_id,
+      order_code: result?.order_code,
+      duplicate: result?.status === "duplicate",
+    });
+  }
 
   const { data: link, error: linkError } = await supabase
     .from("kitani_order_links")

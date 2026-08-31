@@ -19,6 +19,7 @@ interface Order {
   fulfillment_warehouse_id: string | null;
   stock_deducted: boolean;
   runner_status: string;
+  order_source?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -78,7 +79,7 @@ Deno.serve(async (req) => {
     // Fetch the order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, salesperson_id, runner_id, fulfillment_warehouse_id, stock_deducted, runner_status')
+      .select('id, salesperson_id, runner_id, fulfillment_warehouse_id, stock_deducted, runner_status, order_source')
       .eq('id', orderId)
       .single();
 
@@ -103,6 +104,51 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: true, message: 'Stock already deducted', alreadyProcessed: true }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Native KITANI orders carry their catalog and inventory in KITANI. They
+    // still use the normal TOMUPRO driver delivery lifecycle, but must not be
+    // forced through TOMUPRO warehouse or SKU deduction rules.
+    if (order.order_source === 'KITANI') {
+      const { error: kitaniUpdateError } = await supabase
+        .from('orders')
+        .update({
+          runner_status: 'DELIVERED',
+          delivered_at: deliveryTimestamp,
+          stock_deducted: true,
+          operational_status: 'DELIVERED_FINAL',
+        })
+        .eq('id', orderId);
+
+      if (kitaniUpdateError) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Error updating KITANI order status' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      await supabase.from('audit_logs').insert({
+        entity_type: 'order',
+        entity_id: orderId,
+        action: 'KITANI_ORDER_DELIVERED',
+        actor_id: authenticatedUserId,
+        before_json: { runner_status: order.runner_status, stock_deducted: false },
+        after_json: {
+          runner_status: 'DELIVERED',
+          stock_deducted: true,
+          inventory_skipped: true,
+          reason: 'Native KITANI inventory remains in KITANI',
+        },
+      });
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'KITANI delivery completed without TOMUPRO inventory deduction',
+          inventorySkipped: true,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
