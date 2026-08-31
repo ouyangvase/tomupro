@@ -3103,12 +3103,15 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: string | null
           channel: string | null
+          cod_amount: number
+          currency_code: string
           created_at: string
           created_by_name_snapshot: string | null
           created_by_user_id: string
           customer_name: string
           delivered_at: string | null
           discount_amount: number | null
+          delivery_fee: number
           dispute_notes: string | null
           dispute_reason: string | null
           driver_cash_amount: number | null
@@ -3138,6 +3141,8 @@ export type Database = {
           order_date: string
           order_owner_id: string
           order_source: string
+          source_delivery_intent_id: string | null
+          source_order_id: string | null
           owner_manager_display_name_snapshot: string | null
           owner_manager_id_snapshot: string | null
           owner_salesperson_display_name_snapshot: string | null
@@ -3178,12 +3183,15 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           channel?: string | null
+          cod_amount?: number
+          currency_code?: string
           created_at?: string
           created_by_name_snapshot?: string | null
           created_by_user_id?: string
           customer_name: string
           delivered_at?: string | null
           discount_amount?: number | null
+          delivery_fee?: number
           dispute_notes?: string | null
           dispute_reason?: string | null
           driver_cash_amount?: number | null
@@ -3213,6 +3221,8 @@ export type Database = {
           order_date?: string
           order_owner_id: string
           order_source?: string
+          source_delivery_intent_id?: string | null
+          source_order_id?: string | null
           owner_manager_display_name_snapshot?: string | null
           owner_manager_id_snapshot?: string | null
           owner_salesperson_display_name_snapshot?: string | null
@@ -3253,12 +3263,15 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           channel?: string | null
+          cod_amount?: number
+          currency_code?: string
           created_at?: string
           created_by_name_snapshot?: string | null
           created_by_user_id?: string
           customer_name?: string
           delivered_at?: string | null
           discount_amount?: number | null
+          delivery_fee?: number
           dispute_notes?: string | null
           dispute_reason?: string | null
           driver_cash_amount?: number | null
@@ -3288,6 +3301,8 @@ export type Database = {
           order_date?: string
           order_owner_id?: string
           order_source?: string
+          source_delivery_intent_id?: string | null
+          source_order_id?: string | null
           owner_manager_display_name_snapshot?: string | null
           owner_manager_id_snapshot?: string | null
           owner_salesperson_display_name_snapshot?: string | null

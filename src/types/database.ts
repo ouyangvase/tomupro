@@ -231,6 +231,12 @@ export interface Order {
   expected_pickup_date: string | null;
   total_qty: number;
   total_amount: number;
+  currency_code?: string;
+  merchandise_subtotal?: number;
+  delivery_fee?: number;
+  cod_amount?: number;
+  source_order_id?: string | null;
+  source_delivery_intent_id?: string | null;
   runner_status: RunnerStatus;
   driver_status: DriverStatus | null;
   runner_accept_status: RunnerAcceptStatus | null;
