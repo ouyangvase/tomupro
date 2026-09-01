@@ -60,6 +60,116 @@ interface KitaniLocationConfirmedEvent {
   };
 }
 
+interface KitaniOrderReadyEvent {
+  event_id: string;
+  event_type: "delivery.order_ready";
+  occurred_at: string;
+  delivery_intent_id: string;
+  source_order_id: string;
+  source_order_no: string;
+  customer: { name: string; phone: string };
+  pickup: {
+    name: string;
+    address: string;
+    latitude: number | null;
+    longitude: number | null;
+  };
+  dropoff: {
+    formatted_address: string;
+    latitude: number;
+    longitude: number;
+    unit?: string | null;
+    landmark?: string | null;
+    instructions?: string | null;
+    gps_accuracy?: number | null;
+  };
+  package: { type: string; description: string };
+  financials: {
+    merchandise_subtotal_minor: number;
+    delivery_fee_minor: number;
+    discount_total_minor: number;
+    total_amount_minor: number;
+    cod_amount_minor: number;
+    payment_method: "COD" | "TRANSFER";
+    currency_code: "BND";
+  };
+  items: Array<{
+    sku_label: string;
+    quantity: number;
+    price_minor: number;
+    line_total_minor: number;
+  }>;
+}
+
+type KitaniEvent = KitaniLocationConfirmedEvent | KitaniOrderReadyEvent;
+
+function isSafeMinor(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function validateOrderReadyEvent(event: KitaniOrderReadyEvent) {
+  if (
+    !event.delivery_intent_id ||
+    !event.source_order_id ||
+    !event.source_order_no ||
+    !event.customer?.phone ||
+    !event.dropoff?.formatted_address ||
+    !Number.isFinite(event.dropoff.latitude) ||
+    !Number.isFinite(event.dropoff.longitude) ||
+    event.financials?.currency_code !== "BND" ||
+    !["COD", "TRANSFER"].includes(event.financials.payment_method) ||
+    !Array.isArray(event.items) ||
+    event.items.length === 0
+  ) {
+    throw new Error("KITANI order-ready payload is incomplete");
+  }
+
+  const financialFields = [
+    "merchandise_subtotal_minor",
+    "delivery_fee_minor",
+    "discount_total_minor",
+    "total_amount_minor",
+    "cod_amount_minor",
+  ] as const;
+  for (const field of financialFields) {
+    if (!isSafeMinor(event.financials[field])) {
+      throw new Error(`KITANI ${field} must be a non-negative integer minor-unit amount`);
+    }
+  }
+  if (
+    event.financials.total_amount_minor !==
+    event.financials.merchandise_subtotal_minor +
+      event.financials.delivery_fee_minor -
+      event.financials.discount_total_minor
+  ) {
+    throw new Error("KITANI order financials do not balance");
+  }
+  if (
+    event.financials.payment_method === "COD" &&
+    event.financials.cod_amount_minor !== event.financials.total_amount_minor
+  ) {
+    throw new Error("COD amount must equal the final KITANI total");
+  }
+  if (
+    event.financials.payment_method === "TRANSFER" &&
+    event.financials.cod_amount_minor !== 0
+  ) {
+    throw new Error("Transfer orders must have zero COD amount");
+  }
+  for (const item of event.items) {
+    if (
+      !item.sku_label?.trim() ||
+      !Number.isSafeInteger(item.quantity) ||
+      item.quantity <= 0 ||
+      !isSafeMinor(item.price_minor) ||
+      !isSafeMinor(item.line_total_minor) ||
+      item.line_total_minor !== item.price_minor * item.quantity
+    ) {
+      throw new Error("KITANI order item is invalid");
+    }
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "Method not allowed" }, 405);
@@ -88,13 +198,13 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "Invalid signature" }, 401);
   }
 
-  let event: KitaniLocationConfirmedEvent;
+  let event: KitaniEvent;
   try {
     event = JSON.parse(bodyText);
   } catch {
     return jsonResponse({ success: false, error: "Invalid JSON body" }, 400);
   }
-  if (event.event_type !== "delivery.location_confirmed") {
+  if (event.event_type !== "delivery.location_confirmed" && event.event_type !== "delivery.order_ready") {
     return jsonResponse({ success: true, status: "ignored" });
   }
 
@@ -102,6 +212,54 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  if (event.event_type === "delivery.order_ready") {
+    try {
+      validateOrderReadyEvent(event);
+    } catch (error) {
+      return jsonResponse({ success: false, error: (error as Error).message }, 422);
+    }
+
+    const salespersonId = Deno.env.get("TOMUPRO_KITANI_SALESPERSON_ID");
+    if (!salespersonId) {
+      return jsonResponse({ success: false, error: "KITANI TOMUPRO owner profile is not configured" }, 500);
+    }
+
+    const { data, error } = await supabase.rpc("create_kitani_order_ready", {
+      p_delivery_intent_id: event.delivery_intent_id,
+      p_source_order_id: event.source_order_id,
+      p_source_order_no: event.source_order_no,
+      p_customer_name: event.customer.name,
+      p_phone: event.customer.phone,
+      p_address: [
+        event.dropoff.formatted_address,
+        event.dropoff.unit ? `Unit/House: ${event.dropoff.unit}` : null,
+        event.dropoff.landmark ? `Landmark: ${event.dropoff.landmark}` : null,
+        event.dropoff.instructions ? `Notes: ${event.dropoff.instructions}` : null,
+        `GPS: ${event.dropoff.latitude}, ${event.dropoff.longitude}`,
+      ].filter(Boolean).join("\n"),
+      p_payment_method: event.financials.payment_method,
+      p_currency_code: event.financials.currency_code,
+      p_financials: event.financials,
+      p_items: event.items,
+      p_salesperson_id: salespersonId,
+      p_request_payload: event,
+    });
+    if (error) {
+      console.error("KITANI order-ready RPC failed", error);
+      return jsonResponse({ success: false, error: "Unable to create the TOMUPRO delivery order" }, 500);
+    }
+    const result = Array.isArray(data) ? data[0] : data;
+    if (!result?.order_id || !result?.order_code) {
+      return jsonResponse({ success: false, error: "TOMUPRO did not return an order reference" }, 500);
+    }
+    return jsonResponse({
+      success: true,
+      status: result.created ? "order_created" : "already_exists",
+      tomupro_order_id: result.order_id,
+      tomupro_order_code: result.order_code,
+    });
+  }
 
   const { data: link, error: linkError } = await supabase
     .from("kitani_order_links")

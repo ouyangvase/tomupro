@@ -7,6 +7,7 @@ param(
   [string]$KitaniCustomerUrl = "https://www.kitani.my",
   [string]$KitaniClientId = $env:KITANI_CLIENT_ID,
   [string]$KitaniApiSecret = $env:KITANI_API_SECRET,
+  [string]$KitaniSalespersonId = $env:TOMUPRO_KITANI_SALESPERSON_ID,
   [string]$InvitationTemplate = $env:KITANI_INVITATION_TEMPLATE,
   [string]$KitaniRepoPath = $env:KITANI_REPO_PATH
 )
@@ -19,6 +20,10 @@ if (-not $env:SUPABASE_ACCESS_TOKEN) {
 
 if (-not $KitaniClientId) {
   $KitaniClientId = "tomupro-" + ([Guid]::NewGuid().ToString("N"))
+}
+
+if (-not $KitaniSalespersonId) {
+  throw "TOMUPRO_KITANI_SALESPERSON_ID is required. Set it to an existing TOMUPRO profiles.id used as the KITANI system owner."
 }
 
 if (-not $KitaniApiSecret) {
@@ -58,6 +63,7 @@ npx supabase secrets set `
   "KITANI_API_BASE_URL=$KitaniApiBaseUrl" `
   "KITANI_CLIENT_ID=$KitaniClientId" `
   "KITANI_API_SECRET=$KitaniApiSecret" `
+  "TOMUPRO_KITANI_SALESPERSON_ID=$KitaniSalespersonId" `
   "KITANI_INVITATION_TEMPLATE=$InvitationTemplate" `
   "KITANI_APP_URL=$KitaniCustomerUrl" `
   "TOMUPRO_TENANT_ID=tomupro" | Out-Null
@@ -65,6 +71,7 @@ npx supabase secrets set `
 Write-Host "Applying only the KITANI integration migration..."
 npx supabase link --project-ref $ProjectRef | Out-Null
 npx supabase db query --linked --file "supabase/migrations/20260718110000_kitani_order_links.sql"
+npx supabase db query --linked --file "supabase/migrations/20260901100000_kitani_order_ready_receiver.sql"
 
 Write-Host "Deploying TOMUPRO Supabase edge functions..."
 npx supabase functions deploy create-kitani-invitation --project-ref $ProjectRef
