@@ -435,7 +435,7 @@ function PasteTemplateView({
         <Textarea
           value={templateText}
           onChange={(e) => { setTemplateText(e.target.value); setParseResult(null); }}
-          placeholder={`JILL OTHMAN\n8605588\nNO 7 SPG 28-16 JLN PERPINDAHAN LAMBAK KANAN\n\n1 X SAHIYYA PLUS $69\n2366/YC`}
+          placeholder={`CUSTOMER NAME\n8888888\nNO 1 SPG 1-1 JALAN LAMBAK KANAN KB\n\n1 X ALIENWARE $12999\nREMARK/RUNNER`}
           rows={12}
           className="font-mono text-sm bg-secondary/30 border-border/50 rounded-xl"
         />

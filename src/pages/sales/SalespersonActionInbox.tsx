@@ -944,7 +944,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                   expandedFields={[
                     { label: 'Address', value: order.address || '-', fullWidth: true },
                     ...(order.failed_reason ? [{ label: 'Reason', value: order.failed_reason }] : []),
-                    ...(order.failed_remark || order.runner_comment ? [{ label: 'Runner Comment', value: order.failed_remark || order.runner_comment || '-', fullWidth: true }] : []),
+                    ...(order.driver_failed_remark || order.failed_remark || order.runner_comment ? [{ label: 'Driver Remark', value: order.driver_failed_remark || order.failed_remark || order.runner_comment || '-', fullWidth: true }] : []),
                     ...(proofs.length > 0 ? [{ label: 'Proof', value: <DeliveryProofPreview proofs={proofs} />, fullWidth: true }] : []),
                     { label: 'Order Status', value: order.status },
                     { label: 'Runner Status', value: order.runner_status || '-' },
@@ -991,7 +991,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     <TableHead className="w-[110px]">Issue</TableHead>
                     <TableHead className="w-[100px]">Next Date</TableHead>
                     <TableHead className="w-[130px]">Reason</TableHead>
-                    <TableHead className="w-[160px]">Runner Comment</TableHead>
+                    <TableHead className="w-[160px]">Driver Remark</TableHead>
                     <TableHead className="w-[110px]">Proof</TableHead>
                     <TableHead className="w-[100px]">Status</TableHead>
                     <TableHead className="text-right w-[180px]">Actions</TableHead>
@@ -1072,16 +1072,16 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                           ) : '-'}
                         </TableCell>
                         <TableCell className="max-w-[160px]">
-                          {order.failed_remark || order.runner_comment ? (
+                          {order.driver_failed_remark || order.failed_remark || order.runner_comment ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="flex items-start gap-1 cursor-help">
                                   <MessageSquare className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                                  <span className="text-sm truncate">{order.failed_remark || order.runner_comment}</span>
+                                  <span className="text-sm truncate">{order.driver_failed_remark || order.failed_remark || order.runner_comment}</span>
                                 </div>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-[300px]">
-                                <p className="whitespace-pre-wrap">{order.failed_remark || order.runner_comment}</p>
+                                <p className="whitespace-pre-wrap">{order.driver_failed_remark || order.failed_remark || order.runner_comment}</p>
                               </TooltipContent>
                             </Tooltip>
                           ) : '-'}

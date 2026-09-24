@@ -57,6 +57,32 @@ describe("KITANI order-ready receiver validation", () => {
     }))).not.toThrow();
   });
 
+  it("accepts an HTTPS transfer receipt URL", () => {
+    expect(() => validateKitaniOrderReadyEvent(makeEvent({
+      merchandise_subtotal_minor: 1700,
+      delivery_fee_minor: 300,
+      discount_total_minor: 0,
+      total_amount_minor: 2000,
+      cod_amount_minor: 0,
+      payment_method: "TRANSFER",
+      currency_code: "BND",
+      transfer_receipt_url: "https://kitani.my/uploads/receipt.jpg",
+    }))).not.toThrow();
+  });
+
+  it("rejects a non-HTTPS transfer receipt URL", () => {
+    expect(() => validateKitaniOrderReadyEvent(makeEvent({
+      merchandise_subtotal_minor: 1700,
+      delivery_fee_minor: 300,
+      discount_total_minor: 0,
+      total_amount_minor: 2000,
+      cod_amount_minor: 0,
+      payment_method: "TRANSFER",
+      currency_code: "BND",
+      transfer_receipt_url: "http://kitani.my/uploads/receipt.jpg",
+    }))).toThrow("transfer_receipt_url must be a valid HTTPS URL");
+  });
+
   it("keeps the delivery intent as the retry identity", () => {
     const first = makeEvent({
       merchandise_subtotal_minor: 1700,

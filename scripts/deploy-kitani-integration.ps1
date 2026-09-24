@@ -7,6 +7,7 @@ param(
   [string]$KitaniCustomerUrl = "https://www.kitani.my",
   [string]$KitaniClientId = $env:KITANI_CLIENT_ID,
   [string]$KitaniApiSecret = $env:KITANI_API_SECRET,
+  [string]$KitaniRunnerId = $env:TOMUPRO_KITANI_RUNNER_ID,
   [string]$InvitationTemplate = $env:KITANI_INVITATION_TEMPLATE,
   [string]$KitaniRepoPath = $env:KITANI_REPO_PATH
 )
@@ -36,6 +37,10 @@ if (-not $InvitationTemplate) {
   $InvitationTemplate = "Your order is ready for KITANI delivery. Get the free delivery, rewards & more!`n`nConfirm your location: {{confirmation_url}}"
 }
 
+if (-not $KitaniRunnerId -or $KitaniRunnerId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$') {
+  throw "TOMUPRO_KITANI_RUNNER_ID must be the UUID of an active Runner profile. Resolve kitani@gmail.com once and set it only in this terminal."
+}
+
 function Set-RailwaySecret {
   param([string]$Name, [string]$Value)
   $Value | npx @railway/cli variable set $Name --stdin `
@@ -59,12 +64,13 @@ npx supabase secrets set `
   "KITANI_CLIENT_ID=$KitaniClientId" `
   "KITANI_API_SECRET=$KitaniApiSecret" `
   "KITANI_INVITATION_TEMPLATE=$InvitationTemplate" `
+  "TOMUPRO_KITANI_RUNNER_ID=$KitaniRunnerId" `
   "KITANI_APP_URL=$KitaniCustomerUrl" `
   "TOMUPRO_TENANT_ID=tomupro" | Out-Null
 
-Write-Host "Applying only the KITANI integration migration..."
+Write-Host "Applying pending KITANI integration migrations..."
 npx supabase link --project-ref $ProjectRef | Out-Null
-npx supabase db query --linked --file "supabase/migrations/20260718110000_kitani_order_links.sql"
+npx supabase db push --linked --yes
 
 Write-Host "Deploying TOMUPRO Supabase edge functions..."
 npx supabase functions deploy create-kitani-invitation --project-ref $ProjectRef

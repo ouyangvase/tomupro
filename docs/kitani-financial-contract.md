@@ -9,7 +9,7 @@ This integration keeps KITANI, Medusa/Mercur, and TOMUPRO as separate systems. K
 3. KITANI creates one `delivery.order_ready` outbox event with idempotency key `kitani:<delivery-intent-id>:order-ready:v1`.
 4. The outbox worker sends the signed event to TOMUPRO and retries the same event safely.
 5. TOMUPRO validates the contract and calls `ingest_kitani_order` in one transaction.
-6. TOMUPRO creates one normal delivery order. Its existing driver queries calculate COD collection from `orders.total_amount` only for `payment_method = 'COD'`.
+6. TOMUPRO creates one normal delivery order and assigns it to the configured KITANI Runner UUID (`TOMUPRO_KITANI_RUNNER_ID`). Its existing driver queries calculate COD collection from `orders.total_amount` only for `payment_method = 'COD'`.
 
 KITANI never connects to the TOMUPRO database. TOMUPRO does not deduct KITANI inventory.
 
@@ -31,6 +31,19 @@ All values in the event's `financials` object are non-negative integer minor uni
 
 For bank transfer, `total_amount_minor` remains `2000` and `cod_amount_minor` is `0`. Merchant settlement must use KITANI merchandise value only; the delivery fee is not merchant revenue.
 
+Transfer events may also include an HTTPS image URL:
+
+```json
+{
+  "payment_method": "TRANSFER",
+  "currency_code": "BND",
+  "transfer_receipt_url": "https://kitani.my/uploads/receipt.jpg"
+}
+```
+
+TOMUPRO copies that image into the existing `receipts` storage bucket and sets
+the order to `pending` receipt review. It never auto-confirms a receipt.
+
 ## Database migration
 
 `supabase/migrations/20260901093000_kitani_order_financial_contract.sql` is additive. It adds source and financial columns, KITANI validation constraints, indexes, and the transactional `public.ingest_kitani_order` function. The unique source-delivery index is the final database guard against duplicate KITANI orders.
@@ -42,7 +55,7 @@ supabase db push
 supabase functions deploy kitani-events --no-verify-jwt
 ```
 
-The function requires the existing HMAC credentials and a valid `KITANI_SYSTEM_PROFILE_ID` secret. Set the profile ID from a real TOMUPRO service profile; do not commit it or any HMAC key.
+The function requires the existing HMAC credentials, a valid `KITANI_SYSTEM_PROFILE_ID` (or the existing legacy `TOMUPRO_KITANI_SALESPERSON_ID`), and the active Runner UUID in `TOMUPRO_KITANI_RUNNER_ID`. Set these values as Supabase Edge Function secrets; do not commit them or any HMAC key.
 
 ## Repair procedure
 

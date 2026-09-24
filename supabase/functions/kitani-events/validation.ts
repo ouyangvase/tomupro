@@ -30,6 +30,7 @@ export interface KitaniOrderReadyEvent {
     cod_amount_minor: number;
     payment_method: "COD" | "TRANSFER";
     currency_code: "BND";
+    transfer_receipt_url?: string | null;
   };
   items: Array<{
     sku_label: string;
@@ -37,6 +38,22 @@ export interface KitaniOrderReadyEvent {
     price_minor: number;
     line_total_minor: number;
   }>;
+}
+
+function assertTransferReceiptUrl(value: unknown) {
+  if (value === undefined || value === null || value === "") return;
+  if (typeof value !== "string" || value.length > 2048) {
+    throw new Error("transfer_receipt_url must be a valid HTTPS URL");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("transfer_receipt_url must be a valid HTTPS URL");
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error("transfer_receipt_url must be a valid HTTPS URL");
+  }
 }
 
 function assertMinor(value: unknown, field: string): asserts value is number {
@@ -57,6 +74,10 @@ export function validateKitaniOrderReadyEvent(event: KitaniOrderReadyEvent) {
   }
   if (event.financials?.payment_method !== "COD" && event.financials?.payment_method !== "TRANSFER") {
     throw new Error("payment_method must be COD or TRANSFER");
+  }
+  assertTransferReceiptUrl(event.financials?.transfer_receipt_url);
+  if (event.financials.payment_method === "COD" && event.financials.transfer_receipt_url) {
+    throw new Error("transfer_receipt_url is only valid for TRANSFER orders");
   }
   const financialKeys = [
     "merchandise_subtotal_minor",
