@@ -29,9 +29,9 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <SidebarProvider>
-      <div className="space-grid-bg min-h-dvh flex w-full bg-background text-foreground">
+      <div className="space-grid-bg h-dvh min-h-dvh flex w-full overflow-hidden bg-background text-foreground">
         <AppSidebar />
-        <div className="relative flex-1 flex flex-col min-w-0">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(239,244,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(239,244,255,0.035)_1px,transparent_1px)] [background-size:56px_56px]" />
           <header className="liquid-glass overflow-visible mx-3 mt-3 h-14 flex items-center justify-between px-4 md:mx-4 md:px-5 shrink-0 sticky top-3 z-40 rounded-2xl">
             <div className="flex min-w-0 flex-1 items-center">
@@ -42,7 +42,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <NotificationBell />
             </div>
           </header>
-          <main className="relative min-h-0 flex-1 overflow-auto overscroll-contain px-4 py-5 md:px-6 lg:px-8">
+          <main className="relative min-h-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-5 [-webkit-overflow-scrolling:touch] md:px-6 lg:px-8">
             <div className="mx-auto w-full max-w-[1831px]">
               {children}
             </div>

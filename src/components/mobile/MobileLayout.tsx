@@ -21,14 +21,14 @@ export function MobileLayout({
   return (
     <div
       className={cn(
-        "mobile-shell min-h-dvh w-full max-w-full overflow-x-hidden bg-[#f7f2ea] text-foreground flex flex-col",
+        "mobile-shell h-dvh min-h-dvh w-full max-w-full overflow-hidden bg-[#f7f2ea] text-foreground flex flex-col",
         className
       )}
     >
       {showHeader && <MobileHeader />}
       
       <main className={cn(
-        "mobile-content flex-1 min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto",
+        "mobile-content min-h-0 flex-1 min-w-0 w-full max-w-full touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]",
         showBottomNav && "pb-32",
         contentClassName
       )}>
