@@ -16,6 +16,8 @@ const TARGET_FIELDS: { key: string; label: string; required: boolean }[] = [
   { key: 'area', label: 'Area', required: false },
   { key: 'channel', label: 'Channel', required: false },
   { key: 'payment_method', label: 'Payment Method', required: false },
+  { key: 'transfer_amount', label: 'Already Paid by Transfer (BND)', required: false },
+  { key: 'transfer_receipt_url', label: 'Transfer Receipt (HTTPS URL)', required: false },
   { key: 'expected_pickup_date', label: 'Pickup Date', required: false },
   { key: 'notes', label: 'Order Notes', required: false },
   { key: 'sku_name_or_code', label: 'SKU', required: false },

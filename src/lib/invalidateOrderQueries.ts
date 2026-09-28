@@ -10,6 +10,9 @@ import { QueryClient } from '@tanstack/react-query';
  * When adding new order-related query keys, add them here — not in individual hooks.
  */
 export function invalidateOrderQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['finance-overview'] });
+  queryClient.invalidateQueries({ queryKey: ['finance-overview-day'] });
+  queryClient.invalidateQueries({ queryKey: ['driver-deliveries-today'] });
   // Core order lists
   queryClient.invalidateQueries({ queryKey: ['orders'] });
   queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });

@@ -125,6 +125,8 @@ export function driverEventMessage(
     ...header,
     'Delivered',
     eventDate,
-    `Amount: ${amount}`,
+    `Order total: ${amount}`,
+    `Transfer paid: ${formatAmount(metadata.transfer_paid_amount ?? 0)}`,
+    `Remaining: ${formatAmount(metadata.outstanding_amount ?? metadata.cod_due_amount ?? 0)}`,
   ].join('\n');
 }

@@ -2,6 +2,7 @@
 import { format } from 'date-fns';
 import { getRunnerAreaChargeKey } from '@/lib/runnerDeliveryCharges';
 import { formatKualaLumpurDateTime, getDeliveredOrderTimestamp } from '@/lib/deliveredOrderReport';
+import { hasCustomerTransfer, orderPaymentBreakdown } from './orderPayment';
 
 export function exportToCSV<T extends Record<string, unknown>>(
   data: T[],
@@ -363,7 +364,17 @@ export function exportOrderLines(
     { key: 'order_total', header: 'order_total' },
   ];
 
-  exportToCSV(lines as any, columns, filename);
+  const paymentColumns = [
+    'transferPaid', 'codDue', 'codCollected', 'totalCollected', 'outstanding', 'paymentStatus',
+  ].map(key => ({ key, header: key }));
+  const payments = new Map(orders.map(order => [order.id, orderPaymentBreakdown(order)]));
+  const seen = new Set<string>();
+  const rows = lines.map(line => {
+    const first = !seen.has(line.order_id);
+    seen.add(line.order_id);
+    return { ...line, ...(first ? payments.get(line.order_id) : {}), sales_value_once: first ? line.order_total : 0 };
+  });
+  exportToCSV(rows, [...columns, { key: 'sales_value_once', header: 'sales_value_once' }, ...paymentColumns], filename);
 }
 
 // Export selected orders only (as order lines)
@@ -391,6 +402,7 @@ export interface RunnerOrderLineExport {
   receipt_status: string;
   notes: string;
   salesperson_name: string;
+  runner_name: string;
   sku_code: string;
   sku_name: string;
   item_qty: number;
@@ -400,7 +412,7 @@ export interface RunnerOrderLineExport {
 }
 
 function getReceiptStatusLabel(order: any): string {
-  if (order.payment_method !== 'TRANSFER') return '';
+  if (!hasCustomerTransfer(order)) return '';
   switch (order.receipt_status) {
     case 'rejected': return 'REJECTED';
     case 'confirmed': return 'ACCEPTED';
@@ -413,7 +425,7 @@ export function exportRunnerOrderLines(
   orders: any[],
   filename: string
 ) {
-  const lines: RunnerOrderLineExport[] = [];
+  const lines: (RunnerOrderLineExport & { order_id: string })[] = [];
   
   for (const order of orders) {
     const orderItems = order.order_items || [];
@@ -421,6 +433,7 @@ export function exportRunnerOrderLines(
     if (orderItems.length === 0) {
       // Export order with empty item line
       lines.push({
+        order_id: order.id,
         order_ref: order.order_code || '',
         customer_name: order.customer_name || '',
         phone: order.phone || '',
@@ -447,6 +460,7 @@ export function exportRunnerOrderLines(
         const skuName = item.product?.sku_name || item.sku_label || 'UNKNOWN';
 
         lines.push({
+          order_id: order.id,
           order_ref: order.order_code || '',
           customer_name: order.customer_name || '',
           phone: order.phone || '',
@@ -487,7 +501,15 @@ export function exportRunnerOrderLines(
     { key: 'order_total', header: 'order_total' },
   ];
 
-  exportToCSV(lines as any, columns, filename);
+  const payments = new Map(orders.map(order => [order.id, orderPaymentBreakdown(order)]));
+  const seen = new Set<string>();
+  const rows = lines.map(line => {
+    const first = !seen.has(line.order_id);
+    seen.add(line.order_id);
+    return { ...line, ...(first ? payments.get(line.order_id) : {}), sales_value_once: first ? line.order_total : 0 };
+  });
+  const paymentColumns = ['sales_value_once', 'transferPaid', 'codDue', 'codCollected', 'totalCollected', 'outstanding', 'paymentStatus'].map(key => ({ key, header: key }));
+  exportToCSV(rows, [...columns, ...paymentColumns], filename);
 }
 
 // Export selected orders for runners (simplified format)

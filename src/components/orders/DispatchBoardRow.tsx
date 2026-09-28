@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Phone, CalendarClock } from 'lucide-react';
 import type { Order } from '@/types/database';
 import { formatBND } from '@/lib/currency';
+import { hasCustomerTransfer, orderCodDue, orderPaymentBreakdown } from '@/lib/orderPayment';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import { StockStatusBadge } from './StockStatusBadge';
@@ -61,7 +62,7 @@ function DeliveryStatusBadge({ status }: { status: string }) {
 
 export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable, onSelect, onClick, showStockStatus, stockStatus, onStockBadgeClick, kitaniAction }: DispatchBoardRowProps) {
   const { displayText } = formatOrderItemsDisplay(order.order_items);
-  const isRejectedReceipt = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
+  const isRejectedReceipt = hasCustomerTransfer(order) && order.receipt_status === 'rejected';
 
   return (
     <div
@@ -129,10 +130,11 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
           {/* Amount + Payment */}
           <div className="w-[110px] shrink-0 text-right">
             <span className="text-sm font-bold tabular-nums text-foreground">
-              {formatBND(order.total_amount)}
+              {formatBND(orderCodDue(order))}
             </span>
             <div className="mt-0.5">
-              <span className="text-[10px] text-muted-foreground font-medium">{order.payment_method}</span>
+              <span className="text-[10px] text-muted-foreground font-medium">{orderCodDue(order) === 0 ? 'Paid / No COD' : 'COD'}</span>
+              <p className="text-[10px] text-muted-foreground">Total {formatBND(order.total_amount)} · Transfer paid {formatBND(orderPaymentBreakdown(order).transferPaid)}</p>
             </div>
           </div>
 

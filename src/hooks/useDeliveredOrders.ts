@@ -34,6 +34,16 @@ export interface DeliveredOrder {
   area: string | null;
   address: string;
   total_amount: number;
+  cod_amount: number | null;
+  payment_plan: string | null;
+  transfer_paid_amount: number;
+  cod_due_amount: number;
+  payment_history_unverified: boolean;
+  receipt_url: string | null;
+  receipt_status: string | null;
+  driver_payment_method: string | null;
+  driver_cash_amount: number | null;
+  driver_transfer_amount: number | null;
   total_qty: number;
   payment_method: string;
   status: string;

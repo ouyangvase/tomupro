@@ -44,6 +44,7 @@ export interface PaginatedOrderFilters {
   actionRequired?: boolean;
   // Payment & receipt filters
   paymentMethod?: string;
+  hasTransfer?: boolean;
   receiptStatus?: string;
   // Stock status filter
   stockStatusIn?: string[];
@@ -284,13 +285,14 @@ export function usePaginatedOrders(
       if (filters.nextDeliveryDateTo) query = query.lte('next_delivery_date', filters.nextDeliveryDateTo);
 
       // Payment method filter
+      if (filters.hasTransfer) query = query.in('payment_plan', ['TRANSFER', 'PARTIAL_TRANSFER_COD']);
       if (filters.paymentMethod) {
         query = query.eq('payment_method', filters.paymentMethod);
       }
 
       // Receipt status filter (implies TRANSFER)
       if (filters.receiptStatus) {
-        query = query.eq('payment_method', 'TRANSFER');
+        query = query.in('payment_plan', ['TRANSFER', 'PARTIAL_TRANSFER_COD']);
         if (filters.receiptStatus === 'pending') {
           query = query.or('receipt_status.eq.pending,receipt_status.is.null');
         } else {
@@ -537,12 +539,13 @@ export function useAllOrderIds(
         if (filters.nextDeliveryDateTo) query = query.lte('next_delivery_date', filters.nextDeliveryDateTo);
 
         // Payment method filter
+        if (filters.hasTransfer) query = query.in('payment_plan', ['TRANSFER', 'PARTIAL_TRANSFER_COD']);
         if (filters.paymentMethod) {
           query = query.eq('payment_method', filters.paymentMethod);
         }
         // Receipt status filter (implies TRANSFER)
         if (filters.receiptStatus) {
-          query = query.eq('payment_method', 'TRANSFER');
+          query = query.in('payment_plan', ['TRANSFER', 'PARTIAL_TRANSFER_COD']);
           if (filters.receiptStatus === 'pending') {
             query = query.or('receipt_status.eq.pending,receipt_status.is.null');
           } else {

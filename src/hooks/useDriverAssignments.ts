@@ -139,7 +139,7 @@ export function summarizeDriverAssignments(assignments: DriverAssignment[]) {
   const pending = Math.max(assigned - delivered - failed, 0);
   const cashCollected = assignments
     .filter((order) => order.assignment_state === 'DELIVERED')
-    .reduce((sum, order) => sum + Number(order.driver_cash_amount ?? order.collect_amount ?? 0), 0);
+    .reduce((sum, order) => sum + Number(order.driver_cash_amount ?? (order.payment_plan === 'PARTIAL_TRANSFER_COD' ? 0 : order.collect_amount) ?? 0), 0);
   const acceptedAmount = assignments
     .filter((order) => order.assignment_state === 'DELIVERED')
     .reduce((sum, order) => sum + Number(order.total_amount || 0), 0);

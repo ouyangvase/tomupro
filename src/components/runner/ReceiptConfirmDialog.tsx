@@ -15,6 +15,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Order } from '@/types/database';
+import { hasCustomerTransfer, orderPaymentBreakdown } from '@/lib/orderPayment';
+import { formatBND } from '@/lib/currency';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { CheckCircle, XCircle, Loader2, ZoomIn, ZoomOut, ImageIcon } from 'lucide-react';
 
 interface ReceiptConfirmDialogProps {
@@ -67,8 +70,7 @@ export function ReceiptConfirmDialog({
       if (error) throw error;
       if (result && !result.success) throw new Error(result.error || 'Failed to confirm receipt');
 
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      invalidateOrderQueries(queryClient);
 
       toast({ title: 'Receipt confirmed', description: 'You can now mark this order as delivered.' });
       handleOpenChange(false);
@@ -97,8 +99,7 @@ export function ReceiptConfirmDialog({
       if (error) throw error;
       if (result && !result.success) throw new Error(result.error || 'Failed to reject receipt');
 
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+      invalidateOrderQueries(queryClient);
 
       toast({ title: 'Receipt rejected', description: 'The salesperson will be notified to re-upload.' });
       handleOpenChange(false);
@@ -112,7 +113,7 @@ export function ReceiptConfirmDialog({
   if (!order) return null;
 
   const receiptNeedsReview =
-    order.payment_method === 'TRANSFER' &&
+    hasCustomerTransfer(order) &&
     order.receipt_status !== 'confirmed' &&
     order.receipt_status !== 'rejected';
 
@@ -136,6 +137,7 @@ export function ReceiptConfirmDialog({
         </DialogHeader>
 
         {/* Receipt status */}
+        <p className="text-center font-semibold">Bank transfer {formatBND(orderPaymentBreakdown(order).transferAmount)}</p>
         <div className="flex items-center justify-center gap-2">
           {statusBadge()}
         </div>
@@ -190,7 +192,7 @@ export function ReceiptConfirmDialog({
             <>
               <Button
                 onClick={handleConfirm}
-                disabled={loading || !canActOnReceipt}
+                disabled={loading || !canActOnReceipt || !order.receipt_url}
                 className="w-full bg-green-600 hover:bg-green-700 text-white"
               >
                 {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}

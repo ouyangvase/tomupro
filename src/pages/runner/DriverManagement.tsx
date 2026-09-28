@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { orderCodDue, orderPaymentBreakdown } from '@/lib/orderPayment';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -1173,7 +1174,8 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-wider text-muted-foreground">Amount</p>
-                    <p className="font-black">{formatBND(Number(detailOrder.total_amount || 0))} ({detailOrder.payment_method})</p>
+                    <p className="font-black">COD {formatBND(orderCodDue(detailOrder))}</p>
+                    <p className="text-sm">Total {formatBND(detailOrder.total_amount)} · Transfer paid {formatBND(orderPaymentBreakdown(detailOrder).transferPaid)}</p>
                   </div>
                   <div className="sm:col-span-2">
                     <p className="text-xs uppercase tracking-wider text-muted-foreground">Address</p>

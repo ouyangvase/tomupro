@@ -31,6 +31,7 @@ import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { useToast } from '@/hooks/use-toast';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
+import { orderCodDue, orderPaymentBreakdown } from '@/lib/orderPayment';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import type { Order, RunnerStatus } from '@/types/database';
 import { Package, Truck, Loader2, DollarSign, Search, Download, Upload, Clock, Eye, ChevronLeft, ChevronRight, Phone, AlertTriangle, Calendar, CheckCircle, UserPlus, UserRound, ImageIcon } from 'lucide-react';
@@ -65,6 +66,16 @@ interface RunnerInboxProps {
   highlightOrderId?: string | null;
   duplicateOrdersAction?: ReactNode;
   duplicateOrdersPanel?: ReactNode;
+}
+
+function runnerCodDue(order: Pick<Order, 'total_amount' | 'cod_amount' | 'payment_method'>) {
+  return orderCodDue(order);
+}
+
+function hasCustomerTransfer(order: Pick<Order, 'payment_method' | 'payment_plan' | 'receipt_status'>) {
+  return order.payment_plan === 'PARTIAL_TRANSFER_COD'
+    || order.payment_plan === 'TRANSFER'
+    || order.payment_method === 'TRANSFER';
 }
 
 export default function RunnerInbox({
@@ -171,7 +182,8 @@ export default function RunnerInbox({
     areaFilter: filters.area,
     driverId: filters.driverId,
     driverAssignment: filters.driverAssignment,
-    paymentMethod: isReceiptOnlyAssistant ? 'TRANSFER' : filters.paymentMethod,
+    paymentMethod: isReceiptOnlyAssistant ? undefined : filters.paymentMethod,
+    hasTransfer: isReceiptOnlyAssistant,
     includeMiri: true,
     sortField: 'runner_assigned_at',
     sortDirection: 'desc' as const,
@@ -252,7 +264,7 @@ export default function RunnerInbox({
   const selectedReceiptReviewOrder = useMemo(() => {
     if (selectedRows.length !== 1 || !canReviewReceipts || canDeliver) return null;
     const order = orders.find(o => o.id === selectedRows[0]);
-    if (!order || order.payment_method !== 'TRANSFER') return null;
+    if (!order || !hasCustomerTransfer(order)) return null;
     if (order.receipt_status === 'confirmed' || order.receipt_status === 'rejected') return null;
     return order;
   }, [selectedRows, orders, canReviewReceipts, canDeliver]);
@@ -368,7 +380,7 @@ export default function RunnerInbox({
     }
 
     // Check if this is a TRANSFER order that needs receipt confirmation first
-    if (order?.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed') {
+    if (order && hasCustomerTransfer(order) && order.receipt_status !== 'confirmed') {
       setReceiptOrder(order);
       setReceiptDialogOpen(true);
       return;
@@ -840,11 +852,11 @@ interface RunnerOrderCardProps {
 
 function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, onViewReceipt, isMobile, canDeliver, canConfirmReceipt, stockMap, driverName }: RunnerOrderCardProps) {
   const isMiriPickup = order.order_type === 'MIRI_INBOUND_PICKUP';
-  const isReceiptBlocked = order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed';
+  const isReceiptBlocked = hasCustomerTransfer(order) && order.receipt_status !== 'confirmed';
   const hasDriverAssignment = hasCurrentDriverAssignment(order);
   const isDriverReviewRequired = requiresDriverReviewStatus(order);
   const deliveryActionLabel = isDriverReviewRequired ? 'Review in Drivers' : 'Delivered';
-  const canAcceptReceipt = canConfirmReceipt && !canDeliver && order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed' && order.receipt_status !== 'rejected';
+  const canAcceptReceipt = canConfirmReceipt && !canDeliver && hasCustomerTransfer(order) && order.receipt_status !== 'confirmed' && order.receipt_status !== 'rejected';
   const assignedDriverName = order.driver_id ? (driverName?.trim() || 'Unknown Driver') : null;
   const itemSummary = useMemo(
     () => formatOrderItemsDisplay(order.order_items),
@@ -857,7 +869,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
     [order.expected_items],
   );
 
-  const isMobileRejected = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
+  const isMobileRejected = hasCustomerTransfer(order) && order.receipt_status === 'rejected';
 
   // Check out-of-stock items
   const outOfStockItems = useMemo(() => {
@@ -942,9 +954,10 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
 
           {/* Row 3: Amount + Payment + Assigned date */}
           <div className="flex items-center gap-2 text-xs flex-wrap">
-            <span className="font-bold tabular-nums text-foreground text-sm">{formatBND(isMiriPickup ? order.actual_pickup_charge : order.total_amount)}</span>
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{isMiriPickup ? 'Miri Pickup Charge' : order.payment_method}</Badge>
-            {order.payment_method === 'TRANSFER' && (
+            <span className="font-bold tabular-nums text-foreground text-sm">{formatBND(isMiriPickup ? order.actual_pickup_charge : runnerCodDue(order))}</span>
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{isMiriPickup ? 'Miri Pickup Charge' : runnerCodDue(order) === 0 ? 'Paid / No COD' : 'COD due'}</Badge>
+            <span className="text-muted-foreground">Total {formatBND(order.total_amount)} · Transfer paid {formatBND(orderPaymentBreakdown(order).transferPaid)}</span>
+            {hasCustomerTransfer(order) && (
               <Badge variant="outline" className={`text-xs px-2.5 py-0.5 font-semibold ${
                 order.receipt_status === 'confirmed' ? 'bg-green-500/15 text-green-700 border-green-500/30' :
                 order.receipt_status === 'rejected' ? 'bg-red-500/15 text-red-700 border-red-500/30' :
@@ -1008,7 +1021,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
                 </Button>}
               </>
             )}
-            {order.payment_method === 'TRANSFER' && order.receipt_url && !canAcceptReceipt && (
+            {hasCustomerTransfer(order) && order.receipt_url && !canAcceptReceipt && (
               <Button
                 size="sm"
                 variant="outline"
@@ -1042,7 +1055,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
   }
 
   // Desktop row
-  const isRejectedReceipt = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
+  const isRejectedReceipt = hasCustomerTransfer(order) && order.receipt_status === 'rejected';
   return (
     <Card
       data-order-id={order.id}
@@ -1121,9 +1134,10 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
 
         {/* Amount */}
         <div className="w-[120px] shrink-0 text-right">
-          <span className="text-sm font-bold tabular-nums">{formatBND(isMiriPickup ? order.actual_pickup_charge : order.total_amount)}</span>
-          <div className="mt-0.5 text-[10px] text-muted-foreground">{isMiriPickup ? 'Miri Pickup Charge' : order.payment_method}</div>
-          {order.payment_method === 'TRANSFER' && (
+          <span className="text-sm font-bold tabular-nums">{formatBND(isMiriPickup ? order.actual_pickup_charge : runnerCodDue(order))}</span>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">{isMiriPickup ? 'Miri Pickup Charge' : 'COD due'}</div>
+          <div className="text-[10px] text-muted-foreground">Total {formatBND(order.total_amount)} · Transfer paid {formatBND(orderPaymentBreakdown(order).transferPaid)}</div>
+          {hasCustomerTransfer(order) && (
             <Badge variant="outline" className={`mt-1 text-[11px] px-2 py-0.5 font-semibold ${
               order.receipt_status === 'confirmed' ? 'bg-green-500/15 text-green-700 border-green-500/30' :
               order.receipt_status === 'rejected' ? 'bg-red-500/15 text-red-700 border-red-500/30' :
@@ -1188,7 +1202,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
               <CheckCircle className="h-3.5 w-3.5 mr-1" /> Accept Receipt
             </Button>
           )}
-          {order.payment_method === 'TRANSFER' && order.receipt_url && !canAcceptReceipt && (
+          {hasCustomerTransfer(order) && order.receipt_url && !canAcceptReceipt && (
             <Button size="sm" variant="outline" onClick={() => onViewReceipt?.()} className="rounded-full h-8 px-2.5 text-xs">
               <ImageIcon className="h-3.5 w-3.5 mr-1" /> Receipt
             </Button>

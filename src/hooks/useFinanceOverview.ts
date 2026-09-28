@@ -13,9 +13,16 @@ export interface FinanceOverviewDay {
   otherActionRequired: number;
   codAmount: number;
   transferAmount: number;
+  salesValue?: number;
+  transferPaid?: number;
+  codDue?: number;
+  codCollected?: number;
+  totalCollected?: number;
+  outstanding?: number;
 }
 
 export interface FinanceOverviewSummary {
+  unverifiedClosedCount?: number;
   assigned: number;
   delivered: number;
   failed: number;
@@ -27,6 +34,12 @@ export interface FinanceOverviewSummary {
   codAmount: number;
   transferCount: number;
   transferAmount: number;
+  salesValue?: number;
+  transferPaid?: number;
+  codDue?: number;
+  codCollected?: number;
+  totalCollected?: number;
+  outstanding?: number;
 }
 
 export interface FinanceOpenBreakdown {
@@ -84,6 +97,46 @@ type RpcClient = {
 };
 
 const rpcClient = supabase as unknown as RpcClient;
+
+type FinancePaymentBreakdown = {
+  summary: {
+    salesValue: number;
+    transferPaid: number;
+    codDue: number;
+    codCollected: number;
+    totalCollected: number;
+    outstanding: number;
+    codCount: number;
+    transferCount: number;
+  };
+  days: Array<FinanceOverviewDay & {
+    salesValue: number;
+    transferPaid: number;
+    codDue: number;
+    codCollected: number;
+    totalCollected: number;
+    outstanding: number;
+  }>;
+};
+
+function mergePaymentBreakdown(report: FinanceOverviewReport, payments: FinancePaymentBreakdown): FinanceOverviewReport {
+  return {
+    ...report,
+    summary: {
+      ...report.summary,
+      deliveredAmount: payments.summary.salesValue,
+      codCount: payments.summary.codCount,
+      codAmount: payments.summary.codDue,
+      transferCount: payments.summary.transferCount,
+      transferAmount: payments.summary.transferPaid,
+      ...payments.summary,
+    },
+    days: report.days.map((day) => {
+      const paymentDay = payments.days.find((candidate) => candidate.date === day.date);
+      return paymentDay ? { ...day, ...paymentDay, codAmount: paymentDay.codDue, transferAmount: paymentDay.transferPaid } : day;
+    }),
+  };
+}
 
 export function useFinanceOverviewAreas() {
   const { user, role } = useAuth();
@@ -143,14 +196,23 @@ export function useFinanceOverviewReport(params: { runnerId: string | null; area
   return useQuery({
     queryKey: ['finance-overview', user?.id, runnerId, area, fromDate, toDate],
     queryFn: async () => {
-      const { data, error } = await rpcClient.rpc('get_finance_overview_report', {
-        p_runner_id: runnerId,
-        p_area: area,
-        p_from_date: fromDate,
-        p_to_date: toDate,
-      });
-      if (error) throw error;
-      return data as FinanceOverviewReport;
+      const [reportResponse, paymentResponse] = await Promise.all([
+        rpcClient.rpc('get_finance_overview_report', {
+          p_runner_id: runnerId,
+          p_area: area,
+          p_from_date: fromDate,
+          p_to_date: toDate,
+        }),
+        rpcClient.rpc('get_finance_payment_breakdown', {
+          p_runner_id: runnerId,
+          p_area: area,
+          p_from_date: fromDate,
+          p_to_date: toDate,
+        }),
+      ]);
+      if (reportResponse.error) throw reportResponse.error;
+      if (paymentResponse.error) throw paymentResponse.error;
+      return mergePaymentBreakdown(reportResponse.data as FinanceOverviewReport, paymentResponse.data as FinancePaymentBreakdown);
     },
     enabled: Boolean(user?.id && fromDate && toDate),
     staleTime: 30 * 1000,
@@ -164,13 +226,34 @@ export function useFinanceOverviewDay(params: { runnerId: string | null; area: s
   return useQuery({
     queryKey: ['finance-overview-day', user?.id, runnerId, area, date],
     queryFn: async () => {
-      const { data, error } = await rpcClient.rpc('get_finance_overview_day', {
-        p_runner_id: runnerId,
-        p_area: area,
-        p_date: date,
-      });
-      if (error) throw error;
-      return data as FinanceOverviewDayReport;
+      const [dayResponse, paymentResponse] = await Promise.all([
+        rpcClient.rpc('get_finance_overview_day', {
+          p_runner_id: runnerId,
+          p_area: area,
+          p_date: date,
+        }),
+        rpcClient.rpc('get_finance_payment_breakdown', {
+          p_runner_id: runnerId,
+          p_area: area,
+          p_from_date: date,
+          p_to_date: date,
+        }),
+      ]);
+      if (dayResponse.error) throw dayResponse.error;
+      if (paymentResponse.error) throw paymentResponse.error;
+      const dayReport = dayResponse.data as FinanceOverviewDayReport;
+      const payments = paymentResponse.data as FinancePaymentBreakdown;
+      const paymentSummary = payments.summary;
+      return {
+        ...dayReport,
+        summary: {
+          ...dayReport.summary,
+          deliveredAmount: paymentSummary.salesValue,
+          codAmount: paymentSummary.codDue,
+          transferAmount: paymentSummary.transferPaid,
+          ...paymentSummary,
+        },
+      };
     },
     enabled: Boolean(user?.id && date),
     staleTime: 30 * 1000,

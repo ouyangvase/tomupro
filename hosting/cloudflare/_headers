@@ -1,0 +1,34 @@
+/
+  Cache-Control: no-store, max-age=0, must-revalidate
+/index.html
+  Cache-Control: no-store, max-age=0, must-revalidate
+/auth
+  Cache-Control: no-store, max-age=0, must-revalidate
+/reset-password
+  Cache-Control: no-store, max-age=0, must-revalidate
+/orders
+  Cache-Control: no-store, max-age=0, must-revalidate
+/dispatch
+  Cache-Control: no-store, max-age=0, must-revalidate
+/delivery/*
+  Cache-Control: no-store, max-age=0, must-revalidate
+/performance
+  Cache-Control: no-store, max-age=0, must-revalidate
+/team
+  Cache-Control: no-store, max-age=0, must-revalidate
+/finance
+  Cache-Control: no-store, max-age=0, must-revalidate
+/inventory
+  Cache-Control: no-store, max-age=0, must-revalidate
+/system
+  Cache-Control: no-store, max-age=0, must-revalidate
+/settings/*
+  Cache-Control: no-store, max-age=0, must-revalidate
+/notifications
+  Cache-Control: no-store, max-age=0, must-revalidate
+/events/*
+  Cache-Control: no-store, max-age=0, must-revalidate
+/guide
+  Cache-Control: no-store, max-age=0, must-revalidate
+/blog/*
+  Cache-Control: no-store, max-age=0, must-revalidate

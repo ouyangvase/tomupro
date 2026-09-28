@@ -9,7 +9,7 @@ import {
   formatAmount,
   type DriverTelegramMessageAttempt,
 } from '../_shared/driverEventMessage.ts';
-const FUNCTION_VERSION = '20260823_telegram_driver_delivery_retry_hardened_v1';
+const FUNCTION_VERSION = '20260929_partial_payment_collection_v1';
 const DELIVERY_PHOTO_BUCKET = 'delivery-photos';
 const TELEGRAM_MAX_ATTEMPTS = 3;
 const TELEGRAM_RETRY_DELAYS_MS = [300, 900];
@@ -389,7 +389,9 @@ function receiptEventMessage(eventType: string, metadata: Record<string, any>): 
     '',
     `Order: <b>${orderCode}</b>`,
     `Customer: ${customer}`,
-    `Amount: ${amount}`,
+    `Order total: ${amount}`,
+    `Transfer paid: ${formatAmount(metadata.transfer_paid_amount ?? 0)}`,
+    `Remaining: ${formatAmount(metadata.outstanding_amount ?? metadata.cod_due_amount ?? metadata.total_amount)}`,
     `Payment: ${payment}`,
   ].join('\n');
 }
@@ -412,7 +414,9 @@ function deliveryEventMessage(eventType: string, metadata: Record<string, any>):
     '',
     `Order: <b>${orderCode}</b>`,
     `Customer: ${customer}`,
-    `Amount: ${amount}`,
+    `Order total: ${amount}`,
+    `Transfer paid: ${formatAmount(metadata.transfer_paid_amount ?? 0)}`,
+    `Remaining: ${formatAmount(metadata.outstanding_amount ?? metadata.cod_due_amount ?? metadata.total_amount)}`,
     `Payment: ${payment}`,
   ].join('\n');
 }
@@ -438,15 +442,11 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: botSettings, error: botSettingsError } = await supabase
+    const { data: botSettings } = await supabase
       .from('telegram_bot_settings')
       .select('*')
       .limit(1)
       .single();
-
-    if (botSettingsError) {
-      throw new Error(`Telegram bot settings read failed: ${botSettingsError.message}`);
-    }
 
     if (!botSettings?.bot_token || !botSettings.bot_enabled) {
       const reason = 'telegram_bot_not_configured_or_disabled';
@@ -519,7 +519,7 @@ Deno.serve(async (req) => {
         .select('event_id, attempt_count')
         .in('event_id', driverEventIds);
       if (driverAuditError) {
-        throw new Error(`Driver event audit read failed: ${driverAuditError.message}`);
+        console.warn('[send-telegram-event] Driver event audit read failed:', driverAuditError.message);
       }
       for (const row of driverAuditRows || []) {
         driverAttemptMap.set(row.event_id, Number(row.attempt_count || 0));
@@ -542,7 +542,7 @@ Deno.serve(async (req) => {
           .select('id, order_id, active_assignment_id, driver_id, result_type, failure_reason, remark, reschedule_date, submitted_at, superseded_at, proof_images')
           .in('id', deliveryAttemptIds);
         if (deliveryAttemptError) {
-          throw new Error(`Delivery attempt source read failed: ${deliveryAttemptError.message}`);
+          console.warn('[send-telegram-event] Delivery attempt source read failed:', deliveryAttemptError.message);
         }
         for (const attempt of (deliveryAttempts || []) as DriverDeliveryAttemptSource[]) {
           deliveryAttemptMap.set(attempt.id, attempt);
@@ -556,7 +556,7 @@ Deno.serve(async (req) => {
             .in('order_id', sourceOrderIds)
             .order('submitted_at', { ascending: false });
           if (laterAttemptsError) {
-            throw new Error(`Latest delivery attempt read failed: ${laterAttemptsError.message}`);
+            console.warn('[send-telegram-event] Latest delivery attempt read failed:', laterAttemptsError.message);
           }
           for (const attempt of laterAttempts || []) {
             if (!latestDeliveryAttemptMap.has(attempt.order_id)) {
@@ -577,7 +577,7 @@ Deno.serve(async (req) => {
         .select('id, display_name, email')
         .in('id', driverIds);
       if (driverProfileError) {
-        throw new Error(`Driver profile read failed: ${driverProfileError.message}`);
+        console.warn('[send-telegram-event] Driver profile read failed:', driverProfileError.message);
       }
       for (const profile of driverProfiles || []) {
         const displayName = String(profile.display_name || profile.email || '').trim();
@@ -700,14 +700,10 @@ Deno.serve(async (req) => {
       }
 
       if (ownerIds.size > 0) {
-        const { data: ownerProfiles, error: ownerProfilesError } = await supabase
+        const { data: ownerProfiles } = await supabase
           .from('profiles')
           .select('id, role, manager_id')
           .in('id', [...ownerIds]);
-
-        if (ownerProfilesError) {
-          throw new Error(`Owner profile read failed: ${ownerProfilesError.message}`);
-        }
 
         for (const profile of (ownerProfiles || [])) {
           profileMap.set(profile.id, profile);
@@ -718,15 +714,11 @@ Deno.serve(async (req) => {
           }
         }
 
-        const { data: bindings, error: bindingsError } = await supabase
+        const { data: bindings } = await supabase
           .from('manager_salesperson_bindings')
           .select('manager_id, salesperson_id')
           .eq('active', true)
           .in('salesperson_id', [...ownerIds]);
-
-        if (bindingsError) {
-          throw new Error(`Manager binding read failed: ${bindingsError.message}`);
-        }
 
         for (const binding of (bindings || [])) {
           const managerIds = initialManagerIdsByOwner.get(binding.salesperson_id) || new Set<string>();
@@ -736,14 +728,10 @@ Deno.serve(async (req) => {
 
         const managerIds = [...new Set([...initialManagerIdsByOwner.values()].flatMap((ids) => [...ids]))];
         if (managerIds.length > 0) {
-          const { data: managerProfiles, error: managerProfilesError } = await supabase
+          const { data: managerProfiles } = await supabase
             .from('profiles')
             .select('id, role, manager_id')
             .in('id', managerIds);
-
-          if (managerProfilesError) {
-            throw new Error(`Manager profile read failed: ${managerProfilesError.message}`);
-          }
 
           for (const profile of (managerProfiles || [])) {
             profileMap.set(profile.id, profile);
@@ -785,21 +773,17 @@ Deno.serve(async (req) => {
     const destinationsMap = new Map<string, TelegramDestination[]>();
 
     if (userIdList.length > 0) {
-      const { data: settings, error: settingsError } = await supabase
+      const { data: settings } = await supabase
         .from('user_telegram_settings')
         .select('*')
         .eq('telegram_enabled', true)
         .in('user_id', userIdList);
 
-      if (settingsError) {
-        throw new Error(`Telegram settings read failed: ${settingsError.message}`);
-      }
-
       for (const setting of (settings || [])) {
         settingsMap.set(setting.user_id, setting);
       }
 
-      const { data: destinations, error: destinationsError } = await supabase
+      const { data: destinations } = await supabase
         .from('user_telegram_destinations')
         .select('id, user_id, chat_id, label')
         .in('user_id', userIdList)
@@ -807,10 +791,6 @@ Deno.serve(async (req) => {
         .not('verified_at', 'is', null)
         .order('is_primary', { ascending: false })
         .order('created_at', { ascending: true });
-
-      if (destinationsError) {
-        throw new Error(`Telegram destination read failed: ${destinationsError.message}`);
-      }
 
       for (const destination of (destinations || []) as TelegramDestination[]) {
         const userDestinations = destinationsMap.get(destination.user_id) || [];

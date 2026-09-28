@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { orderCodDue } from '@/lib/orderPayment';
 import capybaraEmpty from '@/assets/capybara-empty.png';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -169,8 +170,7 @@ function normalizeText(value?: string | null) {
 }
 
 function getCollectAmount(order: RunnerOrder) {
-  // Production collection amount is COD-only: orders.total_amount when payment_method is COD.
-  return order.payment_method === 'COD' ? Number(order.total_amount || 0) : 0;
+  return orderCodDue(order);
 }
 
 function getDateRange(anchorDate: string, period: DriverPerformancePeriod) {

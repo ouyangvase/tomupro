@@ -3146,6 +3146,10 @@ export type Database = {
           owner_salesperson_display_name_snapshot: string | null
           owner_salesperson_id_snapshot: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_plan: string
+          payment_history_unverified: boolean
+          receipt_status: string | null
+          receipt_url: string | null
           phone: string
           pickup_fee: number | null
           reconciliation_status: Database["public"]["Enums"]["reconciliation_status"]
@@ -3224,6 +3228,10 @@ export type Database = {
           owner_salesperson_display_name_snapshot?: string | null
           owner_salesperson_id_snapshot?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_plan?: string
+          payment_history_unverified?: boolean
+          receipt_status?: string | null
+          receipt_url?: string | null
           phone: string
           pickup_fee?: number | null
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
@@ -3302,6 +3310,10 @@ export type Database = {
           owner_salesperson_display_name_snapshot?: string | null
           owner_salesperson_id_snapshot?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_plan?: string
+          payment_history_unverified?: boolean
+          receipt_status?: string | null
+          receipt_url?: string | null
           phone?: string
           pickup_fee?: number | null
           reconciliation_status?: Database["public"]["Enums"]["reconciliation_status"]
@@ -4858,6 +4870,22 @@ export type Database = {
       }
     }
     Functions: {
+      submit_driver_payment_result: {
+        Args: { p_order_id: string; p_payment_method: string; p_cash_amount: number; p_transfer_amount: number; p_submission_id: string; p_proof_images?: Json; p_submission_mode?: string }
+        Returns: Json
+      }
+      create_order_with_payment: {
+        Args: { p_order: Json; p_transfer_amount: number }
+        Returns: Json
+      }
+      set_order_payment_plan: {
+        Args: { p_order_id: string; p_payment_plan: string; p_transfer_amount: number; p_receipt_url?: string | null; p_reason?: string | null; p_total_amount?: number }
+        Returns: Json
+      }
+      confirm_order_receipt: {
+        Args: { p_order_id: string; p_actor_id: string }
+        Returns: Json
+      }
       acknowledge_cash_handover: {
         Args: { p_batch_id: string }
         Returns: Json

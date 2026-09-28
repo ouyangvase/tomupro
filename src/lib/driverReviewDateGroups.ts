@@ -1,4 +1,5 @@
 import { KUALA_LUMPUR_TIME_ZONE } from '@/lib/timezone';
+import { orderCollectionAmount } from './orderPayment';
 
 export type DriverReviewOrder = {
   id: string;
@@ -13,6 +14,9 @@ export type DriverReviewOrder = {
   driver_cash_amount?: number | null;
   driver_transfer_amount?: number | null;
   total_amount?: number | null;
+  cod_amount?: number | null;
+  payment_plan?: string | null;
+  receipt_status?: string | null;
   driver_delivered_at?: string | null;
   driver_failed_at?: string | null;
   updated_at?: string | null;
@@ -40,8 +44,8 @@ export type DriverReviewDateGroup<T extends DriverReviewOrder> = {
 };
 
 export function getDriverReportedPaymentComponents(order: DriverReviewOrder) {
-  const orderAmount = Math.max(0, Number(order.total_amount || 0));
-  const paymentMethod = String(order.payment_method || '').toUpperCase();
+  const orderAmount = order.cod_amount != null ? orderCollectionAmount(order) : Math.max(0, Number(order.total_amount || 0));
+  const paymentMethod = order.payment_plan === 'PARTIAL_TRANSFER_COD' ? '' : String(order.payment_method || '').toUpperCase();
   const driverPaymentMethod = String(order.driver_payment_method || '').toUpperCase();
 
   const cashAmount = Math.max(0, Number(
@@ -72,7 +76,7 @@ export function getDriverReportedPaymentComponents(order: DriverReviewOrder) {
               : 0,
   ));
 
-  return { cashAmount, transferAmount };
+  return { cashAmount: Math.min(orderAmount, cashAmount), transferAmount: Math.min(Math.max(0, orderAmount - cashAmount), transferAmount) };
 }
 
 function getBruneiDateKey(timestamp: string) {

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -433,12 +434,14 @@ type DriverDeliveredPaymentMethod = 'CASH' | 'TRANSFER' | 'CASH_TRANSFER';
 
 export function useDriverMarkDelivered() {
   const queryClient = useQueryClient();
+  const submissionIds = useRef(new Map<string, string>());
 
   return useMutation({
     mutationFn: async ({
       orderId,
       paymentMethod,
       cashAmount,
+      transferAmount,
       proofImages,
       submissionMode = 'NEW',
     }: {
@@ -449,14 +452,17 @@ export function useDriverMarkDelivered() {
       proofImages?: string[];
       submissionMode?: 'NEW' | 'CORRECTION';
       }) => {
-      const { data, error } = await supabase.rpc('submit_driver_delivery_result', {
+      const submissionKey = [orderId, paymentMethod, cashAmount, transferAmount, submissionMode].join(':');
+      const submissionId = submissionIds.current.get(submissionKey) ?? crypto.randomUUID();
+      submissionIds.current.set(submissionKey, submissionId);
+      const { data, error } = await supabase.rpc('submit_driver_payment_result', {
         p_order_id: orderId,
-        p_result_type: 'DRIVER_DELIVERED_SUBMITTED',
         p_payment_method: paymentMethod,
-        p_cash_amount: cashAmount ?? null,
+        p_cash_amount: cashAmount ?? 0,
+        p_transfer_amount: transferAmount ?? 0,
         p_proof_images: proofImages ?? [],
         p_submission_mode: submissionMode,
-        p_submission_id: crypto.randomUUID(),
+        p_submission_id: submissionId,
       });
 
       if (error) throw error;

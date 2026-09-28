@@ -86,6 +86,8 @@ export const orderLineSchema = z.object({
     return upper === 'TRANSFER' ? 'TRANSFER' : 'COD';
   }),
   expected_pickup_date: z.string().transform(parseFlexibleDate),
+  transfer_amount: z.string().optional().default('').refine(value => value === '' || /^\d+(\.\d{1,2})?$/.test(value), 'Enter a non-negative BND amount with at most two decimals'),
+  transfer_receipt_url: z.string().optional().default('').refine(value => value === '' || /^https:\/\/[^\s/]+/.test(value), 'Receipt URL must use HTTPS'),
   notes: z.string().max(1000).optional().default(''),
   sku_name_or_code: z.string().min(1, 'SKU code is required for all order items').max(255, 'SKU too long'),
   qty: z.string().transform((val) => {
@@ -125,6 +127,8 @@ export function validateOrderLines(rows: Record<string, string>[]): ValidationRe
         area: sanitizeString(row.area),
         channel: sanitizeString(row.channel),
         payment_method: sanitizeString(row.payment_method),
+        transfer_amount: sanitizeString(row.transfer_amount),
+        transfer_receipt_url: sanitizeString(row.transfer_receipt_url),
         expected_pickup_date: sanitizeString(row.expected_pickup_date),
         notes: sanitizeString(row.notes),
         sku_name_or_code: sanitizeString(row.sku_name_or_code),

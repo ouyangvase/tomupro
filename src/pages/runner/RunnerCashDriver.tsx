@@ -29,7 +29,6 @@ export default function RunnerCashDriver() {
     if (!deliveries) return { totalOrders: 0, cashAmount: 0, transferAmount: 0 };
     
     return deliveries.reduce((acc, order) => {
-      const amount = Number(order.total_amount) || 0;
       return {
         totalOrders: acc.totalOrders + 1,
         cashAmount: acc.cashAmount + Number(order.driver_cash_amount || 0),

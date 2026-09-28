@@ -169,11 +169,20 @@ export function useCreateOrder() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (order: Partial<Order>) => {
+    mutationFn: async (order: Partial<Order> & { transfer_amount?: number }) => {
       // order_code is REQUIRED - user must provide it
       const orderCode = (order as any).order_code;
       if (!orderCode || !orderCode.trim()) {
         throw new Error('Order Reference is required');
+      }
+      const { transfer_amount, ...orderFields } = order;
+      if (transfer_amount != null) {
+        const { data, error } = await supabase.rpc('create_order_with_payment', {
+          p_order: { ...orderFields, order_code: orderCode.trim() } as any,
+          p_transfer_amount: transfer_amount,
+        });
+        if (error) throw error;
+        return data as unknown as Order;
       }
       const { data, error } = await supabase
         .from('orders')

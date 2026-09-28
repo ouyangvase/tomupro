@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -72,6 +74,7 @@ import { useUpdateOrder, useCreateOrder, useRunnerUpdateArea } from '@/hooks/use
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderClaimsHistory } from '@/components/orders/OrderClaimsHistory';
 import { formatBND } from '@/lib/currency';
+import { paymentPlanValues, validateTransferAmount, orderPaymentBreakdown, type OrderPaymentPlan } from '@/lib/orderPayment';
 import type { Order, OrderItem } from '@/types/database';
 import capybaraAssistant from '@/assets/capybara-order-assistant.png';
 import capybaraEmptyCart from '@/assets/capybara-empty-cart.png';
@@ -88,6 +91,8 @@ const orderSchema = z.object({
   channel: z.string().optional(),
   notes: z.string().optional(),
   payment_method: z.enum(['COD', 'TRANSFER']),
+  payment_plan: z.enum(['COD', 'PARTIAL_TRANSFER_COD', 'TRANSFER']),
+  transfer_amount: z.coerce.number().min(0).optional(),
   expected_pickup_date: z.date().optional(),
 });
 
@@ -204,14 +209,15 @@ function SectionCard({ icon: Icon, title, subtitle, children, className }: {
 }
 
 /* ─── Payment Method Selector ─── */
-function PaymentMethodSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function PaymentMethodSelector({ value, onChange }: { value: string; onChange: (v: OrderPaymentPlan) => void }) {
   const methods = [
-    { id: 'COD', label: 'COD', icon: '💵', desc: 'Cash on Delivery' },
-    { id: 'TRANSFER', label: 'Transfer', icon: '🏦', desc: 'Bank Transfer' },
+    { id: 'COD' as const, label: 'COD', icon: '💵', desc: 'Cash on Delivery' },
+    { id: 'PARTIAL_TRANSFER_COD' as const, label: 'Transfer + COD', icon: '💳', desc: 'Transfer first, balance COD' },
+    { id: 'TRANSFER' as const, label: 'Transfer', icon: '🏦', desc: 'Bank Transfer' },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {methods.map(m => (
         <button
           key={m.id}
@@ -329,7 +335,7 @@ function OrderItemCard({
           </div>
 
           <div className="flex-1">
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Unit Price (BND)</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">SKU Sales Amount (BND)</label>
             <Input
               type="number"
               value={item.price}
@@ -339,6 +345,7 @@ function OrderItemCard({
               step={0.01}
               placeholder="0.00"
             />
+            <p className="mt-1 text-[10px] text-muted-foreground">Total for this SKU line; quantity controls stock.</p>
           </div>
 
           <Button
@@ -389,6 +396,8 @@ function PasteTemplateView({
     if (result.address) form.setValue('address', result.address);
     if (result.remark) form.setValue('notes', result.remark);
     form.setValue('payment_method', 'COD');
+    form.setValue('payment_plan', 'COD');
+    form.setValue('transfer_amount', 0);
 
     // Populate items
     // For paste template: price from text is the FINAL LINE TOTAL, not unit price.
@@ -585,6 +594,7 @@ function RunnerAreaEditor({
 
 /* ─── Main Component ─── */
 export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = 'BOOKING', readOnly: readOnlyProp }: OrderEditorProps) {
+  const queryClient = useQueryClient();
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const { data: validAreas = [] } = useValidAreas();
@@ -659,7 +669,13 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
     setReceiptPreview(URL.createObjectURL(file));
   };
 
-  const uploadReceipt = async (orderId: string, file: File) => {
+  const uploadReceipt = async (
+    orderId: string,
+    file: File,
+    paymentPlan: OrderPaymentPlan,
+    transferAmount: number,
+    savePlan = true,
+  ) => {
     setReceiptUploading(true);
     try {
       const { blob, extension } = await compressImage(file, { maxWidth: 1000, quality: 0.8 });
@@ -670,17 +686,20 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
-      const { error: updateError } = await (supabase as any)
-        .from('orders')
-        .update({
-          receipt_url: publicUrl,
-          receipt_status: 'pending',
-          receipt_rejected_reason: null,
-          receipt_confirmed_by: null,
-          receipt_confirmed_at: null,
-        })
-        .eq('id', orderId);
-      if (updateError) throw updateError;
+      if (savePlan) {
+      const { data: paymentResult, error: paymentError } = await supabase.rpc('set_order_payment_plan', {
+        p_order_id: orderId,
+        p_payment_plan: paymentPlan,
+        p_transfer_amount: transferAmount,
+        p_receipt_url: publicUrl,
+        p_reason: 'Transfer receipt uploaded',
+      });
+      if (paymentError) throw paymentError;
+      if (!(paymentResult as { success?: boolean } | null)?.success) {
+        throw new Error('Unable to save the payment plan');
+      }
+      invalidateOrderQueries(queryClient);
+      }
 
       return publicUrl;
     } finally {
@@ -707,6 +726,8 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       channel: '',
       notes: '',
       payment_method: 'COD',
+      payment_plan: 'COD',
+      transfer_amount: 0,
     },
   });
 
@@ -723,6 +744,8 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         channel: order.channel || '',
         notes: order.notes || '',
         payment_method: order.payment_method,
+        payment_plan: (order.payment_plan || (order.payment_method === 'TRANSFER' ? 'TRANSFER' : (Number(order.cod_amount ?? order.total_amount) < Number(order.total_amount) ? 'PARTIAL_TRANSFER_COD' : 'COD'))) as OrderPaymentPlan,
+        transfer_amount: Math.max(0, Number(order.total_amount || 0) - Number(order.cod_amount ?? (order.payment_method === 'TRANSFER' ? 0 : order.total_amount || 0))),
         expected_pickup_date: order.expected_pickup_date ? new Date(order.expected_pickup_date) : undefined,
       });
       setItems([]);
@@ -738,6 +761,8 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         channel: '',
         notes: '',
         payment_method: 'COD',
+        payment_plan: 'COD',
+        transfer_amount: 0,
       });
       setItems([{ product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
       setItemsInitialized(true);
@@ -831,8 +856,15 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
 
   const onSubmit = async (values: OrderFormValues) => {
     try {
-      // Receipt validation for TRANSFER orders
-      if (mode === 'create' && values.payment_method === 'TRANSFER' && !receiptFile) {
+      const totalAmount = Number(totals.total_amount || 0);
+      const transferAmount = Number(values.transfer_amount || 0);
+      const paymentValues = paymentPlanValues(values.payment_plan, totalAmount, transferAmount);
+
+      validateTransferAmount(totalAmount, values.payment_plan === 'TRANSFER' ? totalAmount : transferAmount);
+      const effectivePlan: OrderPaymentPlan = paymentValues.transferAmount === 0 ? 'COD' : paymentValues.codAmount === 0 ? 'TRANSFER' : 'PARTIAL_TRANSFER_COD';
+
+      // Receipts are required for both full and partial customer transfers.
+      if (effectivePlan !== 'COD' && !receiptFile && !order?.receipt_url) {
         toast({
           variant: 'destructive',
           title: 'Receipt Required',
@@ -884,11 +916,13 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         return;
       }
 
-      let orderId = order?.id;
+      let orderId = order?.id || crypto.randomUUID();
+      const receiptUrl = effectivePlan === 'COD' ? null : receiptFile
+        ? await uploadReceipt(orderId, receiptFile, effectivePlan, paymentValues.transferAmount, false)
+        : order?.receipt_url || null;
 
       // Apply uppercase normalization to all text fields
       const orderData = {
-        ...values,
         order_code: toUpperLatin(values.order_code),
         customer_name: toUpperLatin(values.customer_name),
         phone: values.phone,
@@ -898,12 +932,19 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         notes: toUpperLatin(values.notes || ''),
         expected_pickup_date: values.expected_pickup_date ? format(values.expected_pickup_date, 'yyyy-MM-dd') : null,
         total_qty: totals.total_qty,
-        total_amount: totals.total_amount,
+        total_amount: totalAmount,
+        payment_method: paymentValues.paymentMethod,
+        payment_plan: effectivePlan,
+        cod_amount: paymentValues.codAmount,
       };
 
       if (mode === 'create') {
         const result = await createOrder.mutateAsync({
           ...orderData,
+          transfer_amount: paymentValues.transferAmount,
+          id: orderId,
+          receipt_url: receiptUrl,
+          receipt_status: receiptUrl ? 'pending' : null,
           salesperson_id: profile!.id,
           order_owner_id: orderOwnerId,
           fulfillment_warehouse_id: fulfillmentWarehouseId || null,
@@ -912,20 +953,25 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         orderId = result.id;
 
       } else if (order) {
-        await updateOrder.mutateAsync({ id: order.id, ...orderData } as any);
-      }
-
-      if (values.payment_method === 'TRANSFER' && receiptFile && orderId) {
-        try {
-          await uploadReceipt(orderId, receiptFile);
-        } catch (uploadErr: any) {
-          toast({
-            variant: 'destructive',
-            title: 'Receipt upload failed',
-            description: uploadErr.message || 'Please try uploading the receipt again.',
-          });
-          if (mode === 'edit') return;
+        const paymentChanged = order.payment_plan !== effectivePlan
+          || Number(order.cod_amount) !== paymentValues.codAmount
+          || Number(order.total_amount) !== totalAmount || order.receipt_url !== receiptUrl;
+        if (paymentChanged) {
+        const { data: paymentResult, error: paymentError } = await supabase.rpc('set_order_payment_plan', {
+          p_order_id: orderId,
+          p_payment_plan: effectivePlan,
+          p_transfer_amount: paymentValues.transferAmount,
+          p_receipt_url: receiptUrl,
+          p_total_amount: totalAmount,
+          p_reason: 'Order payment edited',
+        });
+        if (paymentError) throw paymentError;
+        if (!(paymentResult as { success?: boolean } | null)?.success) {
+          throw new Error('Unable to save the payment plan');
         }
+        }
+        const { payment_method: _paymentMethod, payment_plan: _paymentPlan, cod_amount: _codAmount, total_amount: _totalAmount, ...nonPaymentOrderData } = orderData;
+        await updateOrder.mutateAsync({ id: order.id, ...nonPaymentOrderData } as any);
       }
 
       if (orderId) {
@@ -968,6 +1014,8 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
           channel: '',
           notes: '',
           payment_method: 'COD',
+          payment_plan: 'COD',
+          transfer_amount: 0,
         });
         setItems([{ product_id: null, sku_label: '', qty: 1, price: 0, line_total: 0, notes: '', isNew: true }]);
         setItemsInitialized(true);
@@ -977,7 +1025,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       }
       onOpenChange(false);
     } catch (error) {
-      // Error handled by mutation hooks — form data preserved for retry
+      toast({ variant: 'destructive', title: 'Unable to save order', description: error instanceof Error ? error.message : 'Please try again.' });
     }
   };
 
@@ -990,7 +1038,9 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   };
 
   const selectedSource = inventorySources.find(source => source.warehouse_id === fulfillmentWarehouseId);
-  const paymentMethod = form.watch('payment_method');
+  const paymentPlan = form.watch('payment_plan');
+  const transferAmountValue = Number(form.watch('transfer_amount') || 0);
+  const paymentPreview = paymentPlanValues(paymentPlan, totals.total_amount, transferAmountValue);
 
   return (
     <>
@@ -1363,9 +1413,15 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                 {/* ─── Section 3: Delivery & Payment ─── */}
                 <SectionCard icon={CreditCard} title="Delivery & Payment" subtitle="Payment method, schedule & notes">
                   <div className="space-y-5">
+                    {order && <div className="rounded-lg border p-3 text-sm space-y-1">
+                      <p>Order total {formatBND(order.total_amount)}</p>
+                      <p>Transfer paid {formatBND(orderPaymentBreakdown(order).transferPaid)} · {order.receipt_status || 'No transfer'}</p>
+                      <p>COD due {formatBND(orderPaymentBreakdown(order).codDue)}</p>
+                      <p>Collected {formatBND(orderPaymentBreakdown(order).totalCollected)} · Outstanding {order.payment_history_unverified ? 'Legacy payment requires Finance review; do not collect again' : formatBND(orderPaymentBreakdown(order).outstanding)}</p>
+                    </div>}
                     <FormField
                       control={form.control}
-                      name="payment_method"
+                      name="payment_plan"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-xs font-medium text-muted-foreground mb-2 block">Payment Method</FormLabel>
@@ -1376,8 +1432,39 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                       )}
                     />
 
-                    {/* Receipt Upload for TRANSFER orders */}
-                    {paymentMethod === 'TRANSFER' && (
+                    {paymentPlan === 'PARTIAL_TRANSFER_COD' && (
+                      <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                        <FormField
+                          control={form.control}
+                          name="transfer_amount"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium text-muted-foreground">Transfer Amount</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max={totals.total_amount}
+                                  step="0.01"
+                                  inputMode="decimal"
+                                  placeholder="0.00"
+                                  {...field}
+                                  onChange={(event) => field.onChange(event.target.value)}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Order total remains {formatBND(totals.total_amount)}</span>
+                          <span className="font-semibold text-foreground">COD after confirmation {formatBND(paymentPreview.codAmount)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Receipt Upload for full and partial transfer orders */}
+                    {paymentPlan !== 'COD' && (
                       <div className="space-y-2">
                         <label className="text-xs font-medium text-muted-foreground block">
                           Transfer Receipt {mode === 'create' ? '*' : ''}
@@ -1408,14 +1495,13 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                                 type="button"
                                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors"
                                 onClick={async () => {
-                                  await (supabase as any).from('orders').update({
-                                    receipt_status: 'confirmed',
-                                    receipt_confirmed_by: profile!.id,
-                                    receipt_confirmed_at: new Date().toISOString(),
-                                  }).eq('id', order.id);
-                                  const { logAudit } = await import('@/hooks/useAuditLogs');
-                                  logAudit({ entity_type: 'order', entity_id: order.id, action: 'receipt_force_confirmed', after_json: { receipt_status: 'confirmed', forced: true } });
+                                  const { data, error } = await supabase.rpc('confirm_order_receipt', { p_order_id: order.id, p_actor_id: profile!.id });
+                                  if (error || !(data as { success?: boolean })?.success) {
+                                    toast({ variant: 'destructive', title: 'Receipt confirmation failed', description: error?.message || (data as { error?: string })?.error });
+                                    return;
+                                  }
                                   toast({ title: 'Receipt confirmed', description: 'Receipt has been force-confirmed by admin.' });
+                                  invalidateOrderQueries(queryClient);
                                   onOpenChange(false);
                                 }}
                               >
@@ -1435,7 +1521,12 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                                     const file = e.target.files?.[0];
                                     if (!file) return;
                                     try {
-                                      const publicUrl = await uploadReceipt(order.id, file);
+                                      const publicUrl = await uploadReceipt(
+                                        order.id,
+                                        file,
+                                        (order.payment_plan || (order.payment_method === 'TRANSFER' ? 'TRANSFER' : 'PARTIAL_TRANSFER_COD')) as OrderPaymentPlan,
+                                        Math.max(0, Number(order.total_amount || 0) - Number(order.cod_amount || 0)),
+                                      );
                                       const { logAudit } = await import('@/hooks/useAuditLogs');
                                       logAudit({ entity_type: 'order', entity_id: order.id, action: 'receipt_re_uploaded', after_json: { receipt_url: publicUrl } });
                                       toast({ title: 'Receipt re-uploaded', description: 'Receipt has been re-uploaded and is pending confirmation.' });
@@ -1630,7 +1721,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
                 <div className="h-8 w-px bg-border/50" />
                 <div className="text-center">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Payment</p>
-                  <p className="text-sm font-semibold text-foreground">{paymentMethod}</p>
+                  <p className="text-sm font-semibold text-foreground">{paymentPlan === 'PARTIAL_TRANSFER_COD' ? 'TRANSFER + COD' : paymentPlan}</p>
                 </div>
               </div>
             </div>

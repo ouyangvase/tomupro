@@ -30,6 +30,7 @@ import { DraggableOrderList } from '@/components/driver/DraggableOrderList';
 import { RemarkStatusDot } from '@/components/driver/RemarkStatusDot';
 import { addDays, format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { formatBND } from '@/lib/currency';
+import { orderCodDue, orderPaymentBreakdown } from '@/lib/orderPayment';
 import { cn } from '@/lib/utils';
 import { compressImage } from '@/lib/imageCompression';
 import { downloadXlsx } from '@/lib/xlsxExport';
@@ -199,6 +200,7 @@ export default function DriverInbox() {
   const [deliveredDialogOpen, setDeliveredDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<DriverInboxOrder | null>(null);
+  const selectedCollectionOrder = orders.find(order => order.id === selectedOrderDetails?.id) || selectedOrderDetails;
   const [failedReason, setFailedReason] = useState('');
   const [failedRemark, setFailedRemark] = useState('');
   const [nextDeliveryDate, setNextDeliveryDate] = useState('');
@@ -421,7 +423,7 @@ export default function DriverInbox() {
         const qtyText = items.length > 0
           ? items.map(item => String(item.qty)).join('; ')
           : '';
-        const collectAmount = order.payment_method === 'COD' ? Number(order.total_amount || 0) : 0;
+        const collectAmount = orderCodDue(order);
 
         return [
           order.order_code || '',
@@ -757,10 +759,11 @@ export default function DriverInbox() {
             {/* Right: Amount + Chevron */}
             <div className="text-right flex-shrink-0 flex flex-col items-end">
               <div className="text-lg font-bold tabular-nums tracking-tight">
-                {formatBND(payment.totalAmount)}
+                {formatBND(orderCodDue(order))}
               </div>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-                {payment.label}
+                {orderCodDue(order) === 0 ? 'Paid / No COD' : 'Collect from customer · COD'}
+                <span className="block">Total {formatBND(order.total_amount)} · Transfer paid {formatBND(orderPaymentBreakdown(order).transferPaid)}</span>
               </span>
               <ChevronDown className={cn(
                 "h-4 w-4 mt-1 text-muted-foreground transition-transform duration-300",
@@ -776,6 +779,10 @@ export default function DriverInbox() {
           isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
         )}>
           <div className="px-4 pb-4 space-y-3 border-t border-border/30 pt-3">
+            {order.receipt_url && <div className="rounded-lg border p-3 text-sm">
+              <p>Transfer {formatBND(orderPaymentBreakdown(order).transferAmount)} · {order.receipt_status || 'pending'}</p>
+              <a href={order.receipt_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">View transfer receipt</a>
+            </div>}
             {/* Customer Info */}
             <div className="flex items-center gap-3">
               <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -1283,17 +1290,13 @@ export default function DriverInbox() {
 
         {/* ─── Dialogs ─── */}
         <DeliveryPaymentDialog
+          key={`${selectedCollectionOrder?.id}-${selectedCollectionOrder?.cod_amount}-${selectedCollectionOrder?.receipt_status}`}
           open={deliveredDialogOpen}
           onOpenChange={(open) => {
             setDeliveredDialogOpen(open);
             if (!open) resetProofSelection('delivered');
           }}
-          order={selectedOrderDetails ? {
-            id: selectedOrderDetails.id,
-            order_code: selectedOrderDetails.order_code,
-            customer_name: selectedOrderDetails.customer_name,
-            total_amount: selectedOrderDetails.total_amount,
-          } : null}
+          order={selectedCollectionOrder}
           onConfirm={handleMarkDelivered}
           isPending={markDelivered.isPending || proofUploading}
           proofPreviews={deliveredProofPreviews}

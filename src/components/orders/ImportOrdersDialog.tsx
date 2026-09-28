@@ -325,6 +325,9 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           orderGroups.set(orderRef, { orderRef, orderData: row, items: [] });
         }
         const group = orderGroups.get(orderRef)!;
+        if (row.transfer_amount !== group.orderData.transfer_amount || row.transfer_receipt_url !== group.orderData.transfer_receipt_url) {
+          duplicateSkuErrors.push(`Order ${orderRef}: Transfer amount and receipt must match on every item row.`);
+        }
         const existingItem = group.items.find(i => i.productId === productId);
         if (existingItem) {
           duplicateSkuErrors.push(`Order ${orderRef}: Duplicate SKU detected - "${skuValue}" appears more than once.`);
@@ -359,12 +362,11 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           let totalAmount = 0;
           for (const item of group.items) {
             totalQty += item.qty;
-            totalAmount += item.price; // price IS the final sales amount per SKU
+            totalAmount += Math.round(item.price * 100); // price IS the final sales amount per SKU, summed in cents
           }
+          totalAmount /= 100;
 
-          const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .insert([{
+          const orderData = {
               order_code: toUpperLatin(orderRef),
               customer_name: toUpperLatin(group.orderData.customer_name),
               phone: group.orderData.phone,
@@ -381,14 +383,23 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               status: defaultStatus,
               total_qty: totalQty,
               total_amount: totalAmount,
-            }])
-            .select()
-            .single();
+            };
+          const hasTransfer = group.orderData.transfer_amount !== '' || group.orderData.transfer_receipt_url !== '';
+          const result = hasTransfer
+            ? await supabase.rpc('create_order_with_payment', {
+                p_order: { ...orderData, receipt_url: group.orderData.transfer_receipt_url || null },
+                p_transfer_amount: group.orderData.transfer_amount === '' && group.orderData.payment_method === 'TRANSFER'
+                  ? totalAmount : Number(group.orderData.transfer_amount),
+              })
+            : await supabase.from('orders').insert([orderData]).select().single();
+          const order = result.data as { id: string } | null;
+          const orderError = result.error;
 
           if (orderError) {
             newErrors.push(`Order ${orderRef}: ${orderError.message}`);
             continue;
           }
+          if (!order) continue;
 
           for (const item of group.items) {
             await supabase.from('order_items').insert({

@@ -108,6 +108,7 @@ export interface FinanceAuditLog {
 }
 export type WarehouseType = 'SALESPERSON' | 'RUNNER' | 'MANAGER';
 export type PaymentMethod = 'COD' | 'TRANSFER';
+export type OrderPaymentPlan = 'COD' | 'PARTIAL_TRANSFER_COD' | 'TRANSFER';
 export type OrderStatus = 'BOOKING' | 'READY' | 'CANCELLED';
 export type RunnerStatus = 'UNASSIGNED' | 'ASSIGNED' | 'TAKEN' | 'DELIVERED' | 'FAILED_DELIVERY';
 export type DriverStatus = 'UNASSIGNED' | 'ASSIGNED' | 'OUT_FOR_DELIVERY' | 'DRIVER_DELIVERED' | 'DRIVER_FAILED' | 'RETURN_REQUIRED';
@@ -226,6 +227,7 @@ export interface Order {
   notes: string | null;
   remark: string | null;
   payment_method: PaymentMethod;
+  payment_plan?: OrderPaymentPlan | null;
   salesperson_id: string;
   order_owner_id?: string | null;
   runner_id: string | null;
@@ -235,6 +237,15 @@ export interface Order {
   expected_pickup_date: string | null;
   total_qty: number;
   total_amount: number;
+  currency_code?: string;
+  merchandise_subtotal?: number;
+  delivery_fee?: number;
+  cod_amount?: number;
+  transfer_paid_amount?: number;
+  cod_due_amount?: number;
+  payment_history_unverified?: boolean;
+  source_order_id?: string | null;
+  source_delivery_intent_id?: string | null;
   runner_status: RunnerStatus;
   driver_status: DriverStatus | null;
   runner_accept_status: RunnerAcceptStatus | null;

@@ -12,6 +12,8 @@ export interface DriverDeliveryToday {
   order_code: string;
   customer_name: string | null;
   total_amount: number;
+  driver_cash_amount: number | null;
+  driver_transfer_amount: number | null;
   driver_id: string | null;
   driver_payment_method: string | null;
   driver_cash_amount: number | null;

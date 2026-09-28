@@ -102,6 +102,6 @@ export function useDeleteOrderItem() {
 // qty is only used for stock/inventory purposes.
 export function calculateOrderTotals(items: OrderItem[]) {
   const total_qty = items.reduce((sum, item) => sum + (item.qty || 0), 0);
-  const total_amount = items.reduce((sum, item) => sum + Number(item.line_total || item.price || 0), 0);
+  const total_amount = items.reduce((sum, item) => sum + Math.round(Number(item.line_total || item.price || 0) * 100), 0) / 100;
   return { total_qty, total_amount };
 }
