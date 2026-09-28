@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getTelegramChatIdCandidates } from '../_shared/telegramChatId.ts';
+
 import { fetchAllStockBalances } from './stockBalance.ts';
 
 const corsHeaders = {
@@ -84,11 +86,14 @@ Deno.serve(async (req) => {
       if (!userId) return jsonResponse({ success: false, error: 'Authentication required' }, 401);
 
       if (action === 'verify_destination') {
-        const chatId = String(body.chat_id ?? '').trim();
+        const chatIdInput = String(body.chat_id ?? '').trim();
         const label = String(body.label ?? '').trim() || null;
-        if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) {
-          return jsonResponse({ success: false, error: 'Enter a valid personal or group Chat ID using numbers only' }, 400);
+        if (!TELEGRAM_CHAT_ID_PATTERN.test(chatIdInput)) {
+          return jsonResponse({ success: false, error: 'Enter the full personal or group Chat ID shown by Telegram' }, 400);
         }
+
+        const chatIdCandidates = getTelegramChatIdCandidates(chatIdInput, { group: body.chat_type === 'group' });
+        const chatId = chatIdCandidates[0];
 
         const { data: existingDestinations, error: existingError } = await supabase
           .from('user_telegram_destinations')
@@ -96,7 +101,7 @@ Deno.serve(async (req) => {
           .eq('user_id', userId)
           .eq('active', true);
         if (existingError) return jsonResponse({ success: false, error: existingError.message }, 400);
-        if ((existingDestinations || []).some((destination) => destination.chat_id === chatId)) {
+        if ((existingDestinations || []).some((destination) => chatIdCandidates.includes(destination.chat_id))) {
           return jsonResponse({ success: false, error: 'This Telegram chat is already connected' }, 409);
         }
         if ((existingDestinations || []).length >= 2) {
@@ -141,14 +146,14 @@ Deno.serve(async (req) => {
       if (action === 'test') {
         const chatId = String(body.chat_id ?? '').trim();
         if (!TELEGRAM_CHAT_ID_PATTERN.test(chatId)) {
-          return jsonResponse({ success: false, error: 'Enter a valid personal or group Chat ID using numbers only' }, 400);
+          return jsonResponse({ success: false, error: 'Enter the full personal or group Chat ID shown by Telegram' }, 400);
         }
 
         const { data: allowedDestination } = await supabase
           .from('user_telegram_destinations')
           .select('id')
           .eq('user_id', userId)
-          .eq('chat_id', chatId)
+          .in('chat_id', getTelegramChatIdCandidates(chatId))
           .eq('active', true)
           .not('verified_at', 'is', null)
           .maybeSingle();
@@ -157,7 +162,11 @@ Deno.serve(async (req) => {
         }
 
         const result = await sendTelegramMessage(botToken, chatId, body.message || 'TomuPro bot connected!');
-        return jsonResponse({ success: result.ok, error: result.description, telegram_message_id: result.result?.message_id ?? null });
+        return jsonResponse({
+          success: result.ok,
+          error: result.description,
+          telegram_message_id: result.result?.message_id ?? null,
+        });
       }
 
       let destinationQuery = supabase
@@ -256,21 +265,8 @@ Deno.serve(async (req) => {
       destinationsByUser.set(destination.user_id, userDestinations);
     }
 
-    for (const setting of userSettings as any[]) {
-      if (destinationsByUser.has(setting.user_id)) continue;
-      const legacyChatId = String(setting.chat_id || '').trim();
-      if (!TELEGRAM_CHAT_ID_PATTERN.test(legacyChatId)) continue;
-      destinationsByUser.set(setting.user_id, [{
-        id: null,
-        user_id: setting.user_id,
-        chat_id: legacyChatId,
-        label: 'Primary Telegram',
-      }]);
-    }
-
     // ── Fetch stock from stock_balance_view (same source as Inventory page) ──
     const allStock = await fetchAllStockBalances(supabase);
-
     console.log(`[DEBUG] stock_balance_view: ${allStock.length} rows`);
 
     // ── Fetch delivered NOT_CLAIMED orders (same filter as get_delivered_orders_fast) ──
