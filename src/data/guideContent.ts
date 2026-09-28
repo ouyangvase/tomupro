@@ -157,7 +157,7 @@ export const guides: Guide[] = [
   { id: 'admin-dashboard', role: 'admin', type: 'page-guide', title: 'Dashboard Overview', summary: 'Understand the admin command center and operations pipeline.', icon: '📊', tags: ['dashboard', 'operations', 'pipeline', 'metrics'], steps: [
     { title: 'Operations Pipeline', description: 'The top cards show Booking → Ready → Dispatch → Delivered flow. Click any card to drill into that stage.' },
     { title: 'Action Required', description: 'Red alerts show system-wide issues requiring immediate attention — failed deliveries, reschedules, and runner notes.' },
-    { title: 'Live Activity', description: 'Real-time feed of system actions. Useful for monitoring operations during peak hours.' },
+    { title: 'Your workspace', description: 'Open orders, finance, inventory, team management and settings directly from the dashboard.' },
   ]},
   { id: 'admin-action-required', role: 'admin', type: 'core-task', title: 'Handling Action Required', summary: 'Process failed deliveries, reschedule requests, and runner notes.', icon: '🚨', tags: ['action required', 'failed', 'reschedule', 'alerts'], steps: [
     { title: 'Navigate to Action Required', description: 'Go to Operations → Action Required. This shows all orders needing attention across all salespersons.', targetPage: '/sales/action-required' },

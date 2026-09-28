@@ -3,10 +3,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSalespersonDashboard } from '@/hooks/useSalespersonDashboard';
 import { useRunnerDashboardStats } from '@/hooks/useRunnerDashboardStats';
 import { useManagerDashboard } from '@/hooks/useManagerDashboard';
-import { useAdminStats } from '@/hooks/useDashboardStats';
+import { AdminDashboard } from './AdminDashboard';
 import { 
   useSalespersonActionRequiredStats,
-  useAdminActionRequiredStats,
   useManagerActionRequiredStats 
 } from '@/hooks/useActionRequiredStats';
 import { MobileLayout } from '@/components/mobile/MobileLayout';
@@ -20,7 +19,6 @@ import { useLeaderboardSettings } from '@/hooks/useLeaderboard';
 import { useDriverAssignments } from '@/hooks/useDriverAssignments';
 import { cn } from '@/lib/utils';
 import { GlobalSearchBar } from '@/components/GlobalSearchBar';
-import capybaraAdmin from '@/assets/capybara-admin.png';
 import capybaraRunner from '@/assets/capybara-runner.png';
 import capybaraDriver from '@/assets/capybara-driver.png';
 import capybaraSales from '@/assets/capybara-sales.png';
@@ -168,78 +166,7 @@ function MetricCard({ label, value, icon, isLoading }: MetricCardProps) {
 
 // ===== ADMIN DASHBOARD =====
 function AdminMobileDashboard() {
-  const { profile } = useAuth();
-  const { data: stats, isLoading } = useAdminStats();
-  const { data: actionStats } = useAdminActionRequiredStats();
-
-  const totalOrders = (stats?.bookingOrders ?? 0) + (stats?.readyOrders ?? 0) + (stats?.deliveredOrders ?? 0);
-
-  const quickActions: QuickAction[] = [
-    { id: 'orders', label: 'Orders', icon: <ShoppingCart className="h-5 w-5" />, href: '/orders' },
-    { id: 'finance', label: 'Finance', icon: <DollarSign className="h-5 w-5" />, href: '/finance' },
-    { id: 'performance', label: 'Performance', icon: <Trophy className="h-5 w-5" />, href: '/performance?tab=leaderboard' },
-    { id: 'users', label: 'Users', icon: <Users className="h-5 w-5" />, href: '/team?tab=users' },
-    { id: 'stock', label: 'Stock', icon: <Warehouse className="h-5 w-5" />, href: '/inventory' },
-    { id: 'products', label: 'Products', icon: <Package className="h-5 w-5" />, href: '/inventory?tab=products' },
-    { id: 'claims', label: 'Claims', icon: <Receipt className="h-5 w-5" />, href: '/finance?tab=claims' },
-    { id: 'system', label: 'System', icon: <Settings className="h-5 w-5" />, href: '/system' },
-  ];
-
-  const pipelineStages = [
-    { label: 'Booking', value: stats?.bookingOrders ?? 0, color: 'bg-[hsl(var(--status-pending))]' },
-    { label: 'Ready', value: stats?.readyOrders ?? 0, color: 'bg-primary' },
-    { label: 'Dispatch', value: stats?.pendingDelivery ?? 0, color: 'bg-[hsl(var(--status-success))]' },
-    { label: 'Delivered', value: stats?.deliveredOrders ?? 0, color: 'bg-[hsl(200_60%_50%)]' },
-  ];
-
-  return (
-    <div className="p-4 space-y-6">
-      {/* Hero */}
-      <HeroSummaryCard
-        title="Total Orders"
-        value={totalOrders}
-        subtitle="System-wide activity"
-        viewAllLink="/finance?tab=overview"
-        viewAllLabel="View Overview"
-        icon={<BarChart3 className="h-5 w-5" />}
-        isLoading={isLoading}
-        accentColor="gold"
-        illustration={capybaraAdmin}
-        greeting={`Hello, ${profile?.display_name?.split(' ')[0] || 'Admin'}`}
-        greetingSubtitle="Command Center · Monitor operations and keep the system moving."
-      />
-
-      {/* Alerts */}
-      {((actionStats?.failedDelivery ?? 0) > 0) && (
-        <div className="space-y-3">
-          <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-            <Zap className="h-4 w-4 text-[hsl(var(--status-error))]" />
-            Action Required
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            <AlertCard label="Failed Deliveries" value={actionStats?.failedDelivery ?? 0} icon={<XCircle className="h-4 w-4" />} href="/sales/action-required" severity="error" />
-          </div>
-        </div>
-      )}
-
-      {/* Metrics scroll */}
-      <div className="space-y-3">
-        <h3 className="text-base font-bold text-foreground">Key Metrics</h3>
-        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
-          <MetricCard label="Booking" value={stats?.bookingOrders ?? 0} icon={<ShoppingCart className="h-4 w-4" />} isLoading={isLoading} />
-          <MetricCard label="Delivered" value={stats?.deliveredOrders ?? 0} icon={<CheckCircle className="h-4 w-4" />} isLoading={isLoading} />
-          <MetricCard label="Pending" value={stats?.readyOrders ?? 0} icon={<Clock className="h-4 w-4" />} isLoading={isLoading} />
-          <MetricCard label="Total Users" value={stats?.totalUsers ?? 0} icon={<Users className="h-4 w-4" />} isLoading={isLoading} />
-        </div>
-      </div>
-
-      {/* Pipeline */}
-      <OperationsPipeline stages={pipelineStages} />
-
-      {/* Quick Actions */}
-      <QuickActionsGrid actions={quickActions} columns={4} />
-    </div>
-  );
+  return <div className="p-4"><AdminDashboard /></div>;
 }
 
 // ===== SALESPERSON DASHBOARD =====

@@ -82,7 +82,7 @@ export default function Dashboard() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <RoleHeroBanner />
+        {role !== 'admin' && <RoleHeroBanner />}
         <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>}>
           {renderDashboard()}
         </Suspense>
