@@ -740,20 +740,6 @@ export default function DriverInbox() {
                 )}
               </div>
 
-              {items.length > 0 && (
-                <div className="mt-3 rounded-xl border border-border/30 bg-secondary/30 px-3 py-2">
-                  <div className="flex items-start gap-2">
-                    <Package className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/70" />
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      {items.map((item, idx) => (
-                        <div key={idx} className="text-xs font-medium leading-snug text-foreground break-words">
-                          {item.compactLabel}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Right: Amount + Chevron */}
@@ -771,6 +757,21 @@ export default function DriverInbox() {
               )} />
             </div>
           </div>
+
+          {items.length > 0 && (
+            <div className="mt-3 rounded-xl border border-border/30 bg-secondary/30 px-3 py-2">
+              <div className="flex min-w-0 items-start gap-2">
+                <Package className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/70" />
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  {items.map((item, idx) => (
+                    <div key={idx} className="text-xs font-medium leading-snug text-foreground break-words">
+                      {item.compactLabel}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Expanded Content */}
