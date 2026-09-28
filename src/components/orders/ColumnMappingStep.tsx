@@ -91,13 +91,13 @@ export function ColumnMappingStep({
 
       {/* Mapping table */}
       <div className="border rounded-lg overflow-hidden">
-        <div className="max-h-[280px] overflow-y-auto">
-          <table className="w-full text-xs">
+        <div className="max-h-[min(42vh,280px)] overflow-auto overscroll-contain">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/50 sticky top-0">
               <tr>
-                <th className="px-2 py-1.5 text-left font-medium w-[35%]">CSV Column</th>
-                <th className="px-2 py-1.5 text-left font-medium w-[25%]">Sample</th>
-                <th className="px-2 py-1.5 text-left font-medium w-[40%]">Map To</th>
+                <th className="w-[30%] px-2 py-1.5 text-left font-medium">CSV Column</th>
+                <th className="w-[25%] px-2 py-1.5 text-left font-medium">Sample</th>
+                <th className="w-[45%] px-2 py-1.5 text-left font-medium">Map To</th>
               </tr>
             </thead>
             <tbody>
@@ -118,7 +118,7 @@ export function ColumnMappingStep({
                       value={columnMapping[header] || '_skip'}
                       onValueChange={(val) => handleMappingChange(header, val)}
                     >
-                      <SelectTrigger className="h-7 text-xs w-full">
+                      <SelectTrigger className="h-7 min-w-0 w-full truncate px-2 text-xs">
                         <SelectValue placeholder="Skip" />
                       </SelectTrigger>
                       <SelectContent>

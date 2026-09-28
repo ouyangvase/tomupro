@@ -29,7 +29,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <SidebarProvider>
-      <div className="space-grid-bg min-h-screen flex w-full bg-background text-foreground">
+      <div className="space-grid-bg min-h-dvh flex w-full bg-background text-foreground">
         <AppSidebar />
         <div className="relative flex-1 flex flex-col min-w-0">
           <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(239,244,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(239,244,255,0.035)_1px,transparent_1px)] [background-size:56px_56px]" />
@@ -42,7 +42,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <NotificationBell />
             </div>
           </header>
-          <main className="relative flex-1 overflow-auto px-4 py-5 md:px-6 lg:px-8">
+          <main className="relative min-h-0 flex-1 overflow-auto overscroll-contain px-4 py-5 md:px-6 lg:px-8">
             <div className="mx-auto w-full max-w-[1831px]">
               {children}
             </div>

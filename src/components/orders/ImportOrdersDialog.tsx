@@ -474,14 +474,14 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) clearErrors(); onOpenChange(isOpen); }}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[90dvh] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl border-border/40">
+      <DialogContent className="h-auto w-[calc(100vw-1rem)] max-w-3xl max-h-[calc(100dvh-1rem)] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl border-border/40 sm:w-[calc(100vw-2rem)]">
         {/* ─── Hero Header ─── */}
-        <div className="relative px-6 pt-6 pb-5 bg-gradient-to-br from-primary/8 via-primary/4 to-transparent border-b border-border/40">
+        <div className="relative shrink-0 px-4 pt-4 pb-4 bg-gradient-to-br from-primary/8 via-primary/4 to-transparent border-b border-border/40 sm:px-6 sm:pt-6 sm:pb-5">
           <div className="flex items-start gap-4">
             <img
               src={capybaraImport}
               alt="Import Assistant"
-              className="h-16 w-16 object-contain drop-shadow-md flex-shrink-0"
+              className="h-12 w-12 object-contain drop-shadow-md flex-shrink-0 sm:h-16 sm:w-16"
             />
             <div className="flex-1 min-w-0">
               <DialogTitle className="text-xl font-bold text-foreground tracking-tight">Import Orders from CSV</DialogTitle>
@@ -490,13 +490,13 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
           </div>
 
           {/* Step Indicator */}
-          <div className="mt-5">
+          <div className="mt-4 sm:mt-5">
             <StepIndicator current={step} />
           </div>
         </div>
 
         {/* ─── Content ─── */}
-        <div className="min-h-0 overflow-y-auto px-6 py-5">
+        <div className="min-h-0 flex-auto overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
           {/* ═══ Step: Upload ═══ */}
           {step === 'upload' && (
             <div className="space-y-5">
@@ -789,8 +789,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         </div>
 
         {/* ─── Footer Actions ─── */}
-        <div className="shrink-0 border-t border-border/40 px-6 py-4 bg-card flex items-center justify-between gap-3">
-          <div>
+        <div className="shrink-0 border-t border-border/40 px-4 py-3 bg-card flex flex-wrap items-center justify-between gap-2 sm:px-6 sm:py-4 sm:gap-3">
+          <div className="min-w-0">
             {step === 'upload' && (
               <Button variant="outline" onClick={() => onOpenChange(false)} className="h-10 rounded-xl">
                 Cancel
@@ -810,21 +810,21 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
             )}
           </div>
 
-          <div>
+          <div className="min-w-0">
             {step === 'upload' && file && rawData && (
-              <Button onClick={() => setStep('mapping')} className="h-10 rounded-xl font-semibold">
+              <Button onClick={() => setStep('mapping')} className="h-10 max-w-full rounded-xl font-semibold">
                 Continue to Column Mapping
                 <ArrowRight className="h-4 w-4 ml-1.5" />
               </Button>
             )}
             {step === 'mapping' && (
-              <Button onClick={handleProceedToPreview} disabled={!canProceedToPreview} className="h-10 rounded-xl font-semibold">
+              <Button onClick={handleProceedToPreview} disabled={!canProceedToPreview} className="h-10 max-w-full rounded-xl font-semibold">
                 Review & Import
                 <ArrowRight className="h-4 w-4 ml-1.5" />
               </Button>
             )}
             {step === 'preview' && (
-              <Button onClick={handleImport} disabled={importing || !!paymentPreview.error || missingReceipts} className="h-10 rounded-xl font-semibold">
+              <Button onClick={handleImport} disabled={importing || !!paymentPreview.error || missingReceipts} className="h-10 max-w-full rounded-xl font-semibold">
                 {importing ? 'Importing...' : `Import ${paymentPreview.groups.length} Orders`}
               </Button>
             )}
