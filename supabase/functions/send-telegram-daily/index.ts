@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { fetchAllStockBalances } from './stockBalance.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -268,11 +269,9 @@ Deno.serve(async (req) => {
     }
 
     // ── Fetch stock from stock_balance_view (same source as Inventory page) ──
-    const { data: allStock, error: stockError } = await supabase
-      .from('stock_balance_view')
-      .select('warehouse_id, owner_user_id, owner_name, sku_code, balance_qty');
+    const allStock = await fetchAllStockBalances(supabase);
 
-    console.log(`[DEBUG] stock_balance_view: ${allStock?.length ?? 0} rows, error: ${stockError?.message ?? 'none'}`);
+    console.log(`[DEBUG] stock_balance_view: ${allStock.length} rows`);
 
     // ── Fetch delivered NOT_CLAIMED orders (same filter as get_delivered_orders_fast) ──
     // Include area for delivery charge lookup, and status to exclude CANCELLED
