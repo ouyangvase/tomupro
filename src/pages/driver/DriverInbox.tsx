@@ -694,24 +694,24 @@ export default function DriverInbox() {
           className="p-4 cursor-pointer active:bg-muted/20 transition-colors"
           onClick={() => toggleCardExpanded(order.id)}
         >
-          <div className="flex justify-between items-start gap-3">
-            {/* Left: Status Dot + Code + Date */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2.5">
-                <RemarkStatusDot remarkType={remark?.remark_type} />
-                <span className="text-base font-bold tracking-tight truncate">
-                  {order.order_code}
-                </span>
-                <Badge variant="secondary" className="text-[10px] font-medium px-2 py-0 h-5 rounded-full flex-shrink-0">
-                  {getDateLabel(order)}
-                </Badge>
-                {order.order_source === 'RUNNER_PICKUP' && (
-                  <Badge variant="outline" className="text-[10px] font-medium px-2 py-0 h-5 rounded-full bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30 flex-shrink-0">
-                    Pickup
-                  </Badge>
-                )}
-              </div>
+          <div className="mb-2 flex min-w-0 items-start gap-2.5">
+            <RemarkStatusDot remarkType={remark?.remark_type} />
+            <span className="min-w-0 flex-1 whitespace-normal break-words text-base font-bold leading-tight tracking-tight [overflow-wrap:anywhere]">
+              {order.order_code}
+            </span>
+            <Badge variant="secondary" className="text-[10px] font-medium px-2 py-0 h-5 rounded-full flex-shrink-0">
+              {getDateLabel(order)}
+            </Badge>
+            {order.order_source === 'RUNNER_PICKUP' && (
+              <Badge variant="outline" className="text-[10px] font-medium px-2 py-0 h-5 rounded-full bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30 flex-shrink-0">
+                Pickup
+              </Badge>
+            )}
+          </div>
 
+          <div className="flex justify-between items-start gap-3">
+            {/* Left: Route + Status */}
+            <div className="flex-1 min-w-0">
               {/* Route badge + Status */}
               <div className="flex gap-2 mt-2 items-center flex-wrap">
                 {(hasSuggestions || hasManualPriority) && (
