@@ -1,3 +1,11 @@
+## Deployment correction — 2026-09-29
+
+The first release used the wrong source baseline and was superseded. Correct production deployment: https://78396189.tomupro.pages.dev, serving https://www.tomu.my. It is based on the user-confirmed `tomupro-mulerun-deploy` source recovered at commit `6202be1`, with a three-way merge of the payment changes. The old public-shell injection is absent, matching the preceding Cloudflare production deployment. Existing navigation, search, Driver correction/proof handling, Miri workflows and newer operational code are retained.
+
+Corrected source checkout: `C:/Users/unmap/.codex/tmp/tomupro-correct-release`, branch `codex/correct-partial-payment-release`. The old `tomupro-payment-release/frontend` build folder must not be republished. Migration 20260929133000 preserves optional Driver proof selection and submission mode in the partial-payment wrapper while keeping five-argument callers compatible. Production transaction rollback tests passed after this extension. Final correct-baseline test run: 61 files, 295 tests passed, including the retained Telegram tests.
+
+The following earlier release notes remain as history; deployment 6a366d81 and its source assembly were incorrect and are superseded.
+
 # Partial transfer + remaining COD — implementation and verification
 
 Date: 2026-09-29. Published to Cloudflare Pages (`tomupro`) and Supabase. Production: https://www.tomu.my. Deployment: https://6a366d81.tomupro.pages.dev.
