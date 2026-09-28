@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getAssignableDriverIdsForRunners } from './driverAssignmentScope';
+import { getActiveDriverAssignmentIds, getAssignableDriverIdsForRunners } from './driverAssignmentScope';
 
 describe('getAssignableDriverIdsForRunners', () => {
   it('excludes a driver that is only visible through a stale assignment', () => {
@@ -25,5 +25,15 @@ describe('getAssignableDriverIdsForRunners', () => {
       { runner_id: 'runner-1', driver_id: 'driver-1' },
       { runner_id: 'runner-2', driver_id: 'driver-2' },
     ], []))).toEqual(['driver-1', 'driver-2']);
+  });
+});
+
+describe('getActiveDriverAssignmentIds', () => {
+  it('excludes pending Driver outcomes from active workload counts', () => {
+    expect(Array.from(getActiveDriverAssignmentIds([
+      { id: 'active-order', is_active_assignment: true },
+      { id: 'pending-failed-order', is_active_assignment: false },
+      { id: 'missing-flag-order' },
+    ]))).toEqual(['active-order']);
   });
 });

@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useBulkUpdateOrders } from '@/hooks/useOrders';
+import { useRunnerTakeOrders } from '@/hooks/useOrders';
 import { useMarkDeliveredFast } from '@/hooks/useDeliveredOrders';
 import { RunnerDeliverConfirmDialog } from '@/components/runner/RunnerDeliverConfirmDialog';
 import { ReceiptConfirmDialog } from '@/components/runner/ReceiptConfirmDialog';
@@ -24,13 +24,15 @@ import { BulkClaimDialog } from '@/components/runner/BulkClaimDialog';
 import { AssignToDriverDialog } from '@/components/runner/AssignToDriverDialog';
 import { useSubmitBulkClaim } from '@/hooks/useClaimBatches';
 import { useMyDrivers } from '@/hooks/useDrivers';
+import { useDriverAssignments } from '@/hooks/useDriverAssignments';
+import { hasCurrentDriverAssignment, isPendingDriverOutcome, requiresDriverReview as requiresDriverReviewStatus } from '@/lib/driverOrderScope';
 import { exportRunnerOrderLines } from '@/lib/csv';
 import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { useToast } from '@/hooks/use-toast';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
-import type { Order } from '@/types/database';
+import type { Order, RunnerStatus } from '@/types/database';
 import { Package, Truck, Loader2, DollarSign, Search, Download, Upload, Clock, Eye, ChevronLeft, ChevronRight, Phone, AlertTriangle, Calendar, CheckCircle, UserPlus, UserRound, ImageIcon } from 'lucide-react';
 import { OrderEditor } from '@/components/orders/OrderEditor';
 import { OrderFiltersPanel, type OrderFilters } from '@/components/filters/OrderFiltersPanel';
@@ -42,6 +44,19 @@ import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
+
+type RunnerInboxOrder = Order & {
+  // Keep the raw Driver result visible to this page even when the current
+  // Driver assignment has already been released and the display assignment
+  // is intentionally normalized to UNASSIGNED.
+  driver_review_status: Order['driver_status'];
+};
+
+const runnerInboxStatusOptions = [
+  { label: 'Unassigned', value: 'UNASSIGNED' },
+  { label: 'Assigned', value: 'ASSIGNED' },
+  { label: 'Taken', value: 'TAKEN' },
+];
 
 interface RunnerInboxProps {
   runnerIdsOverride?: string[];
@@ -72,6 +87,14 @@ export default function RunnerInbox({
       : [profile?.id || user?.id].filter((id): id is string => Boolean(id)),
   [assistantBinding?.runnerIds, isAssistant, profile?.id, runnerIdsOverride, user?.id]);
   const { data: myDrivers = [] } = useMyDrivers(effectiveRunnerIds);
+  const { data: canonicalVisibleDriverAssignments = [] } = useDriverAssignments({
+    runnerIds: effectiveRunnerIds,
+    activeOnly: true,
+    includeItems: false,
+    // A pending Driver result is still attached to the current Driver until
+    // the Runner reviews it. Keep that identity visible in Runner Inbox.
+    states: ['ACTIVE', 'PENDING_ACCEPTANCE'],
+  });
   const { data: validAreas = [] } = useValidAreas();
   const { data: stockBalances = [] } = useStockBalance();
 
@@ -107,7 +130,7 @@ export default function RunnerInbox({
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [datePreset, setDatePreset] = useState<'all' | 'today' | 'yesterday' | 'this_week'>('all');
 
-  const bulkUpdateOrders = useBulkUpdateOrders();
+  const runnerTakeOrders = useRunnerTakeOrders();
   const submitBulkClaim = useSubmitBulkClaim();
   const markDelivered = useMarkDeliveredFast();
 
@@ -143,19 +166,45 @@ export default function RunnerInbox({
     runnerIds: effectiveRunnerIds,
     excludeDeliveredAndFailed: true as const,
     searchQuery: serverSearch || undefined,
-    runnerStatus: filters.runnerStatus as any,
+    searchByPhone: true as const,
+    runnerStatus: filters.runnerStatus as RunnerStatus | undefined,
     areaFilter: filters.area,
     driverId: filters.driverId,
-    reconciliationStatus: filters.reconciliationStatus as any,
+    driverAssignment: filters.driverAssignment,
     paymentMethod: isReceiptOnlyAssistant ? 'TRANSFER' : filters.paymentMethod,
-    receiptStatus: filters.receiptStatus,
+    includeMiri: true,
     sortField: 'runner_assigned_at',
     sortDirection: 'desc' as const,
     assignedDateFrom: assignedDateRange.from,
     assignedDateTo: assignedDateRange.to,
-  }), [effectiveRunnerIds, serverSearch, filters.runnerStatus, filters.area, filters.driverId, filters.reconciliationStatus, filters.paymentMethod, filters.receiptStatus, assignedDateRange.from, assignedDateRange.to, isReceiptOnlyAssistant]);
+  }), [effectiveRunnerIds, serverSearch, filters.runnerStatus, filters.area, filters.driverId, filters.driverAssignment, filters.paymentMethod, assignedDateRange.from, assignedDateRange.to, isReceiptOnlyAssistant]);
 
   const { data: orders, isLoading, isFetching, pagination, setPage } = usePaginatedOrders(orderFilters, 50);
+  const canonicalDriverByOrderId = useMemo(
+    () => new Map(canonicalVisibleDriverAssignments.map((order) => [order.id, order])),
+    [canonicalVisibleDriverAssignments],
+  );
+  const displayOrders = useMemo(() => orders.map((order) => {
+    const canonicalAssignment = canonicalDriverByOrderId.get(order.id);
+    const pendingDriverResult = isPendingDriverOutcome(order) && Boolean(order.driver_id);
+    const rawDriverAssignment = Boolean(order.driver_id)
+      && String(order.driver_status || '').toUpperCase() !== 'UNASSIGNED';
+    if (!canonicalAssignment && !pendingDriverResult && !rawDriverAssignment) {
+      return {
+        ...order,
+        driver_id: null,
+        driver: null,
+        driver_status: 'UNASSIGNED' as const,
+        driver_review_status: order.driver_status,
+      };
+    }
+    return {
+      ...order,
+      driver_id: canonicalAssignment?.driver_id || order.driver_id,
+      driver: canonicalAssignment?.driver || order.driver,
+      driver_review_status: order.driver_status,
+    };
+  }), [canonicalDriverByOrderId, orders]);
 
   // Server-side stats for summary cards (not affected by pagination)
   const { data: inboxStats } = useRunnerInboxStats(effectiveRunnerIds);
@@ -218,19 +267,9 @@ export default function RunnerInbox({
 
   const handleBulkTake = () => {
     const orderIds = [...selectedRows];
-    bulkUpdateOrders.mutate(
-      { ids: orderIds, updates: { runner_status: 'TAKEN' } },
-      {
-        onSuccess: () => {
-          import('@/hooks/useAuditLogs').then(({ logAudit }) => {
-            for (const id of orderIds) {
-              logAudit({ entity_type: 'order', entity_id: id, action: 'taken', after_json: { runner_status: 'TAKEN' } });
-            }
-          });
-        },
-      }
-    );
-    setSelectedRows([]);
+    runnerTakeOrders.mutate(orderIds, {
+      onSuccess: () => setSelectedRows([]),
+    });
   };
 
   const handleBulkClaimSubmit = async (exchangeRate: number, note?: string) => {
@@ -265,9 +304,70 @@ export default function RunnerInbox({
     }
   };
 
-  const handleSingleDeliver = (orderId: string) => {
+  const verifyRunnerDeliveryBoundary = async (orderId: string) => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id, runner_id, driver_id, status, operational_status, runner_status, driver_status, runner_accept_status, runner_review_status, runner_final_outcome, salesperson_action_required')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data) {
+      throw new Error('Order status could not be verified. Refresh the Runner Inbox and try again.');
+    }
+
+    const currentOrder = { ...data, driver_review_status: data.driver_status };
+
+    return {
+      hasCurrentDriverAssignment: Boolean(currentOrder && hasCurrentDriverAssignment(currentOrder)),
+      requiresDriverReview: Boolean(currentOrder && requiresDriverReviewStatus(currentOrder as RunnerInboxOrder)),
+    };
+  };
+
+  const showRunnerDeliveryBlocked = () => {
+    toast({
+      variant: 'destructive',
+      title: 'Driver assignment is active',
+      description: 'Runner cannot mark this order Delivered or Failed. Review the Driver result from Dispatch > Drivers, or release the assignment first.',
+    });
+  };
+
+  const showDriverReviewRequired = () => {
+    toast({
+      variant: 'destructive',
+      title: 'Driver result needs review',
+      description: 'Open Dispatch > Drivers to review this Driver result. Runner Inbox cannot accept it.',
+    });
+  };
+
+  const handleSingleDeliver = async (orderId: string) => {
+    const order = displayOrders.find(o => o.id === orderId);
+    if (order && hasCurrentDriverAssignment(order)) {
+      showRunnerDeliveryBlocked();
+      return;
+    }
+    if (order && requiresDriverReviewStatus(order)) {
+      showDriverReviewRequired();
+      return;
+    }
+
+    try {
+      const boundary = await verifyRunnerDeliveryBoundary(orderId);
+      if (boundary.hasCurrentDriverAssignment) {
+        boundary.requiresDriverReview ? showDriverReviewRequired() : showRunnerDeliveryBlocked();
+        return;
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Unable to verify order status',
+        description: error instanceof Error ? error.message : 'Refresh the inbox and try again.',
+      });
+      return;
+    }
+
     // Check if this is a TRANSFER order that needs receipt confirmation first
-    const order = orders.find(o => o.id === orderId);
     if (order?.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed') {
       setReceiptOrder(order);
       setReceiptDialogOpen(true);
@@ -277,14 +377,73 @@ export default function RunnerInbox({
     setDeliverConfirmOpen(true);
   };
 
-  const confirmDeliver = () => {
+  const confirmDeliver = async () => {
     if (!pendingDeliverId) return;
+    const pendingOrder = displayOrders.find((order) => order.id === pendingDeliverId);
+    const onSettled = () => {
+      setDeliverConfirmOpen(false);
+      setPendingDeliverId(null);
+    };
+
+    if (pendingOrder && hasCurrentDriverAssignment(pendingOrder)) {
+      showRunnerDeliveryBlocked();
+      onSettled();
+      return;
+    }
+
+    if (pendingOrder && requiresDriverReviewStatus(pendingOrder)) {
+      showDriverReviewRequired();
+      onSettled();
+      return;
+    }
+
+    try {
+      const boundary = await verifyRunnerDeliveryBoundary(pendingDeliverId);
+      if (boundary.hasCurrentDriverAssignment) {
+        boundary.requiresDriverReview ? showDriverReviewRequired() : showRunnerDeliveryBlocked();
+        onSettled();
+        return;
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Unable to verify order status',
+        description: error instanceof Error ? error.message : 'Refresh the inbox and try again.',
+      });
+      onSettled();
+      return;
+    }
+
     markDelivered.mutate(pendingDeliverId, {
-      onSettled: () => {
-        setDeliverConfirmOpen(false);
-        setPendingDeliverId(null);
-      },
+      onSettled,
     });
+  };
+
+  const handleSingleReject = async (orderId: string) => {
+    const order = displayOrders.find((candidate) => candidate.id === orderId);
+    if (!order) return;
+    if (hasCurrentDriverAssignment(order)) {
+      showRunnerDeliveryBlocked();
+      return;
+    }
+
+    try {
+      const boundary = await verifyRunnerDeliveryBoundary(orderId);
+      if (boundary.hasCurrentDriverAssignment) {
+        boundary.requiresDriverReview ? showDriverReviewRequired() : showRunnerDeliveryBlocked();
+        return;
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Unable to verify order status',
+        description: error instanceof Error ? error.message : 'Refresh the inbox and try again.',
+      });
+      return;
+    }
+
+    setSelectedOrder(order);
+    setFailedDialogOpen(true);
   };
 
   const handleRowClick = (order: Order) => {
@@ -314,7 +473,7 @@ export default function RunnerInbox({
         let query = supabase
           .from('orders')
           .select('id')
-          .eq('status', 'READY')
+          .eq('current_operational_state', 'READY')
           .neq('runner_status', 'DELIVERED')
           .neq('runner_status', 'FAILED_DELIVERY')
           .neq('runner_status', 'UNASSIGNED')
@@ -325,13 +484,14 @@ export default function RunnerInbox({
 
         if (serverSearch?.trim()) {
           const term = `${serverSearch.trim().toUpperCase().replace(/\s+/g, '')}%`;
-          query = query.ilike('order_code', term);
+          const phoneTerm = `%${serverSearch.trim().replace(/\s+/g, '')}%`;
+          query = query.or(`order_code.ilike.${term},phone.ilike.${phoneTerm}`);
         }
         if (filters.runnerStatus) query = query.eq('runner_status', filters.runnerStatus);
         if (filters.area && filters.area !== 'all') query = query.eq('area', filters.area);
         if (filters.driverId && filters.driverId !== 'all') query = query.eq('driver_id', filters.driverId);
-        if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
-
+        if (filters.driverAssignment === 'HAVE_DRIVER') query = query.not('driver_id', 'is', null);
+        if (filters.driverAssignment === 'NO_DRIVER') query = query.is('driver_id', null);
         const { data: allOrders } = await query.limit(2000);
         if (allOrders) {
           setSelectedRows(allOrders.map((o: { id: string }) => o.id));
@@ -421,7 +581,7 @@ export default function RunnerInbox({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search order code..."
+            placeholder="Search order code or phone..."
             value={serverSearch}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 h-10 rounded-full border-border/60 bg-card"
@@ -439,10 +599,14 @@ export default function RunnerInbox({
                   areaOptions={areaOptions}
                   driverOptions={driverOptions}
                   showDriverFilter
+                  showDriverAssignmentFilter
                   showRunnerStatus
+                  runnerStatusOptions={runnerInboxStatusOptions}
                   showDriverStatus={false}
                   showOrderStatus={false}
-                  showReconciliationStatus
+                  showReconciliationStatus={false}
+                  showReceiptStatusFilter={false}
+                  showDeliveryReasonFilter={false}
                 />
               </div>
               {duplicateOrdersAction && (
@@ -545,21 +709,21 @@ export default function RunnerInbox({
             </div>
 
             {/* Orders */}
-            {orders.map(order => (
+            {displayOrders.map(order => (
               <RunnerOrderCard
                 key={order.id}
                 order={order}
                 isSelected={selectedRows.includes(order.id)}
                 onSelect={() => toggleSelect(order.id)}
                 onDeliver={() => handleSingleDeliver(order.id)}
-                onReject={() => { setSelectedOrder(order); setFailedDialogOpen(true); }}
+                onReject={() => { void handleSingleReject(order.id); }}
                 onView={() => handleRowClick(order)}
                 onViewReceipt={() => { setReceiptOrder(order); setReceiptDialogOpen(true); }}
                 isMobile={isMobile}
                 canDeliver={canDeliver}
                 canConfirmReceipt={canReviewReceipts}
                 stockMap={runnerStockMap}
-                driverName={order.driver?.display_name || (order.driver_id ? driverNameById.get(order.driver_id) : null)}
+                driverName={canonicalDriverByOrderId.get(order.id)?.driver_name || order.driver?.display_name || (order.driver_id ? driverNameById.get(order.driver_id) : null)}
               />
             ))}
           </div>
@@ -660,7 +824,7 @@ function StatusBadgeInline({ status }: { status: string }) {
 }
 
 interface RunnerOrderCardProps {
-  order: Order;
+  order: RunnerInboxOrder;
   isSelected: boolean;
   onSelect: () => void;
   onDeliver: () => void;
@@ -675,12 +839,22 @@ interface RunnerOrderCardProps {
 }
 
 function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onView, onViewReceipt, isMobile, canDeliver, canConfirmReceipt, stockMap, driverName }: RunnerOrderCardProps) {
+  const isMiriPickup = order.order_type === 'MIRI_INBOUND_PICKUP';
   const isReceiptBlocked = order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed';
+  const hasDriverAssignment = hasCurrentDriverAssignment(order);
+  const isDriverReviewRequired = requiresDriverReviewStatus(order);
+  const deliveryActionLabel = isDriverReviewRequired ? 'Review in Drivers' : 'Delivered';
   const canAcceptReceipt = canConfirmReceipt && !canDeliver && order.payment_method === 'TRANSFER' && order.receipt_status !== 'confirmed' && order.receipt_status !== 'rejected';
   const assignedDriverName = order.driver_id ? (driverName?.trim() || 'Unknown Driver') : null;
   const itemSummary = useMemo(
     () => formatOrderItemsDisplay(order.order_items),
     [order.order_items]
+  );
+  const expectedItemSummary = useMemo(
+    () => (order.expected_items || [])
+      .map((item) => `${item.sku_code || 'SKU'} x ${item.quantity || 0}`)
+      .join(', '),
+    [order.expected_items],
   );
 
   const isMobileRejected = order.payment_method === 'TRANSFER' && order.receipt_status === 'rejected';
@@ -711,6 +885,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
               <Checkbox checked={isSelected} onCheckedChange={onSelect} className="h-4 w-4" />
             </div>
             <span className="text-sm font-bold font-mono text-foreground">{order.order_code}</span>
+            {isMiriPickup && <Badge className="bg-amber-600 text-white text-[9px] px-1.5 py-0">MIRI PICKUP</Badge>}
             {order.area && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0">{order.area}</Badge>
             )}
@@ -743,6 +918,13 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
               </div>
             )}
             <p className="text-xs text-muted-foreground truncate">{order.address || 'No address'}</p>
+            {isMiriPickup && (
+              <div className="space-y-0.5 pt-0.5 text-xs">
+                <p className="truncate font-semibold text-primary">Tracking: {order.external_tracking_number || '-'}</p>
+                <p className="truncate text-muted-foreground">Seller: {order.owner_salesperson_display_name_snapshot || order.sniper_seller_id || '-'}</p>
+                <p className="truncate text-muted-foreground">Expected SKU: {expectedItemSummary || 'Unverified'}</p>
+              </div>
+            )}
             {order.order_items?.length ? (
               <div className="flex min-w-0 items-start gap-1.5 pt-0.5 text-xs" title={itemSummary.fullText}>
                 <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
@@ -760,8 +942,8 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
 
           {/* Row 3: Amount + Payment + Assigned date */}
           <div className="flex items-center gap-2 text-xs flex-wrap">
-            <span className="font-bold tabular-nums text-foreground text-sm">{formatBND(order.total_amount)}</span>
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{order.payment_method}</Badge>
+            <span className="font-bold tabular-nums text-foreground text-sm">{formatBND(isMiriPickup ? order.actual_pickup_charge : order.total_amount)}</span>
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{isMiriPickup ? 'Miri Pickup Charge' : order.payment_method}</Badge>
             {order.payment_method === 'TRANSFER' && (
               <Badge variant="outline" className={`text-xs px-2.5 py-0.5 font-semibold ${
                 order.receipt_status === 'confirmed' ? 'bg-green-500/15 text-green-700 border-green-500/30' :
@@ -796,7 +978,11 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
           <div className="flex gap-2 pt-1 flex-wrap">
             <StatusBadgeInline status={order.runner_status} />
             {canDeliver && (order.runner_status === 'ASSIGNED' || order.runner_status === 'TAKEN') && (
-              <>
+              hasDriverAssignment ? (
+                <Badge variant="outline" className="rounded-full border-amber-500/40 text-amber-700 bg-amber-500/5 px-3 py-1">
+                  {isDriverReviewRequired ? 'Review in Drivers' : 'Driver assigned · Runner actions locked'}
+                </Badge>
+              ) : <>
                 <Button
                   size="sm"
                   variant="outline"
@@ -804,20 +990,22 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
                   disabled={isReceiptBlocked}
                   className={cn("rounded-full h-9 px-3", isReceiptBlocked
                     ? "opacity-50 cursor-not-allowed"
+                    : isDriverReviewRequired
+                      ? "border-amber-500/40 text-amber-700 hover:bg-amber-500/10"
                     : "border-primary/40 text-primary hover:bg-primary/10"
                   )}
-                  title={isReceiptBlocked ? "Receipt must be confirmed before delivery" : undefined}
+                  title={isReceiptBlocked ? "Receipt must be confirmed before delivery" : isDriverReviewRequired ? "Review this Driver result from Dispatch > Drivers" : undefined}
                 >
-                  <CheckCircle className="h-4 w-4 mr-1" /> Delivered
+                  <CheckCircle className="h-4 w-4 mr-1" /> {deliveryActionLabel}
                 </Button>
-                <Button
+                {!isDriverReviewRequired && <Button
                   size="sm"
                   variant="outline"
                   onClick={(e) => { e.stopPropagation(); onReject(); }}
                   className="rounded-full h-9 px-3 border-destructive/40 text-destructive hover:bg-destructive/10"
                 >
                   <AlertTriangle className="h-4 w-4 mr-1" /> Reject
-                </Button>
+                </Button>}
               </>
             )}
             {order.payment_method === 'TRANSFER' && order.receipt_url && !canAcceptReceipt && (
@@ -874,6 +1062,7 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
         {/* Order ID + Area */}
         <div className="w-[110px] shrink-0">
           <span className="text-sm font-bold font-mono text-foreground">{order.order_code}</span>
+          {isMiriPickup && <div className="mt-0.5"><Badge className="bg-amber-600 text-white text-[9px] px-1.5 py-0">MIRI PICKUP</Badge></div>}
           {order.area && (
             <div className="mt-0.5">
               <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0">{order.area}</Badge>
@@ -892,6 +1081,13 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.address || 'No address'}</p>
+          {isMiriPickup && (
+            <div className="mt-1 space-y-0.5 text-[11px]">
+              <p className="truncate font-semibold text-primary">Tracking: {order.external_tracking_number || '-'}</p>
+              <p className="truncate text-muted-foreground">Seller: {order.owner_salesperson_display_name_snapshot || order.sniper_seller_id || '-'}</p>
+              <p className="truncate text-muted-foreground">Expected SKU: {expectedItemSummary || 'Unverified'}</p>
+            </div>
+          )}
           {order.order_items?.length ? (
             <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs" title={itemSummary.fullText}>
               <Package className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -925,8 +1121,8 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
 
         {/* Amount */}
         <div className="w-[120px] shrink-0 text-right">
-          <span className="text-sm font-bold tabular-nums">{formatBND(order.total_amount)}</span>
-          <div className="mt-0.5 text-[10px] text-muted-foreground">{order.payment_method}</div>
+          <span className="text-sm font-bold tabular-nums">{formatBND(isMiriPickup ? order.actual_pickup_charge : order.total_amount)}</span>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">{isMiriPickup ? 'Miri Pickup Charge' : order.payment_method}</div>
           {order.payment_method === 'TRANSFER' && (
             <Badge variant="outline" className={`mt-1 text-[11px] px-2 py-0.5 font-semibold ${
               order.receipt_status === 'confirmed' ? 'bg-green-500/15 text-green-700 border-green-500/30' :
@@ -958,7 +1154,11 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
         {/* Actions */}
         <div className="w-[280px] shrink-0 flex items-center gap-1.5 justify-end flex-wrap" onClick={e => e.stopPropagation()}>
           {canDeliver && (order.runner_status === 'ASSIGNED' || order.runner_status === 'TAKEN') && (
-            <>
+            hasDriverAssignment ? (
+              <Badge variant="outline" className="rounded-full border-amber-500/40 text-amber-700 bg-amber-500/5 px-2.5 py-1 text-xs">
+                {isDriverReviewRequired ? 'Review in Drivers' : 'Driver assigned · locked'}
+              </Badge>
+            ) : <>
               <Button
                 size="sm"
                 variant="outline"
@@ -966,15 +1166,17 @@ function RunnerOrderCard({ order, isSelected, onSelect, onDeliver, onReject, onV
                 disabled={isReceiptBlocked}
                 className={cn("rounded-full h-8 text-xs px-2.5", isReceiptBlocked
                   ? "opacity-50 cursor-not-allowed"
+                  : isDriverReviewRequired
+                    ? "border-amber-500/40 text-amber-700 hover:bg-amber-500/10"
                   : "border-primary/40 text-primary hover:bg-primary/10"
                 )}
-                title={isReceiptBlocked ? "Receipt must be confirmed before delivery" : undefined}
+                title={isReceiptBlocked ? "Receipt must be confirmed before delivery" : isDriverReviewRequired ? "Review this Driver result from Dispatch > Drivers" : undefined}
               >
-                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Delivered
+                <CheckCircle className="h-3.5 w-3.5 mr-1" /> {deliveryActionLabel}
               </Button>
-              <Button size="sm" variant="outline" onClick={onReject} className="rounded-full h-8 text-xs px-2.5 border-destructive/40 text-destructive hover:bg-destructive/10">
+              {!isDriverReviewRequired && <Button size="sm" variant="outline" onClick={onReject} className="rounded-full h-8 text-xs px-2.5 border-destructive/40 text-destructive hover:bg-destructive/10">
                 <AlertTriangle className="h-3.5 w-3.5 mr-1" /> Reject
-              </Button>
+              </Button>}
             </>
           )}
           {canAcceptReceipt && (

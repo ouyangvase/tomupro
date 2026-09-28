@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDriverAssignments } from '@/hooks/useDriverAssignments';
-import { useChangeDriverFailedStatus, useDriverMarkDelivered, useDriverMarkFailed, useDriverParentRunner, useDriverUpdateStatus } from '@/hooks/useDrivers';
+import { useChangeDriverFailedStatus, useDriverMarkDelivered, useDriverMarkFailed, useDriverParentRunner, useDriverStartAssignment } from '@/hooks/useDrivers';
 import { useReasons } from '@/hooks/useReasons';
 import { useRouteSuggestion } from '@/hooks/useRouteSuggestion';
 import { useDriverRemarks } from '@/hooks/useDriverRemarks';
@@ -37,6 +37,7 @@ import {
   CUSTOMER_RESCHEDULE_REASON,
   DELIVERY_TOMORROW_REASON,
   getTomorrowDateKey,
+  hasRequiredDeliveryPhotos,
   normalizeFailedReason,
   sortFailedStatusReasons,
 } from '@/lib/driverFailedStatus';
@@ -46,9 +47,18 @@ import {
   getDriverInboxAssignmentSection,
   getDriverInboxVisibleOrders,
   isCompletedDriverDeliveryAccepted,
+  isPendingDriverOutcome,
   isSameDriverOperationalDate,
   normalizeDriverStatus,
 } from '@/lib/driverOrderScope';
+import {
+  filterDriverPaymentOrders,
+  getDriverPaymentFilterLabel,
+  getDriverPaymentSummary,
+  sortDriverPaymentOrders,
+  type DriverPaymentFilter,
+  type DriverPaymentSort,
+} from '@/lib/driverPaymentSummary';
 import { toast } from 'sonner';
 import type { Order, OrderItem, Product } from '@/types/database';
 
@@ -139,6 +149,17 @@ function filterDriverOrders(orders: DriverInboxOrder[], searchQuery: string) {
   });
 }
 
+type DriverInboxSort = 'ROUTE' | DriverPaymentSort;
+
+function formatDriverPaymentBreakdown(order: DriverInboxOrder) {
+  const payment = getDriverPaymentSummary(order);
+  const parts = [
+    payment.cashAmount > 0 ? `Cash ${formatBND(payment.cashAmount)}` : null,
+    payment.transferAmount > 0 ? `Transfer ${formatBND(payment.transferAmount)}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : `Total ${formatBND(payment.totalAmount)}`;
+}
+
 const driverStatusConfig: Record<string, { label: string; className: string }> = {
   ASSIGNED: { label: 'Assigned', className: 'status-neutral' },
   OUT_FOR_DELIVERY: { label: 'Out for Delivery', className: 'status-pending' },
@@ -169,7 +190,7 @@ export default function DriverInbox() {
   const markDelivered = useDriverMarkDelivered();
   const markFailed = useDriverMarkFailed();
   const changeFailedStatus = useChangeDriverFailedStatus();
-  const updateDriverStatus = useDriverUpdateStatus();
+  const startDriverAssignment = useDriverStartAssignment();
   const uploadAttachment = useUploadAttachment();
   const { data: driverPickups = [] } = useDriverPickups();
 
@@ -183,6 +204,8 @@ export default function DriverInbox() {
   const [nextDeliveryDate, setNextDeliveryDate] = useState('');
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState<DriverPaymentFilter>('ALL');
+  const [paymentSort, setPaymentSort] = useState<DriverInboxSort>('ROUTE');
   const [deliveredProofFiles, setDeliveredProofFiles] = useState<File[]>([]);
   const [deliveredProofPreviews, setDeliveredProofPreviews] = useState<string[]>([]);
   const [failedProofFiles, setFailedProofFiles] = useState<File[]>([]);
@@ -200,7 +223,8 @@ export default function DriverInbox() {
       ? nextDeliveryDate
       : '';
   const failedSubmissionDisabled = !failedReason
-    || (isCustomerReschedule && (!nextDeliveryDate || nextDeliveryDate < tomorrowDateKey));
+    || (isCustomerReschedule && (!nextDeliveryDate || nextDeliveryDate < tomorrowDateKey))
+    || !hasRequiredDeliveryPhotos(failedProofFiles);
   const myOrders = useMemo<DriverInboxOrder[]>(() => {
     // Keep a client-side final-state boundary as a defense against stale
     // cached rows or an older RPC response during rollout.
@@ -216,9 +240,13 @@ export default function DriverInbox() {
   }, []);
 
   // Keep active work and unreviewed Driver outcomes visible until the Runner finalizes them.
-  const filteredOrders = useMemo(
+  const searchedOrders = useMemo(
     () => filterDriverOrders(myOrders, searchQuery),
     [myOrders, searchQuery],
+  );
+  const filteredOrders = useMemo(
+    () => filterDriverPaymentOrders(searchedOrders, paymentFilter),
+    [paymentFilter, searchedOrders],
   );
 
   const pendingOrders = useMemo(
@@ -248,6 +276,30 @@ export default function DriverInbox() {
     () => filteredOrders.filter(
       (order) => getDriverInboxAssignmentSection(order) === 'PENDING_FAILED',
     ),
+    [filteredOrders],
+  );
+  const sortedDeliveredPendingAcceptance = useMemo(
+    () => sortDriverPaymentOrders(
+      deliveredPendingAcceptance,
+      paymentSort === 'ROUTE' ? 'RECENT' : paymentSort,
+    ),
+    [deliveredPendingAcceptance, paymentSort],
+  );
+  const sortedFailedOrdersList = useMemo(
+    () => sortDriverPaymentOrders(
+      failedOrdersList,
+      paymentSort === 'ROUTE' ? 'RECENT' : paymentSort,
+    ),
+    [failedOrdersList, paymentSort],
+  );
+  const visiblePaymentTotals = useMemo(
+    () => filteredOrders.reduce((totals, order) => {
+      const payment = getDriverPaymentSummary(order);
+      totals.cash += payment.cashAmount;
+      totals.transfer += payment.transferAmount;
+      totals.total += payment.totalAmount;
+      return totals;
+    }, { cash: 0, transfer: 0, total: 0 }),
     [filteredOrders],
   );
 
@@ -280,6 +332,10 @@ export default function DriverInbox() {
   const { priorities, hasManualPriority, updatePriorities, clearPriorities } = useDriverOrderPriority(pendingOrderIds);
 
   const sortedPendingOrders = useMemo(() => {
+    if (paymentSort !== 'ROUTE') {
+      return sortDriverPaymentOrders(pendingOrders, paymentSort);
+    }
+
     const ordersCopy = [...pendingOrders];
     
     ordersCopy.sort((a, b) => {
@@ -305,7 +361,7 @@ export default function DriverInbox() {
     });
     
     return ordersCopy;
-  }, [pendingOrders, priorities, suggestions, getDeliveryDate]);
+  }, [paymentSort, pendingOrders, priorities, suggestions, getDeliveryDate]);
 
   // Export the same visible order snapshot currently rendered in the app.
   // Do not refetch here: a second snapshot could contain orders that the driver
@@ -447,9 +503,10 @@ export default function DriverInbox() {
   }, [setProofSelection]);
 
   const uploadDeliveryProofs = async (orderId: string, files: File[]) => {
-    if (files.length === 0) return;
+    if (files.length === 0) return [];
 
     setProofUploading(true);
+    const uploadedPhotoUrls: string[] = [];
     try {
       for (const [index, file] of files.entries()) {
         const { blob, extension } = await compressImage(file, { maxWidth: 1600, quality: 0.78 });
@@ -459,13 +516,15 @@ export default function DriverInbox() {
           { type: blob.type || 'image/webp' },
         );
 
-        await uploadAttachment.mutateAsync({
+        const attachment = await uploadAttachment.mutateAsync({
           file: compressedFile,
           bucket: 'delivery-photos',
           orderId,
           type: 'delivery_photo',
         });
+        if (attachment?.url) uploadedPhotoUrls.push(attachment.url);
       }
+      return uploadedPhotoUrls;
     } finally {
       setProofUploading(false);
     }
@@ -477,12 +536,14 @@ export default function DriverInbox() {
       return;
     }
 
-    await uploadDeliveryProofs(orderId, deliveredProofFiles);
+    const proofImages = await uploadDeliveryProofs(orderId, deliveredProofFiles);
     await markDelivered.mutateAsync({
       orderId,
       paymentMethod,
       cashAmount: split.cashAmount,
       transferAmount: split.transferAmount,
+      proofImages,
+      submissionMode: selectedOrderDetails?.driver_status === 'DRIVER_FAILED' ? 'CORRECTION' : 'NEW',
     });
     setDeliveredDialogOpen(false);
     setSelectedOrder(null);
@@ -502,17 +563,27 @@ export default function DriverInbox() {
     setDeliveredDialogOpen(true);
   }, [hasPickupForOrder, resetProofSelection]);
 
-  const handleToggleOutForDelivery = useCallback(async (orderId: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'ASSIGNED' ? 'OUT_FOR_DELIVERY' : 'ASSIGNED';
-    await updateDriverStatus.mutateAsync({
-      orderId,
-      driverStatus: newStatus,
-    });
-  }, [updateDriverStatus]);
+  const handleStartAssignment = useCallback(async (orderId: string) => {
+    await startDriverAssignment.mutateAsync(orderId);
+  }, [startDriverAssignment]);
+
+  const handleOpenChangeStatusDialog = useCallback((order: DriverInboxOrder) => {
+    setSelectedOrder(order.id);
+    setSelectedOrderDetails(order);
+    resetProofSelection('failed');
+    setChangeStatusDialogOpen(true);
+  }, [resetProofSelection]);
 
   const handleOpenFailedDialog = useCallback((order: DriverInboxOrder) => {
     if (!hasPickupForOrder(order)) {
       toast.error('Pickup stock must match this order before failed delivery can be submitted.');
+      return;
+    }
+
+    // A pending failed result must be corrected, not submitted as a second
+    // NEW result. This also protects against a stale active-order projection.
+    if (isPendingDriverOutcome(order) && normalizeDriverStatus(order.driver_status) === 'DRIVER_FAILED') {
+      handleOpenChangeStatusDialog(order);
       return;
     }
 
@@ -523,13 +594,7 @@ export default function DriverInbox() {
     setNextDeliveryDate('');
     resetProofSelection('failed');
     setFailedDialogOpen(true);
-  }, [hasPickupForOrder, resetProofSelection]);
-
-  const handleOpenChangeStatusDialog = useCallback((order: DriverInboxOrder) => {
-    setSelectedOrder(order.id);
-    setSelectedOrderDetails(order);
-    setChangeStatusDialogOpen(true);
-  }, []);
+  }, [handleOpenChangeStatusDialog, hasPickupForOrder, resetProofSelection]);
 
   const toggleCardExpanded = (id: string) => {
     setExpandedCards(prev => {
@@ -544,22 +609,27 @@ export default function DriverInbox() {
   };
 
   const handleSubmitFailed = async () => {
-    if (!selectedOrder || !failedReason) return;
+    if (!selectedOrder || !failedReason) return false;
     if (isCustomerReschedule && (!nextDeliveryDate || nextDeliveryDate < tomorrowDateKey)) {
       toast.error('Choose tomorrow or a later delivery date.');
-      return;
+      return false;
+    }
+    if (!hasRequiredDeliveryPhotos(failedProofFiles)) {
+      toast.error('At least one delivery photo is required.');
+      return false;
     }
     if (selectedOrderDetails && !hasPickupForOrder(selectedOrderDetails)) {
       toast.error('Pickup stock must match this order before failed delivery can be submitted.');
-      return;
+      return false;
     }
     
-    await uploadDeliveryProofs(selectedOrder, failedProofFiles);
+    const proofImages = await uploadDeliveryProofs(selectedOrder, failedProofFiles);
     await markFailed.mutateAsync({
       orderId: selectedOrder,
       reason: failedReason,
       remark: failedRemark,
       nextDeliveryDate: failedSubmissionDate || undefined,
+      proofImages,
     });
     
     setFailedDialogOpen(false);
@@ -568,12 +638,20 @@ export default function DriverInbox() {
     resetProofSelection('failed');
   };
 
-  const handleChangeFailedStatus = async ({ reason, nextDeliveryDate }: ChangeFailedStatusValues) => {
+  const handleChangeFailedStatus = async ({ reason, remark, nextDeliveryDate, proofFiles }: ChangeFailedStatusValues) => {
     if (!selectedOrder) return;
+    if (!hasRequiredDeliveryPhotos(proofFiles)) {
+      toast.error('At least one delivery photo is required.');
+      return;
+    }
+    const proofImages = await uploadDeliveryProofs(selectedOrder, proofFiles || []);
     await changeFailedStatus.mutateAsync({
       orderId: selectedOrder,
       reason,
+      remark,
       nextDeliveryDate,
+      proofImages,
+      source: 'driver',
     });
     setChangeStatusDialogOpen(false);
     setSelectedOrder(null);
@@ -590,11 +668,16 @@ export default function DriverInbox() {
   // Render order card content
   const renderOrderCard = useCallback((order: DriverInboxOrder, index: number, isDragging: boolean) => {
     const items = getOrderItemsForDisplay(order);
+    const payment = getDriverPaymentSummary(order);
     const suggestion = suggestions.get(order.id);
     const remark = remarks[order.id];
     const isExpanded = expandedCards.has(order.id);
     const displayPosition = index + 1;
-    const statusConfig = driverStatusConfig[order.driver_status || 'ASSIGNED'];
+    const isStarted = order.driver_started_by === effectiveDriverId
+      && Boolean(order.driver_started_at);
+    const statusConfig = isStarted
+      ? { label: 'Started', className: 'status-pending' }
+      : driverStatusConfig[order.driver_status || 'ASSIGNED'];
     const canUpdateDelivery = hasPickupForOrder(order);
 
     return (
@@ -639,30 +722,18 @@ export default function DriverInbox() {
                 <Badge variant="outline" className={cn("text-[10px] px-2 py-0 h-5 rounded-full border", statusConfig.className)}>
                   {statusConfig.label}
                 </Badge>
-                {order.driver_status === 'ASSIGNED' && (
+                {order.driver_status === 'ASSIGNED' && !isStarted && (
                   <Button
                     size="sm"
                     className="h-7 text-xs rounded-full bg-primary/90 hover:bg-primary text-primary-foreground shadow-sm px-3"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleToggleOutForDelivery(order.id, order.driver_status || 'ASSIGNED');
+                      handleStartAssignment(order.id);
                     }}
+                    disabled={startDriverAssignment.isPending}
                   >
                     <Truck className="h-3 w-3 mr-1" />
                     Start
-                  </Button>
-                )}
-                {order.driver_status === 'OUT_FOR_DELIVERY' && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs rounded-full"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleOutForDelivery(order.id, order.driver_status || 'ASSIGNED');
-                    }}
-                  >
-                    Reset
                   </Button>
                 )}
               </div>
@@ -686,10 +757,10 @@ export default function DriverInbox() {
             {/* Right: Amount + Chevron */}
             <div className="text-right flex-shrink-0 flex flex-col items-end">
               <div className="text-lg font-bold tabular-nums tracking-tight">
-                {formatBND(order.total_amount)}
+                {formatBND(payment.totalAmount)}
               </div>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-                {order.payment_method}
+                {payment.label}
               </span>
               <ChevronDown className={cn(
                 "h-4 w-4 mt-1 text-muted-foreground transition-transform duration-300",
@@ -715,6 +786,17 @@ export default function DriverInbox() {
             
             {/* Phone - WhatsApp */}
             <WhatsAppPhoneLink order={order} />
+
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Payment</span>
+                <Badge variant="outline" className="text-[10px]">{payment.label}</Badge>
+              </div>
+              <p className="mt-1 font-semibold tabular-nums">{formatDriverPaymentBreakdown(order)}</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {payment.isDriverReported ? 'Based on Driver delivery submission' : 'Planned from order payment'}
+              </p>
+            </div>
             
             {/* Address Block */}
             <div className="rounded-xl bg-secondary/40 border border-border/30 overflow-hidden">
@@ -802,7 +884,9 @@ export default function DriverInbox() {
     hasSuggestions,
     hasManualPriority,
     getDateLabel,
-    handleToggleOutForDelivery,
+    handleStartAssignment,
+    effectiveDriverId,
+    startDriverAssignment.isPending,
     handleOpenDeliveredDialog,
     handleOpenFailedDialog,
     hasPickupForOrder,
@@ -922,6 +1006,40 @@ export default function DriverInbox() {
           )}
         </div>
 
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <Select value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as DriverPaymentFilter)}>
+            <SelectTrigger className="h-10 rounded-full bg-secondary/40">
+              <SelectValue placeholder="Payment" />
+            </SelectTrigger>
+            <SelectContent>
+              {(['ALL', 'CASH', 'TRANSFER', 'CASH_TRANSFER'] as DriverPaymentFilter[]).map((filter) => (
+                <SelectItem key={filter} value={filter}>
+                  {getDriverPaymentFilterLabel(filter)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={paymentSort} onValueChange={(value) => setPaymentSort(value as DriverInboxSort)}>
+            <SelectTrigger className="h-10 rounded-full bg-secondary/40">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ROUTE">Route order</SelectItem>
+              <SelectItem value="RECENT">Recent first</SelectItem>
+              <SelectItem value="PAYMENT">Payment type</SelectItem>
+              <SelectItem value="AMOUNT_DESC">Amount: high to low</SelectItem>
+              <SelectItem value="AMOUNT_ASC">Amount: low to high</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">{filteredOrders.length} orders shown</span>
+          <span>Cash {formatBND(visiblePaymentTotals.cash)}</span>
+          <span>Transfer {formatBND(visiblePaymentTotals.transfer)}</span>
+          <span>Total {formatBND(visiblePaymentTotals.total)}</span>
+        </div>
+
         {/* ─── Route Suggestion Status ─── */}
         {pendingOrders.length > 0 && (
           <div className="glass-card flex items-center justify-between p-3">
@@ -1003,7 +1121,7 @@ export default function DriverInbox() {
               Delivered awaiting acceptance ({deliveredPendingAcceptance.length})
             </h2>
             <div className="space-y-2.5">
-              {deliveredPendingAcceptance.map(order => {
+              {sortedDeliveredPendingAcceptance.map(order => {
                 const items = getOrderItemsForDisplay(order);
                 return (
                   <div key={order.id} className="glass-card overflow-hidden border-l-[3px] border-l-[hsl(var(--status-pending))]">
@@ -1049,6 +1167,10 @@ export default function DriverInbox() {
                         <Clock className="h-3 w-3" />
                         Delivered {order.driver_delivered_at && format(new Date(order.driver_delivered_at), 'dd MMM HH:mm')}
                       </div>
+                      <div className="flex items-center justify-between gap-2 border-t border-border/30 pt-2 text-xs">
+                        <span className="font-semibold">{getDriverPaymentSummary(order).label}</span>
+                        <span className="font-bold tabular-nums">{formatDriverPaymentBreakdown(order)}</span>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1064,7 +1186,7 @@ export default function DriverInbox() {
               Failed awaiting acceptance ({failedOrdersList.length})
             </h2>
             <div className="space-y-2.5">
-              {failedOrdersList.map(order => {
+              {sortedFailedOrdersList.map(order => {
                 const items = getOrderItemsForDisplay(order);
                 return (
                   <div key={order.id} className="glass-card overflow-hidden border-l-[3px] border-l-[hsl(var(--status-error))]">
@@ -1112,6 +1234,10 @@ export default function DriverInbox() {
                       <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--status-error))]">
                         <AlertTriangle className="h-3 w-3" />
                         {order.driver_failed_reason}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 border-t border-border/30 pt-2 text-xs">
+                        <span className="font-semibold">{getDriverPaymentSummary(order).label}</span>
+                        <span className="font-bold tabular-nums">{formatDriverPaymentBreakdown(order)}</span>
                       </div>
                       {order.runner_accept_status !== 'ACCEPTED' && (
                         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/30">
@@ -1183,6 +1309,8 @@ export default function DriverInbox() {
           }}
           title="Mark Delivery Failed"
           description="Select an outcome and add details if needed"
+          panelClassName="h-[calc(100vh-0.5rem)] max-h-[calc(100vh-0.5rem)] supports-[height:100dvh]:h-[calc(100dvh-0.5rem)] supports-[height:100dvh]:max-h-[calc(100dvh-0.5rem)] pb-[env(safe-area-inset-bottom)]"
+          nativeScroll
           confirmLabel={(markFailed.isPending || proofUploading)
             ? 'Submitting...'
             : (isDeliveryTomorrow || isCustomerReschedule)
@@ -1240,14 +1368,14 @@ export default function DriverInbox() {
               />
             </div>
             <ProofPhotoPicker
-              label="Failed Delivery Photos"
+              label="Failed Delivery Photos *"
               previews={failedProofPreviews}
               onFilesChange={(files) => appendProofSelection(files, 'failed')}
               onRemoveFile={(index) => removeProofSelection('failed', index)}
               multiple
               disabled={markFailed.isPending || proofUploading}
               emptyTitle="Take photos or choose from album"
-              helperText="Multiple images are allowed and visible to the Runner during review."
+              helperText="At least 1 photo is required. Multiple images are allowed and visible to the Runner during review."
             />
           </div>
         </MobileActionSheet>
@@ -1263,8 +1391,10 @@ export default function DriverInbox() {
           }}
           orderCode={selectedOrderDetails?.order_code}
           initialReason={selectedOrderDetails?.driver_failed_reason}
+          initialRemark={selectedOrderDetails?.driver_failed_remark}
           initialNextDeliveryDate={selectedOrderDetails?.driver_next_delivery_date}
           reasons={orderedFailedReasons}
+          photoRequired
           isPending={changeFailedStatus.isPending}
           onApply={handleChangeFailedStatus}
         />

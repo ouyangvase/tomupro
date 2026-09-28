@@ -50,6 +50,8 @@ interface ValidatedRow extends ParsedRow {
   customerName?: string;
   area?: string;
   currentRunnerStatus?: string;
+  driverStatus?: string;
+  driverId?: string | null;
 }
 
 interface ImportResult {
@@ -175,15 +177,15 @@ export function BulkImportDeliveryDialog({ open, onOpenChange }: BulkImportDeliv
 
       // Batch fetch orders by order_code (up to 300 per .in() call)
       const IN_LIMIT = 300;
-      const orderMap = new Map<string, { id: string; runner_id: string | null; customer_name: string; area: string | null; runner_status: string }>();
+      const orderMap = new Map<string, { id: string; runner_id: string | null; customer_name: string; area: string | null; runner_status: string; driver_status: string; driver_id: string | null }>();
 
       for (let i = 0; i < uniqueCodes.length; i += IN_LIMIT) {
         const batch = uniqueCodes.slice(i, i + IN_LIMIT);
         const { data, error } = await supabase
           .from('orders')
-          .select('id, order_code, runner_id, customer_name, area, runner_status, status')
+          .select('id, order_code, runner_id, customer_name, area, runner_status, driver_status, driver_id, status')
           .in('order_code', batch)
-          .eq('status', 'READY');
+          .eq('current_operational_state', 'READY');
 
         if (error) {
           console.error('Validation fetch error:', error);
@@ -197,6 +199,8 @@ export function BulkImportDeliveryDialog({ open, onOpenChange }: BulkImportDeliv
             customer_name: o.customer_name || '',
             area: o.area,
             runner_status: o.runner_status || '',
+            driver_status: o.driver_status || '',
+            driver_id: o.driver_id,
           });
         });
       }
@@ -226,6 +230,23 @@ export function BulkImportDeliveryDialog({ open, onOpenChange }: BulkImportDeliv
             customerName: order.customer_name,
             area: order.area || undefined,
             currentRunnerStatus: order.runner_status,
+            driverStatus: order.driver_status,
+          };
+        }
+
+        if (order.driver_id) {
+          return {
+            ...row,
+            orderId: order.id,
+            orderFound: true,
+            isAssignedToRunner: true,
+            mappedFailedReason: null,
+            validationError: 'Current Driver assignment is active. Review it from Dispatch > Drivers first.',
+            customerName: order.customer_name,
+            area: order.area || undefined,
+            currentRunnerStatus: order.runner_status,
+            driverStatus: order.driver_status,
+            driverId: order.driver_id,
           };
         }
 
@@ -241,6 +262,7 @@ export function BulkImportDeliveryDialog({ open, onOpenChange }: BulkImportDeliv
             customerName: order.customer_name,
             area: order.area || undefined,
             currentRunnerStatus: order.runner_status,
+            driverStatus: order.driver_status,
           };
         }
 
@@ -275,6 +297,7 @@ export function BulkImportDeliveryDialog({ open, onOpenChange }: BulkImportDeliv
           customerName: order.customer_name,
           area: order.area || undefined,
           currentRunnerStatus: order.runner_status,
+          driverStatus: order.driver_status,
         };
       });
 

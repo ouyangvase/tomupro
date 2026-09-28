@@ -80,7 +80,9 @@ interface LooseSupabaseResult {
 interface LooseQueryBuilder extends PromiseLike<LooseSupabaseResult> {
   select(columns?: string): LooseQueryBuilder;
   eq(column: string, value: unknown): LooseQueryBuilder;
+  in(column: string, values: unknown[]): LooseQueryBuilder;
   order(column: string, options?: { ascending?: boolean }): LooseQueryBuilder;
+  range(from: number, to: number): LooseQueryBuilder;
   limit(count: number): LooseQueryBuilder;
 }
 
@@ -89,6 +91,36 @@ const untypedSupabase = supabase as unknown as {
   rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<LooseSupabaseResult>;
 };
 
+const INBOUND_PRODUCTS_PAGE_SIZE = 1000;
+
+export interface InboundImportProduct {
+  id: string;
+  owner_user_id: string;
+  sku_code: string | null;
+  sku_name: string;
+}
+
+export async function fetchInboundImportProducts(ownerIds: string[]) {
+  const products: InboundImportProduct[] = [];
+
+  for (let offset = 0; ; offset += INBOUND_PRODUCTS_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, owner_user_id, sku_code, sku_name')
+      .in('owner_user_id', ownerIds)
+      .eq('is_active', true)
+      .order('sku_code', { ascending: true })
+      .range(offset, offset + INBOUND_PRODUCTS_PAGE_SIZE - 1);
+    if (error) throw error;
+
+    const page = data || [];
+    products.push(...page);
+    if (page.length < INBOUND_PRODUCTS_PAGE_SIZE) break;
+  }
+
+  return products;
+}
+
 export function useInboundImportProducts(ownerIds: string[]) {
   const stableIds = [...ownerIds].sort();
 
@@ -96,16 +128,7 @@ export function useInboundImportProducts(ownerIds: string[]) {
     queryKey: ['inbound-import-products', stableIds],
     enabled: stableIds.length > 0,
     staleTime: 60_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, owner_user_id, sku_code, sku_name')
-        .in('owner_user_id', stableIds)
-        .eq('is_active', true)
-        .order('sku_code', { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => fetchInboundImportProducts(stableIds),
   });
 }
 

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Order } from '@/types/database';
+import { getRunnerAreaChargeKey, getRunnerDeliveryCharge, type RunnerDeliveryChargeMap } from '@/lib/runnerDeliveryCharges';
 
 interface DeliveryChargeMap {
   [area: string]: number;
@@ -54,7 +55,49 @@ export function useDeliveryCharges() {
   });
 }
 
-export function useClaimPreview(orders: Order[], exchangeRate: number): ClaimPreview {
+/**
+ * Resolve active delivery charges for the orders' source runners.
+ * The RPC is read-only and uses the existing canonical get_delivery_charge rule.
+ */
+export function useSourceRunnerDeliveryCharges(runnerIds: string[] = []) {
+  const normalizedRunnerIds = useMemo(
+    () => Array.from(new Set(runnerIds.map(id => id.trim()).filter(Boolean))).sort(),
+    [runnerIds],
+  );
+
+  return useQuery<RunnerDeliveryChargeMap>({
+    queryKey: ['delivery-charges', 'approved-by-runner', normalizedRunnerIds],
+    staleTime: 30000,
+    queryFn: async () => {
+      if (normalizedRunnerIds.length === 0) return {};
+
+      const { data, error } = await supabase.rpc('get_delivery_charges_for_runners', {
+        p_runner_ids: normalizedRunnerIds,
+      });
+
+      if (error) throw error;
+
+      const chargeMap: RunnerDeliveryChargeMap = {};
+      for (const charge of data ?? []) {
+        const key = getRunnerAreaChargeKey(charge.runner_id, charge.area);
+        if (key && charge.charge_amount !== null) {
+          chargeMap[key] = Number(charge.charge_amount);
+        }
+      }
+
+      return chargeMap;
+    },
+    enabled: normalizedRunnerIds.length > 0,
+  });
+}
+
+export { getRunnerDeliveryCharge };
+
+export function useClaimPreview(
+  orders: Order[],
+  exchangeRate: number,
+  sourceRunnerCharges?: RunnerDeliveryChargeMap,
+): ClaimPreview {
   const { data: deliveryCharges = {} } = useDeliveryCharges();
 
   return useMemo(() => {
@@ -70,7 +113,9 @@ export function useClaimPreview(orders: Order[], exchangeRate: number): ClaimPre
       let deliveryCharge = 0;
 
       if (normalizedArea) {
-        const charge = deliveryCharges[area];
+        const charge = sourceRunnerCharges
+          ? getRunnerDeliveryCharge(order, sourceRunnerCharges)
+          : deliveryCharges[area];
         if (charge === undefined) {
           if (!missingAreas.includes(normalizedArea)) {
             missingAreas.push(normalizedArea);
@@ -105,5 +150,5 @@ export function useClaimPreview(orders: Order[], exchangeRate: number): ClaimPre
       missingAreas,
       orderBreakdown,
     };
-  }, [orders, deliveryCharges]);
+  }, [orders, deliveryCharges, sourceRunnerCharges]);
 }

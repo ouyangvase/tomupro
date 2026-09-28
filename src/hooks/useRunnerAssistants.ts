@@ -17,6 +17,7 @@ export const ASSISTANT_PERMISSION_FIELDS = [
   'can_view_stock_audit',
   'can_manage_inbound_stock',
   'can_view_driver_workload',
+  'can_view_driver_analytics',
 ] as const;
 
 export type AssistantPermissionField = typeof ASSISTANT_PERMISSION_FIELDS[number];
@@ -25,6 +26,7 @@ export type AssistantPermissions = Record<AssistantPermissionField, boolean>;
 export type RunnerAssistantScope = RunnerAssistant & {
   bindings: RunnerAssistant[];
   runnerIds: string[];
+  analyticsRunnerIds: string[];
   runners: Profile[];
 };
 
@@ -133,13 +135,13 @@ export function useRunnerAssistants(runnerId?: string) {
  * Resolve every active Runner link for the logged-in Assistant. Permissions are
  * global, so the first row is the compatibility surface for existing callers.
  */
-export function useMyAssistantBinding() {
+export function useMyAssistantBinding(enabled = true) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const channelInstanceId = useId().replace(/:/g, '-');
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!enabled || !user?.id) return;
     const channelName = `assistant-scope:${user.id}:${channelInstanceId}`;
     return subscribeWithReconnect(() => supabase
       .channel(channelName)
@@ -155,7 +157,7 @@ export function useMyAssistantBinding() {
       ),
       { name: channelName },
     );
-  }, [channelInstanceId, queryClient, user?.id]);
+  }, [channelInstanceId, enabled, queryClient, user?.id]);
 
   return useQuery({
     queryKey: ['my-assistant-binding', user?.id],
@@ -178,6 +180,11 @@ export function useMyAssistantBinding() {
       if (!primary || !hasAnyAssistantPermission(primary)) return null;
 
       const runnerIds = Array.from(new Set(bindings.map((binding) => binding.runner_id)));
+      const analyticsRunnerIds = Array.from(new Set(
+        bindings
+          .filter((binding) => binding.can_view_driver_analytics)
+          .map((binding) => binding.runner_id),
+      ));
       const { data: runnerProfiles, error: runnerError } = await withAbortTimeout(
         (signal) => supabase
           .from('profiles')
@@ -200,10 +207,11 @@ export function useMyAssistantBinding() {
         runner: runnerMap.get(primary.runner_id),
         bindings: enrichedBindings,
         runnerIds,
+        analyticsRunnerIds,
         runners,
       } as RunnerAssistantScope;
     },
-    enabled: !!user?.id,
+    enabled: enabled && !!user?.id,
     retry: 1,
     staleTime: 30000,
     refetchOnWindowFocus: 'always',
@@ -233,6 +241,7 @@ export function useCreateRunnerAssistant() {
       can_view_stock_audit?: boolean;
       can_manage_inbound_stock?: boolean;
       can_view_driver_workload?: boolean;
+      can_view_driver_analytics?: boolean;
     }) => {
 
       if (!user?.id) throw new Error('Not authenticated');
@@ -279,6 +288,7 @@ export function useUpdateRunnerAssistant() {
       can_view_stock_audit?: boolean;
       can_manage_inbound_stock?: boolean;
       can_view_driver_workload?: boolean;
+      can_view_driver_analytics?: boolean;
     }) => {
       const updates: Record<string, boolean> = {};
       if (input.can_deliver !== undefined) updates.can_deliver = input.can_deliver;
@@ -290,6 +300,7 @@ export function useUpdateRunnerAssistant() {
       if (input.can_view_stock_audit !== undefined) updates.can_view_stock_audit = input.can_view_stock_audit;
       if (input.can_manage_inbound_stock !== undefined) updates.can_manage_inbound_stock = input.can_manage_inbound_stock;
       if (input.can_view_driver_workload !== undefined) updates.can_view_driver_workload = input.can_view_driver_workload;
+      if (input.can_view_driver_analytics !== undefined) updates.can_view_driver_analytics = input.can_view_driver_analytics;
       const { data, error } = await assistantRpcClient.rpc('set_runner_assistant_permissions', {
         p_assistant_id: input.assistant_id,
         p_permissions: updates,

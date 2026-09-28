@@ -1,5 +1,8 @@
 export type DriverOrderScopeFields = {
+  runner_id?: string | null;
+  driver_id?: string | null;
   status?: string | null;
+  current_operational_state?: string | null;
   operational_status?: string | null;
   driver_status?: string | null;
   runner_status?: string | null;
@@ -62,22 +65,36 @@ const ACTION_REQUIRED_OUTCOMES = new Set([
   'NEED_SALESPERSON_FOLLOWUP',
 ]);
 
+const CURRENT_RUNNER_ASSIGNMENT_STATUSES = new Set(['ASSIGNED', 'TAKEN']);
+
 export function normalizeDriverStatus(value: string | null | undefined) {
   return String(value || '').trim().toUpperCase();
 }
 
+export function hasCurrentRunnerAssignment(order: DriverOrderScopeFields) {
+  return Boolean(order.runner_id)
+    && normalizeDriverStatus(order.current_operational_state) === 'READY'
+    && CURRENT_RUNNER_ASSIGNMENT_STATUSES.has(normalizeDriverStatus(order.runner_status));
+}
+
+export function isRunnerDriverInboxOrder(order: DriverOrderScopeFields) {
+  return hasCurrentRunnerAssignment(order) && !isHiddenFromDriverApps(order);
+}
+
 /**
- * A Driver submission remains current until the Runner explicitly processes it.
- * This deliberately takes precedence over stale legacy runner_status values.
+ * A Driver submission remains current until the Runner explicitly processes it,
+ * unless the canonical Runner status has already finalized the order.
  */
 export function isPendingDriverOutcome(order: DriverOrderScopeFields) {
   const driverStatus = normalizeDriverStatus(order.driver_status);
+  const runnerStatus = normalizeDriverStatus(order.runner_status);
   return (
+    (order.driver_id === undefined || Boolean(order.driver_id))
+    &&
     (driverStatus === 'DRIVER_DELIVERED' || driverStatus === 'DRIVER_FAILED')
     && !['CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'].includes(normalizeDriverStatus(order.status))
-    && normalizeDriverStatus(order.runner_accept_status) !== 'ACCEPTED'
     && normalizeDriverStatus(order.runner_review_status) !== 'REVIEWED'
-    && !['CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'].includes(normalizeDriverStatus(order.runner_status))
+    && !FINAL_RUNNER_STATUSES.has(runnerStatus)
     && !['DELIVERED_FINAL', 'CANCELLED', 'CANCELED', 'RETURNED', 'REFUNDED'].includes(normalizeDriverStatus(order.operational_status))
     && order.salesperson_action_required !== true
     && normalizeDriverStatus(order.runner_review_status) !== 'ACTION_REQUIRED'
@@ -85,9 +102,27 @@ export function isPendingDriverOutcome(order: DriverOrderScopeFields) {
   );
 }
 
+export function hasCurrentDriverAssignment(order: Pick<DriverOrderScopeFields, 'driver_id'>) {
+  return Boolean(order.driver_id);
+}
+
+export function requiresDriverReview(order: DriverOrderScopeFields & {
+  driver_review_status?: string | null;
+}) {
+  return isPendingDriverOutcome({
+    ...order,
+    driver_status: order.driver_review_status ?? order.driver_status,
+  });
+}
+
+export function isRunnerDriverAssignmentCandidate(order: DriverOrderScopeFields) {
+  return !isPendingDriverOutcome(order);
+}
+
 export function getDriverInboxAssignmentSection(order: DriverOrderScopeFields & {
   assignment_state?: string | null;
 }): DriverInboxAssignmentSection | null {
+  if (!hasCurrentRunnerAssignment(order)) return null;
   if (isHiddenFromDriverApps(order)) return null;
   const assignmentState = normalizeDriverStatus(order.assignment_state);
   if (assignmentState === 'ACTIVE') return 'ACTIVE';
@@ -144,6 +179,14 @@ export function getDriverOperationalDateKey(order: DriverOrderScopeFields) {
   );
 }
 
+export function isDriverOperationalDateDue(
+  order: DriverOrderScopeFields,
+  targetDateKey = getTodayDateKey(),
+) {
+  const operationalDateKey = getDriverOperationalDateKey(order);
+  return !operationalDateKey || !targetDateKey || operationalDateKey <= targetDateKey;
+}
+
 export function isHiddenFromDriverApps(order: DriverOrderScopeFields) {
   if (isPendingDriverOutcome(order)) return false;
 
@@ -168,7 +211,8 @@ export function isCompletedDriverDeliveryAccepted(order: DriverOrderScopeFields)
 
 export function hasDriverVisibleActiveStatus(order: DriverOrderScopeFields) {
   return (
-    normalizeDriverStatus(order.status) === 'READY'
+    hasCurrentRunnerAssignment(order)
+    && normalizeDriverStatus(order.status) === 'READY'
     && DRIVER_VISIBLE_STATUSES.includes(normalizeDriverStatus(order.driver_status) as typeof DRIVER_VISIBLE_STATUSES[number])
   );
 }
@@ -190,7 +234,8 @@ export function isVisibleDriverInboxOrder(order: DriverOrderScopeFields, targetD
 export function isDriverWorkloadOrder(order: DriverOrderScopeFields, targetDateKey = getTodayDateKey()) {
   const orderDateKey = getDriverOperationalDateKey(order);
   return (
-    normalizeDriverStatus(order.status) === 'READY'
+    hasCurrentRunnerAssignment(order)
+    && normalizeDriverStatus(order.status) === 'READY'
     && DRIVER_WORKLOAD_STATUSES.includes(normalizeDriverStatus(order.driver_status) as typeof DRIVER_WORKLOAD_STATUSES[number])
     && !isHiddenFromDriverApps(order)
     && Boolean(orderDateKey && targetDateKey && orderDateKey <= targetDateKey)

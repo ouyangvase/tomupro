@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   getDriverAnalyticsCalendarCell,
@@ -5,6 +7,17 @@ import {
 } from './driverAnalytics';
 
 describe('driver analytics calendar', () => {
+  it('uses current Driver ownership instead of historical assignment leakage', () => {
+    const sql = readFileSync(
+      resolve(process.cwd(), 'supabase/migrations/20260815230000_driver_analytics_current_assignment_scope.sql'),
+      'utf8',
+    );
+
+    expect(sql).toContain("'(o.driver_id = p_driver_id OR history.order_id IS NOT NULL)'");
+    expect(sql).toContain("'(o.driver_id = p_driver_id)'");
+    expect(sql).toContain("'Driver Analytics is attributed only to the order current driver");
+  });
+
   it('shows delivered over assigned with a completion status', () => {
     expect(getDriverAnalyticsCalendarCell(29, 30)).toEqual({
       deliveredOrders: 29,
@@ -20,9 +33,9 @@ describe('driver analytics calendar', () => {
 
   it('partitions the selected day and preserves the assigned denominator', () => {
     const breakdown = summarizeDriverAnalyticsDay([
-      { assignment_state: 'DELIVERED' },
+      { assignment_state: 'DELIVERED', runner_accept_status: 'ACCEPTED' },
       { assignment_state: 'PENDING_ACCEPTANCE' },
-      { assignment_state: 'FAILED' },
+      { assignment_state: 'FAILED', runner_accept_status: 'ACCEPTED' },
       { assignment_state: 'RESCHEDULED' },
       { assignment_state: 'ACTIVE' },
       { assignment_state: 'INACTIVE' },
@@ -31,7 +44,7 @@ describe('driver analytics calendar', () => {
     expect(breakdown).toEqual({
       assignedOrders: 6,
       deliveredOrders: 1,
-      remainingOrders: 5,
+      remainingOrders: 4,
       pendingAcceptanceOrders: 1,
       acceptedFailedOrders: 1,
       rescheduledOrders: 1,
@@ -56,7 +69,7 @@ describe('driver analytics calendar', () => {
     ]);
 
     const selectedDay = summarizeDriverAnalyticsDay([
-      ...Array.from({ length: 29 }, () => ({ assignment_state: 'DELIVERED' })),
+      ...Array.from({ length: 29 }, () => ({ assignment_state: 'DELIVERED', runner_accept_status: 'ACCEPTED' })),
       { assignment_state: 'ACTIVE' },
     ], 30);
     expect(selectedDay).toMatchObject({

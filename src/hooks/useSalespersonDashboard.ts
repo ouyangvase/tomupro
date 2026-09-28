@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { startOfDay, endOfDay, startOfMonth, endOfMonth, format } from 'date-fns';
+import { fetchDeliveredOrdersFastReport, type DeliveredOrder } from '@/hooks/useDeliveredOrders';
+import { getKualaLumpurDateKey, isDeliveredInKualaLumpurDateRange } from '@/lib/deliveredOrderReport';
 
 export interface SalespersonPerformanceStats {
   // Today's performance
@@ -60,98 +61,111 @@ export interface SalespersonPerformanceStats {
   } | null;
 }
 
+function calculateSalespersonRanking(
+  orders: DeliveredOrder[] | undefined,
+  userId: string,
+  monthStartKey: string,
+  todayKey: string,
+): SalespersonPerformanceStats['ranking'] {
+  if (!orders?.length) return null;
+
+  const salesBySP: Record<string, { amount: number; count: number }> = {};
+  orders
+    .filter((order) => isDeliveredInKualaLumpurDateRange(order, monthStartKey, todayKey))
+    .forEach((order) => {
+      const spId = order.salesperson_id;
+      if (!spId) return;
+      if (!salesBySP[spId]) {
+        salesBySP[spId] = { amount: 0, count: 0 };
+      }
+      salesBySP[spId].amount += Number(order.total_amount) || 0;
+      salesBySP[spId].count += 1;
+    });
+
+  const sortedByAmount = Object.entries(salesBySP)
+    .map(([spId, data]) => ({ spId, ...data }))
+    .sort((a, b) => b.amount - a.amount);
+  const sortedByCount = [...sortedByAmount].sort((a, b) => b.count - a.count);
+
+  if (sortedByAmount.length <= 1) return null;
+
+  const amountRank = sortedByAmount.findIndex((salesperson) => salesperson.spId === userId) + 1;
+  const countRank = sortedByCount.findIndex((salesperson) => salesperson.spId === userId) + 1;
+
+  return {
+    currentRank: amountRank || sortedByAmount.length,
+    totalSalespersons: sortedByAmount.length,
+    mtdSalesRank: amountRank || sortedByAmount.length,
+    mtdDeliveredRank: countRank || sortedByCount.length,
+  };
+}
+
 export function useSalespersonDashboard() {
   const { user } = useAuth();
   const today = new Date();
-  const todayStart = startOfDay(today).toISOString();
-  const todayEnd = endOfDay(today).toISOString();
-  const monthStart = startOfMonth(today).toISOString();
-  const monthEnd = endOfMonth(today).toISOString();
-  const currentYearMonth = format(today, 'yyyy-MM');
+  const todayKey = getKualaLumpurDateKey(today) || today.toISOString().slice(0, 10);
+  const monthStartKey = `${todayKey.slice(0, 7)}-01`;
+  const currentYearMonth = todayKey.slice(0, 7);
 
-  return useQuery({
+  // Ranking is deliberately loaded separately so a large all-salesperson
+  // report cannot block the dashboard's own Delivered metrics.
+  const rankingQuery = useQuery({
+    queryKey: ['salesperson-dashboard-ranking', user?.id, todayKey],
+    queryFn: () => fetchDeliveredOrdersFastReport(),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const dashboardQuery = useQuery({
     queryKey: ['salesperson-dashboard', user?.id],
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
       const [
-        todaySalesRes,
-        mtdSalesRes,
+        deliveredReportRes,
         failedOrdersRes,
         pendingDeliveryRes,
-        pendingClaimRes,
         actionRequiredRes,
         stockBalanceRes,
-        rankingRes,
         targetRes,
         commissionSettingsRes,
         commissionSnapshotsRes,
         pendingReconOrdersRes,
       ] = await Promise.all([
-        // Today's delivered orders with total amount
-        supabase
-          .from('orders')
-          .select('id, total_amount')
-          .eq('salesperson_id', user.id)
-          .eq('runner_status', 'DELIVERED')
-          .gte('delivered_at', todayStart)
-          .lte('delivered_at', todayEnd),
-        
-        // MTD delivered orders with total amount
-        supabase
-          .from('orders')
-          .select('id, total_amount')
-          .eq('salesperson_id', user.id)
-          .eq('runner_status', 'DELIVERED')
-          .gte('delivered_at', monthStart)
-          .lte('delivered_at', monthEnd),
+        // Use the same delivered report source as the Delivered page.
+        fetchDeliveredOrdersFastReport({ salespersonId: user.id }),
         
         // Failed orders requiring action
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('salesperson_id', user.id)
-          .eq('runner_status', 'FAILED_DELIVERY')
-          .eq('salesperson_action_required', true),
+          .eq('current_operational_state', 'ACTION_REQUIRED')
+          .eq('runner_status', 'FAILED_DELIVERY'),
         
         // Pending delivery (READY status with ASSIGNED or TAKEN runner_status)
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('salesperson_id', user.id)
-          .eq('status', 'READY')
+          .eq('current_operational_state', 'READY')
           .in('runner_status', ['ASSIGNED', 'TAKEN']),
         
-        // Pending claim (delivered but not claimed by runner)
-        supabase
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('salesperson_id', user.id)
-          .eq('runner_status', 'DELIVERED')
-          .eq('reconciliation_status', 'NOT_CLAIMED'),
-
         // Action-required count: matches OCC's needsSalespersonAction logic
         // salesperson_action_required=true OR runner_status=FAILED_DELIVERY (non-cancelled)
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('salesperson_id', user.id)
-          .or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY')
-          .neq('status', 'CANCELLED'),
+          .eq('current_operational_state', 'ACTION_REQUIRED'),
         
         // Stock balance for this salesperson
         supabase
           .from('stock_balance_view')
           .select('product_id, sku_code, sku_name, balance_qty, owner_user_id')
           .eq('owner_user_id', user.id),
-        
-        // Get all salespersons' MTD sales for ranking
-        supabase
-          .from('orders')
-          .select('salesperson_id, total_amount')
-          .eq('runner_status', 'DELIVERED')
-          .gte('delivered_at', monthStart)
-          .lte('delivered_at', monthEnd),
         
         // Get monthly target from database
         supabase
@@ -175,30 +189,38 @@ export function useSalespersonDashboard() {
           .eq('salesperson_id', user.id)
           .eq('year_month', currentYearMonth),
         
-        // Get delivered but not reconciled orders (for estimated commission)
+        // Get delivered but not reconciled orders (for estimated commission).
+        // The date is resolved below from driver_delivered_at ?? delivered_at,
+        // matching the Delivered report instead of filtering only delivered_at.
         supabase
           .from('orders')
-          .select('id, total_amount, discount_amount')
+          .select('id, total_amount, discount_amount, delivered_at, driver_delivered_at')
           .eq('salesperson_id', user.id)
-          .eq('runner_status', 'DELIVERED')
-          .neq('reconciliation_status', 'SETTLED')
-          .gte('delivered_at', monthStart)
-          .lte('delivered_at', monthEnd),
+          .eq('current_operational_state', 'DELIVERED')
+          .neq('reconciliation_status', 'SETTLED'),
       ]);
 
-      // Calculate today's sales
-      const todaySalesAmount = (todaySalesRes.data || []).reduce(
-        (sum, order) => sum + (order.total_amount || 0), 
-        0
-      );
-      const todayDeliveredCount = todaySalesRes.data?.length || 0;
+      const deliveredReportOrders = deliveredReportRes || [];
+      const todayDeliveredOrders = deliveredReportOrders.filter((order) => (
+        isDeliveredInKualaLumpurDateRange(order, todayKey, todayKey)
+      ));
+      const mtdDeliveredOrders = deliveredReportOrders.filter((order) => (
+        isDeliveredInKualaLumpurDateRange(order, monthStartKey, todayKey)
+      ));
 
-      // Calculate MTD sales
-      const mtdSalesAmount = (mtdSalesRes.data || []).reduce(
-        (sum, order) => sum + (order.total_amount || 0), 
+      // Calculate today's sales from the shared Delivered report rules.
+      const todaySalesAmount = todayDeliveredOrders.reduce(
+        (sum, order) => sum + (Number(order.total_amount) || 0),
         0
       );
-      const mtdDeliveredCount = mtdSalesRes.data?.length || 0;
+      const todayDeliveredCount = todayDeliveredOrders.length;
+
+      // Calculate MTD sales from the shared Delivered report rules.
+      const mtdSalesAmount = mtdDeliveredOrders.reduce(
+        (sum, order) => sum + (Number(order.total_amount) || 0),
+        0
+      );
+      const mtdDeliveredCount = mtdDeliveredOrders.length;
 
       // Get target from database or use default
       const targetData = targetRes.data;
@@ -218,7 +240,9 @@ export function useSalespersonDashboard() {
       // Calculate commission
       const commissionSettings = commissionSettingsRes.data;
       const commissionSnapshots = commissionSnapshotsRes.data || [];
-      const pendingReconOrders = pendingReconOrdersRes.data || [];
+      const pendingReconOrders = (pendingReconOrdersRes.data || []).filter((order) => (
+        isDeliveredInKualaLumpurDateRange(order, monthStartKey, todayKey)
+      ));
       
       // Final commission from snapshots (reconciled & approved)
       const finalCommission = commissionSnapshots.reduce(
@@ -307,44 +331,6 @@ export function useSalespersonDashboard() {
         isLowStock: (item.balance_qty || 0) <= 3,
       })).filter(item => item.balance > 0);
 
-      // Calculate ranking
-      let ranking = null;
-      if (rankingRes.data && rankingRes.data.length > 0) {
-        // Group by salesperson and sum their sales
-        const salesBySP: Record<string, { amount: number; count: number }> = {};
-        rankingRes.data.forEach(order => {
-          const spId = order.salesperson_id;
-          if (spId) {
-            if (!salesBySP[spId]) {
-              salesBySP[spId] = { amount: 0, count: 0 };
-            }
-            salesBySP[spId].amount += order.total_amount || 0;
-            salesBySP[spId].count += 1;
-          }
-        });
-
-        // Convert to array and sort by amount
-        const sortedByAmount = Object.entries(salesBySP)
-          .map(([spId, data]) => ({ spId, ...data }))
-          .sort((a, b) => b.amount - a.amount);
-
-        // Sort by count for delivered rank
-        const sortedByCount = [...sortedByAmount].sort((a, b) => b.count - a.count);
-
-        // Find current user's ranks
-        const amountRank = sortedByAmount.findIndex(s => s.spId === user.id) + 1;
-        const countRank = sortedByCount.findIndex(s => s.spId === user.id) + 1;
-
-        if (sortedByAmount.length > 1) {
-          ranking = {
-            currentRank: amountRank || sortedByAmount.length,
-            totalSalespersons: sortedByAmount.length,
-            mtdSalesRank: amountRank || sortedByAmount.length,
-            mtdDeliveredRank: countRank || sortedByCount.length,
-          };
-        }
-      }
-
       return {
         todaySalesAmount,
         todayDeliveredCount,
@@ -368,13 +354,25 @@ export function useSalespersonDashboard() {
         isTiered: commissionSettings?.is_tiered ?? false,
         failedOrdersCount: failedOrdersRes.count || 0,
         pendingDeliveryCount: pendingDeliveryRes.count || 0,
-        pendingClaimCount: pendingClaimRes.count || 0,
+        pendingClaimCount: deliveredReportOrders.filter((order) => (
+          order.reconciliation_status === 'NOT_CLAIMED'
+        )).length,
         actionRequiredCount: actionRequiredRes.count || 0,
         stockItems,
-        ranking,
+        ranking: null,
       } as SalespersonPerformanceStats;
     },
     enabled: !!user,
     refetchInterval: 120000, // Refresh every 2 minutes (120s)
   });
+
+  return {
+    ...dashboardQuery,
+    data: dashboardQuery.data
+      ? {
+          ...dashboardQuery.data,
+          ranking: calculateSalespersonRanking(rankingQuery.data, user?.id || '', monthStartKey, todayKey),
+        }
+      : undefined,
+  };
 }

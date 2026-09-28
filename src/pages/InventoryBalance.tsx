@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
-import { usePaginatedStockBalance } from '@/hooks/usePaginatedStockBalance';
+import { fetchAllStockBalance, usePaginatedStockBalance } from '@/hooks/usePaginatedStockBalance';
 import { useProducts, useCreateProduct, useUpdateProduct, useBulkUpdateProducts } from '@/hooks/useProducts';
 import {
   getRunnerStockLocationKey,
@@ -65,6 +65,9 @@ import {
   StockAuditDetailDialog,
 } from '@/components/inventory/StockAuditDetailDialog';
 import type { FullStockIntegrityRow } from '@/hooks/useFullStockIntegrity';
+import { downloadXlsx } from '@/lib/xlsxExport';
+import { toStockBalanceExportRows } from '@/lib/stockBalanceExport';
+import { toast } from 'sonner';
 
 // placeholder: StockBalanceRow type
 interface StockBalanceRow extends StockBalance {
@@ -115,6 +118,10 @@ export default function InventoryBalance({
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [stockTab, setStockTab] = useState<'my' | 'team'>('team');
+  const [stockSort, setStockSort] = useState<{
+    field: 'owner_name' | 'warehouse_name' | 'sku_name' | 'balance_qty' | 'last_movement_time';
+    direction: 'asc' | 'desc';
+  }>({ field: 'owner_name', direction: 'asc' });
 
   // Stock-specific state
   const [hideZeroBalance, setHideZeroBalance] = useState(true);
@@ -126,6 +133,7 @@ export default function InventoryBalance({
   const [editingStockLocation, setEditingStockLocation] = useState<StockBalanceRow | null>(null);
   const [stockLocationRemark, setStockLocationRemark] = useState('');
   const [selectedStockAudit, setSelectedStockAudit] = useState<FullStockIntegrityRow | null>(null);
+  const [stockExporting, setStockExporting] = useState(false);
 
   // Products-specific state
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -167,6 +175,8 @@ export default function InventoryBalance({
     search: searchQuery || undefined,
     ownerId: effectiveOwnerId,
     hideZero: hideZeroBalance,
+    sortField: stockSort.field,
+    sortDirection: stockSort.direction,
   });
 
   // Products data
@@ -357,6 +367,37 @@ export default function InventoryBalance({
       _key: `${s.warehouse_id}-${s.product_id || idx}`,
     }));
   }, [stockRows]);
+
+  const handleExportStock = async () => {
+    if (stockExporting) return;
+
+    setStockExporting(true);
+    try {
+      const rows = await fetchAllStockBalance({
+        search: searchQuery || undefined,
+        ownerId: effectiveOwnerId,
+        hideZero: hideZeroBalance,
+        sortField: stockSort.field,
+        sortDirection: stockSort.direction,
+      });
+
+      if (rows.length === 0) {
+        toast.info('No stock balance rows to export.');
+        return;
+      }
+
+      downloadXlsx(
+        toStockBalanceExportRows(rows),
+        `stock_balance_${format(new Date(), 'yyyyMMdd-HHmm')}.xlsx`,
+        'Stock Balance',
+      );
+      toast.success(`Exported ${rows.length} stock balance row${rows.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to export stock balance.');
+    } finally {
+      setStockExporting(false);
+    }
+  };
 
   const openStockAudit = (stock: StockBalanceRow) => {
     const balance = Number(stock.balance_qty) || 0;
@@ -1130,7 +1171,7 @@ export default function InventoryBalance({
                 ? 'No stock in your warehouse yet. Acknowledge inbound shipments to add stock.'
                 : 'No stock data available'
             }
-            onExport={() => {}}
+            onExport={handleExportStock}
             serverPagination={{
               enabled: true,
               page: pagination.page,
@@ -1142,6 +1183,16 @@ export default function InventoryBalance({
               isFetching: stockFetching,
             }}
             onSearchChange={setSearchQuery}
+            onSortChange={(field, direction) => {
+              if (!field || !direction) {
+                setStockSort({ field: 'owner_name', direction: 'asc' });
+                return;
+              }
+              setStockSort({
+                field: field as typeof stockSort.field,
+                direction,
+              });
+            }}
             onRowClick={openStockAudit}
           />
         ) : (

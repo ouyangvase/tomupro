@@ -42,7 +42,8 @@ import { OrdersLoadError } from '@/components/orders/OrdersLoadError';
 import { exportOrderLines } from '@/lib/csv';
 import { toast } from 'sonner';
 import { getSignedStorageUrl } from '@/lib/storageUrls';
-import { CANONICAL_ACTION_REQUIRED_OR, classifyActionRequired } from '@/lib/actionRequired';
+import { classifyActionRequired } from '@/lib/actionRequired';
+import { resolveCurrentOrderState } from '@/lib/orderLifecycle';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -95,6 +96,14 @@ const priorityConfig = {
 };
 
 type TimeFilter = 'all' | 'today' | 'week' | 'month';
+
+type HistoricalDriverEvidence = {
+  order_id: string;
+  driver_id: string;
+  driver_name: string;
+  assignment_timestamp: string;
+  evidence_action: string;
+};
 
 // ── Workflow step component ──
 interface DeliveryProof {
@@ -180,7 +189,7 @@ function WorkflowStep({ step, icon, title, desc, active }: { step: number; icon:
 }
 
 // ── Main component ──
-export default function SalespersonActionInbox({ highlightOrderId }: { highlightOrderId?: string | null }) {
+export default function SalespersonActionInbox({ initialSearch = null, highlightOrderId }: { initialSearch?: string | null; highlightOrderId?: string | null }) {
   const navigate = useNavigate();
   const { profile, role } = useAuth();
   const isMobile = useIsMobile();
@@ -188,7 +197,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
 
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [salespersonFilter, setSalespersonFilter] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>(initialSearch || '');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
@@ -196,6 +205,10 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [showGuide, setShowGuide] = useState(false);
+
+  useEffect(() => {
+    setSearchQuery(initialSearch?.trim() || '');
+  }, [initialSearch]);
 
   // Scroll to highlighted order and auto-select it
   useEffect(() => {
@@ -284,8 +297,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     queryFn: async () => {
       const buildBase = () => {
         let q = supabase.from('orders').select('id, runner_status, next_delivery_date, driver_next_delivery_date, salesperson_action_type, runner_final_outcome, driver_failed_reason, runner_failed_reason_id, runner_comment');
-        q = q.or(CANONICAL_ACTION_REQUIRED_OR);
-        q = q.neq('status', 'CANCELLED');
+        q = q.eq('current_operational_state', 'ACTION_REQUIRED');
         if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
         if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
         return q;
@@ -315,8 +327,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
           const sevenDaysAgo = new Date();
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
           let q = supabase.from('orders').select('id', { count: 'exact', head: true });
-          q = q.or(CANONICAL_ACTION_REQUIRED_OR);
-          q = q.neq('status', 'CANCELLED').lte('updated_at', sevenDaysAgo.toISOString());
+          q = q.eq('current_operational_state', 'ACTION_REQUIRED').lte('updated_at', sevenDaysAgo.toISOString());
           if (orderFilters.salespersonId) q = q.eq('salesperson_id', orderFilters.salespersonId);
           if (orderFilters.salespersonIds && orderFilters.salespersonIds.length > 0) q = q.in('salesperson_id', orderFilters.salespersonIds);
           return q.then(r => r.count || 0);
@@ -375,6 +386,27 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
     [actionRequiredOrders]
   );
 
+  // The current driver is authoritative while assigned. Once a Runner accepts
+  // a Driver outcome or takes the order, the current assignment is released;
+  // keep the last verified Driver visible from immutable audit evidence.
+  const { data: historicalDriverEvidence = [] } = useQuery({
+    queryKey: ['action-required-driver-history', actionOrderIds],
+    enabled: actionOrderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_action_required_driver_history', {
+        p_order_ids: actionOrderIds,
+      });
+      if (error) throw error;
+      return (data || []) as HistoricalDriverEvidence[];
+    },
+    staleTime: 30000,
+  });
+
+  const historicalDriverByOrderId = useMemo(
+    () => new Map(historicalDriverEvidence.map((evidence) => [evidence.order_id, evidence])),
+    [historicalDriverEvidence]
+  );
+
   const { data: deliveryProofs = [] } = useQuery({
     queryKey: ['action-required-delivery-proofs', actionOrderIds],
     queryFn: async () => {
@@ -415,8 +447,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
       let query = supabase
         .from('orders')
         .select('salesperson_id')
-        .or(CANONICAL_ACTION_REQUIRED_OR)
-        .neq('status', 'CANCELLED')
+        .eq('current_operational_state', 'ACTION_REQUIRED')
         .not('salesperson_id', 'is', null)
         .limit(10000);
 
@@ -727,6 +758,8 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                 {priorityQueue.map(order => {
                   const source = getActionSource(order);
                   const reason = order.runner_failed_reason_id ? reasonsMap[order.runner_failed_reason_id] : null;
+                  const driverReason = order.driver_failed_reason || order.failed_reason || null;
+                  const driverRemark = order.driver_failed_remark || order.failed_remark || order.runner_comment || null;
                   return (
                     <Card
                       key={order.id}
@@ -765,10 +798,10 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                         </div>
 
                         {/* Reason */}
-                        {(reason || order.failed_reason || order.runner_comment) && (
+                        {(reason || driverReason || driverRemark) && (
                           <div className="px-2.5 py-1.5 rounded-lg bg-destructive/5 border border-destructive/10">
                             <p className="text-xs text-destructive font-medium line-clamp-2">
-                              {reason || order.failed_reason || order.runner_comment}
+                              {reason || driverReason || driverRemark}
                             </p>
                           </div>
                         )}
@@ -919,6 +952,9 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
               const priority = getOrderPriority(order);
               const isSelected = selectedRows.has(order.id);
               const proofs = deliveryProofsByOrder[order.id] || [];
+              const historicalDriver = historicalDriverByOrderId.get(order.id);
+              const driverName = order.driver?.display_name || historicalDriver?.driver_name || '-';
+              const currentState = resolveCurrentOrderState(order);
               return (
                 <MobileOrderCard
                   key={order.id}
@@ -940,13 +976,14 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     { label: 'Customer', value: order.customer_name },
                     { label: 'Phone', value: <WhatsAppPhoneLinkCompact order={order} /> },
                     ...(order.next_delivery_date ? [{ label: 'Next Date', value: format(parseISO(order.next_delivery_date), 'dd MMM') }] : []),
+                    { label: 'Driver', value: driverName },
                   ]}
                   expandedFields={[
                     { label: 'Address', value: order.address || '-', fullWidth: true },
-                    ...(order.failed_reason ? [{ label: 'Reason', value: order.failed_reason }] : []),
-                    ...(order.driver_failed_remark || order.failed_remark || order.runner_comment ? [{ label: 'Driver Remark', value: order.driver_failed_remark || order.failed_remark || order.runner_comment || '-', fullWidth: true }] : []),
+                    ...((order.driver_failed_reason || order.failed_reason) ? [{ label: 'Reason', value: order.driver_failed_reason || order.failed_reason || '-' }] : []),
+                    ...((order.driver_failed_remark || order.failed_remark || order.runner_comment) ? [{ label: 'Driver Remark', value: order.driver_failed_remark || order.failed_remark || order.runner_comment || '-', fullWidth: true }] : []),
                     ...(proofs.length > 0 ? [{ label: 'Proof', value: <DeliveryProofPreview proofs={proofs} />, fullWidth: true }] : []),
-                    { label: 'Order Status', value: order.status },
+                    { label: 'Order Status', value: currentState.currentStatus },
                     { label: 'Runner Status', value: order.runner_status || '-' },
                   ]}
                   primaryAction={
@@ -991,6 +1028,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     <TableHead className="w-[110px]">Issue</TableHead>
                     <TableHead className="w-[100px]">Next Date</TableHead>
                     <TableHead className="w-[130px]">Reason</TableHead>
+                    <TableHead className="w-[130px]">Driver</TableHead>
                     <TableHead className="w-[160px]">Driver Remark</TableHead>
                     <TableHead className="w-[110px]">Proof</TableHead>
                     <TableHead className="w-[100px]">Status</TableHead>
@@ -1002,6 +1040,9 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                     const source = getActionSource(order);
                     const priority = getOrderPriority(order);
                     const proofs = deliveryProofsByOrder[order.id] || [];
+                    const historicalDriver = historicalDriverByOrderId.get(order.id);
+                    const driverName = order.driver?.display_name || historicalDriver?.driver_name || '-';
+                    const currentState = resolveCurrentOrderState(order);
                     return (
                       <TableRow
                         key={order.id}
@@ -1062,14 +1103,33 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                           ) : '-'}
                         </TableCell>
                         <TableCell className="text-sm text-destructive max-w-[130px]">
-                          {order.failed_reason ? (
+                          {order.driver_failed_reason || order.failed_reason ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="truncate block cursor-help">{order.failed_reason}</span>
+                                <span className="truncate block cursor-help">{order.driver_failed_reason || order.failed_reason}</span>
                               </TooltipTrigger>
-                              <TooltipContent>{order.failed_reason}</TooltipContent>
+                              <TooltipContent>{order.driver_failed_reason || order.failed_reason}</TooltipContent>
                             </Tooltip>
                           ) : '-'}
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[130px]">
+                          {driverName === '-' ? (
+                            '-'
+                          ) : historicalDriver && !order.driver?.display_name ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex flex-col cursor-help">
+                                  <span>{driverName}</span>
+                                  <span className="text-[10px] text-muted-foreground">Last assignment</span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Driver assignment ended; latest evidence: {format(new Date(historicalDriver.assignment_timestamp), 'dd MMM yyyy, HH:mm')}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            driverName
+                          )}
                         </TableCell>
                         <TableCell className="max-w-[160px]">
                           {order.driver_failed_remark || order.failed_remark || order.runner_comment ? (
@@ -1091,7 +1151,7 @@ export default function SalespersonActionInbox({ highlightOrderId }: { highlight
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            <Badge variant="outline" className="text-xs w-fit">{order.status}</Badge>
+                            <Badge variant="outline" className="text-xs w-fit">{currentState.currentStatus}</Badge>
                             {order.runner_status && order.runner_status !== 'UNASSIGNED' && (
                               <span className="text-[10px] text-muted-foreground">{order.runner_status}</span>
                             )}

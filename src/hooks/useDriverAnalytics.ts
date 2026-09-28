@@ -6,6 +6,7 @@ import {
   type DriverAssignment,
 } from '@/hooks/useDriverAssignments';
 import { callSupabaseRpc } from '@/lib/supabaseRpc';
+import { KUALA_LUMPUR_TIME_ZONE } from '@/lib/timezone';
 
 type RpcMetrics = Partial<Record<
   | 'assigned'
@@ -35,7 +36,11 @@ type RpcMetrics = Partial<Record<
   | 'runnerAcceptedOrders'
   | 'runnerAcceptedAmount'
   | 'assignedOrders'
-  | 'acceptedFailedOrders',
+  | 'acceptedFailedOrders'
+  | 'pendingCashAmount'
+  | 'pendingCashOrderCount'
+  | 'pendingTransferAmount'
+  | 'pendingTransferOrderCount',
   number | string | null
 >> & Partial<Record<
   | 'delivery_rate'
@@ -60,7 +65,11 @@ type RpcMetrics = Partial<Record<
   | 'runner_accepted_orders'
   | 'runner_accepted_amount'
   | 'assigned_orders'
-  | 'accepted_failed_orders',
+  | 'accepted_failed_orders'
+  | 'pending_cash_amount'
+  | 'pending_cash_order_count'
+  | 'pending_transfer_amount'
+  | 'pending_transfer_order_count',
   number | string | null
 >>;
 
@@ -110,7 +119,7 @@ export interface DriverMonthlyAnalytics extends DriverAnalyticsSummary {
 }
 
 export interface DriverAnalytics {
-  timezone: 'Asia/Brunei';
+  timezone: typeof KUALA_LUMPUR_TIME_ZONE;
   summary: DriverAnalyticsSummary;
   daily: DriverDailyAnalytics[];
   monthly: DriverMonthlyAnalytics[];
@@ -122,6 +131,12 @@ export type DriverAnalyticsOrder = DriverAssignment & {
   assignment_source?: string | null;
   cash_settlement_status?: string | null;
   reassigned?: boolean;
+  historical_driver_id?: string | null;
+  historical_driver_result_type?: string | null;
+  historical_driver_failure_reason?: string | null;
+  historical_driver_remark?: string | null;
+  historical_driver_reschedule_date?: string | null;
+  historical_driver_submitted_at?: string | null;
 };
 
 export interface DriverAnalyticsDay {
@@ -130,31 +145,43 @@ export interface DriverAnalyticsDay {
   orders: DriverAnalyticsOrder[];
 }
 
+export type DriverAnalyticsOrderGroupKey =
+  | 'INACTIVE'
+  | 'RESCHEDULED'
+  | 'DELIVERED'
+  | 'FAILED'
+  | 'ACTIVE'
+  | 'PENDING_ACCEPTANCE';
+
 export function groupDriverAnalyticsOrders(orders: DriverAnalyticsOrder[]) {
-  return orders.reduce<{
-    visible: DriverAnalyticsOrder[];
-    pendingAcceptance: DriverAnalyticsOrder[];
-    failed: DriverAnalyticsOrder[];
-  }>((groups, order) => {
-    if (order.assignment_state === 'PENDING_ACCEPTANCE') {
-      groups.pendingAcceptance.push(order);
-    } else if (order.assignment_state === 'FAILED') {
-      groups.failed.push(order);
-    } else {
-      groups.visible.push(order);
-    }
-    return groups;
-  }, { visible: [], pendingAcceptance: [], failed: [] });
+  const groups: Record<DriverAnalyticsOrderGroupKey, DriverAnalyticsOrder[]> = {
+    INACTIVE: [],
+    RESCHEDULED: [],
+    DELIVERED: [],
+    FAILED: [],
+    ACTIVE: [],
+    PENDING_ACCEPTANCE: [],
+  };
+
+  orders.forEach((order) => {
+    const state = String(order.assignment_state || 'INACTIVE').toUpperCase();
+    const key = Object.prototype.hasOwnProperty.call(groups, state)
+      ? state as DriverAnalyticsOrderGroupKey
+      : 'INACTIVE';
+    groups[key].push(order);
+  });
+
+  return groups;
 }
 
-type DriverAnalyticsRpc = {
+export type DriverAnalyticsRpc = {
   timezone?: string;
   summary?: RpcMetrics;
   daily?: Array<RpcMetrics & { date: string }>;
   monthly?: Array<RpcMetrics & { month: string }>;
 };
 
-type DriverAnalyticsDayRpc = {
+export type DriverAnalyticsDayRpc = {
   date?: string;
   summary?: RpcMetrics;
   orders?: Array<Record<string, unknown>>;
@@ -179,7 +206,7 @@ export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): Driver
       ?? source.deliveredOrders
       ?? source.delivered_orders,
   );
-  const runnerAcceptedAmount = metric(
+  const reportedRunnerAcceptedAmount = metric(
     source.runnerAcceptedAmount
       ?? source.runner_accepted_amount
       ?? source.acceptedSales
@@ -188,7 +215,6 @@ export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): Driver
       ?? source.total_sales,
   );
   const deliveredOrders = runnerAcceptedOrders;
-  const totalSales = runnerAcceptedAmount;
   const assignedOrders = metric(source.assignedOrders ?? source.assigned_orders ?? source.assigned);
   const acceptedFailedOrders = metric(source.acceptedFailedOrders ?? source.accepted_failed_orders);
   const cashAmount = metric(source.cashAmount ?? source.cash_amount);
@@ -197,8 +223,20 @@ export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): Driver
   const cashOnHandCount = metric(source.cashOnHandCount ?? source.cash_on_hand_count);
   const transferAmount = metric(source.transferAmount ?? source.transfer_amount);
   const transferOrderCount = metric(source.transferOrderCount ?? source.transfer_order_count);
+  const hasPaymentSplit = source.cashAmount != null
+    || source.cash_amount != null
+    || source.transferAmount != null
+    || source.transfer_amount != null;
+  const runnerAcceptedAmount = hasPaymentSplit
+    ? cashAmount + transferAmount
+    : reportedRunnerAcceptedAmount;
+  const totalSales = runnerAcceptedAmount;
   const pendingAcceptance = metric(source.pendingAcceptance ?? source.pending_acceptance);
   const pendingAcceptanceAmount = metric(source.pendingAcceptanceAmount ?? source.pending_acceptance_amount);
+  const pendingCashAmount = metric(source.pendingCashAmount ?? source.pending_cash_amount);
+  const pendingCashOrderCount = metric(source.pendingCashOrderCount ?? source.pending_cash_order_count);
+  const pendingTransferAmount = metric(source.pendingTransferAmount ?? source.pending_transfer_amount);
+  const pendingTransferOrderCount = metric(source.pendingTransferOrderCount ?? source.pending_transfer_order_count);
 
   return {
     deliveredOrders,
@@ -231,10 +269,10 @@ export function normalizeDriverAnalyticsMetrics(source: RpcMetrics = {}): Driver
     transferCount: transferOrderCount,
     assignedOrders,
     acceptedFailedOrders,
-    pendingCashAmount: 0,
-    pendingCashOrderCount: 0,
-    pendingTransferAmount: 0,
-    pendingTransferOrderCount: 0,
+    pendingCashAmount,
+    pendingCashOrderCount,
+    pendingTransferAmount,
+    pendingTransferOrderCount,
   };
 }
 
@@ -250,7 +288,44 @@ function rangeBounds(range: DriverAnalyticsRange) {
   return { dateFrom, dateTo, calendarFrom, calendarTo };
 }
 
-export function useDriverAnalytics(driverId?: string, range: DriverAnalyticsRange = {}) {
+function normalizeDriverAnalyticsResponse(data: DriverAnalyticsRpc | null | undefined): DriverAnalytics {
+  return {
+    timezone: KUALA_LUMPUR_TIME_ZONE,
+    summary: normalizeDriverAnalyticsMetrics(data?.summary),
+    daily: (data?.daily || []).map((day) => ({
+      date: day.date,
+      ...normalizeDriverAnalyticsMetrics(day),
+    })),
+    monthly: (data?.monthly || []).map((month) => ({
+      month: month.month,
+      ...normalizeDriverAnalyticsMetrics(month),
+    })),
+  };
+}
+
+function normalizeDriverAnalyticsDayResponse(
+  data: DriverAnalyticsDayRpc | null | undefined,
+  fallbackDate: string,
+): DriverAnalyticsDay {
+  const rpcOrders = data?.orders || [];
+  const normalizedRpcOrders = rpcOrders
+    .map((order) => ({
+      ...order,
+      is_active_assignment: order.assignment_state === 'ACTIVE',
+      collect_amount: metric(order.collect_amount as number | string | null | undefined),
+    }));
+
+  return {
+    date: data?.date || fallbackDate,
+    summary: normalizeDriverAnalyticsMetrics(data?.summary),
+    orders: normalizedRpcOrders as DriverAnalyticsOrder[],
+  };
+}
+
+export function useDriverAnalytics(
+  driverId?: string,
+  range: DriverAnalyticsRange = {},
+) {
   const bounds = rangeBounds(range);
 
   return useQuery({
@@ -274,18 +349,7 @@ export function useDriverAnalytics(driverId?: string, range: DriverAnalyticsRang
         p_calendar_to: bounds.calendarTo,
       });
 
-      return {
-        timezone: 'Asia/Brunei',
-        summary: normalizeDriverAnalyticsMetrics(data?.summary),
-        daily: (data?.daily || []).map((day) => ({
-          date: day.date,
-          ...normalizeDriverAnalyticsMetrics(day),
-        })),
-        monthly: (data?.monthly || []).map((month) => ({
-          month: month.month,
-          ...normalizeDriverAnalyticsMetrics(month),
-        })),
-      };
+      return normalizeDriverAnalyticsResponse(data);
     },
     enabled: Boolean(driverId),
     staleTime: 30_000,
@@ -302,22 +366,10 @@ export function useDriverAnalyticsDay(driverId?: string, date?: string) {
         p_driver_id: driverId,
         p_date: date,
       });
-      const rpcOrders = data?.orders || [];
-      const normalizedRpcOrders = rpcOrders
-        .map((order) => ({
-          ...order,
-          is_active_assignment: order.assignment_state === 'ACTIVE',
-          collect_amount: metric(order.collect_amount as number | string | null | undefined),
-        }));
-
-      return {
-        date: data?.date || date,
-        summary: normalizeDriverAnalyticsMetrics(data?.summary),
-        orders: normalizedRpcOrders as DriverAnalyticsOrder[],
-      };
+      return normalizeDriverAnalyticsDayResponse(data, date);
     },
     enabled: Boolean(driverId && date),
-    staleTime: 15_000,
+    staleTime: 60_000,
   });
 }
 
@@ -356,5 +408,75 @@ export function useRunnerDriversAnalytics(runnerId?: string) {
       });
     },
     enabled: Boolean(runnerId),
+  });
+}
+
+export type RunnerDriverAnalyticsRecord = {
+  driverId: string;
+  driverName: string;
+  analytics: DriverAnalytics;
+  day: DriverAnalyticsDay | null;
+};
+
+type RunnerDriverAnalyticsRpc = {
+  drivers?: Array<{
+    driver_id?: string;
+    driver_name?: string | null;
+    analytics?: DriverAnalyticsRpc | null;
+    day?: DriverAnalyticsDayRpc | null;
+  }>;
+};
+
+export type RunnerDriverAnalyticsOptions = DriverAnalyticsRange & {
+  detailDate?: string;
+  driverId?: string;
+  includeDetail?: boolean;
+  enabled?: boolean;
+};
+
+export function useRunnerDriverAnalytics(
+  runnerIds: string[],
+  options: RunnerDriverAnalyticsOptions = {},
+) {
+  const uniqueRunnerIds = Array.from(new Set(runnerIds.filter(Boolean)));
+  const bounds = rangeBounds(options);
+
+  return useQuery({
+    queryKey: [
+      'runner-driver-analytics',
+      uniqueRunnerIds,
+      options.driverId || 'all-drivers',
+      bounds.dateFrom,
+      bounds.dateTo,
+      bounds.calendarFrom,
+      bounds.calendarTo,
+      options.includeDetail ? options.detailDate || 'no-detail' : 'summary-only',
+    ],
+    queryFn: async (): Promise<RunnerDriverAnalyticsRecord[]> => {
+      if (uniqueRunnerIds.length === 0) return [];
+
+      const data = await callSupabaseRpc<RunnerDriverAnalyticsRpc>('get_runner_driver_analytics', {
+        p_runner_ids: uniqueRunnerIds,
+        p_driver_id: options.driverId || null,
+        p_range_from: bounds.dateFrom,
+        p_range_to: bounds.dateTo,
+        p_calendar_from: bounds.calendarFrom,
+        p_calendar_to: bounds.calendarTo,
+        p_detail_date: options.includeDetail ? options.detailDate || null : null,
+      });
+
+      return (data?.drivers || [])
+        .filter((driver): driver is typeof driver & { driver_id: string } => Boolean(driver.driver_id))
+        .map((driver) => ({
+          driverId: driver.driver_id,
+          driverName: driver.driver_name || 'Unknown Driver',
+          analytics: normalizeDriverAnalyticsResponse(driver.analytics),
+          day: driver.day ? normalizeDriverAnalyticsDayResponse(driver.day, options.detailDate || bounds.dateFrom) : null,
+        }));
+    },
+    enabled: uniqueRunnerIds.length > 0 && options.enabled !== false,
+    placeholderData: (previousData) => previousData,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }

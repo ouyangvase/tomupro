@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { useAuth } from '@/contexts/AuthContext';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
+import { getDeliveredOrderTimestamp } from '@/lib/deliveredOrderReport';
 
 /**
  * Fetches the visible owner IDs for the current user via shared cache.
@@ -39,6 +40,10 @@ export interface DeliveredOrder {
   runner_status: string;
   reconciliation_status: string;
   delivered_at: string | null;
+  driver_delivered_at: string | null;
+  driver_payment_method: string | null;
+  driver_cash_amount: number | null;
+  driver_transfer_amount: number | null;
   salesperson_id: string;
   salesperson_name: string | null;
   runner_id: string | null;
@@ -76,12 +81,64 @@ interface UseDeliveredOrdersParams {
 
 type DeliveredOrdersRpcClient = {
   rpc: (
-    name: 'get_delivered_orders_fast' | 'get_runner_assistant_delivered_orders',
+    name:
+      | 'get_delivered_orders_fast'
+      | 'get_runner_assistant_delivered_orders'
+      | 'get_delivered_orders_fast_report'
+      | 'get_runner_assistant_delivered_orders_report',
     args: Record<string, unknown>,
   ) => Promise<{ data: unknown[] | null; error: Error | null }>;
 };
 
 const deliveredOrdersRpcClient = supabase as unknown as DeliveredOrdersRpcClient;
+
+export async function fetchDeliveredOrdersFastReport(params: Omit<UseDeliveredOrdersParams, 'limit' | 'offset' | 'enabled'> = {}) {
+  const { runnerId, runnerIds, salespersonId, salespersonIds } = params;
+  const BATCH_SIZE = 1000;
+  const isAssistantScope = runnerIds !== undefined;
+  const effectiveRunnerIds = runnerIds?.length ? runnerIds : runnerId ? [runnerId] : [];
+  const scopes = effectiveRunnerIds.length > 0 ? effectiveRunnerIds : [null];
+
+  const scopedRows = await Promise.all(scopes.map(async (scopeRunnerId) => {
+    const rows: DeliveredOrder[] = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await deliveredOrdersRpcClient.rpc(
+        isAssistantScope
+          ? 'get_runner_assistant_delivered_orders_report'
+          : 'get_delivered_orders_fast_report',
+        {
+          p_runner_id: scopeRunnerId,
+          p_salesperson_id: salespersonId || null,
+          p_salesperson_ids: salespersonIds || null,
+          p_limit: BATCH_SIZE,
+          p_offset: offset,
+        },
+      );
+
+      if (error) throw error;
+      const batch = (data || []) as DeliveredOrder[];
+      rows.push(...batch);
+      offset += batch.length;
+      hasMore = batch.length >= BATCH_SIZE;
+    }
+
+    return rows;
+  }));
+
+  const distinctRows = new Map(scopedRows.flat().map((order) => [order.id, order]));
+  return Array.from(distinctRows.values()).sort((a, b) => {
+    const left = getDeliveredOrderTimestamp(a) || a.order_date || '';
+    const right = getDeliveredOrderTimestamp(b) || b.order_date || '';
+    const leftTime = Date.parse(left);
+    const rightTime = Date.parse(right);
+    const timestampOrder = (Number.isNaN(rightTime) ? -Infinity : rightTime)
+      - (Number.isNaN(leftTime) ? -Infinity : leftTime);
+    return timestampOrder || a.id.localeCompare(b.id);
+  });
+}
 
 /**
  * Optimized hook for fetching delivered orders using a single RPC call
@@ -107,6 +164,7 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
     enabled,
     staleTime: 3 * 60 * 1000, // 3 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -116,51 +174,16 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
  * Use this when you need the complete dataset for client-side filtering.
  */
 export function useDeliveredOrdersFastAll(params: Omit<UseDeliveredOrdersParams, 'limit' | 'offset'> & { totalHint?: number } = {}) {
-  const { runnerId, runnerIds, salespersonId, salespersonIds, enabled = true, totalHint } = params;
-  const BATCH_SIZE = 1000;
-  const isAssistantScope = runnerIds !== undefined;
+  const { runnerId, runnerIds, salespersonId, salespersonIds, enabled = true } = params;
   const effectiveRunnerIds = runnerIds?.length ? runnerIds : runnerId ? [runnerId] : [];
 
   return useQuery({
     queryKey: ['delivered-orders-fast-all', effectiveRunnerIds, salespersonId, salespersonIds],
-    queryFn: async () => {
-      const scopes = effectiveRunnerIds.length > 0 ? effectiveRunnerIds : [null];
-      const scopedRows = await Promise.all(scopes.map(async (scopeRunnerId) => {
-        let allRows: DeliveredOrder[] = [];
-        let offset = 0;
-        let hasMore = true;
-
-        while (hasMore) {
-          const { data, error } = await deliveredOrdersRpcClient.rpc(
-            isAssistantScope ? 'get_runner_assistant_delivered_orders' : 'get_delivered_orders_fast',
-            {
-            p_runner_id: scopeRunnerId,
-            p_salesperson_id: salespersonId || null,
-            p_salesperson_ids: salespersonIds || null,
-            p_limit: BATCH_SIZE,
-            p_offset: offset,
-            },
-          );
-
-          if (error) throw error;
-          const batch = (data || []) as DeliveredOrder[];
-          allRows = allRows.concat(batch);
-          offset += batch.length;
-          hasMore = batch.length >= BATCH_SIZE;
-        }
-        return allRows;
-      }));
-
-      const distinctRows = new Map(scopedRows.flat().map((order) => [order.id, order]));
-      return Array.from(distinctRows.values()).sort((a, b) => {
-        const left = a.delivered_at || a.order_date || '';
-        const right = b.delivered_at || b.order_date || '';
-        return right.localeCompare(left);
-      });
-    },
+    queryFn: () => fetchDeliveredOrdersFastReport({ runnerId, runnerIds, salespersonId, salespersonIds }),
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes (large dataset, avoid frequent refetches)
     gcTime: 15 * 60 * 1000, // 15 minutes (keep in cache longer to avoid re-fetching)
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -256,7 +279,7 @@ export function useMarkDeliveredFast() {
 
       if (error) throw error;
       
-      const result = data as { success: boolean; error?: string; already_delivered?: boolean };
+      const result = data as { success: boolean; error?: string; already_delivered?: boolean; order_type?: string };
       if (!result.success) {
         // Don't throw for "already delivered" - treat as success
         if (result.error?.toLowerCase().includes('already delivered')) {
@@ -293,10 +316,16 @@ export function useMarkDeliveredFast() {
       if (context?.previousOrders) {
         queryClient.setQueryData(['orders'], context.previousOrders);
       }
+      const rawMessage = err instanceof Error ? err.message : 'Failed to mark as delivered';
+      const message = rawMessage.includes('Driver results must be reviewed from Dispatch > Drivers')
+        || rawMessage.includes('Runner delivery is blocked while a Driver is assigned')
+        || rawMessage.includes('current Driver assignment')
+        ? 'This order is assigned to a Driver. Review it from Dispatch > Drivers before delivery.'
+        : rawMessage;
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: err.message || 'Failed to mark as delivered',
+        description: message,
       });
     },
     onSuccess: (result) => {
@@ -311,6 +340,14 @@ export function useMarkDeliveredFast() {
       }).catch((err) => {
         console.error('[SNIPERS] delivered event trigger failed:', err);
       });
+
+      if (result.order_type === 'MIRI_INBOUND_PICKUP') {
+        supabase.functions.invoke('send-miri-pickup-callback', {
+          body: { orderId: result.orderId, drain: false },
+        }).catch((err) => {
+          console.error('[MIRI] delivered callback trigger failed:', err);
+        });
+      }
     },
     onSettled: () => {
       // Debounced refetch after 1.5s to pick up background processing results
@@ -368,8 +405,13 @@ export function useMarkDeliveredEdge() {
         description: err.message,
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast({ title: 'Delivered successfully' });
+      if (result.order_type === 'MIRI_INBOUND_PICKUP') {
+        supabase.functions.invoke('send-miri-pickup-callback', {
+          body: { orderId: result.orderId, drain: false },
+        }).catch((err) => console.error('[MIRI] delivered callback trigger failed:', err));
+      }
     },
     onSettled: () => {
       invalidateOrderQueries(queryClient);

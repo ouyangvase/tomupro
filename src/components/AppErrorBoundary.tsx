@@ -1,17 +1,34 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  forceCleanReload,
+  forceReloadApp,
   isChunkLoadFailure,
   recoverFromChunkLoadFailure,
-  resetChunkRecovery,
 } from "@/lib/chunkRecovery";
 
 type AppErrorBoundaryState = {
   error: Error | null;
 };
 
+const APP_ERROR_RECOVERY_KEY = "tomupro_app_error_recovery";
+const APP_ERROR_RECOVERY_TIMEOUT_MS = 15_000;
+
 export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBoundaryState> {
   state: AppErrorBoundaryState = { error: null };
+  private recoveryTimer: number | null = null;
+
+  componentDidMount() {
+    // Clear the one-shot guard only after the app has stayed mounted long
+    // enough to prove that the clean recovery succeeded.
+    this.recoveryTimer = window.setTimeout(() => {
+      sessionStorage.removeItem(APP_ERROR_RECOVERY_KEY);
+    }, APP_ERROR_RECOVERY_TIMEOUT_MS);
+  }
+
+  componentWillUnmount() {
+    if (this.recoveryTimer !== null) window.clearTimeout(this.recoveryTimer);
+  }
 
   static getDerivedStateFromError(error: Error) {
     return { error };
@@ -22,15 +39,25 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErro
 
     if (isChunkLoadFailure(error)) {
       recoverFromChunkLoadFailure();
+      return;
+    }
+
+    // A stale mobile bundle can fail while rendering a protected screen even
+    // when the browser does not report it as a chunk-load error. Retry once
+    // with caches and service workers cleared, then leave the diagnostic page
+    // visible instead of creating an infinite reload loop.
+    if (sessionStorage.getItem(APP_ERROR_RECOVERY_KEY) !== "1") {
+      sessionStorage.setItem(APP_ERROR_RECOVERY_KEY, "1");
+      void forceCleanReload();
     }
   }
 
   private reload = () => {
-    resetChunkRecovery();
+    forceReloadApp();
   };
 
   private clearAndReload = () => {
-    resetChunkRecovery();
+    void forceCleanReload();
   };
 
   render() {

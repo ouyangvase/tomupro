@@ -4,6 +4,8 @@ import { useToast } from '@/hooks/use-toast';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { useAuth } from '@/contexts/AuthContext';
+import { transitionOrderLifecycle } from '@/lib/orderLifecycleTransition';
+import type { CurrentOrderStatus } from '@/lib/orderLifecycle';
 
 interface CancelOrderParams {
   orderIds: string[];
@@ -23,16 +25,28 @@ export function useCancelOrders() {
       // Fetch orders before update for audit log
       const { data: ordersBefore, error: fetchError } = await supabase
         .from('orders')
-        .select('id, order_code, status, cancel_reason, cancel_notes')
+        .select('id, order_code, status, cancel_reason, cancel_notes, current_operational_state')
         .in('id', orderIds);
       
       if (fetchError) throw fetchError;
 
-      // Update orders with cancel info
+      if ((ordersBefore || []).length !== orderIds.length) {
+        throw new Error('Some selected orders are no longer available for cancellation. Refresh and try again.');
+      }
+
+      // Move each order through the guarded lifecycle service first. The
+      // metadata update below cannot create a second active lifecycle state.
+      await Promise.all((ordersBefore || []).map((order) => transitionOrderLifecycle({
+        orderId: order.id,
+        toState: 'CANCELLED',
+        expectedState: order.current_operational_state as CurrentOrderStatus,
+        reason: cancelReason,
+      })));
+
+      // Update cancellation metadata after the canonical state transition.
       const { error: updateError } = await supabase
         .from('orders')
         .update({
-          status: 'CANCELLED',
           cancel_reason: cancelReason,
           cancel_notes: cancelNotes || null,
           cancelled_by: user.id,

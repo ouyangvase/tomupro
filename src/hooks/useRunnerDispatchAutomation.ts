@@ -97,6 +97,12 @@ export interface BulkUnassignRunnerDriverOrdersResult {
   skipped_count: number;
   reverted_collect_amount: number;
   reverted_order_ids: string[];
+  skipped_order_ids: string[];
+  skipped_orders: Array<{
+    order_id: string;
+    order_code: string | null;
+    reason: string;
+  }>;
   affected_driver_ids: string[];
 }
 
@@ -168,6 +174,7 @@ export function useRunnerDispatchAreaSummary(operationalDate: string | null) {
         driver_names: row.driver_names || [],
       })) as DispatchAreaSummary[];
     },
+    staleTime: 15_000,
   });
 }
 
@@ -191,6 +198,7 @@ export function useRunnerDispatchLocalitySummary(operationalDate: string | null,
         unassigned_collect_amount: Number(row.unassigned_collect_amount || 0),
       })) as DispatchLocalitySummary[];
     },
+    staleTime: 15_000,
   });
 }
 
@@ -213,6 +221,7 @@ export function useRunnerDispatchDriverWorkloads(operationalDate: string | null)
         remaining_capacity: row.remaining_capacity === null || row.remaining_capacity === undefined ? null : Number(row.remaining_capacity),
       })) as DispatchDriverWorkload[];
     },
+    staleTime: 30_000,
   });
 }
 
@@ -420,6 +429,8 @@ export function useBulkUnassignRunnerDriverOrders() {
           skipped_count: Number(data.skipped_count || 0),
           reverted_collect_amount: Number(data.reverted_collect_amount || 0),
           reverted_order_ids: data.reverted_order_ids || [],
+          skipped_order_ids: data.skipped_order_ids || [],
+          skipped_orders: data.skipped_orders || [],
           affected_driver_ids: data.affected_driver_ids || [],
         };
       }
@@ -447,6 +458,8 @@ export function useBulkUnassignRunnerDriverOrders() {
         skipped_count: 0,
         reverted_collect_amount: Number(legacy.data.collect_amount || 0),
         reverted_order_ids: orderIds,
+        skipped_order_ids: [],
+        skipped_orders: [],
         affected_driver_ids: [],
       } satisfies BulkUnassignRunnerDriverOrdersResult;
     },
@@ -460,7 +473,16 @@ export function useBulkUnassignRunnerDriverOrders() {
         queryClient.invalidateQueries({ queryKey: ['driver-assignments'], refetchType: 'active' }),
         queryClient.invalidateQueries({ queryKey: ['driver-order-count'], refetchType: 'active' }),
       ]);
-      toast.success(`${result.reverted_count} active Driver order(s) returned to Unassigned.`);
+       if (result.skipped_count > 0) {
+         const skippedDetails = result.skipped_orders
+           .map((order) => `${order.order_code || order.order_id}: ${order.reason}`)
+           .join('; ');
+         toast.warning(
+           `${result.reverted_count} returned to Unassigned; ${result.skipped_count} failed${skippedDetails ? ` — ${skippedDetails}` : '.'}`,
+         );
+       } else {
+         toast.success(`${result.reverted_count} active Driver order(s) returned to Unassigned.`);
+       }
     },
     onError: (error: Error) => {
       toast.error(`Return Driver orders failed: ${error.message}`);

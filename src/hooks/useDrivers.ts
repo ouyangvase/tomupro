@@ -3,12 +3,19 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { RunnerDriver, Profile } from '@/types/database';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
-import { DRIVER_WORKLOAD_STATUSES, isDriverWorkloadOrder } from '@/lib/driverOrderScope';
+import {
+  DRIVER_WORKLOAD_STATUSES,
+  isPendingDriverOutcome,
+  isDriverWorkloadOrder,
+  isRunnerDriverInboxOrder,
+} from '@/lib/driverOrderScope';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   resolveDriverAssignmentAction,
   type DriverAssignmentAction,
 } from '@/lib/driverAssignmentAction';
+import { fetchDriverAssignments } from '@/hooks/useDriverAssignments';
+import { getDriverFailureSubmission } from '@/lib/driverFailedStatus';
 
 type AssignmentBatchResult = {
   success: boolean;
@@ -84,12 +91,19 @@ async function assignOrdersToDriver(orderIds: string[], driverId: string) {
 
   const { data: selectedOrders, error: selectedOrdersError } = await supabase
     .from('orders')
-    .select('id, driver_id')
+    .select('id, driver_id, driver_status, runner_accept_status, runner_review_status, salesperson_action_required, runner_final_outcome, status, operational_status, runner_status')
     .in('id', uniqueOrderIds);
 
   if (selectedOrdersError) throw selectedOrdersError;
   if (!selectedOrders || selectedOrders.length !== uniqueOrderIds.length) {
     throw new Error('Some selected orders are no longer available. Refresh and retry.');
+  }
+
+  const pendingDriverReviewCount = selectedOrders.filter(isPendingDriverOutcome).length;
+  if (pendingDriverReviewCount > 0) {
+    throw new Error(
+      `${pendingDriverReviewCount} selected order${pendingDriverReviewCount === 1 ? '' : 's'} has a Driver result waiting for Runner review. Review it from Dispatch > Drivers before reassigning.`,
+    );
   }
 
   const assignmentAction = resolveDriverAssignmentAction(selectedOrders);
@@ -108,12 +122,6 @@ async function assignOrdersToDriver(orderIds: string[], driverId: string) {
     throw new Error('The assignment was not fully saved. Please retry.');
   }
   return { ...data, assignment_action: assignmentAction };
-}
-
-function flushTelegramEventQueue(body?: Record<string, unknown>) {
-  supabase.functions.invoke('send-telegram-event', { body: body || { limit: 3 } }).catch((error) => {
-    console.warn('Failed to flush Telegram event queue:', error);
-  });
 }
 
 // Get drivers for a runner (with driver_code)
@@ -425,100 +433,39 @@ type DriverDeliveredPaymentMethod = 'CASH' | 'TRANSFER' | 'CASH_TRANSFER';
 
 export function useDriverMarkDelivered() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({
       orderId,
       paymentMethod,
       cashAmount,
+      proofImages,
+      submissionMode = 'NEW',
     }: {
       orderId: string;
       paymentMethod: DriverDeliveredPaymentMethod;
       cashAmount?: number;
       transferAmount?: number;
-    }) => {
-      // Get current user (driver)
-      if (!user?.id) throw new Error('Not authenticated');
+      proofImages?: string[];
+      submissionMode?: 'NEW' | 'CORRECTION';
+      }) => {
+      const { data, error } = await supabase.rpc('submit_driver_delivery_result', {
+        p_order_id: orderId,
+        p_result_type: 'DRIVER_DELIVERED_SUBMITTED',
+        p_payment_method: paymentMethod,
+        p_cash_amount: cashAmount ?? null,
+        p_proof_images: proofImages ?? [],
+        p_submission_mode: submissionMode,
+        p_submission_id: crypto.randomUUID(),
+      });
 
-      // Get order details including runner_id
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .select('driver_id, driver_status, runner_id, runner_status, runner_accept_status, runner_review_status, order_code, customer_name, total_amount')
-        .eq('id', orderId)
-        .single();
-      
-      if (orderError) throw orderError;
-      if (order.driver_id !== user.id) throw new Error('This order is not assigned to you');
-      if (!['ASSIGNED', 'TAKEN'].includes(String(order.runner_status || '').toUpperCase())) {
-        throw new Error('This order is no longer active for delivery');
-      }
-      const isFailedCorrection = order.driver_status === 'DRIVER_FAILED';
-      if (
-        isFailedCorrection
-        && (order.runner_accept_status === 'ACCEPTED' || order.runner_review_status === 'REVIEWED')
-      ) {
-        throw new Error('This delivery outcome has already been reviewed by the runner');
-      }
-
-      const orderAmount = Number(order.total_amount || 0);
-      const collectedCash =
-        paymentMethod === 'CASH'
-          ? orderAmount
-          : paymentMethod === 'TRANSFER'
-            ? 0
-            : Math.max(0, Math.min(orderAmount, Number(cashAmount || 0)));
-      const collectedTransfer = Math.max(0, orderAmount - collectedCash);
-
-      // Update order with driver-reported payment method
-      const updatePayload = {
-        driver_status: 'DRIVER_DELIVERED' as const,
-        driver_delivered_at: new Date().toISOString(),
-        driver_failed_at: null,
-        driver_payment_method: paymentMethod,
-        driver_cash_amount: collectedCash,
-        driver_transfer_amount: collectedTransfer,
-        runner_accept_status: 'PENDING' as const,
-        runner_review_status: 'NOT_REVIEWED',
-        runner_final_outcome: null,
-        runner_comment: null,
-        runner_reviewed_at: null,
-        runner_reviewed_by: null,
-        salesperson_action_required: false,
-        salesperson_action_type: null,
-        salesperson_action_due_date: null,
-        ...(isFailedCorrection ? {
-          driver_failed_reason: null,
-          driver_failed_remark: null,
-          driver_next_delivery_date: null,
-        } : {}),
-      };
-
-      let updateQuery = supabase
-        .from('orders')
-        .update(updatePayload)
-        .eq('id', orderId)
-        .eq('driver_id', user.id)
-        .in('runner_status', ['ASSIGNED', 'TAKEN']);
-
-      if (isFailedCorrection) {
-        updateQuery = updateQuery
-          .or('runner_accept_status.is.null,runner_accept_status.neq.ACCEPTED')
-          .or('runner_review_status.is.null,runner_review_status.neq.REVIEWED');
-      }
-
-      const { data, error } = await updateQuery
-        .select()
-        .single();
-      
       if (error) throw error;
-
+      if (!data?.success) throw new Error('Driver delivery submission was rejected');
       return data;
     },
-    onSuccess: (_, { orderId, paymentMethod }) => {
+    onSuccess: (_, { paymentMethod }) => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
-      flushTelegramEventQueue({ order_id: orderId, event_type: 'driver_delivered', limit: 2 });
       const msg = paymentMethod === 'CASH'
         ? 'Delivered (Cash recorded), awaiting runner acceptance'
         : paymentMethod === 'CASH_TRANSFER'
@@ -532,41 +479,73 @@ export function useDriverMarkDelivered() {
   });
 }
 
-// Driver toggles only the operational delivery status of their own order.
-export function useDriverUpdateStatus() {
+// Driver Start is an assignment-progress marker. It intentionally does not
+// write driver_status or submit a delivery outcome.
+export function useDriverStartAssignment() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async ({
-      orderId,
-      driverStatus,
-    }: {
-      orderId: string;
-      driverStatus: 'ASSIGNED' | 'OUT_FOR_DELIVERY';
-    }) => {
-      if (!user?.id) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('orders')
-        .update({ driver_status: driverStatus })
-        .eq('id', orderId)
-        .eq('driver_id', user.id)
-        .in('runner_status', ['ASSIGNED', 'TAKEN'])
-        .select()
-        .single();
+    mutationFn: async (orderId: string) => {
+      const { data, error } = await supabase.rpc('start_driver_assignment', {
+        p_order_id: orderId,
+      });
 
       if (error) throw error;
+      const result = data as { success?: boolean } | null;
+      if (!result?.success) throw new Error('Driver assignment start was rejected');
       return data;
     },
     onSuccess: () => {
       invalidateOrderQueries(queryClient);
-      toast.success('Order status updated');
+      toast.success('Order marked as started');
     },
     onError: (error: Error) => {
-      toast.error(`Failed to update order status: ${error.message}`);
+      toast.error(`Failed to start order: ${error.message}`);
     },
   });
+}
+
+type SubmitDriverFailedResultParams = {
+  orderId: string;
+  reason: string;
+  remark?: string;
+  nextDeliveryDate?: string;
+  proofImages?: string[];
+  submissionMode: 'NEW' | 'CORRECTION';
+  submissionId: string;
+};
+
+async function submitDriverFailedResult({
+  orderId,
+  reason,
+  remark,
+  nextDeliveryDate,
+  proofImages,
+  submissionMode,
+  submissionId,
+}: SubmitDriverFailedResultParams) {
+  const submission = getDriverFailureSubmission(reason, nextDeliveryDate);
+  const { data, error } = await supabase.rpc('submit_driver_delivery_result', {
+    p_order_id: orderId,
+    p_result_type: submission.resultType,
+    p_reason: submission.reason,
+    p_remark: remark || null,
+    p_next_delivery_date: submission.nextDeliveryDate || null,
+    p_proof_images: proofImages ?? [],
+    p_submission_id: submissionId,
+    p_submission_mode: submissionMode,
+  });
+
+  if (error) throw error;
+  if (!data?.success) throw new Error('Driver failed-delivery submission was rejected');
+  return data;
+}
+
+function isPendingFailedResultError(error: unknown) {
+  const message = error instanceof Error
+    ? error.message
+    : String((error as { message?: unknown } | null)?.message || error || '');
+  return message.includes('A failed Driver result is already pending; use correction');
 }
 
 // Driver marks order as failed
@@ -580,46 +559,44 @@ export function useDriverMarkFailed() {
       reason,
       remark,
       nextDeliveryDate,
+      proofImages,
     }: {
       orderId: string;
       reason: string;
       remark?: string;
       nextDeliveryDate?: string;
-    }) => {
+      proofImages?: string[];
+      }) => {
       if (!user?.id) throw new Error('Not authenticated');
-      const driverFailedAt = new Date().toISOString();
-      const { data, error } = await supabase
-        .from('orders')
-        .update({
-          driver_status: 'DRIVER_FAILED',
-          driver_delivered_at: null,
-          driver_failed_at: driverFailedAt,
-          driver_failed_reason: reason,
-          driver_failed_remark: remark || null,
-          driver_next_delivery_date: nextDeliveryDate || null,
-          runner_accept_status: 'PENDING',
-          runner_review_status: 'NOT_REVIEWED',
-          runner_final_outcome: null,
-          runner_comment: null,
-          runner_reviewed_at: null,
-          runner_reviewed_by: null,
-          salesperson_action_required: false,
-          salesperson_action_type: null,
-          salesperson_action_due_date: null,
-          updated_at: driverFailedAt,
-        })
-        .eq('id', orderId)
-        .eq('driver_id', user.id)
-        .in('runner_status', ['ASSIGNED', 'TAKEN'])
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const submissionId = crypto.randomUUID();
+      try {
+        return await submitDriverFailedResult({
+          orderId,
+          reason,
+          remark,
+          nextDeliveryDate,
+          proofImages,
+          submissionMode: 'NEW',
+          submissionId,
+        });
+      } catch (error) {
+        // The order may have received a Driver result on another device after
+        // this inbox was loaded. Continue through the correction path instead
+        // of showing a dead-end error.
+        if (!isPendingFailedResultError(error)) throw error;
+        return submitDriverFailedResult({
+          orderId,
+          reason,
+          remark,
+          nextDeliveryDate,
+          proofImages,
+          submissionMode: 'CORRECTION',
+          submissionId,
+        });
+      }
     },
-    onSuccess: (_, { orderId, reason }) => {
+    onSuccess: (_, { reason }) => {
       invalidateOrderQueries(queryClient);
-      flushTelegramEventQueue({ order_id: orderId, event_type: 'driver_failed', limit: 2 });
       const normalizedReason = reason.trim().toLowerCase();
       if (normalizedReason === 'delivery tomorrow') {
         toast.success('Delivery tomorrow submitted for Runner acceptance');
@@ -645,13 +622,31 @@ export function useChangeDriverFailedStatus() {
     mutationFn: async ({
       orderId,
       reason,
+      remark,
       nextDeliveryDate,
+      proofImages,
+      source = 'runner',
     }: {
       orderId: string;
       reason: string;
+      remark?: string;
       nextDeliveryDate?: string;
+      proofImages?: string[];
+      source?: 'driver' | 'runner';
     }) => {
       if (!user?.id) throw new Error('Not authenticated');
+
+      if (source === 'driver') {
+        return submitDriverFailedResult({
+          orderId,
+          reason,
+          remark,
+          nextDeliveryDate,
+          proofImages,
+          submissionMode: 'CORRECTION',
+          submissionId: crypto.randomUUID(),
+        });
+      }
 
       const { data, error } = await driverAssignmentSupabase.rpc<DriverReviewResult>(
         'change_driver_failed_status',
@@ -693,7 +688,9 @@ export function useRunnerAcceptDelivery() {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       queryClient.invalidateQueries({ queryKey: ['runner-accepted-driver-deliveries'] });
-      if (data.action === 'DRIVER_DELIVERY_DEFERRED') {
+      if (data.action === 'DRIVER_DELIVERY_TOMORROW_ACCEPTED') {
+        toast.success('Delivery Tomorrow accepted; order state was unchanged');
+      } else if (data.action === 'DRIVER_DELIVERY_DEFERRED') {
         toast.success('Delivery kept with the same Driver for tomorrow');
       } else if (data.action === 'DRIVER_RESCHEDULE_ACCEPTED') {
         toast.success('Future delivery date accepted');
@@ -834,8 +831,15 @@ export function useRunnerBatchReviewDriverDeliveries() {
         failed: items.filter((item) => !item.success),
       };
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       invalidateOrderQueries(queryClient);
+      // Keep the batch action pending until the review queue has the
+      // post-review rows. This prevents the old batch from remaining visible
+      // (and being clicked again) while the invalidation refetch is running.
+      await queryClient.refetchQueries({
+        queryKey: ['driver-assignments'],
+        type: 'active',
+      });
       queryClient.invalidateQueries({ queryKey: ['runner-cash-liabilities'] });
       queryClient.invalidateQueries({ queryKey: ['runner-accepted-driver-deliveries'] });
     },
@@ -926,7 +930,8 @@ export function useUnassignDriverFromOrder() {
 
 // Get active orders for Runner Driver Inbox.
 // This intentionally matches Runner Inbox active scope:
-// READY orders assigned/taken by the current runner, excluding delivered/failed/unassigned.
+// READY orders assigned/taken by the current runner, including orders that
+// no longer have a Driver so the Runner can assign them again.
 export function useRunnerDriverOrders(runnerIdOverride?: string | string[]) {
   const { user } = useAuth();
   const runnerScopeIds = Array.isArray(runnerIdOverride)
@@ -944,7 +949,7 @@ export function useRunnerDriverOrders(runnerIdOverride?: string | string[]) {
           *,
           order_items(*)
         `)
-        .eq('status', 'READY')
+        .eq('current_operational_state', 'READY')
         .in('runner_status', ['ASSIGNED', 'TAKEN'])
         .order('runner_assigned_at', { ascending: false, nullsFirst: false })
         .order('order_date', { ascending: false });
@@ -955,12 +960,34 @@ export function useRunnerDriverOrders(runnerIdOverride?: string | string[]) {
 
       if (error) throw error;
 
+      const activeOrders = (data || []).filter(isRunnerDriverInboxOrder);
+
+      // The orders table can retain a historical driver_id after the canonical
+      // Driver Inbox assignment is no longer active. Keep the full READY pool
+      // for assignment, but use the canonical source as the authority for the
+      // driver shown on each order.
+      let canonicalAssignments: Awaited<ReturnType<typeof fetchDriverAssignments>> = [];
+      try {
+        canonicalAssignments = (await Promise.all(
+          runnerScopeIds.map((runnerId) => fetchDriverAssignments({
+            runnerId,
+            activeOnly: true,
+            includeItems: false,
+            states: ['ACTIVE'],
+          })),
+        )).flat();
+      } catch (canonicalError) {
+        console.warn('Unable to load canonical Driver Inbox assignments; using order pool fallback.', canonicalError);
+      }
+      const canonicalByOrderId = new Map(canonicalAssignments.map((assignment) => [assignment.id, assignment]));
+
       // Get unique user IDs
       const userIds = new Set<string>();
-      data?.forEach(order => {
+      activeOrders.forEach(order => {
         if (order.salesperson_id) userIds.add(order.salesperson_id);
         if (order.runner_id) userIds.add(order.runner_id);
-        if (order.driver_id) userIds.add(order.driver_id);
+        const canonicalDriverId = canonicalByOrderId.get(order.id)?.driver_id || null;
+        if (canonicalDriverId) userIds.add(canonicalDriverId);
       });
 
       // Fetch user directory
@@ -976,12 +1003,25 @@ export function useRunnerDriverOrders(runnerIdOverride?: string | string[]) {
         });
       }
 
-      return data?.map(order => ({
-        ...order,
-        salesperson: order.salesperson_id ? usersMap[order.salesperson_id] : null,
-        runner: order.runner_id ? usersMap[order.runner_id] : null,
-        driver: order.driver_id ? usersMap[order.driver_id] : null,
-      })) || [];
+      return activeOrders.map(order => {
+        const canonicalAssignment = canonicalByOrderId.get(order.id);
+        // Pending Driver outcomes are review work, so the canonical ACTIVE
+        // source intentionally omits them. Preserve the raw Driver identity
+        // for the Driver Updates/Review list while the dispatch pool filters
+        // the pending outcome out separately.
+        const driverId = canonicalAssignment?.driver_id
+          || (isPendingDriverOutcome(order) ? order.driver_id : null);
+
+        return {
+          ...order,
+          driver_id: driverId,
+          driver_status: driverId ? order.driver_status : 'UNASSIGNED',
+          driver_assigned_at: driverId ? order.driver_assigned_at : null,
+          salesperson: order.salesperson_id ? usersMap[order.salesperson_id] : null,
+          runner: order.runner_id ? usersMap[order.runner_id] : null,
+          driver: driverId ? usersMap[driverId] : null,
+        };
+      }) || [];
     },
     enabled: runnerScopeIds.length > 0,
   });

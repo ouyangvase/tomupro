@@ -1,10 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  buildPulseOneDeliveredPayload,
   corsHeaders,
-  getSnipersConfig,
   hasSnipersAdminTriggerSecret,
   jsonResponse,
+  postPulseOneJson,
   postSignedJson,
+  resolveSnipersDeliveryConfig,
 } from "../_shared/snipers.ts";
 
 type SnipersEventStatus =
@@ -219,9 +221,14 @@ async function sendOneEvent(supabase: ReturnType<typeof createClient>, event: Sn
     };
   }
 
-  const config = getSnipersConfig();
-  if (!config.deliveredUrl || !config.apiKey || !config.webhookSecret) {
-    const error = "SNIPERS_BASE_URL, SNIPERS_API_KEY, and SNIPERS_WEBHOOK_SECRET must be configured";
+  const config = await resolveSnipersDeliveryConfig(supabase);
+  const configInvalid = config.protocol === "pulseone"
+    ? !config.deliveredUrl || !config.webhookSecret
+    : !config.deliveredUrl || !config.apiKey || !config.webhookSecret;
+  if (configInvalid) {
+    const error = config.protocol === "pulseone"
+      ? "Pulse One integration_settings.pulseone must have webhook_url, webhook_enabled, and shared_secret configured"
+      : "SNIPERS_BASE_URL, SNIPERS_API_KEY, and SNIPERS_WEBHOOK_SECRET must be configured";
     await supabase
       .from("snipers_delivery_events")
       .update({
@@ -246,14 +253,23 @@ async function sendOneEvent(supabase: ReturnType<typeof createClient>, event: Sn
     .eq("event_id", event.event_id);
 
   try {
-    const response = await postSignedJson({
-      url: config.deliveredUrl,
-      apiKey: config.apiKey,
-      webhookSecret: config.webhookSecret,
-      eventId: event.event_id,
-      idempotencyKey: event.event_id,
-      body: event.payload,
-    });
+    const response = config.protocol === "pulseone"
+      ? await postPulseOneJson({
+          url: config.deliveredUrl!,
+          webhookSecret: config.webhookSecret!,
+          eventType: "order.delivered",
+          eventId: event.event_id,
+          idempotencyKey: event.event_id,
+          body: buildPulseOneDeliveredPayload(event.payload),
+        })
+      : await postSignedJson({
+          url: config.deliveredUrl!,
+          apiKey: config.apiKey!,
+          webhookSecret: config.webhookSecret!,
+          eventId: event.event_id,
+          idempotencyKey: event.event_id,
+          body: event.payload,
+        });
 
     const parsed = await parseSnipersResponse(response);
     const classified = classifyResponse(response, parsed.json, parsed.error);
@@ -408,7 +424,10 @@ Deno.serve(async (req) => {
   const isExplicitEventBatch = eventIds.length > 0;
   const isQueueRequest = !body.eventId && !isExplicitEventBatch;
   const isDrain = isQueueRequest && body.drain === true;
-  const drainEnabled = Deno.env.get("SNIPERS_DRAIN_ENABLED") === "true";
+  // Scheduled drains authenticate with the service role and are bounded by
+  // claim_snipers_delivery_events. Keep user-triggered drains opt-in, while
+  // allowing the internal worker to process the durable queue.
+  const drainEnabled = auth.isServiceRole || Deno.env.get("SNIPERS_DRAIN_ENABLED") === "true";
   if (isQueueRequest && !isDrain) {
     return jsonResponse({
       success: true,

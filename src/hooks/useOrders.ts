@@ -3,6 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
+import { isCurrentOrderStatus, type CurrentOrderStatus } from '@/lib/orderLifecycle';
+import { transitionOrderLifecycle } from '@/lib/orderLifecycleTransition';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
 import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/types/database';
 
 interface OrderFilters {
@@ -18,7 +21,7 @@ interface OrderFilters {
   deliveredDateFrom?: string; // ISO date string for delivered_at >= filter
   deliveredDateTo?: string; // ISO date string for delivered_at <= filter
   // Server-side filter for action-required orders:
-  // salesperson_action_required=true OR (runner_status=FAILED_DELIVERY AND status!=CANCELLED)
+  // Canonical action markers, plus READY/FAILED_DELIVERY orders that need review.
   actionRequired?: boolean;
 }
 
@@ -42,14 +45,7 @@ export function useOrders(filters?: OrderFilters) {
         .limit(queryLimit);
 
       if (filters?.status) {
-        query = query.eq('status', filters.status);
-        // For READY and BOOKING status, exclude DELIVERED and FAILED_DELIVERY orders
-        // Delivered orders should only appear in Delivered Orders page
-        // Failed Delivery orders should only appear in Action Required / Failed Orders page
-        if (filters.status === 'READY' || filters.status === 'BOOKING') {
-          query = query.neq('runner_status', 'DELIVERED');
-          query = query.neq('runner_status', 'FAILED_DELIVERY');
-        }
+        query = query.eq('current_operational_state', filters.status);
       }
       if (filters?.salespersonId) {
         query = query.eq('salesperson_id', filters.salespersonId);
@@ -67,14 +63,15 @@ export function useOrders(filters?: OrderFilters) {
         query = query.eq('reconciliation_status', filters.reconciliationStatus);
       }
       if (filters?.excludeDeliveredAndFailed) {
+        query = query.eq('current_operational_state', 'READY');
         query = query.neq('runner_status', 'DELIVERED');
         query = query.neq('runner_status', 'FAILED_DELIVERY');
+        query = query.neq('runner_status', 'UNASSIGNED');
       }
 
-      // Action-required filter: salesperson_action_required=true OR runner_status=FAILED_DELIVERY (non-cancelled)
+      // Action-required filter uses the same canonical predicate as the action inbox.
       if (filters?.actionRequired) {
-        query = query.or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
-        query = query.neq('status', 'CANCELLED');
+        query = query.eq('current_operational_state', 'ACTION_REQUIRED');
       }
       
       // Server-side search filter for better performance on large datasets
@@ -207,7 +204,45 @@ export function useUpdateOrder() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Order> & { id: string }) => {
+    mutationFn: async ({ id, expectedState, ...updates }: Partial<Order> & { id: string; expectedState?: CurrentOrderStatus }) => {
+      const requestedState = String((updates as any).status || '').trim().toUpperCase();
+      const lifecycleTarget = isCurrentOrderStatus(requestedState)
+        ? requestedState
+        : null;
+
+      if (lifecycleTarget) {
+        await transitionOrderLifecycle({
+          orderId: id,
+          toState: lifecycleTarget,
+          expectedState,
+          reason: (updates as any).salesperson_action_type,
+          nextDeliveryDate: (updates as any).next_delivery_date,
+        });
+
+        const {
+          status: _status,
+          operational_status: _operationalStatus,
+          next_delivery_date: _nextDeliveryDate,
+          ...nonLifecycleUpdates
+        } = updates as any;
+
+        if (Object.keys(nonLifecycleUpdates).length > 0) {
+          const { error } = await supabase
+            .from('orders')
+            .update(nonLifecycleUpdates)
+            .eq('id', id);
+          if (error) throw error;
+        }
+
+        const { data, error } = await supabase
+          .from('orders')
+          .select()
+          .eq('id', id)
+          .single();
+        if (error) throw error;
+        return data;
+      }
+
       const { data, error } = await supabase
         .from('orders')
         .update(updates as any)
@@ -222,7 +257,10 @@ export function useUpdateOrder() {
       toast({ title: 'Order updated successfully' });
     },
     onError: (error: Error) => {
-      toast({ variant: 'destructive', title: 'Error', description: error.message });
+      const description = error.message.includes('current Driver assignment')
+        ? 'This order is assigned to a Driver. Runner cannot mark it Delivered or Failed.'
+        : error.message;
+      toast({ variant: 'destructive', title: 'Error', description });
     },
   });
 }
@@ -262,7 +300,11 @@ export function useBulkUpdateOrders() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ ids, updates }: { ids: string[]; updates: Partial<Order> }) => {
+    mutationFn: async ({ ids, updates, allowReopen = false }: {
+      ids: string[];
+      updates: Partial<Order>;
+      allowReopen?: boolean;
+    }) => {
       // Block runners from setting runner_status to DELIVERED via direct table update.
       // Deliveries must go through the process-delivery edge function which handles stock.
       if ((updates as any).runner_status === 'DELIVERED') {
@@ -278,11 +320,48 @@ export function useBulkUpdateOrders() {
         }
       }
 
-      const { error } = await supabase
-        .from('orders')
-        .update(updates as any)
-        .in('id', ids);
-      if (error) throw error;
+      const requestedState = String((updates as any).status || '').trim().toUpperCase();
+      const lifecycleTarget = isCurrentOrderStatus(requestedState)
+        ? requestedState
+        : null;
+
+      if (lifecycleTarget) {
+        const { data: currentOrders, error: currentError } = await supabase
+          .from('orders')
+          .select('id, current_operational_state')
+          .in('id', ids);
+        if (currentError) throw currentError;
+
+        await Promise.all((currentOrders || []).map((order) => transitionOrderLifecycle({
+          orderId: order.id,
+          toState: lifecycleTarget,
+          expectedState: order.current_operational_state as CurrentOrderStatus,
+          reason: (updates as any).salesperson_action_type,
+          nextDeliveryDate: (updates as any).next_delivery_date,
+          allowReopen,
+        })));
+
+        const {
+          status: _status,
+          operational_status: _operationalStatus,
+          next_delivery_date: _nextDeliveryDate,
+          ...nonLifecycleUpdates
+        } = updates as any;
+
+        if (Object.keys(nonLifecycleUpdates).length > 0) {
+          const { error } = await supabase
+            .from('orders')
+            .update(nonLifecycleUpdates)
+            .in('id', ids);
+          if (error) throw error;
+        }
+      } else {
+        const { error } = await supabase
+          .from('orders')
+          .update(updates as any)
+          .in('id', ids);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       invalidateOrderQueries(queryClient);
@@ -290,6 +369,35 @@ export function useBulkUpdateOrders() {
     },
     onError: (error: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
+    },
+  });
+}
+
+export function useRunnerTakeOrders() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (orderIds: string[]) => {
+      if (orderIds.length === 0) return null;
+
+      return callSupabaseRpc<Record<string, unknown>>('runner_take_orders', {
+        p_order_ids: orderIds,
+      });
+    },
+    onSuccess: (result) => {
+      invalidateOrderQueries(queryClient);
+      const takenCount = Number(result?.taken_count || 0);
+      const releasedCount = Number(result?.released_driver_count || 0);
+      toast({
+        title: 'Orders taken',
+        description: releasedCount > 0
+          ? `${takenCount} order(s) taken. ${releasedCount} Driver assignment(s) ended and kept in history.`
+          : `${takenCount} order(s) taken.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: 'destructive', title: 'Unable to take orders', description: error.message });
     },
   });
 }

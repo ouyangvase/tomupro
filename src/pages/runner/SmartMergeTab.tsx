@@ -36,6 +36,7 @@ interface SimpleOrder {
   total_amount: number;
   total_qty: number;
   runner_status: string;
+  driver_id: string | null;
   items_display: string;
 }
 
@@ -99,8 +100,8 @@ export default function SmartMergeTab({ embedded = false }: SmartMergeTabProps) 
       // Fetch orders with items inline via a simple select
       let q = supabase
         .from('orders')
-        .select('id, order_code, order_date, customer_name, phone, address, area, total_amount, total_qty, runner_status, order_items(sku_label, qty)')
-        .eq('status', 'READY')
+        .select('id, order_code, order_date, customer_name, phone, address, area, total_amount, total_qty, runner_status, driver_id, order_items(sku_label, qty)')
+        .eq('current_operational_state', 'READY')
         .in('runner_status', ['ASSIGNED', 'TAKEN'])
         .order('created_at', { ascending: false })
         .limit(1000);
@@ -123,6 +124,7 @@ export default function SmartMergeTab({ embedded = false }: SmartMergeTabProps) 
         total_amount: Number(o.total_amount) || 0,
         total_qty: Number(o.total_qty) || 0,
         runner_status: o.runner_status || '',
+        driver_id: o.driver_id || null,
         items_display: (o.order_items || [])
           .map((i: any) => `${i.sku_label || '?'} x${i.qty || 0}`)
           .join(', ') || 'No items',
@@ -217,6 +219,11 @@ export default function SmartMergeTab({ embedded = false }: SmartMergeTabProps) 
   }, []);
 
   const handleBulkDeliver = async (group: MergeGroup) => {
+    if (group.orders.some((order) => Boolean(order.driver_id))) {
+      toast.error('This group contains an order with a current Driver assignment. Review it from Dispatch > Drivers first.');
+      return;
+    }
+
     setDelivering(true);
     const failed: string[] = [];
     for (let i = 0; i < group.orders.length; i++) {
@@ -327,96 +334,102 @@ export default function SmartMergeTab({ embedded = false }: SmartMergeTabProps) 
           key={group.key}
           className="border-amber-300/50 dark:border-amber-700/50 bg-gradient-to-br from-amber-50/50 to-transparent dark:from-amber-950/20"
         >
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between">
+          <CardHeader className="border-b border-amber-200/60 px-3 py-2 dark:border-amber-800/50">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <div className="rounded-md bg-amber-100 p-1 dark:bg-amber-900/40">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
                 </div>
-                <CardTitle className="text-sm font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
                   Merge Delivery — Same Customer
                 </CardTitle>
               </div>
-              <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+              <Badge className="border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                 {group.totalOrders} orders
               </Badge>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+          <CardContent className="px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <div className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <span className="font-medium">{group.phone}</span>
               </div>
               {group.customerName && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span>{group.customerName}</span>
                 </div>
               )}
-              <div className="flex items-start gap-2 text-sm">
-                <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                <span className="text-muted-foreground">{group.address || 'No address'}</span>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="max-w-[32rem] truncate text-muted-foreground">{group.address || 'No address'}</span>
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-secondary/40 border border-border/40">
-              <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
-                <Package className="h-3.5 w-3.5" /> Combined Items:
+            <div className="rounded-md border border-border/40 bg-secondary/40 px-2.5 py-1.5">
+              <p className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                <Package className="h-3 w-3" /> Combined Items:
               </p>
-              <div className="space-y-1">
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
                 {group.combinedSkuList.map((item) => (
-                  <div key={item.sku} className="flex items-center justify-between text-sm">
-                    <span className="truncate mr-2">{item.sku}</span>
-                    <span className="font-medium shrink-0">&times;{item.qty}</span>
+                  <div key={item.sku} className="flex min-w-0 items-center gap-1">
+                    <span className="truncate">{item.sku}</span>
+                    <span className="font-medium tabular-nums">&times;{item.qty}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-center">
-              <p className="text-xs text-muted-foreground">Total COD</p>
-              <p className="text-lg font-bold text-primary">{formatBND(group.totalAmount)}</p>
+            <div className="flex items-center justify-between rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5">
+              <p className="text-[11px] text-muted-foreground">Total COD</p>
+              <p className="text-sm font-semibold tabular-nums text-primary">{formatBND(group.totalAmount)}</p>
             </div>
 
             <Collapsible open={expanded.has(group.key)} onOpenChange={() => toggleExpand(group.key)}>
               <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="w-full gap-1.5 text-muted-foreground">
+                <Button variant="ghost" size="sm" className="h-8 w-full gap-1.5 text-xs text-muted-foreground">
                   {expanded.has(group.key)
-                    ? <><ChevronUp className="h-4 w-4" /> Hide Orders</>
-                    : <><ChevronDown className="h-4 w-4" /> Show Orders ({group.totalOrders})</>}
+                    ? <><ChevronUp className="h-3.5 w-3.5" /> Hide Orders</>
+                    : <><ChevronDown className="h-3.5 w-3.5" /> Show Orders ({group.totalOrders})</>}
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="space-y-2 mt-2">
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {group.orders.map((order) => (
-                    <div key={order.id} className="p-3 rounded-lg bg-card border border-border/50 space-y-1.5">
+                    <div key={order.id} className="space-y-1 rounded-md border border-border/50 bg-card px-2.5 py-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-mono text-sm font-medium">{order.order_code}</span>
+                        <span className="font-mono text-xs font-medium">{order.order_code}</span>
                         <Badge variant="outline" className={cn('text-[10px]',
                           order.runner_status === 'TAKEN' && 'bg-primary/10 text-primary border-primary/30',
                           order.runner_status === 'ASSIGNED' && 'bg-blue-500/10 text-blue-600 border-blue-500/30',
                         )}>{order.runner_status}</Badge>
                       </div>
-                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className="truncate mr-2">{order.items_display}</span>
                         <span className="font-medium text-foreground shrink-0">{formatBND(order.total_amount)}</span>
                       </div>
-                      {order.area && <Badge variant="outline" className="text-[10px]">{order.area}</Badge>}
+                      {order.area && <Badge variant="outline" className="mt-1 px-1.5 py-0 text-[10px]">{order.area}</Badge>}
                     </div>
                   ))}
                 </div>
               </CollapsibleContent>
             </Collapsible>
 
-            <div className="flex gap-3 pt-1">
-              <Button className="flex-1 gap-1.5" onClick={() => setDeliverGroup(group)}>
-                <CheckCircle className="h-4 w-4" /> Mark All Delivered
-              </Button>
-              <Button variant="outline" className="flex-1 gap-1.5"
+            <div className="flex flex-wrap gap-2 pt-1">
+              {group.orders.some((order) => Boolean(order.driver_id)) ? (
+                <Badge variant="outline" className="h-8 flex-1 justify-center rounded-full border-amber-500/40 text-amber-700 bg-amber-500/5 px-3 text-xs">
+                  Driver assigned · Runner delivery locked
+                </Badge>
+              ) : (
+                <Button className="h-8 min-w-[10rem] flex-1 gap-1.5 px-3 text-xs" onClick={() => setDeliverGroup(group)}>
+                  <CheckCircle className="h-3.5 w-3.5" /> Mark All Delivered
+                </Button>
+              )}
+              <Button variant="outline" className="h-8 min-w-[10rem] flex-1 gap-1.5 px-3 text-xs"
                 onClick={() => toast.info(`Collect ${formatBND(group.totalAmount)} from ${group.customerName || 'customer'}`, { duration: 5000 })}>
-                <Banknote className="h-4 w-4" /> Collect Payment
+                <Banknote className="h-3.5 w-3.5" /> Collect Payment
               </Button>
             </div>
           </CardContent>

@@ -2,13 +2,11 @@ import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, ClipboardList, Truck, Trophy, Users, DollarSign,
-  Package, Settings, LogOut, Loader2, AlertCircle, GraduationCap, Send
+  Package, Settings, LogOut, Loader2, AlertCircle, GraduationCap, Send, Gift
 } from "lucide-react";
 import { AppLogo } from "@/components/brand/AppLogo";
-import { AppName } from "@/components/brand/AppName";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
-import capybaraMascot from "@/assets/capybara-order-assistant.png";
 import {
   Sidebar, SidebarContent, SidebarHeader, SidebarFooter, useSidebar
 } from "@/components/ui/sidebar";
@@ -35,6 +33,7 @@ const navItems: NavItem[] = [
   { title: "Performance", url: "/performance", icon: Trophy, roles: ["admin", "manager", "salesperson", "runner", "driver"] },
   { title: "Team", url: "/team", icon: Users, roles: ["admin", "manager"] },
   { title: "Finance", url: "/finance", icon: DollarSign, roles: ["admin", "runner", "finance_viewer"] },
+  { title: "Referral Rewards", url: "/referral-rewards", icon: Gift, roles: ["manager", "salesperson"] },
   { title: "Inventory", url: "/inventory", icon: Package, roles: ["admin", "manager", "salesperson", "runner"] },
   { title: "System", url: "/system", icon: Settings, roles: ["admin"] },
   { title: "Guide", url: "/guide", icon: GraduationCap, roles: ["admin", "manager", "salesperson", "runner", "driver", "runner_assistant"] },
@@ -73,6 +72,7 @@ export function AppSidebar() {
   const { profile, signOut, signingOut, profileStatus, retryProfile, resetSession } = useAuth();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const sidepanelLogoClass = collapsed ? "h-8 w-8 object-contain" : "h-10 w-14 object-contain";
   const location = useLocation();
   const navigate = useNavigate();
   const userRole = profile?.role;
@@ -116,7 +116,10 @@ export function AppSidebar() {
         assistantBinding?.runner_id &&
         (assistantBinding.can_view_stock_audit || assistantBinding.can_manage_inbound_stock)
       );
-      if (!hasRoleAccess && !hasAssistantDispatchAccess && !hasAssistantInventoryAccess) return false;
+      const hasAssistantFinanceAccess = item.url === '/finance' && Boolean(
+        assistantBinding?.analyticsRunnerIds?.length && assistantBinding.can_view_driver_analytics
+      );
+      if (!hasRoleAccess && !hasAssistantDispatchAccess && !hasAssistantInventoryAccess && !hasAssistantFinanceAccess) return false;
       // Hide Performance tab for non-admin roles when hide_performance_ui is enabled
       if (item.url === '/performance' && hidePerformanceUI && userRole !== 'admin') return false;
       return true;
@@ -130,6 +133,8 @@ export function AppSidebar() {
     assistantBinding?.can_manage_driver_operations,
     assistantBinding?.can_manage_driver_stock,
     assistantBinding?.can_view_driver_workload,
+    assistantBinding?.can_view_driver_analytics,
+    assistantBinding?.analyticsRunnerIds,
     assistantBinding?.can_view_stock_audit,
     assistantBinding?.runner_id,
     userRole,
@@ -151,10 +156,9 @@ export function AppSidebar() {
       <Sidebar className={cn("liquid-glass rounded-none border-r border-white/10 bg-transparent", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
         <SidebarHeader className="p-4 border-b border-border/30">
           <div className="flex items-center gap-3">
-            <AppLogo size="sm" />
+            <AppLogo size="xs" className={sidepanelLogoClass} />
             {!collapsed && (
               <div>
-                <h2 className="font-extrabold text-base tracking-tight"><AppName highlight /></h2>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <Loader2 className="h-3 w-3 animate-spin text-primary" />
                   <p className="text-[11px] text-muted-foreground">Loading...</p>
@@ -178,10 +182,9 @@ export function AppSidebar() {
       <Sidebar className={cn("liquid-glass rounded-none border-r border-white/10 bg-transparent", collapsed ? "w-16 md:w-20" : "w-56 md:w-60")}>
         <SidebarHeader className="p-4 border-b border-border/30">
           <div className="flex items-center gap-3">
-            <AppLogo size="sm" />
+            <AppLogo size="xs" className={sidepanelLogoClass} />
             {!collapsed && (
               <div>
-                <h2 className="font-extrabold text-base tracking-tight"><AppName highlight /></h2>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <AlertCircle className="h-3 w-3 text-destructive" />
                   <p className="text-[11px] text-destructive">Profile Error</p>
@@ -215,12 +218,9 @@ export function AppSidebar() {
       {/* Brand */}
       <SidebarHeader className="p-4 border-b border-border/30">
         <div className="flex items-center gap-3">
-          <AppLogo size="sm" className="drop-shadow-md" />
+          <AppLogo size="xs" className={cn(sidepanelLogoClass, "drop-shadow-md")} />
           {!collapsed && (
             <div>
-              <h2 className="font-extrabold text-base tracking-tight">
-                <AppName highlight />
-              </h2>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--status-success))] animate-pulse" />
                 <p className="text-[11px] text-muted-foreground font-medium">
@@ -314,41 +314,20 @@ export function AppSidebar() {
           </button>
         )}
 
-        {/* Telegram Premium Card */}
+        {/* Telegram settings */}
         {!collapsed && (
-          <div className="relative mb-2.5 group/tg">
-            {/* Capybara mascot peeking over card */}
-            <img
-              src={capybaraMascot}
-              alt=""
-              className="absolute -top-8 right-3 h-11 w-11 object-contain pointer-events-none z-10 drop-shadow-md transition-transform duration-300 group-hover/tg:-translate-y-0.5"
-            />
-            <NavLink
-              to="/settings/telegram"
-              className={({ isActive }) => cn(
-                "relative flex items-center gap-3 px-3 py-3 rounded-[18px] transition-all duration-200 overflow-hidden border",
-                "bg-white/[0.04] hover:bg-white/[0.07]",
-                "border-white/10",
-                "shadow-[0_2px_16px_rgba(0,0,0,0.18)] hover:shadow-[0_8px_28px_rgba(111,255,0,0.08)]",
-                "active:scale-[0.98]",
-                isActive && "ring-1 ring-[#C99D4E]/30 shadow-[0_4px_16px_rgba(201,157,78,0.15)]"
-              )}
-            >
-              {/* Telegram icon badge */}
-              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shadow-[0_1px_4px_rgba(0,0,0,0.2)] shrink-0 transition-shadow duration-200 group-hover/tg:shadow-[0_2px_8px_rgba(111,255,0,0.15)]">
-                <Send className="h-[18px] w-[18px] text-primary" />
-              </div>
-              {/* Text */}
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-foreground leading-tight">
-                  Telegram Settings
-                </p>
-                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-                  Manage notifications
-                </p>
-              </div>
-            </NavLink>
-          </div>
+          <NavLink
+            to="/settings/telegram"
+            className={({ isActive }) => cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 mb-2",
+              isActive
+                ? "bg-primary/15 text-primary shadow-[0_0_24px_rgba(111,255,0,0.10)]"
+                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+            )}
+          >
+            <Send className="h-[18px] w-[18px] shrink-0" />
+            <span className="flex-1 truncate">Telegram</span>
+          </NavLink>
         )}
 
         {/* Collapsed Telegram button */}
@@ -359,23 +338,16 @@ export function AppSidebar() {
                 <NavLink
                   to="/settings/telegram"
                   className={({ isActive }) => cn(
-                    "relative flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition-all duration-200 mb-2 group/tgc",
-                    "bg-white/[0.04] hover:bg-white/[0.07]",
-                    "border border-white/10",
-                    "shadow-[0_1px_4px_rgba(0,0,0,0.18)] hover:shadow-[0_2px_8px_rgba(111,255,0,0.15)]",
-                    "active:scale-95",
-                    isActive && "ring-1 ring-[#C99D4E]/30"
+                    "relative flex items-center justify-center w-10 h-10 mx-auto rounded-lg transition-all duration-150 mb-2",
+                    isActive
+                      ? "bg-primary/15 text-primary shadow-[0_0_24px_rgba(111,255,0,0.10)]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   )}
                 >
-                  <img
-                    src={capybaraMascot}
-                    alt=""
-                    className="absolute -top-5 -right-1.5 h-7 w-7 object-contain pointer-events-none opacity-90 group-hover/tgc:opacity-100 transition-all duration-200 group-hover/tgc:-translate-y-0.5"
-                  />
-                  <Send className="h-4 w-4 text-primary" />
+                  <Send className="h-[18px] w-[18px]" />
                 </NavLink>
               </TooltipTrigger>
-              <TooltipContent side="right" className="font-medium">Telegram Settings</TooltipContent>
+              <TooltipContent side="right" className="font-medium">Telegram</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}

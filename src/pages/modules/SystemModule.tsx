@@ -16,6 +16,8 @@ const BrandingSettings = lazy(() => import('@/pages/admin/BrandingSettings'));
 const TelegramAdminSettings = lazy(() => import('@/pages/admin/TelegramAdminSettings'));
 const GoogleSheetSettings = lazy(() => import('@/pages/admin/GoogleSheetSettings'));
 const InterestLeadsAdmin = lazy(() => import('@/pages/admin/InterestLeadsAdmin'));
+const MiriPickupOrders = lazy(() => import('@/pages/admin/MiriPickupOrders'));
+const ReferralRewardSettings = lazy(() => import('@/pages/admin/ReferralRewardSettings'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -36,6 +38,8 @@ const tabs = [
   { id: 'google-sheet', label: 'Google Sheet' },
   { id: 'telegram', label: 'Telegram' },
   { id: 'interest-leads', label: 'Interest Leads' },
+  { id: 'miri-pickups', label: 'Miri Pickup' },
+  { id: 'referral-rewards', label: 'Referral Rewards' },
   { id: 'profile', label: 'Profile' },
 ];
 
@@ -81,6 +85,8 @@ export default function SystemModule() {
             {activeTab === 'google-sheet' && <GoogleSheetSettings />}
             {activeTab === 'telegram' && <TelegramAdminSettings />}
             {activeTab === 'interest-leads' && <InterestLeadsAdmin />}
+            {activeTab === 'miri-pickups' && <MiriPickupOrders />}
+            {activeTab === 'referral-rewards' && <ReferralRewardSettings />}
             {activeTab === 'profile' && <ProfilePage />}
           </div>
         </Suspense>

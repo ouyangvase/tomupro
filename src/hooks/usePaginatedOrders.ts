@@ -2,9 +2,12 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 import { lifecycleTrace } from '@/lib/lifecycleTrace';
-import { CANONICAL_ACTION_REQUIRED_OR } from '@/lib/actionRequired';
+import { orderQueryKeys } from '@/lib/orderQueryKeys';
+import { isOrdersQueryReady } from '@/lib/orderQueryState';
+import { orderCodeSearchPattern } from '@/lib/orderSearch';
+import { useVisibleOwnerScope } from '@/hooks/useVisibleOwnerScope';
+import { hasCurrentRunnerAssignment, isHiddenFromDriverApps } from '@/lib/driverOrderScope';
 import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/types/database';
 
 export interface PaginatedOrderFilters {
@@ -17,11 +20,13 @@ export interface PaginatedOrderFilters {
   runnerStatus?: RunnerStatus;
   runnerStatusIn?: RunnerStatus[];
   excludeRunnerStatuses?: RunnerStatus[];
+  driverAssignment?: 'HAVE_DRIVER' | 'NO_DRIVER';
   reconciliationStatus?: ReconciliationStatus;
   reconciliationStatusIn?: ReconciliationStatus[];
   excludeStatus?: OrderStatus;
   driverId?: string;
   searchQuery?: string;
+  searchByPhone?: boolean;
   areaFilter?: string;
   deliveredDateFrom?: string;
   deliveredDateTo?: string;
@@ -35,13 +40,15 @@ export interface PaginatedOrderFilters {
   excludeDeliveredAndFailed?: boolean;
   // Custom: salesperson_action_required = true
   salespersonActionRequired?: boolean;
-  // Action-required: salesperson_action_required=true OR runner_status=FAILED_DELIVERY (non-cancelled)
+  // Action-required: canonical action markers plus READY/FAILED_DELIVERY review items.
   actionRequired?: boolean;
   // Payment & receipt filters
   paymentMethod?: string;
   receiptStatus?: string;
   // Stock status filter
   stockStatusIn?: string[];
+  // Miri pickup has its own admin view; Runner Inbox opts in explicitly.
+  includeMiri?: boolean;
 }
 
 export interface PaginationState {
@@ -80,39 +87,56 @@ export function usePaginatedOrders(
     }
   }, [filterKey]);
 
-  useEffect(() => {
-    if (profileStatus !== 'ready' || !user?.id || !role) return;
-    lifecycleTrace('query_enabled', {
-      userId: user.id,
-      role,
-      queryKey: 'orders-paginated',
-      page,
-      pageSize,
-      status: filters.status || null,
-      hasSearch: Boolean(filters.searchQuery),
-    });
-  }, [filterKey, filters.searchQuery, filters.status, page, pageSize, profileStatus, role, user?.id]);
-
   const setPageSize = useCallback((size: number) => {
     setPageSizeState(size);
     setPage(1);
   }, []);
 
   const offset = (page - 1) * pageSize;
+  const scopeRequired = role !== 'admin' && !filters.runnerId && !filters.runnerIds?.length;
+  const ownerScope = useVisibleOwnerScope(scopeRequired);
+  const queryReady = isOrdersQueryReady({
+    profileStatus,
+    userId: user?.id,
+    role,
+    scopeRequired,
+    scopeReady: ownerScope.ready,
+  });
+
+  useEffect(() => {
+    if (!queryReady || !user?.id || !role) return;
+    lifecycleTrace('query_enabled', {
+      requestId: crypto.randomUUID(),
+      userId: user.id,
+      role,
+      queryKey: 'orders-paginated',
+      page,
+      pageSize,
+      status: filters.status || null,
+      runnerStatus: filters.runnerStatus || null,
+      areaFilter: filters.areaFilter || null,
+      deliveredDateFrom: filters.deliveredDateFrom || null,
+      deliveredDateTo: filters.deliveredDateTo || null,
+      hasSearch: Boolean(filters.searchQuery),
+    });
+  }, [filterKey, filters.areaFilter, filters.deliveredDateFrom, filters.deliveredDateTo, filters.runnerStatus, filters.searchQuery, filters.status, page, pageSize, queryReady, role, user?.id]);
 
   const { data: queryResult, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ['orders-paginated', filters, page, pageSize, role, user?.id],
+    queryKey: orderQueryKeys.paginated(filters, page, pageSize, role, user?.id),
     staleTime: 15000,
     retry: 2,
     retryDelay: 1000,
     placeholderData: keepPreviousData,
     queryFn: async () => {
-      if (!user?.id || !role || profileStatus !== 'ready') {
+      if (!user?.id || !role || !queryReady) {
         throw new Error('Orders query started before authentication and profile scope were ready.');
       }
 
       const queryStartedAt = performance.now();
+      const requestId = crypto.randomUUID();
       lifecycleTrace('orders_query_started', {
+        requestId,
+        queryKey: 'orders-paginated',
         userId: user.id,
         role,
         page,
@@ -122,16 +146,14 @@ export function usePaginatedOrders(
 
       // Get visible owner IDs for team visibility
       // Skip for admin (sees everything) and when runnerId is set (runner views own assigned orders)
-      let visibleUserIds: string[] | null = null;
-      const skipVisibilityRpc = role === 'admin' || !!filters.runnerId || Boolean(filters.runnerIds?.length);
-      if (!skipVisibilityRpc) {
-        visibleUserIds = await getVisibleOwnerIdsCached(user.id);
-      }
+      const visibleUserIds = scopeRequired ? ownerScope.ownerIds : null;
       lifecycleTrace('runner_scope_loaded', {
+        requestId,
         userId: user.id,
         role,
         visibleOwnerIds: visibleUserIds || [],
         unrestricted: visibleUserIds === null,
+        scopeReady: ownerScope.ready,
       });
 
       // Build the query with count
@@ -143,6 +165,11 @@ export function usePaginatedOrders(
         `, { count: 'exact' })
         .range(offset, offset + pageSize - 1);
 
+      const includeMiri = filters.includeMiri ?? Boolean(filters.runnerId || filters.runnerIds?.length);
+      if (!includeMiri) {
+        query = query.neq('order_type', 'MIRI_INBOUND_PICKUP');
+      }
+
       // Apply sorting
       const sortField = filters.sortField || 'created_at';
       const sortAsc = filters.sortDirection === 'asc';
@@ -150,16 +177,12 @@ export function usePaginatedOrders(
 
       // Status filter
       if (filters.status) {
-        query = query.eq('status', filters.status);
-        if (filters.status === 'READY' || filters.status === 'BOOKING') {
-          query = query.neq('runner_status', 'DELIVERED');
-          query = query.neq('runner_status', 'FAILED_DELIVERY');
-        }
+        query = query.eq('current_operational_state', filters.status);
       }
 
       // Multiple status filter
       if (filters.statusIn && filters.statusIn.length > 0) {
-        query = query.in('status', filters.statusIn);
+        query = query.in('current_operational_state', filters.statusIn);
       }
 
       // Runner status filters
@@ -177,11 +200,10 @@ export function usePaginatedOrders(
 
       // Exclude delivered and failed (shorthand for runner inbox)
       if (filters.excludeDeliveredAndFailed) {
-        query = query.eq('status', 'READY');
+        query = query.eq('current_operational_state', 'READY');
         query = query.neq('runner_status', 'DELIVERED');
         query = query.neq('runner_status', 'FAILED_DELIVERY');
         query = query.neq('runner_status', 'UNASSIGNED');
-        query = query.neq('status', 'CANCELLED');
       }
 
       // Salesperson action required
@@ -190,11 +212,9 @@ export function usePaginatedOrders(
       }
 
       // Action-required: tightened filter to exclude stale/resolved orders
-      // - FAILED_DELIVERY only for READY orders (not stale BOOKING ones)
-      // - salesperson_action_required excludes already-DELIVERED orders
+      // Every action queue reads the same canonical state column.
       if (filters.actionRequired) {
-        query = query.or(CANONICAL_ACTION_REQUIRED_OR);
-        query = query.neq('status', 'CANCELLED');
+        query = query.eq('current_operational_state', 'ACTION_REQUIRED');
       }
 
       // Visibility: team filtering
@@ -229,6 +249,8 @@ export function usePaginatedOrders(
       if (filters.runnerId) query = query.eq('runner_id', filters.runnerId);
       if (filters.runnerIds?.length) query = query.in('runner_id', filters.runnerIds);
       if (filters.driverId) query = query.eq('driver_id', filters.driverId);
+      if (filters.driverAssignment === 'HAVE_DRIVER') query = query.not('driver_id', 'is', null);
+      if (filters.driverAssignment === 'NO_DRIVER') query = query.is('driver_id', null);
       if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
       if (filters.reconciliationStatusIn && filters.reconciliationStatusIn.length > 0) {
         query = query.in('reconciliation_status', filters.reconciliationStatusIn);
@@ -236,9 +258,12 @@ export function usePaginatedOrders(
       if (filters.excludeStatus) query = query.neq('status', filters.excludeStatus);
 
       // Search
-      if (filters.searchQuery?.trim()) {
-        const searchTerm = `${filters.searchQuery.trim().toUpperCase().replace(/\s+/g, '')}%`;
-        query = query.ilike('order_code', searchTerm);
+      const searchTerm = orderCodeSearchPattern(filters.searchQuery);
+      if (searchTerm) {
+        const normalizedPhoneSearch = filters.searchQuery?.trim().replace(/\s+/g, '') || '';
+        query = filters.searchByPhone
+          ? query.or(`order_code.ilike.${searchTerm},phone.ilike.%${normalizedPhoneSearch}%`)
+          : query.ilike('order_code', searchTerm);
       }
 
       // Area filter
@@ -276,6 +301,8 @@ export function usePaginatedOrders(
       const { data: ordersData, error: ordersError, count } = await query;
       if (ordersError) {
         lifecycleTrace('orders_query_failed', {
+          requestId,
+          queryKey: 'orders-paginated',
           userId: user.id,
           code: ordersError.code || null,
           durationMs: Math.round(performance.now() - queryStartedAt),
@@ -294,27 +321,50 @@ export function usePaginatedOrders(
       const usersMap: Record<string, { id: string; display_name: string; email: string | null }> = {};
       if (userIds.size > 0) {
         const { data: usersData } = await supabase
-          .from('user_directory')
+          .from('profiles')
           .select('id, display_name, email')
           .in('id', Array.from(userIds));
         usersData?.forEach(u => { usersMap[u.id] = u; });
       }
 
-      const orders = ordersData?.map(order => ({
+      const useCanonicalDriverDisplay = filters.status === 'BOOKING' || filters.status === 'READY';
+      const orders = ordersData?.map(order => {
+        const hasCanonicalDriver = useCanonicalDriverDisplay
+          && filters.status === 'READY'
+          && Boolean(order.driver_id)
+          && hasCurrentRunnerAssignment(order)
+          && !isHiddenFromDriverApps(order);
+
+        return {
         ...order,
+        driver_id: useCanonicalDriverDisplay && !hasCanonicalDriver ? null : order.driver_id,
+        driver_status: useCanonicalDriverDisplay && !hasCanonicalDriver ? 'UNASSIGNED' as const : order.driver_status,
         salesperson: order.salesperson_id
           ? (usersMap[order.salesperson_id] || { id: order.salesperson_id, display_name: 'Deleted User', email: null })
           : null,
         runner: order.runner_id
-          ? (usersMap[order.runner_id] || { id: order.runner_id, display_name: 'Deleted User', email: null })
+          ? (usersMap[order.runner_id] || {
+            id: order.runner_id,
+            display_name: role === 'runner_assistant' ? 'Runner identity unavailable' : 'Deleted User',
+            email: null,
+          })
           : null,
-        driver: order.driver_id
-          ? (usersMap[order.driver_id] || { id: order.driver_id, display_name: 'Deleted User', email: null })
+        driver: useCanonicalDriverDisplay && !hasCanonicalDriver
+          ? null
+          : order.driver_id
+          ? (usersMap[order.driver_id] || {
+            id: order.driver_id,
+            display_name: 'Driver identity unavailable',
+            email: null,
+          })
           : null,
-      }));
+        };
+      });
 
       const result = { orders: orders as unknown as Order[], count: count || 0 };
       lifecycleTrace(result.count === 0 ? 'orders_query_empty' : 'orders_query_succeeded', {
+        requestId,
+        queryKey: 'orders-paginated',
         userId: user.id,
         httpStatus: 200,
         resultCount: result.orders.length,
@@ -323,7 +373,7 @@ export function usePaginatedOrders(
       });
       return result;
     },
-    enabled: profileStatus === 'ready' && !!user?.id && !!role,
+    enabled: queryReady,
     refetchOnReconnect: true,
   });
 
@@ -337,11 +387,16 @@ export function usePaginatedOrders(
     }
   }, [page, totalPages]);
 
+  const refetchOrders = () => {
+    if (ownerScope.error) void ownerScope.refetch();
+    void refetch();
+  };
+
   return {
     data: queryResult?.orders || [],
-    isLoading,
-    isFetching,
-    error: error as Error | null,
+    isLoading: ownerScope.isLoading || isLoading,
+    isFetching: ownerScope.isLoading || isFetching,
+    error: (ownerScope.error || error) as Error | null,
     pagination: {
       page,
       pageSize,
@@ -350,7 +405,7 @@ export function usePaginatedOrders(
     },
     setPage,
     setPageSize,
-    refetch,
+    refetch: refetchOrders,
   };
 }
 
@@ -363,19 +418,25 @@ export function useAllOrderIds(
   enabled = true
 ) {
   const { user, role, profileStatus } = useAuth();
+  const scopeRequired = role !== 'admin' && !filters.runnerId && !filters.runnerIds?.length;
+  const ownerScope = useVisibleOwnerScope(scopeRequired);
+  const queryReady = isOrdersQueryReady({
+    profileStatus,
+    userId: user?.id,
+    role,
+    scopeRequired,
+    scopeReady: ownerScope.ready,
+  });
 
   return useQuery({
-    queryKey: ['orders-all-ids', filters, role, user?.id],
+    queryKey: orderQueryKeys.allIds(filters, role, user?.id),
     staleTime: 30000,
     retry: 1,
     queryFn: async () => {
-      // Get visible owner IDs for team visibility
-      let visibleUserIds: string[] | null = null;
-      const skipVisibilityRpc = role === 'admin' || !!filters.runnerId;
-      if (!skipVisibilityRpc) {
-        if (!user?.id) throw new Error('Not authenticated');
-        visibleUserIds = await getVisibleOwnerIdsCached(user.id);
-      }
+      if (!user?.id || !role || !queryReady) throw new Error('Order scope is not ready');
+
+      // The owner scope is resolved by useVisibleOwnerScope before this query enables.
+      const visibleUserIds = scopeRequired ? ownerScope.ownerIds : null;
 
       // Only select IDs — lightweight query, no joins
       // Use batch fetching to work around Supabase PostgREST max_rows=1000 cap
@@ -392,14 +453,10 @@ export function useAllOrderIds(
 
         // Apply same filters as usePaginatedOrders
         if (filters.status) {
-          query = query.eq('status', filters.status);
-          if (filters.status === 'READY' || filters.status === 'BOOKING') {
-            query = query.neq('runner_status', 'DELIVERED');
-            query = query.neq('runner_status', 'FAILED_DELIVERY');
-          }
+          query = query.eq('current_operational_state', filters.status);
         }
         if (filters.statusIn && filters.statusIn.length > 0) {
-          query = query.in('status', filters.statusIn);
+          query = query.in('current_operational_state', filters.statusIn);
         }
         if (filters.runnerStatus) {
           query = query.eq('runner_status', filters.runnerStatus);
@@ -413,18 +470,16 @@ export function useAllOrderIds(
           }
         }
         if (filters.excludeDeliveredAndFailed) {
-          query = query.eq('status', 'READY');
+          query = query.eq('current_operational_state', 'READY');
           query = query.neq('runner_status', 'DELIVERED');
           query = query.neq('runner_status', 'FAILED_DELIVERY');
           query = query.neq('runner_status', 'UNASSIGNED');
-          query = query.neq('status', 'CANCELLED');
         }
         if (filters.salespersonActionRequired) {
           query = query.eq('salesperson_action_required', true);
         }
         if (filters.actionRequired) {
-        query = query.or(CANONICAL_ACTION_REQUIRED_OR);
-          query = query.neq('status', 'CANCELLED');
+          query = query.eq('current_operational_state', 'ACTION_REQUIRED');
         }
 
         // Visibility: team filtering
@@ -454,16 +509,22 @@ export function useAllOrderIds(
         }
 
         if (filters.runnerId) query = query.eq('runner_id', filters.runnerId);
+        if (filters.runnerIds?.length) query = query.in('runner_id', filters.runnerIds);
         if (filters.driverId) query = query.eq('driver_id', filters.driverId);
+        if (filters.driverAssignment === 'HAVE_DRIVER') query = query.not('driver_id', 'is', null);
+        if (filters.driverAssignment === 'NO_DRIVER') query = query.is('driver_id', null);
         if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
         if (filters.reconciliationStatusIn && filters.reconciliationStatusIn.length > 0) {
           query = query.in('reconciliation_status', filters.reconciliationStatusIn);
         }
         if (filters.excludeStatus) query = query.neq('status', filters.excludeStatus);
 
-        if (filters.searchQuery?.trim()) {
-          const searchTerm = `${filters.searchQuery.trim().toUpperCase().replace(/\s+/g, '')}%`;
-          query = query.ilike('order_code', searchTerm);
+        const searchTerm = orderCodeSearchPattern(filters.searchQuery);
+        if (searchTerm) {
+          const normalizedPhoneSearch = filters.searchQuery?.trim().replace(/\s+/g, '') || '';
+          query = filters.searchByPhone
+            ? query.or(`order_code.ilike.${searchTerm},phone.ilike.%${normalizedPhoneSearch}%`)
+            : query.ilike('order_code', searchTerm);
         }
         if (filters.areaFilter && filters.areaFilter !== 'all') {
           query = query.eq('area', filters.areaFilter);
@@ -500,7 +561,7 @@ export function useAllOrderIds(
 
       return allIds;
     },
-    enabled: enabled && profileStatus === 'ready' && !!user?.id && !!role,
+    enabled: enabled && queryReady,
     refetchOnReconnect: true,
   });
 }

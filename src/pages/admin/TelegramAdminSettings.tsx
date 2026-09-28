@@ -34,6 +34,7 @@ import {
   useAllUserTelegramSettings,
   useTelegramBotSettings,
   useTelegramLogs,
+  useTelegramQueueHealth,
   useUpdateBotSettings,
 } from '@/hooks/useTelegram';
 
@@ -59,6 +60,7 @@ export default function TelegramAdminSettings() {
   const { data: botSettings, isLoading: loadingBot } = useTelegramBotSettings();
   const { data: allUserSettings } = useAllUserTelegramSettings();
   const { data: logs, refetch: refetchLogs } = useTelegramLogs(50);
+  const { data: queueHealth = [] } = useTelegramQueueHealth();
   const updateBot = useUpdateBotSettings();
 
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
@@ -118,6 +120,11 @@ export default function TelegramAdminSettings() {
       latestSuccess,
     };
   }, [logs, userRows]);
+
+  const queueMetric = (status: string) => queueHealth.find((item) => item.status === status);
+  const oldestActiveQueue = queueHealth
+    .filter((item) => ['pending', 'processing', 'retrying'].includes(item.status))
+    .reduce((oldest, item) => Math.max(oldest, item.oldest_age_seconds || 0), 0);
 
   const handleSaveBot = async () => {
     setSavingBot(true);
@@ -343,6 +350,25 @@ export default function TelegramAdminSettings() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-[1.25rem] border-border/60">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Queue health</CardTitle>
+          <CardDescription>
+            Server-side Telegram processor status. Oldest active event: {oldestActiveQueue}s.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {['pending', 'processing', 'retrying', 'failed', 'success'].map((status) => (
+              <div key={status} className="rounded-2xl border border-border/60 bg-secondary/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{status}</p>
+                <p className="mt-1 text-lg font-bold">{queueMetric(status)?.event_count || 0}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden rounded-lg border-border/60">
         <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">

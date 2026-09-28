@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { callSupabaseRpc } from '@/lib/supabaseRpc';
+import { KUALA_LUMPUR_TIME_ZONE } from '@/lib/timezone';
 
 export type RunnerPerformanceMetric = {
   assigned: number;
@@ -78,7 +79,7 @@ const normalizeMetric = (value: Partial<RunnerPerformanceMetric> | null | undefi
 });
 
 const normalizeReport = (value: RunnerPerformanceReport): RunnerPerformanceReport => ({
-  timeZone: value?.timeZone || 'Asia/Brunei',
+  timeZone: value?.timeZone || KUALA_LUMPUR_TIME_ZONE,
   fromDate: value?.fromDate || '',
   toDate: value?.toDate || '',
   runnerId: value?.runnerId || null,
@@ -89,7 +90,7 @@ const normalizeReport = (value: RunnerPerformanceReport): RunnerPerformanceRepor
 });
 
 const normalizeDayReport = (value: RunnerPerformanceDayReport): RunnerPerformanceDayReport => ({
-  timeZone: value?.timeZone || 'Asia/Brunei',
+  timeZone: value?.timeZone || KUALA_LUMPUR_TIME_ZONE,
   date: value?.date || '',
   runnerId: value?.runnerId || null,
   summary: normalizeMetric(value?.summary),

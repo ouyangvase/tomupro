@@ -61,6 +61,11 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Profile, AppRole } from '@/types/database';
+import {
+  DISPLAY_CURRENCY_OPTIONS,
+  getDisplayCurrencyPrefix,
+  normalizeDisplayCurrency,
+} from '@/lib/currency';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { DisableUserDialog } from '@/components/admin/DisableUserDialog';
@@ -227,6 +232,20 @@ export default function UsersSettings() {
     setSelectedUser(null);
   };
 
+  const handleCurrencyChange = async (user: Profile, value: string) => {
+    const displayCurrency = normalizeDisplayCurrency(value);
+    if (displayCurrency === normalizeDisplayCurrency(user.display_currency)) return;
+
+    try {
+      await updateUser.mutateAsync({
+        id: user.id,
+        display_currency: displayCurrency,
+      });
+    } catch {
+      // The mutation displays the error toast.
+    }
+  };
+
   const columns: Column<Profile>[] = [
     {
       key: 'display_name',
@@ -304,6 +323,31 @@ export default function UsersSettings() {
           </TooltipProvider>
         );
       },
+    },
+    {
+      key: 'display_currency',
+      header: 'Currency',
+      sortable: true,
+      render: (user) => isAdmin ? (
+        <Select
+          value={normalizeDisplayCurrency(user.display_currency)}
+          onValueChange={(value) => handleCurrencyChange(user, value)}
+          disabled={updateUser.isPending}
+        >
+          <SelectTrigger className="h-8 w-[108px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {DISPLAY_CURRENCY_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.value === 'MYR' ? 'MYR / RM' : option.value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <Badge variant="outline">{getDisplayCurrencyPrefix(normalizeDisplayCurrency(user.display_currency))}</Badge>
+      ),
     },
     {
       key: 'created_at',

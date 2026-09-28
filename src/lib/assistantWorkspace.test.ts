@@ -5,6 +5,7 @@ describe('resolveAssistantWorkspace', () => {
   it('keeps a Runner in their own workspace by default while exposing one linked Runner', () => {
     expect(resolveAssistantWorkspace({
       hasPrimaryWorkspace: true,
+      primaryRunnerId: 'self',
       linkedRunnerIds: ['yc2'],
     })).toEqual({
       selectedWorkspace: 'self',
@@ -17,12 +18,27 @@ describe('resolveAssistantWorkspace', () => {
   it('scopes a dual-role Runner to the selected linked Runner', () => {
     expect(resolveAssistantWorkspace({
       hasPrimaryWorkspace: true,
+      primaryRunnerId: 'self',
       linkedRunnerIds: ['yc2'],
       requestedWorkspace: 'yc2',
     })).toEqual({
       selectedWorkspace: 'yc2',
       isAssistantWorkspace: true,
       runnerIdsOverride: ['yc2'],
+      showWorkspaceSelector: true,
+    });
+  });
+
+  it('combines the primary Runner and linked Runners in the ALL workspace', () => {
+    expect(resolveAssistantWorkspace({
+      hasPrimaryWorkspace: true,
+      primaryRunnerId: 'self',
+      linkedRunnerIds: ['yc2'],
+      requestedWorkspace: 'all',
+    })).toEqual({
+      selectedWorkspace: 'all',
+      isAssistantWorkspace: false,
+      runnerIdsOverride: ['self', 'yc2'],
       showWorkspaceSelector: true,
     });
   });

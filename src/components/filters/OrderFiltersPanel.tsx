@@ -34,6 +34,7 @@ export interface OrderFilters {
   dateMode?: 'created' | 'delivered';
   runnerStatus?: string;
   driverStatus?: string;
+  driverAssignment?: 'HAVE_DRIVER' | 'NO_DRIVER';
   orderStatus?: string;
   reconciliationStatus?: string;
   area?: string;
@@ -44,7 +45,7 @@ export interface OrderFilters {
   receiptStatus?: string;
 }
 
-interface FilterOption {
+export interface FilterOption {
   label: string;
   value: string;
 }
@@ -57,10 +58,14 @@ interface OrderFiltersPanelProps {
   driverOptions?: FilterOption[];
   showSalespersonFilter?: boolean;
   showDriverFilter?: boolean;
+  showDriverAssignmentFilter?: boolean;
   showOrderStatus?: boolean;
   showRunnerStatus?: boolean;
+  runnerStatusOptions?: FilterOption[];
   showDriverStatus?: boolean;
   showReconciliationStatus?: boolean;
+  showReceiptStatusFilter?: boolean;
+  showDeliveryReasonFilter?: boolean;
 }
 
 const currentYear = new Date().getFullYear();
@@ -84,7 +89,7 @@ const monthOptions: FilterOption[] = [
   { label: 'December', value: '12' },
 ];
 
-const runnerStatusOptions: FilterOption[] = [
+const defaultRunnerStatusOptions: FilterOption[] = [
   { label: 'Unassigned', value: 'UNASSIGNED' },
   { label: 'Assigned', value: 'ASSIGNED' },
   { label: 'Taken', value: 'TAKEN' },
@@ -98,6 +103,11 @@ const driverStatusOptions: FilterOption[] = [
   { label: 'Out for Delivery', value: 'OUT_FOR_DELIVERY' },
   { label: 'Driver Delivered', value: 'DRIVER_DELIVERED' },
   { label: 'Driver Failed', value: 'DRIVER_FAILED' },
+];
+
+const driverAssignmentOptions: FilterOption[] = [
+  { label: 'Have Driver', value: 'HAVE_DRIVER' },
+  { label: 'No Driver', value: 'NO_DRIVER' },
 ];
 
 const orderStatusOptions: FilterOption[] = [
@@ -134,10 +144,14 @@ export function OrderFiltersPanel({
   driverOptions = [],
   showSalespersonFilter = false,
   showDriverFilter = false,
+  showDriverAssignmentFilter = false,
   showOrderStatus = false,
   showRunnerStatus = true,
+  runnerStatusOptions: runnerStatusFilterOptions = defaultRunnerStatusOptions,
   showDriverStatus = false,
   showReconciliationStatus = true,
+  showReceiptStatusFilter = true,
+  showDeliveryReasonFilter = true,
 }: OrderFiltersPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -168,16 +182,17 @@ export function OrderFiltersPanel({
     if (filters.month) count++;
     if (filters.runnerStatus) count++;
     if (filters.driverStatus) count++;
+    if (filters.driverAssignment) count++;
     if (filters.orderStatus) count++;
-    if (filters.reconciliationStatus) count++;
+    if (showReconciliationStatus && filters.reconciliationStatus) count++;
     if (filters.area) count++;
     if (filters.salespersonId) count++;
     if (filters.driverId) count++;
     if (filters.paymentMethod) count++;
-    if (filters.receiptStatus) count++;
-    if (filters.deliveryReasonId) count++;
+    if (showReceiptStatusFilter && filters.receiptStatus) count++;
+    if (showDeliveryReasonFilter && filters.deliveryReasonId) count++;
     return count;
-  }, [filters]);
+  }, [filters, showDeliveryReasonFilter, showReceiptStatusFilter, showReconciliationStatus]);
 
   const updateFilter = (key: keyof OrderFilters, value: string | undefined) => {
     const newFilters = { ...filters, [key]: value === 'all' ? undefined : value };
@@ -251,13 +266,14 @@ export function OrderFiltersPanel({
 
       {/* Status Filters */}
       <div className="grid grid-cols-2 gap-3">
-        {showRunnerStatus && renderSelect('Delivery Status', filters.runnerStatus, (v) => updateFilter('runnerStatus', v), runnerStatusOptions)}
+        {showDriverAssignmentFilter && renderSelect('Driver Assignment', filters.driverAssignment, (v) => updateFilter('driverAssignment', v), driverAssignmentOptions)}
+        {showRunnerStatus && renderSelect('Delivery Status', filters.runnerStatus, (v) => updateFilter('runnerStatus', v), runnerStatusFilterOptions)}
         {showDriverStatus && renderSelect('Driver Status', filters.driverStatus, (v) => updateFilter('driverStatus', v), driverStatusOptions)}
         {showOrderStatus && renderSelect('Order Status', filters.orderStatus, (v) => updateFilter('orderStatus', v), orderStatusOptions)}
         {showReconciliationStatus && renderSelect('Reconciliation', filters.reconciliationStatus, (v) => updateFilter('reconciliationStatus', v), reconciliationStatusOptions)}
         {renderSelect('Payment', filters.paymentMethod, (v) => updateFilter('paymentMethod', v), paymentMethodOptions)}
-        {renderSelect('Receipt Status', filters.receiptStatus, (v) => updateFilter('receiptStatus', v), receiptStatusOptions)}
-        {renderSelect('Delivery Reason', filters.deliveryReasonId, (v) => updateFilter('deliveryReasonId', v), reasonOptions, 'All Reasons', !isReasonFilterEnabled)}
+        {showReceiptStatusFilter && renderSelect('Receipt Status', filters.receiptStatus, (v) => updateFilter('receiptStatus', v), receiptStatusOptions)}
+        {showDeliveryReasonFilter && renderSelect('Delivery Reason', filters.deliveryReasonId, (v) => updateFilter('deliveryReasonId', v), reasonOptions, 'All Reasons', !isReasonFilterEnabled)}
       </div>
 
       {/* Other Filters */}
@@ -299,13 +315,14 @@ export function OrderFiltersPanel({
 
       {/* Row 2: All status/type filters in a responsive grid */}
       <div className="grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-        {showRunnerStatus && renderSelect('Delivery Status', filters.runnerStatus, (v) => updateFilter('runnerStatus', v), runnerStatusOptions)}
+        {showDriverAssignmentFilter && renderSelect('Driver Assignment', filters.driverAssignment, (v) => updateFilter('driverAssignment', v), driverAssignmentOptions)}
+        {showRunnerStatus && renderSelect('Delivery Status', filters.runnerStatus, (v) => updateFilter('runnerStatus', v), runnerStatusFilterOptions)}
         {showDriverStatus && renderSelect('Driver Status', filters.driverStatus, (v) => updateFilter('driverStatus', v), driverStatusOptions)}
         {showOrderStatus && renderSelect('Order Status', filters.orderStatus, (v) => updateFilter('orderStatus', v), orderStatusOptions)}
         {showReconciliationStatus && renderSelect('Reconciliation', filters.reconciliationStatus, (v) => updateFilter('reconciliationStatus', v), reconciliationStatusOptions)}
         {renderSelect('Payment', filters.paymentMethod, (v) => updateFilter('paymentMethod', v), paymentMethodOptions)}
-        {renderSelect('Receipt Status', filters.receiptStatus, (v) => updateFilter('receiptStatus', v), receiptStatusOptions)}
-        {renderSelect('Delivery Reason', filters.deliveryReasonId, (v) => updateFilter('deliveryReasonId', v), reasonOptions, 'All Reasons', !isReasonFilterEnabled)}
+        {showReceiptStatusFilter && renderSelect('Receipt Status', filters.receiptStatus, (v) => updateFilter('receiptStatus', v), receiptStatusOptions)}
+        {showDeliveryReasonFilter && renderSelect('Delivery Reason', filters.deliveryReasonId, (v) => updateFilter('deliveryReasonId', v), reasonOptions, 'All Reasons', !isReasonFilterEnabled)}
         {areaOptions.length > 0 && renderSelect('Area', filters.area, (v) => updateFilter('area', v), areaOptions, 'All areas')}
         {showSalespersonFilter && salespersonOptions.length > 0 && renderSelect('Salesperson', filters.salespersonId, (v) => updateFilter('salespersonId', v), salespersonOptions)}
         {showDriverFilter && driverOptions.length > 0 && renderSelect('Driver', filters.driverId, (v) => updateFilter('driverId', v), driverOptions)}
@@ -431,6 +448,8 @@ export function applyOrderFilters<T extends {
     // Status filters
     if (filters.runnerStatus && order.runner_status !== filters.runnerStatus) return false;
     if (filters.driverStatus && order.driver_status !== filters.driverStatus) return false;
+    if (filters.driverAssignment === 'HAVE_DRIVER' && !order.driver_id) return false;
+    if (filters.driverAssignment === 'NO_DRIVER' && order.driver_id) return false;
     if (filters.orderStatus && order.status !== filters.orderStatus) return false;
     if (filters.reconciliationStatus && order.reconciliation_status !== filters.reconciliationStatus) return false;
     if (filters.area && order.area !== filters.area) return false;

@@ -9,6 +9,12 @@ import {
   subMonths, startOfYear, format 
 } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { getKualaLumpurDateKey } from '@/lib/deliveredOrderReport';
+
+function getKualaLumpurToday() {
+  const dateKey = getKualaLumpurDateKey(new Date());
+  return dateKey ? new Date(`${dateKey}T12:00:00`) : new Date();
+}
 
 export interface DateRange {
   from: Date | null;
@@ -19,12 +25,12 @@ export interface DateRange {
 type PresetKey = 'today' | 'yesterday' | 'last7' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'lifetime' | 'custom';
 
 const presets: { key: PresetKey; label: string; getRange: () => { from: Date; to: Date } | null }[] = [
-  { key: 'today', label: 'Today', getRange: () => ({ from: startOfDay(new Date()), to: endOfDay(new Date()) }) },
-  { key: 'yesterday', label: 'Yesterday', getRange: () => ({ from: startOfDay(subDays(new Date(), 1)), to: endOfDay(subDays(new Date(), 1)) }) },
-  { key: 'last7', label: 'Last 7 Days', getRange: () => ({ from: startOfDay(subDays(new Date(), 6)), to: endOfDay(new Date()) }) },
-  { key: 'thisMonth', label: 'This Month', getRange: () => ({ from: startOfMonth(new Date()), to: endOfDay(new Date()) }) },
-  { key: 'lastMonth', label: 'Last Month', getRange: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }) },
-  { key: 'thisYear', label: 'This Year', getRange: () => ({ from: startOfYear(new Date()), to: endOfDay(new Date()) }) },
+  { key: 'today', label: 'Today', getRange: () => { const today = getKualaLumpurToday(); return { from: startOfDay(today), to: endOfDay(today) }; } },
+  { key: 'yesterday', label: 'Yesterday', getRange: () => { const yesterday = subDays(getKualaLumpurToday(), 1); return { from: startOfDay(yesterday), to: endOfDay(yesterday) }; } },
+  { key: 'last7', label: 'Last 7 Days', getRange: () => { const today = getKualaLumpurToday(); return { from: startOfDay(subDays(today, 6)), to: endOfDay(today) }; } },
+  { key: 'thisMonth', label: 'This Month', getRange: () => { const today = getKualaLumpurToday(); return { from: startOfMonth(today), to: endOfDay(today) }; } },
+  { key: 'lastMonth', label: 'Last Month', getRange: () => { const lastMonth = subMonths(getKualaLumpurToday(), 1); return { from: startOfMonth(lastMonth), to: endOfMonth(lastMonth) }; } },
+  { key: 'thisYear', label: 'This Year', getRange: () => { const today = getKualaLumpurToday(); return { from: startOfYear(today), to: endOfDay(today) }; } },
   { key: 'lifetime', label: 'Lifetime', getRange: () => null },
 ];
 

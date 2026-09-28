@@ -20,6 +20,7 @@ import { formatBND, formatRM, convertBNDtoRM } from '@/lib/currency';
 import { useClaimPreview } from '@/hooks/useDeliveryChargePreview';
 import { format } from 'date-fns';
 import type { Order } from '@/types/database';
+import type { RunnerDeliveryChargeMap } from '@/lib/runnerDeliveryCharges';
 
 interface BulkClaimDialogProps {
   open: boolean;
@@ -29,6 +30,7 @@ interface BulkClaimDialogProps {
   isSubmitting: boolean;
   onRemoveInvalidOrders?: (invalidOrderIds: string[]) => void;
   onNavigateToCharges?: () => void;
+  sourceRunnerCharges?: RunnerDeliveryChargeMap;
 }
 
 export function BulkClaimDialog({
@@ -39,6 +41,7 @@ export function BulkClaimDialog({
   isSubmitting,
   onRemoveInvalidOrders,
   onNavigateToCharges,
+  sourceRunnerCharges,
 }: BulkClaimDialogProps) {
   const [exchangeRate, setExchangeRate] = useState('');
   const [note, setNote] = useState('');
@@ -48,7 +51,7 @@ export function BulkClaimDialog({
   const isValidRate = rate > 0 && rate <= 99.9999;
 
   // Get claim preview with delivery charges
-  const preview = useClaimPreview(orders, rate);
+  const preview = useClaimPreview(orders, rate, sourceRunnerCharges);
 
   // Calculate RM amounts
   const grossRM = isValidRate ? convertBNDtoRM(preview.grossBND, rate) : 0;

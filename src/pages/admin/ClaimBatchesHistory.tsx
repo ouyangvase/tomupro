@@ -52,6 +52,14 @@ function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
+function getHistoryTotalAmount(batch: ClaimBatch) {
+  return Number(batch.history_total_amount ?? batch.total_amount ?? 0);
+}
+
+function getHistoryEarned(batch: ClaimBatch) {
+  return Number(batch.history_earned ?? batch.delivery_charges_bnd ?? 0);
+}
+
 export default function ClaimBatchesHistory() {
   const { user, profile } = useAuth();
   const role = profile?.role;
@@ -63,7 +71,10 @@ export default function ClaimBatchesHistory() {
     return undefined;
   }, [isRunner, user?.id]);
 
-  const { data: batches = [], isLoading } = useClaimBatches(batchFilters);
+  const { data: batches = [], isLoading } = useClaimBatches({
+    ...batchFilters,
+    includeHistoryTotals: true,
+  });
   const { data: runners = [] } = useRunners();
   
   const [selectedBatch, setSelectedBatch] = useState<ClaimBatch | null>(null);
@@ -114,6 +125,14 @@ export default function ClaimBatchesHistory() {
         .select('id, order_code, order_date, customer_name, area, total_amount, payment_method, reconciliation_status, order_items(*, product:products(sku_code, sku_name))')
         .in('id', orderIds);
 
+      const { data: claims } = await supabase
+        .from('claims')
+        .select('order_id, delivery_fee')
+        .in('order_id', orderIds);
+      const earnedByOrderId = new Map(
+        (claims || []).map(claim => [claim.order_id, Number(claim.delivery_fee || 0)])
+      );
+
       for (const order of orders || []) {
         const orderItems = (order as any).order_items || [];
         const itemsStr = orderItems.map((oi: any) => {
@@ -135,7 +154,7 @@ export default function ClaimBatchesHistory() {
           amount: Number(order.total_amount || 0),
           payment_method: order.payment_method || '',
           reconciliation_status: order.reconciliation_status?.replace(/_/g, ' ') || '',
-          earned: Number(batch.delivery_charges_bnd) || 0,
+          earned: earnedByOrderId.get(order.id) ?? '',
         });
       }
     }
@@ -163,10 +182,10 @@ export default function ClaimBatchesHistory() {
     return {
       totalBatches: filteredBatches.length,
       pendingCount: pending.length,
-      pendingAmount: pending.reduce((sum, b) => sum + Number(b.total_amount), 0),
+      pendingAmount: pending.reduce((sum, b) => sum + getHistoryTotalAmount(b), 0),
       claimedCount: claimed.length,
-      claimedAmount: claimed.reduce((sum, b) => sum + Number(b.total_amount), 0),
-      totalEarned: filteredBatches.reduce((sum, b) => sum + (Number(b.delivery_charges_bnd) || 0), 0),
+      claimedAmount: claimed.reduce((sum, b) => sum + getHistoryTotalAmount(b), 0),
+      totalEarned: filteredBatches.reduce((sum, b) => sum + getHistoryEarned(b), 0),
     };
   }, [filteredBatches]);
 
@@ -206,7 +225,7 @@ export default function ClaimBatchesHistory() {
       { key: 'items', header: 'Orders', render: (batch) => batch.items?.length || 0 },
       {
         key: 'total_amount', header: 'Total Amount', sortable: true,
-        render: (batch) => <span className="font-semibold">{formatBND(Number(batch.total_amount))}</span>,
+        render: (batch) => <span className="font-semibold">{formatBND(getHistoryTotalAmount(batch))}</span>,
       },
       {
         key: 'status', header: 'Status', filterable: true,
@@ -225,7 +244,7 @@ export default function ClaimBatchesHistory() {
       {
         key: 'delivery_charges_bnd', header: 'Earned', sortable: true,
         render: (batch) => {
-          const earned = Number(batch.delivery_charges_bnd) || 0;
+          const earned = getHistoryEarned(batch);
           return earned > 0
             ? <span className="font-medium text-green-600 dark:text-green-400">{formatBND(earned)}</span>
             : <span className="text-muted-foreground">-</span>;
@@ -448,7 +467,7 @@ export default function ClaimBatchesHistory() {
               </div>
               <div className="p-4 bg-secondary/30 rounded-xl">
                 <p className="text-sm text-muted-foreground">Total Amount</p>
-                <p className="text-2xl font-bold">{formatBND(Number(selectedBatch?.total_amount || 0))}</p>
+                <p className="text-2xl font-bold">{formatBND(selectedBatch ? getHistoryTotalAmount(selectedBatch) : 0)}</p>
               </div>
               <div className="p-4 bg-secondary/30 rounded-xl">
                 <p className="text-sm text-muted-foreground">Status</p>

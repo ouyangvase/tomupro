@@ -12,7 +12,7 @@ export interface ReadyOrderStats {
 
 /**
  * Server-side counts for Admin Ready Orders summary cards.
- * Queries status = 'READY' and excludes DELIVERED/FAILED_DELIVERY runner_status.
+ * Counts only orders whose canonical current state is READY.
  * Respects salesperson visibility for non-admin roles.
  */
 export function useReadyOrderStats(salespersonIds?: string[], salespersonId?: string) {
@@ -34,9 +34,8 @@ export function useReadyOrderStats(salespersonIds?: string[], salespersonId?: st
         let q = supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .eq('status', 'READY')
-          .neq('runner_status', 'DELIVERED')
-          .neq('runner_status', 'FAILED_DELIVERY');
+          .eq('current_operational_state', 'READY')
+          .neq('order_type', 'MIRI_INBOUND_PICKUP');
 
         // Apply salesperson visibility
         if (salespersonIds && salespersonIds.length > 0) {

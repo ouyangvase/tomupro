@@ -1,5 +1,6 @@
 // Custom types for the application
 export type AppRole = 'admin' | 'manager' | 'salesperson' | 'runner' | 'driver' | 'user' | 'finance_viewer' | 'runner_assistant';
+export type DisplayCurrency = 'BND' | 'MYR';
 
 // Finance Workspace types
 export type FinanceClaimStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'paid' | 'voided';
@@ -158,6 +159,7 @@ export interface RunnerAssistant {
     can_view_stock_audit: boolean;
     can_manage_inbound_stock: boolean;
     can_view_driver_workload: boolean;
+    can_view_driver_analytics: boolean;
   is_active: boolean;
   created_by: string | null;
   created_at: string;
@@ -176,6 +178,7 @@ export interface Profile {
   created_at: string;
   updated_at: string | null;
   manager_id: string | null;
+  display_currency: DisplayCurrency;
   manager?: Profile;
 }
 
@@ -228,15 +231,10 @@ export interface Order {
   runner_id: string | null;
   driver_id: string | null;
   status: OrderStatus;
+  current_operational_state?: 'BOOKING' | 'READY' | 'ACTION_REQUIRED' | 'DELIVERED' | 'CANCELLED';
   expected_pickup_date: string | null;
   total_qty: number;
   total_amount: number;
-  currency_code?: string;
-  merchandise_subtotal?: number;
-  delivery_fee?: number;
-  cod_amount?: number;
-  source_order_id?: string | null;
-  source_delivery_intent_id?: string | null;
   runner_status: RunnerStatus;
   driver_status: DriverStatus | null;
   runner_accept_status: RunnerAcceptStatus | null;
@@ -248,6 +246,8 @@ export interface Order {
   driver_failed_reason: string | null;
   driver_failed_remark: string | null;
   driver_next_delivery_date: string | null;
+  driver_started_at?: string | null;
+  driver_started_by?: string | null;
   driver_assignment_batch_id?: string | null;
   driver_assigned_at?: string | null;
   driver_assigned_by?: string | null;
@@ -290,6 +290,40 @@ export interface Order {
   rescheduled_from_status: string | null;
   created_at: string;
   updated_at: string;
+  // Sniper Miri inbound pickup integration fields
+  order_type?: 'STANDARD' | 'MIRI_INBOUND_PICKUP' | string;
+  source_system?: string | null;
+  external_order_id?: string | null;
+  external_tracking_number?: string | null;
+  sniper_seller_id?: string | null;
+  tomu_seller_account_id?: string | null;
+  tomu_runner_id?: string | null;
+  actual_pickup_charge?: number | null;
+  settlement_base_amount?: number | null;
+  internal_settlement_offset?: number | null;
+  internal_offset_type?: string | null;
+  cod_type?: string | null;
+  is_customer_cod?: boolean;
+  seller_charge_amount?: number | null;
+  runner_payable_amount?: number | null;
+  owner_salesperson_display_name_snapshot?: string | null;
+  telegram_chat_id?: string | null;
+  telegram_message_id?: string | null;
+  telegram_user_id?: string | null;
+  expected_items?: Array<{
+    sku_code?: string | null;
+    quantity?: number | null;
+    verification_status?: string | null;
+    product_id?: string | null;
+    stocked_quantity?: number | null;
+  }>;
+  content_verification_status?: string | null;
+  integration_status?: string | null;
+  integration_error?: string | null;
+  picked_up_at?: string | null;
+  miri_delivered_at?: string | null;
+  miri_sku_confirmed_at?: string | null;
+  miri_stocked_at?: string | null;
   // Stock calculation fields (client-side only, not persisted in DB)
   stock_status?: string;
   stock_calculated_at?: string | null;
@@ -362,6 +396,14 @@ export interface ClaimBatch {
   runner?: Profile;
   items?: ClaimBatchItem[];
   owner_names?: string[];
+  // Calculated only for Claim History from the per-order claim snapshots.
+  history_total_amount?: number;
+  history_earned?: number;
+  history_claims_by_order_id?: Record<string, {
+    delivery_fee: number;
+    net_claim_amount: number;
+    gross_amount: number;
+  }>;
 }
 
 export interface ClaimBatchItem {

@@ -7,8 +7,10 @@ import type { ClaimBatch, ClaimBatchStatus, Profile } from '@/types/database';
 
 interface ClaimBatchFilters {
   runnerId?: string;
+  runnerIds?: string[];
   status?: ClaimBatchStatus;
   includeOwners?: boolean;
+  includeHistoryTotals?: boolean;
 }
 
 const QUERY_CHUNK_SIZE = 200;
@@ -35,7 +37,9 @@ export function useClaimBatches(filters?: ClaimBatchFilters) {
         `)
         .order('submitted_at', { ascending: false });
 
-      if (filters?.runnerId) {
+      if (filters?.runnerIds?.length) {
+        query = query.in('runner_id', filters.runnerIds);
+      } else if (filters?.runnerId) {
         query = query.eq('runner_id', filters.runnerId);
       }
       if (filters?.status) {
@@ -105,10 +109,80 @@ export function useClaimBatches(filters?: ClaimBatchFilters) {
         });
       }
 
+      const historyTotalsByBatch = new Map<string, {
+        totalAmount: number;
+        earned: number;
+        claimsByOrderId: Record<string, {
+          delivery_fee: number;
+          net_claim_amount: number;
+          gross_amount: number;
+        }>;
+      }>();
+
+      if (filters?.includeHistoryTotals) {
+        const orderIds = [...new Set(
+          (data || []).flatMap(batch => (batch.items || []).map(item => item.order_id))
+        )];
+        const claimRows = (await Promise.all(
+          chunkIds(orderIds).map(async ids => {
+            if (ids.length === 0) return [];
+            const { data: claims, error: claimsError } = await supabase
+              .from('claims')
+              .select('order_id, amount, delivery_fee, net_claim_amount, gross_amount')
+              .in('order_id', ids);
+            if (claimsError) throw claimsError;
+            return claims || [];
+          })
+        )).flat();
+
+        const claimByOrderId = new Map(claimRows.map(claim => [claim.order_id, claim]));
+        (data || []).forEach(batch => {
+          const items = batch.items || [];
+          const claimsByOrderId: Record<string, {
+            delivery_fee: number;
+            net_claim_amount: number;
+            gross_amount: number;
+          }> = {};
+          const complete = items.length > 0 && items.every(item => {
+            const claim = claimByOrderId.get(item.order_id);
+            return claim
+              && claim.delivery_fee !== null
+              && claim.delivery_fee !== undefined
+              && (claim.net_claim_amount !== null
+                && claim.net_claim_amount !== undefined || claim.amount !== null
+                && claim.amount !== undefined);
+          });
+
+          if (!complete) return;
+
+          let totalAmount = 0;
+          let earned = 0;
+          items.forEach(item => {
+            const claim = claimByOrderId.get(item.order_id)!;
+            const deliveryFee = Number(claim.delivery_fee);
+            const netClaimAmount = Number(claim.net_claim_amount ?? claim.amount);
+            const grossAmount = Number(claim.gross_amount ?? (netClaimAmount + deliveryFee));
+            claimsByOrderId[item.order_id] = {
+              delivery_fee: deliveryFee,
+              net_claim_amount: netClaimAmount,
+              gross_amount: grossAmount,
+            };
+            totalAmount += netClaimAmount;
+            earned += deliveryFee;
+          });
+          historyTotalsByBatch.set(batch.id, { totalAmount, earned, claimsByOrderId });
+        });
+      }
+
       return (data || []).map(batch => ({
         ...batch,
         runner: runnerMap[batch.runner_id],
         owner_names: ownerNamesByBatch.get(batch.id),
+        ...(historyTotalsByBatch.has(batch.id) ? {
+          history_total_amount: historyTotalsByBatch.get(batch.id)!.totalAmount,
+          history_earned: historyTotalsByBatch.get(batch.id)!.earned,
+          history_claims_by_order_id: historyTotalsByBatch.get(batch.id)!.claimsByOrderId,
+        } : {}),
       })) as unknown as ClaimBatch[];
     },
   });
@@ -224,50 +298,32 @@ export function useApproveClaimBatch() {
 
       if (fetchError) throw fetchError;
 
-      // Update claim batch
-      const { error: batchError } = await supabase
-        .from('claim_batches')
-        .update({
-          status: 'CLAIMED',
-          admin_ack_at: new Date().toISOString(),
-          admin_ack_by: user.id,
-        })
-        .eq('id', batchId);
-
-      if (batchError) throw batchError;
-
-      // Update all orders in the batch to CLAIMED (approved)
       const orderIds = batch.items?.map((item: any) => item.order_id) || [];
-      if (orderIds.length > 0) {
-        const { error: ordersError } = await supabase
-          .from('orders')
-          .update({ reconciliation_status: 'CLAIMED' })
-          .in('id', orderIds);
 
-        if (ordersError) throw ordersError;
+      // Approve the batch and all child orders in one database transaction.
+      const { data: approval, error: approvalError } = await supabase.rpc(
+        'approve_claim_batch',
+        { p_batch_id: batchId },
+      );
+
+      if (approvalError) throw approvalError;
+
+      const approvedOrderCount = Number((approval as { order_count?: number } | null)?.order_count ?? 0);
+      if (approvedOrderCount !== orderIds.length) {
+        throw new Error(`Claim batch approval returned ${approvedOrderCount} orders; expected ${orderIds.length}.`);
       }
 
       // Notify runner
       await supabase.from('notifications').insert({
         user_id: batch.runner_id,
         title: 'Claim Batch Approved',
-        message: `Your claim batch of ${orderIds.length} orders has been approved.`,
+        message: `Your claim batch of ${approvedOrderCount} orders has been approved.`,
         type: 'claim_batch',
         reference_type: 'claim_batch',
         reference_id: batchId,
       });
 
-      // Log audit
-      await supabase.from('audit_logs').insert({
-        actor_id: user.id,
-        action: 'CLAIM_BATCH_APPROVED',
-        entity_type: 'claim_batch',
-        entity_id: batchId,
-        before_json: { status: 'ADMIN_ACK_PENDING' },
-        after_json: { status: 'CLAIMED' },
-      });
-
-      return { batchId, orderCount: orderIds.length };
+      return { batchId, orderCount: approvedOrderCount };
     },
     onSuccess: (data) => {
       invalidateOrderQueries(queryClient);

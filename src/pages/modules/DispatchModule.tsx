@@ -39,6 +39,7 @@ const RunnerDriverStockWorkspace = lazyWithChunkRecovery(() => import('@/pages/r
 const RunnerFailedOrders = lazyWithChunkRecovery(() => import('@/pages/runner/RunnerFailedOrders'));
 const RunnerDeliveredOrders = lazyWithChunkRecovery(() => import('@/pages/runner/RunnerDeliveredOrders'));
 const SmartMergeTab = lazyWithChunkRecovery(() => import('@/pages/runner/SmartMergeTab'));
+const OrderJourneyPage = lazyWithChunkRecovery(() => import('@/pages/runner/OrderJourneyPage'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -95,6 +96,7 @@ export default function DispatchModule() {
     showWorkspaceSelector,
   } = resolveAssistantWorkspace({
     hasPrimaryWorkspace: hasPrimaryDispatchWorkspace,
+    primaryRunnerId: role === 'runner' ? profile?.id : undefined,
     linkedRunnerIds,
     requestedWorkspace: searchParams.get('runner'),
   });
@@ -114,11 +116,13 @@ export default function DispatchModule() {
     { id: 'failed', label: 'Failed Orders' },
     { id: 'delivered', label: 'Delivered Orders' },
     { id: 'map', label: 'Live Map' },
+    { id: 'order-journey', label: 'Order Journey' },
   ];
 
   const adminTabs = [
     { id: 'inbox', label: 'Runner Inbox' },
     { id: 'map', label: 'Live Map' },
+    ...(['admin', 'manager'].includes(role || '') ? [{ id: 'order-journey', label: 'Order Journey' }] : []),
   ];
 
   const runnerAssistantTabs = [
@@ -135,6 +139,9 @@ export default function DispatchModule() {
         }]
       : []),
     ...(assistantBinding?.can_deliver ? [{ id: 'delivered', label: 'Delivered Orders' }] : []),
+    ...((assistantBinding?.can_deliver || assistantBinding?.can_confirm_receipt || assistantBinding?.can_manage_driver_inbox || assistantBinding?.can_manage_driver_operations)
+      ? [{ id: 'order-journey', label: 'Order Journey' }]
+      : []),
   ];
 
   const tabs = isAssistantContext ? runnerAssistantTabs : role === 'runner' ? runnerTabs : adminTabs;
@@ -274,6 +281,9 @@ export default function DispatchModule() {
                   {runner.display_name || runner.email}
                 </SelectItem>
               ))}
+              {hasPrimaryDispatchWorkspace && linkedRunnerIds.length > 0 && (
+                <SelectItem value="all">ALL</SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -363,6 +373,7 @@ export default function DispatchModule() {
               <RunnerFailedOrders initialSearch={routeSearch} highlightOrderId={highlightOrderId} />
             )}
             {activeTab === 'map' && <DriverLocationsPage />}
+            {activeTab === 'order-journey' && (['runner', 'admin', 'manager'].includes(role || '') || isAssistantContext) && <OrderJourneyPage />}
             {activeTab === 'delivered' && ((role === 'runner' && !isAssistantContext) || isAssistantContext) && (
               <RunnerDeliveredOrders
                 initialSearch={routeSearch}

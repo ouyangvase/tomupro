@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { format, parseISO } from 'date-fns';
 import { Car, DollarSign, CreditCard, Package } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +9,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useDriverDeliveriesToday } from '@/hooks/useCashLiabilities';
 import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
+import { KUALA_LUMPUR_TIME_ZONE } from '@/lib/timezone';
+
+function formatKualaLumpurTime(value: string | null) {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: KUALA_LUMPUR_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
 
 export default function RunnerCashDriver() {
   const [driverFilter, setDriverFilter] = useState<string>('all');
@@ -23,8 +32,8 @@ export default function RunnerCashDriver() {
       const amount = Number(order.total_amount) || 0;
       return {
         totalOrders: acc.totalOrders + 1,
-        cashAmount: acc.cashAmount + (order.driver_payment_method === 'CASH' ? amount : 0),
-        transferAmount: acc.transferAmount + (order.driver_payment_method === 'TRANSFER' ? amount : 0),
+        cashAmount: acc.cashAmount + Number(order.driver_cash_amount || 0),
+        transferAmount: acc.transferAmount + Number(order.driver_transfer_amount || 0),
       };
     }, { totalOrders: 0, cashAmount: 0, transferAmount: 0 });
   }, [deliveries]);
@@ -48,7 +57,7 @@ export default function RunnerCashDriver() {
       const amount = Number(order.total_amount) || 0;
       return {
         totalAmount: acc.totalAmount + amount,
-        cashToCollect: acc.cashToCollect + (order.driver_payment_method === 'CASH' ? amount : 0),
+        cashToCollect: acc.cashToCollect + Number(order.driver_cash_amount || 0),
       };
     }, { totalAmount: 0, cashToCollect: 0 });
   }, [deliveries]);
@@ -162,7 +171,7 @@ export default function RunnerCashDriver() {
                     ))
                   ) : deliveries && deliveries.length > 0 ? (
                     deliveries.map((order) => {
-                      const isCash = order.driver_payment_method === 'CASH';
+                      const isCash = Number(order.driver_cash_amount || 0) > 0;
                       const amount = Number(order.total_amount) || 0;
                       
                       return (
@@ -181,7 +190,7 @@ export default function RunnerCashDriver() {
                           <TableCell>{order.customer_name || '-'}</TableCell>
                           <TableCell className="text-muted-foreground">
                             {order.driver_delivered_at 
-                              ? format(parseISO(order.driver_delivered_at), 'HH:mm')
+                              ? formatKualaLumpurTime(order.driver_delivered_at)
                               : '-'
                             }
                           </TableCell>
@@ -203,7 +212,7 @@ export default function RunnerCashDriver() {
                           <TableCell className="text-right">
                             {isCash ? (
                               <span className="font-bold text-[hsl(var(--status-warning))]">
-                                {formatBND(amount, false)}
+                                {formatBND(Number(order.driver_cash_amount || 0), false)}
                               </span>
                             ) : (
                               <span className="text-muted-foreground">0.00</span>

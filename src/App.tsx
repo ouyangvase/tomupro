@@ -1,8 +1,8 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BrandingProvider } from "@/contexts/BrandingContext";
@@ -15,8 +15,9 @@ import { ProfileGate } from "@/components/auth/ProfileGate";
 import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
 import { MaintenanceOverlay } from "@/components/MaintenanceOverlay";
 import { ResponsiveLayout } from "@/components/layout/ResponsiveLayout";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { lazyWithChunkRecovery } from "@/lib/chunkRecovery";
+import { queryClient } from '@/lib/queryClient';
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -32,6 +33,7 @@ const TeamModule = lazyWithChunkRecovery(() => import("./pages/modules/TeamModul
 const FinanceModule = lazyWithChunkRecovery(() => import("./pages/modules/FinanceModule"));
 const InventoryModule = lazyWithChunkRecovery(() => import("./pages/modules/InventoryModule"));
 const SystemModule = lazyWithChunkRecovery(() => import("./pages/modules/SystemModule"));
+const ReferralRewardsPage = lazyWithChunkRecovery(() => import("./pages/referral/ReferralRewardsPage"));
 
 // SEO landing pages
 const LogisticsServiceBrunei = lazyWithChunkRecovery(() => import("./pages/seo/LogisticsServiceBrunei"));
@@ -66,23 +68,34 @@ const OrderNotFound = lazyWithChunkRecovery(() => import("./pages/orders/OrderNo
 const EventPopupModal = lazyWithChunkRecovery(() => import("./components/events/EventPopupModal").then(m => ({ default: m.EventPopupModal })));
 const OnboardingFlow = lazyWithChunkRecovery(() => import("./components/guide/OnboardingFlow").then(m => ({ default: m.OnboardingFlow })));
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000,          // 5 minutes — prevents excessive refetches
-      gcTime: 10 * 60 * 1000,            // 10 minutes garbage collection
-      refetchOnWindowFocus: false,        // Disable — was causing cascade refetches on every tab switch
-      retry: 1,                           // Keep retries bounded during Supabase degradation
-      refetchOnReconnect: false,          // Avoid cascade refetches when Supabase reconnects
-    },
-  },
-});
 
 const ModuleLoading = () => (
   <div className="flex items-center justify-center py-16">
     <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
   </div>
 );
+
+function ReferralLinkRoute() {
+  const { code } = useParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!code) {
+      navigate('/auth?signup=1', { replace: true });
+      return;
+    }
+
+    try {
+      const normalizedCode = decodeURIComponent(code).trim().toUpperCase();
+      if (normalizedCode) sessionStorage.setItem('tomupro-referral-code', normalizedCode);
+    } catch {
+      // Invalid URL encoding should not block normal registration.
+    }
+    navigate('/auth?signup=1', { replace: true });
+  }, [code, navigate]);
+
+  return <ModuleLoading />;
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, profileStatus, profileError, retryProfile, resetSession } = useAuth();
@@ -137,7 +150,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (isDriver && needsOnboarding) {
-    return <DriverOnboarding />;
+    return (
+      <Suspense fallback={<ModuleLoading />}>
+        <DriverOnboarding />
+      </Suspense>
+    );
   }
 
   if (profile?.role === "user") {
@@ -182,6 +199,7 @@ function AppRoutes() {
     <Routes>
       {/* Public routes — no RealtimeProvider, no auth */}
       <Route path="/auth" element={<LandingPage />} />
+      <Route path="/ref/:code" element={<ReferralLinkRoute />} />
       <Route path="/reset-password" element={<Suspense fallback={<ModuleLoading />}><ResetPassword /></Suspense>} />
 
       {/* SEO landing pages */}
@@ -214,6 +232,7 @@ function AppRoutes() {
       <Route path="/system" element={<ProtectedModule><SystemModule /></ProtectedModule>} />
 
       {/* Standalone pages */}
+      <Route path="/referral-rewards" element={<ProtectedStandalone><ReferralRewardsPage /></ProtectedStandalone>} />
       <Route path="/settings/profile" element={<ProtectedStandalone><ProfilePage /></ProtectedStandalone>} />
       <Route path="/settings/telegram" element={<ProtectedStandalone><TelegramUserSettings /></ProtectedStandalone>} />
       <Route path="/settings/telegram-logs" element={<ProtectedStandalone><TelegramLogsPage /></ProtectedStandalone>} />

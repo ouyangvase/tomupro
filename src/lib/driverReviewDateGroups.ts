@@ -1,4 +1,4 @@
-const BRUNEI_TIME_ZONE = 'Asia/Brunei';
+import { KUALA_LUMPUR_TIME_ZONE } from '@/lib/timezone';
 
 export type DriverReviewOrder = {
   id: string;
@@ -19,6 +19,8 @@ export type DriverReviewOrder = {
 };
 
 const NON_REVIEWABLE_RUNNER_STATUSES = new Set([
+  'DELIVERED',
+  'FAILED_DELIVERY',
   'CANCELLED',
   'CANCELED',
   'RETURNED',
@@ -75,7 +77,7 @@ export function getDriverReportedPaymentComponents(order: DriverReviewOrder) {
 
 function getBruneiDateKey(timestamp: string) {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: BRUNEI_TIME_ZONE,
+    timeZone: KUALA_LUMPUR_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -101,14 +103,11 @@ export function isPendingDriverReviewOrder(
   return order.assignment_state === 'PENDING_ACCEPTANCE'
     && order.driver_status === expectedDriverStatus
     && Boolean(order.driver_id)
-    // The derived assignment state must not override the raw final outcome.
-    // This protects the queue from stale RPC/cache rows after a Runner accepts.
-    && String(order.runner_accept_status || '').toUpperCase() !== 'ACCEPTED'
+    // Runner accepting/taking the assignment is not the same as reviewing
+    // the Driver's later delivery result.
     && String(order.runner_review_status || '').toUpperCase() !== 'REVIEWED'
-    // A legacy/inconsistent row can already have a final runner_status while
-    // the Driver report is still waiting for Runner review. The assignment
-    // source marks that row as PENDING_ACCEPTANCE, so the driver event remains
-    // the source of truth until the Runner accepts or rejects it.
+    // Runner finalization is authoritative. A stale Driver event must not
+    // revive an order after it has left the review queue.
     && !NON_REVIEWABLE_RUNNER_STATUSES.has(String(order.runner_status || '').toUpperCase());
 }
 
@@ -172,7 +171,7 @@ export function groupDriverReviewOrdersByDate<T extends DriverReviewOrder>(
 
 export function formatDriverActionDate(timestamp: string) {
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone: BRUNEI_TIME_ZONE,
+    timeZone: KUALA_LUMPUR_TIME_ZONE,
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -181,7 +180,7 @@ export function formatDriverActionDate(timestamp: string) {
 
 export function formatDriverActionDateTime(timestamp: string) {
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone: BRUNEI_TIME_ZONE,
+    timeZone: KUALA_LUMPUR_TIME_ZONE,
     day: '2-digit',
     month: 'short',
     year: 'numeric',

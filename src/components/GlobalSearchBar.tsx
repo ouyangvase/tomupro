@@ -1,25 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, X, Loader2 } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import { subscribeToOrderRealtime } from '@/lib/orderRealtime';
 import { cn } from '@/lib/utils';
 import { getOrderTabRoute } from '@/lib/orderNavigation';
+import { dedupeOrderSearchResults, normalizeOrderCodeSearch } from '@/lib/orderSearch';
+import { resolveCurrentOrderState, type CurrentOrderFields, type CurrentOrderState } from '@/lib/orderLifecycle';
 import { useAuth } from '@/contexts/AuthContext';
-import { useMyAssistantBinding } from '@/hooks/useRunnerAssistants';
 
-interface SearchResult {
+interface SearchResult extends CurrentOrderFields {
   id: string;
   order_code: string;
   customer_name: string | null;
   runner_id: string | null;
   runner_name: string | null;
-  status: string;
-  runner_status: string | null;
-  driver_status?: string | null;
-  runner_accept_status?: string | null;
   created_at: string;
+  updated_at: string;
+  currentState: CurrentOrderState;
 }
 
 interface GlobalSearchBarProps {
@@ -27,21 +28,26 @@ interface GlobalSearchBarProps {
   className?: string;
 }
 
-// Helper to determine display status - prioritize runner_status for final states
-const getDisplayStatus = (order: SearchResult) => {
-  if (order.runner_status === 'DELIVERED') return 'DELIVERED';
-  if (order.runner_status === 'FAILED_DELIVERY') return 'FAILED';
-  return order.status;
-};
-
 const normalizeOrderCodeQuery = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');
 
+const formatSearchDate = (value: string | null) => {
+  if (!value) return null;
+  try {
+    return format(parseISO(value), 'dd MMM yyyy');
+  } catch {
+    return value;
+  }
+};
+
+const getSearchSubstatus = (state: CurrentOrderState) => {
+  const date = formatSearchDate(state.scheduledDate);
+  return state.currentSubStatus && date ? `${state.currentSubStatus} · ${date}` : state.currentSubStatus;
+};
+
 const getRunnerSearchRoute = (order: SearchResult) => {
-  const runnerStatus = (order.runner_status || '').toUpperCase();
-  const driverStatus = (order.driver_status || '').toUpperCase();
-  const tab = runnerStatus === 'DELIVERED'
+  const tab = order.currentState.destinationTab === 'delivered'
     ? 'delivered'
-    : runnerStatus === 'FAILED_DELIVERY' || driverStatus === 'DRIVER_FAILED'
+    : order.currentState.destinationTab === 'action-required'
       ? 'failed'
       : 'inbox';
 
@@ -61,7 +67,7 @@ const getRoleAwareSearchRoute = (order: SearchResult, role?: string | null) => {
     return `/delivery?${params.toString()}`;
   }
 
-  const route = getOrderTabRoute(order.status, order.runner_status, order.id);
+  const route = getOrderTabRoute(order);
   if (!order.order_code) return route;
   return `${route}&search=${encodeURIComponent(order.order_code)}`;
 };
@@ -71,12 +77,14 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchRequestRef = useRef(0);
   const navigate = useNavigate();
-  const { profile } = useAuth();
-  const { data: assistantBinding } = useMyAssistantBinding();
+  const { profile, profileStatus } = useAuth();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -94,74 +102,95 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
 
   // Search orders when query changes
   useEffect(() => {
+    const requestId = ++searchRequestRef.current;
     const searchOrders = async () => {
       const orderCodeQuery = normalizeOrderCodeQuery(query);
       if (orderCodeQuery.length < 2) {
         setResults([]);
         setShowDropdown(false);
+        setSearchError(null);
+        setIsLoading(false);
         return;
       }
 
       setIsLoading(true);
-      try {
-        let ordersQuery = supabase
-          .from('orders')
-          .select('id, order_code, customer_name, runner_id, status, runner_status, driver_status, runner_accept_status, created_at')
-          .ilike('order_code', `${orderCodeQuery}%`)
-          .order('created_at', { ascending: false })
-          .limit(8);
-
-        if (profile?.role === 'driver') {
-          ordersQuery = ordersQuery.eq('driver_id', profile.id);
-        } else if (profile?.role === 'runner') {
-          ordersQuery = ordersQuery.eq('runner_id', profile.id);
-        } else if (profile?.role === 'runner_assistant') {
-          const runnerIds = assistantBinding?.runnerIds || [];
-          if (runnerIds.length === 0) {
-            setResults([]);
-            setShowDropdown(true);
-            return;
-          }
-          ordersQuery = runnerIds.length === 1
-            ? ordersQuery.eq('runner_id', runnerIds[0])
-            : ordersQuery.in('runner_id', runnerIds);
+      setSearchError(null);
+      if (profileStatus !== 'ready' || !profile?.id || !profile.role) {
+        setShowDropdown(true);
+        if (profileStatus === 'error' || profileStatus === 'missing') {
+          setSearchError('Search is unavailable until your account is ready.');
+          setIsLoading(false);
         }
+        return;
+      }
 
-        const { data, error } = await ordersQuery;
+      try {
+        const { data, error } = await supabase.rpc('search_visible_orders', {
+          p_query: query.trim(),
+          p_limit: 20,
+        });
         if (error) throw error;
-        const runnerIds = Array.from(new Set((data || [])
-          .map((order) => order.runner_id)
-          .filter((id): id is string => Boolean(id))));
-        const { data: runnerProfiles } = runnerIds.length > 0
-          ? await supabase
-            .from('profiles')
-            .select('id, display_name')
-            .in('id', runnerIds)
-          : { data: [] };
-        const runnerNames = new Map((runnerProfiles || []).map((runner) => [runner.id, runner.display_name]));
-        setResults((data || []).map((order) => ({
+        if (requestId !== searchRequestRef.current) return;
+        const currentOrders = dedupeOrderSearchResults(data || []);
+        setResults(currentOrders.map((order) => ({
           id: order.id,
           order_code: order.order_code || '',
           customer_name: order.customer_name,
           runner_id: order.runner_id,
-          runner_name: order.runner_id ? runnerNames.get(order.runner_id) || 'Unknown Runner' : null,
-          status: order.status || '',
+          runner_name: order.runner_name,
+          status: order.status,
+          operational_status: order.operational_status,
+          current_operational_state: order.current_operational_state,
           runner_status: order.runner_status,
-          driver_status: order.driver_status,
-          runner_accept_status: order.runner_accept_status,
+          runner_review_status: order.runner_review_status,
+          runner_final_outcome: order.runner_final_outcome,
+          runner_comment: order.runner_comment,
+          runner_failed_reason_id: order.runner_failed_reason_id,
+          salesperson_action_required: order.salesperson_action_required,
+          salesperson_action_type: order.salesperson_action_type,
+          next_delivery_date: order.next_delivery_date,
+          driver_next_delivery_date: order.driver_next_delivery_date,
+          driver_failed_reason: order.driver_failed_reason,
+          delivered_at: order.delivered_at,
+          cancelled_at: order.cancelled_at,
           created_at: order.created_at,
+          updated_at: order.updated_at,
+          currentState: resolveCurrentOrderState(order),
         })));
         setShowDropdown(true);
       } catch (error) {
+        if (requestId !== searchRequestRef.current) return;
         setResults([]);
+        setSearchError(error instanceof Error ? error.message : 'Search failed. Please try again.');
+        setShowDropdown(true);
       } finally {
-        setIsLoading(false);
+        if (requestId === searchRequestRef.current) setIsLoading(false);
       }
     };
 
     const debounce = setTimeout(searchOrders, 300);
     return () => clearTimeout(debounce);
-  }, [query, profile?.id, profile?.role, assistantBinding?.runnerIds]);
+  }, [profile?.id, profile?.role, profileStatus, query, refreshVersion]);
+
+  // Re-resolve an open search when the live order row changes. The status is
+  // fetched again from orders; no search-index status is trusted.
+  useEffect(() => {
+    const orderCodeQuery = normalizeOrderCodeSearch(query);
+    if (orderCodeQuery.length < 2 || !profile?.id) return;
+
+    return subscribeToOrderRealtime({
+      userId: profile.id,
+      role: null,
+      scope: 'search',
+      onPayload: (payload) => {
+        const newCode = normalizeOrderCodeSearch(String((payload.new as { order_code?: string }).order_code || ''));
+        const oldCode = normalizeOrderCodeSearch(String((payload.old as { order_code?: string }).order_code || ''));
+        if (newCode.startsWith(orderCodeQuery) || oldCode.startsWith(orderCodeQuery)) {
+          setRefreshVersion((version) => version + 1);
+        }
+      },
+    });
+  }, [profile?.id, query]);
 
   const handleResultClick = (order: SearchResult) => {
     setQuery('');
@@ -174,6 +203,7 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
   const clearSearch = () => {
     setQuery('');
     setResults([]);
+    setSearchError(null);
     setShowDropdown(false);
   };
 
@@ -230,6 +260,8 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               </div>
+            ) : searchError ? (
+              <div className="py-4 text-center text-sm text-destructive">{searchError}</div>
             ) : results.length > 0 ? (
               <div className="max-h-64 overflow-y-auto">
                 {results.map((order) => (
@@ -248,18 +280,22 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                       )}
                     </div>
                     {(() => {
-                      const displayStatus = getDisplayStatus(order);
+                      const displayStatus = order.currentState.currentStatus;
+                      const substatus = getSearchSubstatus(order.currentState);
                       return (
-                        <span className={cn(
-                          "text-xs px-2 py-0.5 rounded-full",
-                          displayStatus === 'BOOKING' && "bg-blue-500/10 text-blue-500",
-                          displayStatus === 'READY' && "bg-primary/10 text-primary",
-                          displayStatus === 'DELIVERED' && "bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))]",
-                          displayStatus === 'FAILED' && "bg-destructive/10 text-destructive",
-                          displayStatus === 'CANCELLED' && "bg-destructive/10 text-destructive"
-                        )}>
-                          {displayStatus}
-                        </span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={cn(
+                            "text-xs px-2 py-0.5 rounded-full",
+                            displayStatus === 'BOOKING' && "bg-blue-500/10 text-blue-500",
+                            displayStatus === 'READY' && "bg-primary/10 text-primary",
+                            displayStatus === 'DELIVERED' && "bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))]",
+                            displayStatus === 'ACTION_REQUIRED' && "bg-amber-500/10 text-amber-600",
+                            displayStatus === 'CANCELLED' && "bg-destructive/10 text-destructive"
+                          )}>
+                            {displayStatus}
+                          </span>
+                          {substatus && <span className="text-[11px] text-muted-foreground">{substatus}</span>}
+                        </div>
                       );
                     })()}
                   </button>
@@ -287,8 +323,11 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="pl-10 pr-10 h-12 bg-white/[0.04] border-white/10 rounded-xl text-foreground placeholder:text-muted-foreground"
+          autoFocus
         />
-        {query ? (
+        {isLoading ? (
+          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-muted-foreground" />
+        ) : query ? (
           <Button
             variant="ghost"
             size="icon"
@@ -297,8 +336,6 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
           >
             <X className="h-4 w-4" />
           </Button>
-        ) : isLoading ? (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-muted-foreground" />
         ) : null}
       </div>
 
@@ -309,6 +346,8 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
+          ) : searchError ? (
+            <div className="py-6 text-center text-sm text-destructive">{searchError}</div>
           ) : results.length > 0 ? (
             <div className="max-h-72 overflow-y-auto">
               {results.map((order) => (
@@ -327,19 +366,23 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                     )}
                   </div>
                   {(() => {
-                    const displayStatus = getDisplayStatus(order);
-                    return (
-                      <span className={cn(
-                        "text-xs px-2.5 py-1 rounded-full font-medium",
-                        displayStatus === 'BOOKING' && "bg-blue-500/10 text-blue-500",
-                        displayStatus === 'READY' && "bg-primary/10 text-primary",
-                        displayStatus === 'DELIVERED' && "bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))]",
-                        displayStatus === 'FAILED' && "bg-destructive/10 text-destructive",
-                        displayStatus === 'CANCELLED' && "bg-destructive/10 text-destructive"
-                      )}>
-                        {displayStatus}
-                      </span>
-                    );
+                      const displayStatus = order.currentState.currentStatus;
+                      const substatus = getSearchSubstatus(order.currentState);
+                      return (
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={cn(
+                          "text-xs px-2.5 py-1 rounded-full font-medium",
+                          displayStatus === 'BOOKING' && "bg-blue-500/10 text-blue-500",
+                          displayStatus === 'READY' && "bg-primary/10 text-primary",
+                          displayStatus === 'DELIVERED' && "bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))]",
+                          displayStatus === 'ACTION_REQUIRED' && "bg-amber-500/10 text-amber-600",
+                          displayStatus === 'CANCELLED' && "bg-destructive/10 text-destructive"
+                        )}>
+                          {displayStatus}
+                        </span>
+                        {substatus && <span className="text-[11px] text-muted-foreground">{substatus}</span>}
+                      </div>
+                      );
                   })()}
                 </button>
               ))}

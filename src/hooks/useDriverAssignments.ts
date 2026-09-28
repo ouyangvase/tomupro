@@ -7,6 +7,7 @@ export type DriverAssignmentState =
   | 'PENDING_ACCEPTANCE'
   | 'DELIVERED'
   | 'FAILED'
+  | 'RESCHEDULED'
   | 'INACTIVE';
 
 export type DriverAssignment = Order & {
@@ -32,6 +33,8 @@ export type DriverAssignmentQuery = {
   includeItems?: boolean;
   states?: DriverAssignmentState[];
 };
+
+const ACTIVE_ASSIGNMENT_REFRESH_MS = 30_000;
 
 type AssignmentRpcRow = {
   order_id: string;
@@ -107,7 +110,9 @@ export function useDriverAssignments(query: DriverAssignmentQuery = {}) {
       return Array.from(new Map(rows.map((order) => [order.id, order])).values());
     },
     enabled: Boolean(runnerIds.length || query.driverId),
-    refetchInterval: query.activeOnly || query.states?.includes('ACTIVE') ? 10_000 : false,
+    refetchInterval: query.activeOnly || query.states?.includes('ACTIVE')
+      ? ACTIVE_ASSIGNMENT_REFRESH_MS
+      : false,
     refetchIntervalInBackground: false,
   });
 }

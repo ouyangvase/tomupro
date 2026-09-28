@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
+import { getKualaLumpurDateKey } from '@/lib/timezone';
 
 // ============== Driver Deliveries Today Hook ==============
 // Used by RunnerCashDriver page to show Excel-style list of today's deliveries
@@ -14,7 +14,10 @@ export interface DriverDeliveryToday {
   total_amount: number;
   driver_id: string | null;
   driver_payment_method: string | null;
+  driver_cash_amount: number | null;
+  driver_transfer_amount: number | null;
   driver_delivered_at: string | null;
+  delivered_at: string | null;
   driver: { display_name: string } | null;
 }
 
@@ -26,32 +29,18 @@ export function useDriverDeliveriesToday(driverFilter?: string) {
     queryFn: async () => {
       if (!user?.id) return [];
 
-      const today = format(new Date(), 'yyyy-MM-dd');
-
-      let query = supabase
-        .from('orders')
-        .select(`
-          id,
-          order_code,
-          customer_name,
-          total_amount,
-          driver_id,
-          driver_payment_method,
-          driver_delivered_at,
-          driver:profiles!orders_driver_id_fkey(display_name)
-        `)
-        .eq('runner_id', user.id)
-        .eq('driver_status', 'DRIVER_DELIVERED')
-        .gte('driver_delivered_at', today)
-        .order('driver_delivered_at', { ascending: false });
-      
-      if (driverFilter && driverFilter !== 'all') {
-        query = query.eq('driver_id', driverFilter);
-      }
-
-      const { data, error } = await query;
+      const today = getKualaLumpurDateKey();
+      const { data, error } = await supabase.rpc('get_runner_accepted_driver_deliveries', {
+        p_runner_id: user.id,
+        p_date_from: today,
+        p_date_to: today,
+        p_driver_id: driverFilter && driverFilter !== 'all' ? driverFilter : null,
+      });
       if (error) throw error;
-      return (data || []) as DriverDeliveryToday[];
+      return (data || []).map((order) => ({
+        ...order,
+        driver: order.driver_name ? { display_name: order.driver_name } : null,
+      })) as DriverDeliveryToday[];
     },
   });
 }
@@ -139,21 +128,22 @@ export function useRunnerAcceptedDriverDeliveries(runnerIdOverride?: string | st
     queryKey: ['runner-accepted-driver-deliveries', runnerScopeIds],
     enabled: runnerScopeIds.length > 0,
     queryFn: async () => {
-      let query = supabase
-        .from('orders')
-        .select('id, order_code, total_amount, delivered_at, driver_id, runner_id, runner:profiles!orders_runner_id_fkey(display_name), driver:profiles!orders_driver_id_fkey(display_name), order_items(qty)')
-        .eq('driver_status', 'DRIVER_DELIVERED')
-        .eq('runner_accept_status', 'ACCEPTED')
-        .not('driver_id', 'is', null)
-        .order('delivered_at', { ascending: false })
-        .limit(100);
-      query = runnerScopeIds.length === 1
-        ? query.eq('runner_id', runnerScopeIds[0])
-        : query.in('runner_id', runnerScopeIds);
-      const { data, error } = await query;
+      const results = await Promise.all(runnerScopeIds.map(async (runnerId) => {
+        const { data, error } = await supabase.rpc('get_runner_accepted_driver_deliveries', {
+          p_runner_id: runnerId,
+          p_date_from: null,
+          p_date_to: null,
+          p_driver_id: null,
+        });
+        if (error) throw error;
+        return data || [];
+      }));
 
-      if (error) throw error;
-      return (data || []) as AcceptedDriverDelivery[];
+      return results.flat().map((order) => ({
+        ...order,
+        driver: order.driver_name ? { display_name: order.driver_name } : null,
+        order_items: Array.isArray(order.order_items) ? order.order_items : [],
+      })) as AcceptedDriverDelivery[];
     },
   });
 }
@@ -389,7 +379,7 @@ export function useAdminCashLiabilitySummary() {
       if (openError) throw openError;
 
       // Get today's settled
-      const today = format(new Date(), 'yyyy-MM-dd');
+      const today = getKualaLumpurDateKey();
       const { data: settledToday, error: settledError } = await supabase
         .from('cash_settlement_batches')
         .select('total_amount')

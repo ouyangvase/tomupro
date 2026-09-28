@@ -1,5 +1,7 @@
 // CSV Import/Export utilities
 import { format } from 'date-fns';
+import { getRunnerAreaChargeKey } from '@/lib/runnerDeliveryCharges';
+import { formatKualaLumpurDateTime, getDeliveredOrderTimestamp } from '@/lib/deliveredOrderReport';
 
 export function exportToCSV<T extends Record<string, unknown>>(
   data: T[],
@@ -502,7 +504,7 @@ export function exportSelectedRunnerOrderLines(
   return true;
 }
 
-// Delivered orders export - one row per SKU item for stock tracking
+// Delivered orders export - one row per order with all SKU items combined
 // Source of truth rules:
 //   Order-level (from imported order): order_ref, customer_name, phone, address, area, payment_method, delivery_charges
 //   Item-level (from SKU row): sku_code, sku_qty, amount (line_total)
@@ -532,8 +534,8 @@ export function exportDeliveredOrderLines(
 
   for (const order of orders) {
     const orderItems = order.order_items || [];
-    const chargeKey = `${order.runner_id}:${order.area || ''}`;
-    const deliveryCharge = deliveryChargesMap.get(chargeKey) || 0;
+    const chargeKey = getRunnerAreaChargeKey(order.runner_id, order.area);
+    const deliveryCharge = chargeKey ? deliveryChargesMap.get(chargeKey) || 0 : 0;
 
     // Build human-readable items summary
     let itemsSummary = '';
@@ -547,13 +549,14 @@ export function exportDeliveredOrderLines(
       itemsSummary = itemParts.join('; ');
     }
 
-    // Format delivered_timestamp to match app UI display: "dd MMM yyyy HH:mm"
+    // Format delivered_timestamp in the same Kuala Lumpur timezone used by the report filter.
     let formattedTimestamp = '';
-    if (order.delivered_at) {
+    const deliveredTimestamp = getDeliveredOrderTimestamp(order);
+    if (deliveredTimestamp) {
       try {
-        formattedTimestamp = format(new Date(order.delivered_at), 'dd MMM yyyy HH:mm');
+        formattedTimestamp = formatKualaLumpurDateTime(deliveredTimestamp) || deliveredTimestamp;
       } catch {
-        formattedTimestamp = order.delivered_at;
+        formattedTimestamp = deliveredTimestamp;
       }
     }
 
@@ -571,28 +574,22 @@ export function exportDeliveredOrderLines(
       delivery_charges: deliveryCharge,
     };
 
-    if (orderItems.length > 0) {
-      // One row per SKU item — amount from item.line_total (row-level, not order total)
-      for (const item of orderItems) {
-        const skuCode = item.product?.sku_code || item.sku_label || '';
-        // Extract code portion before "/" if sku_label contains "CODE/DESCRIPTION"
-        const parsedCode = skuCode.includes('/') ? skuCode.split('/')[0].trim() : skuCode;
-        lines.push({
-          ...baseRow,
-          sku_code: parsedCode,
-          sku_qty: item.qty || 0,
-          amount: item.line_total != null ? Number(item.line_total) : 0,
-        });
-      }
-    } else {
-      // Order with no items — still export one row
-      lines.push({
-        ...baseRow,
-        sku_code: '',
-        sku_qty: 0,
-        amount: Number(order.total_amount) || 0,
-      });
-    }
+    const skuCodes = orderItems.map((item: any) => {
+      const skuCode = item.product?.sku_code || item.sku_label || '';
+      // Extract code portion before "/" if sku_label contains "CODE/DESCRIPTION"
+      return skuCode.includes('/') ? skuCode.split('/')[0].trim() : skuCode;
+    }).filter(Boolean);
+    const totalQty = orderItems.reduce((sum: number, item: any) => sum + (Number(item.qty) || 0), 0);
+    const totalAmount = Number(order.total_amount) || 0;
+
+    // Keep one Excel row per order. This prevents an order-level delivery charge
+    // from being repeated when the order contains multiple SKU lines.
+    lines.push({
+      ...baseRow,
+      sku_code: skuCodes.join('; '),
+      sku_qty: totalQty,
+      amount: totalAmount,
+    });
   }
 
   const columns = [

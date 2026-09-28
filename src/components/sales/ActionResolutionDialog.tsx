@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import type { Order } from '@/types/database';
 import { useAttachments } from '@/hooks/useAttachments';
 import { getSignedStorageUrl } from '@/lib/storageUrls';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
 
 type ResolutionType = 'AUTO_RESCHEDULE' | 'CONVERT_TO_BOOKING' | 'CONVERT_TO_READY' | 'CANCEL';
 
@@ -136,32 +137,12 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           ? boundRunners.find(r => r.id === selectedRunnerId)?.display_name || 'Unknown'
           : null;
 
-        // Record the salesperson decision in reschedule history
-        await supabase.from('reschedule_history').insert({
-          order_id: order.id,
-          cycle_no: (order.reschedule_cycle_no || 0) + 1,
-          from_status: order.operational_status || order.status,
-          to_status: 'BOOKING_AUTO_RESCHEDULE',
-          next_delivery_date: rescheduleDate,
-          comment: `${hasRunnerDate ? 'Confirmed' : 'Set'} auto-reschedule to ${rescheduleDate}${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || 'No comment'}`,
-          rescheduled_by: profile.id,
-        });
-
-        // Update order - move to BOOKING with reschedule date
-        await updateOrder.mutateAsync({
-          id: order.id,
-          status: 'BOOKING',
-          expected_pickup_date: rescheduleDate,
-          next_delivery_date: rescheduleDate,
-          salesperson_action_required: false,
-          salesperson_action_type: 'RESCHEDULE_DELIVERY',
-          last_status_note: `Auto-reschedule confirmed for ${rescheduleDate}${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || ''}`,
-          runner_status: selectedRunnerId ? 'ASSIGNED' : 'UNASSIGNED',
-          runner_id: selectedRunnerId,
-          driver_id: null,
-          driver_status: null,
-          reschedule_flag: true,
-          reschedule_cycle_no: (order.reschedule_cycle_no || 0) + 1,
+        await callSupabaseRpc('set_order_auto_reschedule', {
+          p_order_id: order.id,
+          p_next_delivery_date: rescheduleDate,
+          p_runner_id: selectedRunnerId,
+          p_comment: `${hasRunnerDate ? 'Confirmed' : 'Set'} auto-reschedule${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || 'No comment'}`,
+          p_expected_state: order.current_operational_state || null,
         });
 
         toast.success('Order confirmed for auto-reschedule');
@@ -206,8 +187,18 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           last_status_note: `Converted to booking for ${format(newDate, 'dd MMM yyyy')}: ${bookingRemark || ''}`,
           runner_id: null,
           runner_status: 'UNASSIGNED',
-          driver_id: null,
-          driver_status: null,
+          runner_accept_status: null,
+          runner_review_status: 'NOT_REVIEWED',
+          runner_final_outcome: null,
+          runner_failed_reason_id: null,
+          runner_comment: null,
+          runner_reviewed_at: null,
+          runner_reviewed_by: null,
+          failed_reason: null,
+          failed_remark: null,
+          failed_next_step: null,
+          delivered_at: null,
+          reschedule_flag: false,
           reschedule_cycle_no: (order.reschedule_cycle_no || 0) + 1,
         });
 
@@ -217,27 +208,13 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
         navigate('/sales/booking');
 
       } else if (resolutionType === 'CONVERT_TO_READY') {
-        // Record the salesperson decision
-        await supabase.from('reschedule_history').insert({
-          order_id: order.id,
-          cycle_no: (order.reschedule_cycle_no || 0) + 1,
-          from_status: order.operational_status || order.status,
-          to_status: 'READY',
-          comment: 'Salesperson moved order directly to Ready Orders for dispatch',
-          rescheduled_by: profile.id,
-        });
-
-        // Update order - move to READY status
-        await updateOrder.mutateAsync({
-          id: order.id,
-          status: 'READY',
-          salesperson_action_required: false,
-          salesperson_action_type: null,
-          last_status_note: 'Moved to Ready Orders for dispatch',
-          runner_status: 'UNASSIGNED',
-          runner_id: null,
-          driver_id: null,
-          driver_status: null,
+        // Resolve the Action Required state and clear its stale review/driver
+        // markers in the same transaction. A follow-up orders.update here can
+        // race with an incoming Driver result and make the order reopen later.
+        await callSupabaseRpc('resolve_action_required_to_ready', {
+          p_order_id: order.id,
+          p_expected_state: order.current_operational_state || null,
+          p_comment: 'Salesperson moved order directly to Ready Orders for dispatch',
         });
 
         toast.success('Order moved to Ready Orders');

@@ -12,7 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
-import { useMyDrivers } from '@/hooks/useDrivers';
 import { useProducts } from '@/hooks/useProducts';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
@@ -93,7 +92,6 @@ interface FreshClaimOrder {
   delivered_at: string | null;
 }
 import { exportDeliveredOrderLines } from '@/lib/csv';
-import { useActiveDeliveryCharges } from '@/hooks/useDeliveryCharges';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -113,13 +111,17 @@ import { useClaimBatches } from '@/hooks/useClaimBatches';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { useNavigate } from 'react-router-dom';
-import { useDeliveryCharges as useApprovedChargeMap } from '@/hooks/useDeliveryChargePreview';
+import { useSourceRunnerDeliveryCharges } from '@/hooks/useDeliveryChargePreview';
+import { getRunnerDeliveryCharge } from '@/lib/runnerDeliveryCharges';
+import { EXCLUDE_P_AREAS_FILTER, formatKualaLumpurDateTime, getDeliveredOrderTimestamp, getKualaLumpurDateKey, isDeliveredInKualaLumpurDateRange, isPNumberArea } from '@/lib/deliveredOrderReport';
 import { RunnerEarningsDashboard } from '@/components/runner/RunnerEarningsDashboard';
 import { AutoClaimSuggestion } from '@/components/runner/AutoClaimSuggestion';
 import { EarningsChart } from '@/components/runner/EarningsChart';
 import { ClaimBatchTimeline } from '@/components/runner/ClaimBatchTimeline';
 import { useRunnerEarnings } from '@/hooks/useRunnerEarnings';
 import { summarizeFilteredRunnerEarnings } from '@/lib/filteredRunnerEarnings';
+import { getClaimBatchScope } from '@/lib/claimBatchScope';
+import { formatDriverPaymentDisplay, getDriverRecordedPaymentCategory, type DriverPaymentFilter } from '@/lib/driverPaymentSummary';
 
 // Claim status filter options for the dropdown
 type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -139,6 +141,14 @@ const claimStatusFilterOptions: { label: string; value: ClaimStatusFilter }[] = 
   { label: 'Claim Submitted', value: 'CLAIM_SUBMITTED' },
   { label: 'Approved', value: 'APPROVED' },
   { label: 'Rejected', value: 'REJECTED' },
+];
+
+const driverPaymentFilterOptions: { label: string; value: DriverPaymentFilter }[] = [
+  { label: 'All Driver Payments', value: 'ALL' },
+  { label: 'Cash', value: 'CASH' },
+  { label: 'Transfer', value: 'TRANSFER' },
+  { label: 'Cash + Transfer', value: 'CASH_TRANSFER' },
+  { label: 'Not recorded', value: 'UNKNOWN' },
 ];
 
 // Claim status display mapping (user-friendly labels)
@@ -200,8 +210,7 @@ function ClaimEligibilityBadge({ order, approvedChargeMap, canClaim }: { order: 
     );
   }
 
-  const area = order.area.toLowerCase();
-  if (approvedChargeMap[area] === undefined) {
+  if (getRunnerDeliveryCharge(order, approvedChargeMap) === undefined) {
     return (
       <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
         No Charge Rate
@@ -246,9 +255,6 @@ export default function RunnerDeliveredOrders({
     }
   }, [highlightOrderId]);
   
-  // Approved delivery charges map for the runner (area -> charge_amount)
-  const { data: approvedChargeMap = {}, isLoading: approvedChargeLoading } = useApprovedChargeMap();
-  
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager: isManagerRole, teamMembers } = useTeamViewState('team');
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
@@ -266,6 +272,7 @@ export default function RunnerDeliveredOrders({
   const [searchQuery, setSearchQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('all');
   const [driverFilter, setDriverFilter] = useState('all');
+  const [driverPaymentFilter, setDriverPaymentFilter] = useState<DriverPaymentFilter>('ALL');
   const [salespersonFilters, setSalespersonFilters] = useState<string[]>([]);
   const [skuFilter, setSkuFilter] = useState('all');
   const [claimStatusFilter, setClaimStatusFilter] = useState<ClaimStatusFilter>('all');
@@ -284,6 +291,7 @@ export default function RunnerDeliveredOrders({
   // ---------- Unified RPC path for ALL roles (bypasses RLS via SECURITY DEFINER) ----------
   const isRunnerRole = role === 'runner';
   const isAssistantView = role === 'runner_assistant' || Boolean(runnerIdsOverride?.length);
+  const canViewDriverPayment = isRunnerRole || isAssistantView;
 
   // Get visible owner IDs for role-scoping (admin=null=all, manager/salesperson=team IDs)
   const { data: visibleOwnerIds } = useVisibleOwnerIds();
@@ -348,6 +356,10 @@ export default function RunnerDeliveredOrders({
       runner_status: d.runner_status,
       reconciliation_status: d.reconciliation_status,
       delivered_at: d.delivered_at,
+      driver_delivered_at: d.driver_delivered_at,
+      driver_payment_method: d.driver_payment_method,
+      driver_cash_amount: d.driver_cash_amount,
+      driver_transfer_amount: d.driver_transfer_amount,
       salesperson_id: d.salesperson_id,
       runner_id: d.runner_id,
       driver_id: d.driver_id,
@@ -367,6 +379,28 @@ export default function RunnerDeliveredOrders({
     })) as any[];
   }, [rpcOrders]);
 
+  // Delivery charges belong to the order's source runner, not the user currently
+  // operating this view (for example, a runner assistant).
+  const sourceRunnerIds = useMemo(
+    () => Array.from(new Set(
+      rpcOrdersMapped
+        .map(order => order.runner_id)
+        .filter((runnerId): runnerId is string => Boolean(runnerId)),
+    )),
+    [rpcOrdersMapped],
+  );
+  const { data: approvedChargeMap = {}, isLoading: approvedChargeLoading } =
+    useSourceRunnerDeliveryCharges(sourceRunnerIds);
+
+  const dashboardRunnerIds = useMemo(
+    () => isAssistantView
+      ? sourceRunnerIds
+      : user?.id
+        ? [user.id]
+        : [],
+    [isAssistantView, sourceRunnerIds, user?.id],
+  );
+
   // Apply client-side filters for ALL roles (unified RPC data path)
   const filteredOrders = useMemo(() => {
     let filtered = rpcOrdersMapped;
@@ -376,24 +410,28 @@ export default function RunnerDeliveredOrders({
       const q = searchQuery.trim().toUpperCase().replace(/\s+/g, '');
       filtered = filtered.filter(o =>
         (o.order_code || '').toUpperCase().replace(/\s+/g, '').startsWith(q)
+        || (o.phone || '').replace(/\s+/g, '').includes(q)
       );
     }
     // Area
-    if (areaFilter !== 'all') {
+    if (areaFilter === EXCLUDE_P_AREAS_FILTER) {
+      filtered = filtered.filter(o => !isPNumberArea(o.area));
+    } else if (areaFilter !== 'all') {
       filtered = filtered.filter(o => o.area === areaFilter);
     }
     // Date range
-    if (dateRange.from) {
-      const from = dateRange.from.getTime();
-      filtered = filtered.filter(o => o.delivered_at && new Date(o.delivered_at).getTime() >= from);
-    }
-    if (dateRange.to) {
-      const to = dateRange.to.getTime();
-      filtered = filtered.filter(o => o.delivered_at && new Date(o.delivered_at).getTime() <= to);
+    const fromKey = dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : null;
+    const toKey = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : null;
+    if (fromKey || toKey) {
+      filtered = filtered.filter(o => isDeliveredInKualaLumpurDateRange(o, fromKey, toKey));
     }
     // Driver
-    if (driverFilter !== 'all') {
+    if (canViewDriverPayment && driverFilter !== 'all') {
       filtered = filtered.filter(o => o.driver_id === driverFilter);
+    }
+    // Driver payment must use an explicit Driver result, never the order's planned payment method.
+    if (canViewDriverPayment && driverPaymentFilter !== 'ALL') {
+      filtered = filtered.filter(o => getDriverRecordedPaymentCategory(o) === driverPaymentFilter);
     }
     // Salesperson (explicit user filter dropdown — applies on top of role-scoping)
     if (salespersonFilters.length > 0) {
@@ -416,7 +454,7 @@ export default function RunnerDeliveredOrders({
     }
 
     return filtered;
-  }, [rpcOrdersMapped, searchQuery, areaFilter, dateRange, driverFilter, salespersonFilters, claimStatusFilter, skuFilter]);
+  }, [rpcOrdersMapped, searchQuery, areaFilter, dateRange, driverFilter, driverPaymentFilter, canViewDriverPayment, salespersonFilters, claimStatusFilter, skuFilter]);
 
   // Client-side pagination for ALL roles (unified RPC data)
   const [currentPage, setCurrentPage] = useState(1);
@@ -430,7 +468,7 @@ export default function RunnerDeliveredOrders({
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, areaFilter, dateRange, driverFilter, salespersonFilters, claimStatusFilter, skuFilter]);
+  }, [searchQuery, areaFilter, dateRange, driverFilter, driverPaymentFilter, salespersonFilters, claimStatusFilter, skuFilter]);
 
   // ---------- Unified interface ----------
   const isLoading = rpcLoading;
@@ -448,28 +486,29 @@ export default function RunnerDeliveredOrders({
   const paginatedOrders = deliveredOrders;
 
   const { data: userDirectory = [] } = useUserDirectory();
-  const { data: myDrivers = [] } = useMyDrivers(isAssistantView ? runnerIdsOverride : undefined);
   const { data: products = [] } = useProducts();
-  const { data: claimBatches = [] } = useClaimBatches(role === 'runner' ? { runnerId: user?.id } : {});
+  const claimBatchScope = useMemo(() => getClaimBatchScope({
+    role,
+    userId: user?.id,
+    isAssistantView,
+    runnerIdsOverride,
+  }), [role, user?.id, isAssistantView, runnerIdsOverride]);
+  const { data: claimBatches = [] } = useClaimBatches(claimBatchScope);
 
   // Runner earnings dashboard data
   const { data: runnerEarnings, isLoading: earningsLoading } = useRunnerEarnings(
-    role === 'runner' ? user?.id : undefined
+    undefined,
+    role === 'runner' ? dashboardRunnerIds : [],
   );
 
-  // Fetch active delivery charges for runner (for export)
-  const { data: activeCharges = [] } = useActiveDeliveryCharges(
-    role === 'runner' ? user?.id : undefined
-  );
-
-  // Build delivery charges lookup map: "runnerId:area" -> charge_amount
+  // Build the export lookup from the same source-runner charge map used by the UI.
   const deliveryChargesMap = useMemo(() => {
     const map = new Map<string, number>();
-    for (const charge of activeCharges) {
-      map.set(`${charge.runner_id}:${charge.area}`, charge.charge_amount);
+    for (const [key, amount] of Object.entries(approvedChargeMap)) {
+      map.set(key, amount);
     }
     return map;
-  }, [activeCharges]);
+  }, [approvedChargeMap]);
 
   // Compute summary from client-side filtered data — placed after allFilteredOrders definition below.
   // (clientSummary and displaySummary are declared further down)
@@ -485,19 +524,21 @@ export default function RunnerDeliveredOrders({
     return (
       searchQuery.trim() !== '' ||
       areaFilter !== 'all' ||
-      driverFilter !== 'all' ||
+      (canViewDriverPayment && driverFilter !== 'all') ||
+      (canViewDriverPayment && driverPaymentFilter !== 'ALL') ||
       salespersonFilters.length > 0 ||
       skuFilter !== 'all' ||
       claimStatusFilter !== 'all' ||
       dateRange.from !== null
     );
-  }, [searchQuery, areaFilter, driverFilter, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
+  }, [searchQuery, areaFilter, driverFilter, driverPaymentFilter, canViewDriverPayment, salespersonFilters, skuFilter, claimStatusFilter, dateRange]);
 
   // Clear filters helper
   const clearAllFilters = useCallback(() => {
     setSearchQuery('');
     setAreaFilter('all');
     setDriverFilter('all');
+    setDriverPaymentFilter('ALL');
     setSalespersonFilters([]);
     setSkuFilter('all');
     setClaimStatusFilter('all');
@@ -510,8 +551,7 @@ export default function RunnerDeliveredOrders({
   // Check if an order has a valid approved delivery charge for its area
   const orderHasValidAreaRate = useCallback((order: Order): boolean => {
     if (!order.area || order.area.trim() === '') return false;
-    const area = order.area.toLowerCase();
-    return approvedChargeMap[area] !== undefined;
+    return getRunnerDeliveryCharge(order, approvedChargeMap) !== undefined;
   }, [approvedChargeMap]);
 
   const isOrderClaimable = useCallback((order: Order): boolean => {
@@ -705,8 +745,8 @@ export default function RunnerDeliveredOrders({
           continue;
         }
 
-        const areaKey = fresh.area?.trim().toLowerCase();
-        if (!areaKey || approvedChargeMap[areaKey] === undefined) {
+        const deliveryFee = getRunnerDeliveryCharge(fresh, approvedChargeMap);
+        if (!fresh.area?.trim() || deliveryFee === undefined) {
           precheckFailedOrders.push({
             ...base,
             reason: fresh.area
@@ -879,7 +919,9 @@ export default function RunnerDeliveredOrders({
   // Use valid areas from database for filter options
   const { data: validAreas = [] } = useValidAreas();
   const areaOptions = useMemo(() => {
-    return validAreas.sort().map(area => ({ label: area, value: area }));
+    return validAreas
+      .sort()
+      .map(area => ({ label: area, value: area }));
   }, [validAreas]);
 
   // Salesperson filter options - scoped based on role
@@ -907,11 +949,16 @@ export default function RunnerDeliveredOrders({
 
   // Driver filter options
   const driverOptions = useMemo(() => {
-    return myDrivers.map(d => ({
-      label: d.driver?.display_name || 'Unknown',
-      value: d.driver_id,
-    }));
-  }, [myDrivers]);
+    const options = new Map<string, { label: string; value: string }>();
+    for (const order of rpcOrdersMapped) {
+      const driverId = order.driver_id;
+      const driverName = order.driver?.display_name;
+      if (driverId && driverName && !options.has(driverId)) {
+        options.set(driverId, { label: driverName, value: driverId });
+      }
+    }
+    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [rpcOrdersMapped]);
 
   // --- SKU Code Helpers ---
   // Normalize SKU code for consistent comparison
@@ -1225,7 +1272,7 @@ export default function RunnerDeliveredOrders({
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search order code..."
+                    placeholder="Search order code or phone..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 h-10"
@@ -1239,6 +1286,9 @@ export default function RunnerDeliveredOrders({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Areas</SelectItem>
+                    {isAdmin && (
+                      <SelectItem value={EXCLUDE_P_AREAS_FILTER}>Exclude P Areas</SelectItem>
+                    )}
                     {areaOptions.map(opt => (
                       <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                     ))}
@@ -1254,6 +1304,30 @@ export default function RunnerDeliveredOrders({
                     ))}
                   </SelectContent>
                 </Select>
+
+                {canViewDriverPayment && (
+                  <>
+                    <SearchableSelect
+                      options={driverOptions}
+                      value={driverFilter}
+                      onValueChange={setDriverFilter}
+                      placeholder="All Drivers"
+                      searchPlaceholder="Search drivers..."
+                      allOption={{ label: 'All Drivers', value: 'all' }}
+                      className="w-full md:w-[180px]"
+                    />
+                    <Select value={driverPaymentFilter} onValueChange={(v) => setDriverPaymentFilter(v as DriverPaymentFilter)}>
+                      <SelectTrigger className="w-full md:w-[190px] h-10">
+                        <SelectValue placeholder="All Driver Payments" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {driverPaymentFilterOptions.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
                 
                 {/* User filter - All roles (Admin/Manager/Runner) - Multi-select */}
                 <SearchableMultiSelect
@@ -1406,12 +1480,12 @@ export default function RunnerDeliveredOrders({
                       ...(canClaim ? [{
                         label: 'Earning',
                         value: (() => {
-                          const area = order.area?.toLowerCase() || '';
-                          const fee = approvedChargeMap[area];
+                          const fee = getRunnerDeliveryCharge(order, approvedChargeMap);
                           return fee !== undefined ? formatBND(fee) : '-';
                         })(),
                       }] : []),
-                      { label: 'Delivered', value: order.delivered_at ? format(new Date(order.delivered_at), 'MMM dd, HH:mm') : '-' },
+                      { label: 'Delivered', value: getDeliveredOrderTimestamp(order) ? (formatKualaLumpurDateTime(getDeliveredOrderTimestamp(order)!) || '-') : '-' },
+                      ...(canViewDriverPayment ? [{ label: 'Driver Payment', value: formatDriverPaymentDisplay(order) }] : []),
                     ]}
                     expandedFields={[
                       { label: 'Customer', value: order.customer_name || '-' },
@@ -1495,6 +1569,7 @@ export default function RunnerDeliveredOrders({
                       <TableHead>Amount (BND)</TableHead>
                       {canClaim && <TableHead>Earning</TableHead>}
                       <TableHead>Payment</TableHead>
+                      {canViewDriverPayment && <TableHead>Driver Payment</TableHead>}
                       <TableHead>Runner</TableHead>
                       <TableHead>Driver</TableHead>
                       <TableHead>Salesperson</TableHead>
@@ -1508,13 +1583,13 @@ export default function RunnerDeliveredOrders({
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={16 + (canExport ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8">
+                        <TableCell colSpan={16 + (canExport ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0) + (canViewDriverPayment ? 1 : 0)} className="text-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={16 + (canExport ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0)} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={16 + (canExport ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0) + (canViewDriverPayment ? 1 : 0)} className="text-center py-8 text-muted-foreground">
                           <div className="flex flex-col items-center gap-2">
                             <span>No delivered orders found</span>
                             {hasActiveFilters && (
@@ -1620,8 +1695,7 @@ export default function RunnerDeliveredOrders({
                             {canClaim && (
                               <TableCell>
                                 {(() => {
-                                  const area = order.area?.toLowerCase() || '';
-                                  const fee = approvedChargeMap[area];
+                                  const fee = getRunnerDeliveryCharge(order, approvedChargeMap);
                                   return fee !== undefined ? (
                                     <Badge className="bg-[hsl(var(--status-success)/0.15)] text-[hsl(var(--status-success))] border border-[hsl(var(--status-success)/0.3)] font-semibold">
                                       <Banknote className="h-3 w-3 mr-1" />
@@ -1634,12 +1708,13 @@ export default function RunnerDeliveredOrders({
                               </TableCell>
                             )}
                             <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>
+                            {canViewDriverPayment && <TableCell className="whitespace-nowrap">{formatDriverPaymentDisplay(order)}</TableCell>}
                             <TableCell>{order.runner?.display_name || '-'}</TableCell>
                             <TableCell>{order.driver?.display_name || '-'}</TableCell>
                             <TableCell>{salespersonDisplayName}</TableCell>
                             <TableCell>
-                              {order.delivered_at 
-                                ? format(new Date(order.delivered_at), 'dd MMM yyyy HH:mm')
+                              {getDeliveredOrderTimestamp(order)
+                                ? (formatKualaLumpurDateTime(getDeliveredOrderTimestamp(order)!) || '-')
                                 : '-'}
                             </TableCell>
                             <TableCell>
@@ -1758,6 +1833,7 @@ export default function RunnerDeliveredOrders({
           open={bulkClaimOpen}
           onOpenChange={setBulkClaimOpen}
           orders={selectedClaimableOrders}
+          sourceRunnerCharges={approvedChargeMap}
           onSubmitBatches={handleGroupedClaimSubmit}
           isSubmitting={isSubmitting}
           onRemoveInvalidOrders={(invalidIds) => {

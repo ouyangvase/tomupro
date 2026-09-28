@@ -20,6 +20,7 @@ import {
   ChevronDown, ChevronUp
 } from 'lucide-react';
 import capybaraEmpty from '@/assets/capybara-empty.png';
+import { AdminDocumentDriveCard } from '@/components/guide/AdminDocumentDriveCard';
 
 const typeConfig: Record<GuideType, { label: string; icon: React.ReactNode; color: string }> = {
   'overview': { label: 'Overview', icon: <BookOpen className="h-3.5 w-3.5" />, color: 'bg-primary/10 text-primary' },
@@ -48,6 +49,7 @@ export default function GuideCenterPage() {
       ? (rawRole as GuideRole)
       : 'salesperson';
   const roleLabel = rawRole === 'runner_assistant' ? 'runner assistant' : role;
+  const isAdmin = rawRole === 'admin';
   const onboarding = onboardingFlows.find(o => o.role === role);
 
   const roleGuides = useMemo(() => {
@@ -156,6 +158,8 @@ export default function GuideCenterPage() {
             </CardContent>
           </Card>
         )}
+
+        {isAdmin && <AdminDocumentDriveCard />}
 
         {/* Filter Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>

@@ -1,3 +1,5 @@
+import { getRunnerDeliveryCharge, type RunnerDeliveryChargeMap } from '@/lib/runnerDeliveryCharges';
+
 export interface FilteredRunnerEarnings {
   total_amount: number;
   total_orders: number;
@@ -11,12 +13,13 @@ export interface FilteredRunnerEarnings {
 
 interface DeliveredOrderForEarnings {
   area?: string | null;
+  runner_id?: string | null;
   reconciliation_status?: string | null;
 }
 
 export function summarizeFilteredRunnerEarnings(
   orders: DeliveredOrderForEarnings[],
-  approvedChargeMap: Record<string, number>,
+  approvedChargeMap: RunnerDeliveryChargeMap,
 ): FilteredRunnerEarnings {
   const summary: FilteredRunnerEarnings = {
     total_amount: 0,
@@ -30,8 +33,7 @@ export function summarizeFilteredRunnerEarnings(
   };
 
   for (const order of orders) {
-    const area = order.area?.trim().toLowerCase() || '';
-    const fee = area ? Number(approvedChargeMap[area] ?? 0) : 0;
+    const fee = Number(getRunnerDeliveryCharge(order, approvedChargeMap) ?? 0);
     summary.total_amount += fee;
 
     if (order.reconciliation_status === 'NOT_CLAIMED') {

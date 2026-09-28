@@ -110,15 +110,22 @@ serve(async (req) => {
     );
 
     // ── Fetch delivery charges ──
-    const { data: deliveryCharges } = await supabase
-      .from('delivery_charges')
-      .select('area, charge_amount')
-      .eq('runner_id', user.id)
-      .eq('status', 'APPROVED')
-      .is('superseded_at', null);
+    const sourceRunnerIds = Array.from(new Set(
+      orders
+        .map(order => order.runner_id)
+        .filter((runnerId): runnerId is string => Boolean(runnerId)),
+    ));
+    const { data: deliveryCharges } = sourceRunnerIds.length > 0
+      ? await supabase
+        .from('delivery_charges')
+        .select('runner_id, area, charge_amount')
+        .in('runner_id', sourceRunnerIds)
+        .eq('status', 'APPROVED')
+        .is('superseded_at', null)
+      : { data: [] };
 
-    const chargesByArea = new Map(
-      (deliveryCharges || []).map(c => [c.area.toLowerCase(), Number(c.charge_amount)])
+    const chargesByRunnerArea = new Map(
+      (deliveryCharges || []).map(c => [`${c.runner_id}:${c.area.trim().toLowerCase()}`, Number(c.charge_amount)])
     );
 
     // ── Per-order validation ──
@@ -193,7 +200,7 @@ serve(async (req) => {
       }
 
       // Check delivery charge
-      const fee = chargesByArea.get(order.area.trim().toLowerCase());
+      const fee = chargesByRunnerArea.get(`${order.runner_id}:${order.area.trim().toLowerCase()}`);
       if (fee === undefined) {
         failedOrders.push({ ...base, reason: `No approved delivery charge for area: ${order.area}` });
         continue;

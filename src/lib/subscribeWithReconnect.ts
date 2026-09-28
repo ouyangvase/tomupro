@@ -15,6 +15,7 @@ interface SubscribeWithReconnectOptions {
   baseDelayMs?: number;
   maxDelayMs?: number;
   onStatus?: (status: SubscribeStatus, error?: SubscribeError) => void;
+  onReconnect?: () => void;
 }
 
 /**
@@ -29,6 +30,7 @@ export function subscribeWithReconnect(
     baseDelayMs = 1000,
     maxDelayMs = 30000,
     onStatus,
+    onReconnect,
   }: SubscribeWithReconnectOptions,
 ) {
   let active = true;
@@ -36,6 +38,7 @@ export function subscribeWithReconnect(
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let retryAttempt = 0;
   let reconnectPending = false;
+  let hasSubscribed = false;
 
   const notify = (status: SubscribeStatus, error?: SubscribeError) => {
     onStatus?.(status, error);
@@ -82,7 +85,10 @@ export function subscribeWithReconnect(
 
         notify(status, error);
         if (status === 'SUBSCRIBED') {
+          const reconnected = hasSubscribed;
+          hasSubscribed = true;
           retryAttempt = 0;
+          if (reconnected) onReconnect?.();
         } else if (RETRYABLE_STATUSES.has(status)) {
           reconnect();
         }

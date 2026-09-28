@@ -3,13 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, QueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { subscribeWithReconnect } from '@/lib/subscribeWithReconnect';
-
-interface RealtimePayload {
-  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
-  new: Record<string, unknown>;
-  old: Record<string, unknown>;
-}
+import { subscribeToOrderRealtime, type OrderRealtimePayload } from '@/lib/orderRealtime';
 
 /**
  * Debounced, targeted invalidation for realtime order changes.
@@ -82,6 +76,7 @@ export function useRealtimeOrderUpdates(enabled = true) {
       driver_status?: string;
       runner_accept_status?: string;
       reconciliation_status?: string;
+      current_operational_state?: string;
     };
     const oldOrder = oldRecord as typeof newOrder;
 
@@ -101,7 +96,8 @@ export function useRealtimeOrderUpdates(enabled = true) {
     const deliveryChanged =
       newOrder.runner_status !== oldOrder?.runner_status ||
       newOrder.reconciliation_status !== oldOrder?.reconciliation_status ||
-      newOrder.status !== oldOrder?.status;
+      newOrder.status !== oldOrder?.status ||
+      newOrder.current_operational_state !== oldOrder?.current_operational_state;
 
     if (deliveryChanged) {
       invalidateDeliveryRelated(queryClient);
@@ -164,31 +160,23 @@ export function useRealtimeOrderUpdates(enabled = true) {
     if (!enabled) return;
     if (!profile?.id) return;
 
-    const filter = (() => {
-      if (profile.role === 'driver') return `driver_id=eq.${profile.id}`;
-      if (profile.role === 'runner') return `runner_id=eq.${profile.id}`;
-      if (profile.role === 'salesperson') return `salesperson_id=eq.${profile.id}`;
-      return undefined;
-    })();
-
-    return subscribeWithReconnect(
-      () => supabase
-        .channel(`orders-realtime-${profile.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'orders',
-            ...(filter ? { filter } : {}),
-          },
-          (payload) => {
-            handleOrderChange(payload as unknown as RealtimePayload);
-          }
-        ),
-      { name: `orders-realtime-${profile.id}` },
-    );
-  }, [enabled, profile?.id, profile?.role, handleOrderChange]);
+    return subscribeToOrderRealtime({
+      userId: profile.id,
+      role: profile.role,
+      scope: 'main',
+      onPayload: handleOrderChange,
+      onReconnect: () => {
+        void queryClient.refetchQueries({
+          queryKey: ['orders-paginated'],
+          type: 'active',
+        });
+        void queryClient.refetchQueries({
+          queryKey: ['orders-all-ids'],
+          type: 'active',
+        });
+      },
+    });
+  }, [enabled, profile?.id, profile?.role, handleOrderChange, queryClient]);
 }
 
 export function useRealtimePickupUpdates(enabled = true) {

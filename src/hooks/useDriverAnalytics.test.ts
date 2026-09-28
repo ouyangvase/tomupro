@@ -28,6 +28,10 @@ describe('normalizeDriverAnalyticsMetrics', () => {
       pending_acceptance_amount: '1457',
       runner_accepted_orders: 0,
       runner_accepted_amount: '0',
+      pending_cash_amount: '120',
+      pending_cash_order_count: 3,
+      pending_transfer_amount: '39',
+      pending_transfer_order_count: 1,
     });
 
     expect(result).toMatchObject({
@@ -49,6 +53,10 @@ describe('normalizeDriverAnalyticsMetrics', () => {
       cashCollected: 0,
       cashPendingSettlement: 0,
       transfer: 0,
+      pendingCashAmount: 120,
+      pendingCashOrderCount: 3,
+      pendingTransferAmount: 39,
+      pendingTransferOrderCount: 1,
     });
     expect(result.deliveryRate).toBe(0);
   });
@@ -69,7 +77,9 @@ describe('normalizeDriverAnalyticsMetrics', () => {
     const result = normalizeDailyRow({
       assigned_orders: 30,
       delivered_orders: 9,
-      total_sales: '407',
+      total_sales: '1150',
+      cash_amount: '805',
+      transfer_amount: '315',
       accepted_failed_orders: 4,
       pending_acceptance: 17,
     });
@@ -78,7 +88,8 @@ describe('normalizeDriverAnalyticsMetrics', () => {
       assignedOrders: 30,
       deliveredOrders: 9,
       runnerAcceptedOrders: 9,
-      totalSales: 407,
+      totalSales: 1120,
+      runnerAcceptedAmount: 1120,
       acceptedFailedOrders: 4,
       pendingAcceptance: 17,
       deliveryRate: 30,
@@ -87,19 +98,22 @@ describe('normalizeDriverAnalyticsMetrics', () => {
 });
 
 describe('groupDriverAnalyticsOrders', () => {
-  it('keeps current orders visible and separates review outcomes for collapsed groups', async () => {
+  it('groups every order by its current analytics state', async () => {
     const { groupDriverAnalyticsOrders } = await import('./useDriverAnalytics');
     const orders = [
       { id: 'active', assignment_state: 'ACTIVE' },
       { id: 'delivered', assignment_state: 'DELIVERED' },
       { id: 'pending', assignment_state: 'PENDING_ACCEPTANCE' },
       { id: 'failed', assignment_state: 'FAILED' },
+      { id: 'runner-took-it', assignment_state: 'INACTIVE', driver_id: null },
     ] as never[];
 
     const groups = groupDriverAnalyticsOrders(orders);
 
-    expect(groups.visible.map((order) => order.id)).toEqual(['active', 'delivered']);
-    expect(groups.pendingAcceptance.map((order) => order.id)).toEqual(['pending']);
-    expect(groups.failed.map((order) => order.id)).toEqual(['failed']);
+    expect(groups.ACTIVE.map((order) => order.id)).toEqual(['active']);
+    expect(groups.DELIVERED.map((order) => order.id)).toEqual(['delivered']);
+    expect(groups.PENDING_ACCEPTANCE.map((order) => order.id)).toEqual(['pending']);
+    expect(groups.FAILED.map((order) => order.id)).toEqual(['failed']);
+    expect(groups.INACTIVE.map((order) => order.id)).toEqual(['runner-took-it']);
   });
 });

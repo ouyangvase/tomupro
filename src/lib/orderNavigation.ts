@@ -1,21 +1,15 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { NavigateFunction } from 'react-router-dom';
+import { resolveCurrentOrderState, type CurrentOrderFields } from '@/lib/orderLifecycle';
 
 /**
- * Determine the correct Orders tab route based on order status.
- * Shared by GlobalSearchBar, NotificationCenter, and NotificationBell.
+ * Determine the correct Orders tab route from the same current-state resolver
+ * used to render Global Search.
  */
-export function getOrderTabRoute(
-  status: string,
-  runnerStatus: string | null,
-  orderId: string,
-): string {
-  if (runnerStatus === 'DELIVERED') return `/orders?tab=delivered&highlight=${orderId}`;
-  if (runnerStatus === 'FAILED_DELIVERY') return `/orders?tab=action-required&highlight=${orderId}`;
-  if (status === 'BOOKING') return `/orders?tab=booking&highlight=${orderId}`;
-  if (status === 'CANCELLED') return `/orders?tab=cancelled&highlight=${orderId}`;
-  if (status === 'READY') return `/orders?tab=ready&highlight=${orderId}`;
-  return `/orders?tab=booking&highlight=${orderId}`;
+export function getOrderTabRoute(order: CurrentOrderFields): string {
+  const state = resolveCurrentOrderState(order);
+  const params = new URLSearchParams({ tab: state.destinationTab, highlight: order.id });
+  return `/orders?${params.toString()}`;
 }
 
 /**
@@ -30,7 +24,7 @@ export async function navigateToOrder(
   try {
     const { data, error } = await supabase
       .from('orders')
-      .select('id, order_code, status, runner_status')
+      .select('id, order_code, status, operational_status, current_operational_state, runner_status, runner_review_status, runner_final_outcome, runner_comment, runner_failed_reason_id, salesperson_action_required, salesperson_action_type, next_delivery_date, driver_next_delivery_date, driver_failed_reason, delivered_at, cancelled_at')
       .eq('id', orderId)
       .maybeSingle();
 
@@ -44,7 +38,7 @@ export async function navigateToOrder(
       return false;
     }
 
-    const route = getOrderTabRoute(data.status, data.runner_status, data.id);
+    const route = getOrderTabRoute(data);
     navigate(route);
     return true;
   } catch (err) {

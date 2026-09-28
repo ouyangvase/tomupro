@@ -45,23 +45,21 @@ export function useSalespersonStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('salesperson_id', user.id)
-          .eq('status', 'BOOKING'),
+          .eq('current_operational_state', 'BOOKING'),
         
         // Ready orders count
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('salesperson_id', user.id)
-          .eq('status', 'READY')
-          .neq('runner_status', 'DELIVERED')
-          .neq('runner_status', 'FAILED_DELIVERY'),
+          .eq('current_operational_state', 'READY'),
         
         // Pending delivery (ASSIGNED or TAKEN, READY status)
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('salesperson_id', user.id)
-          .eq('status', 'READY')
+          .eq('current_operational_state', 'READY')
           .in('runner_status', ['ASSIGNED', 'TAKEN']),
         
         // Pending reconciliation
@@ -143,23 +141,21 @@ export function useManagerStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .in('salesperson_id', visibleIds)
-          .eq('status', 'BOOKING'),
+          .eq('current_operational_state', 'BOOKING'),
         
         // Ready orders count (excluding delivered)
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .in('salesperson_id', visibleIds)
-          .eq('status', 'READY')
-          .neq('runner_status', 'DELIVERED')
-          .neq('runner_status', 'FAILED_DELIVERY'),
+          .eq('current_operational_state', 'READY'),
         
         // Pending delivery (ASSIGNED or TAKEN, READY status)
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .in('salesperson_id', visibleIds)
-          .eq('status', 'READY')
+          .eq('current_operational_state', 'READY')
           .in('runner_status', ['ASSIGNED', 'TAKEN']),
         
         // Pending reconciliation
@@ -183,7 +179,7 @@ export function useManagerStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .in('salesperson_id', visibleIds)
-          .eq('runner_status', 'DELIVERED')
+          .eq('current_operational_state', 'DELIVERED')
           .gte('delivered_at', monthStart),
         
         // Cancelled orders
@@ -191,21 +187,21 @@ export function useManagerStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .in('salesperson_id', visibleIds)
-          .eq('status', 'CANCELLED'),
+          .eq('current_operational_state', 'CANCELLED'),
         
         // Action required (failed delivery)
         supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .in('salesperson_id', visibleIds)
-          .eq('runner_status', 'FAILED_DELIVERY'),
+          .eq('current_operational_state', 'ACTION_REQUIRED'),
         
         // Delivered amount (MTD GMV)
         supabase
           .from('orders')
           .select('total_amount')
           .in('salesperson_id', visibleIds)
-          .eq('runner_status', 'DELIVERED')
+          .eq('current_operational_state', 'DELIVERED')
           .gte('delivered_at', monthStart),
         
         // Pipeline GMV (booking + ready)
@@ -213,9 +209,7 @@ export function useManagerStats() {
           .from('orders')
           .select('total_amount')
           .in('salesperson_id', visibleIds)
-          .in('status', ['BOOKING', 'READY'])
-          .neq('runner_status', 'DELIVERED')
-          .neq('runner_status', 'FAILED_DELIVERY'),
+          .in('current_operational_state', ['BOOKING', 'READY']),
       ]);
 
       const teamRealizedGmv = (deliveredAmountRes.data || []).reduce(
@@ -265,7 +259,7 @@ export function useRunnerStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('runner_id', user.id)
-          .eq('status', 'READY')
+          .eq('current_operational_state', 'READY')
           .in('runner_status', ['ASSIGNED', 'TAKEN']),
         
         // Delivered today
@@ -273,7 +267,7 @@ export function useRunnerStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('runner_id', user.id)
-          .eq('runner_status', 'DELIVERED')
+          .eq('current_operational_state', 'DELIVERED')
           .gte('delivered_at', todayStart)
           .lte('delivered_at', todayEnd),
         
@@ -282,7 +276,7 @@ export function useRunnerStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('runner_id', user.id)
-          .eq('runner_status', 'FAILED_DELIVERY')
+          .eq('current_operational_state', 'ACTION_REQUIRED')
           .gte('updated_at', todayStart)
           .lte('updated_at', todayEnd),
         
@@ -291,7 +285,7 @@ export function useRunnerStats() {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('runner_id', user.id)
-          .eq('runner_status', 'DELIVERED')
+          .eq('current_operational_state', 'DELIVERED')
           .eq('reconciliation_status', 'NOT_CLAIMED'),
       ]);
 

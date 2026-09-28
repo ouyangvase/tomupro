@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { subscribeToOrderRealtime } from '@/lib/orderRealtime';
 
 export interface FinanceOverviewDay {
   date: string;
@@ -122,13 +123,21 @@ export function useFinanceOverviewReport(params: { runnerId: string | null; area
     const invalidate = () => {
       void queryClient.invalidateQueries({ queryKey: ['finance-overview'] });
     };
+    const stopOrderSubscription = subscribeToOrderRealtime({
+      userId: user.id,
+      role: null,
+      scope: 'main',
+      onPayload: invalidate,
+    });
     const channel = rpcClient.channel(`finance-overview-${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, invalidate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reschedule_history' }, invalidate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'runner_assignment_history' }, invalidate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, invalidate)
       .subscribe();
-    return () => { void rpcClient.removeChannel(channel); };
+    return () => {
+      stopOrderSubscription();
+      void rpcClient.removeChannel(channel);
+    };
   }, [queryClient, user?.id]);
 
   return useQuery({

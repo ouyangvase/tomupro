@@ -60,6 +60,29 @@ describe('subscribeWithReconnect', () => {
     vi.useRealTimers();
   });
 
+  it('reconciles active queries after a successful reconnect', async () => {
+    vi.useFakeTimers();
+    const channels: FakeChannel[] = [];
+    const onReconnect = vi.fn();
+    const cleanup = subscribeWithReconnect(
+      () => {
+        const channel = new FakeChannel();
+        channels.push(channel);
+        return channel as never;
+      },
+      { name: 'test-channel', baseDelayMs: 10, maxDelayMs: 10, onReconnect },
+    );
+
+    channels[0].emit('SUBSCRIBED');
+    channels[0].emit('CLOSED');
+    await vi.advanceTimersByTimeAsync(10);
+    channels[1].emit('SUBSCRIBED');
+
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    cleanup();
+    vi.useRealTimers();
+  });
+
   it('retries when channel creation throws', async () => {
     vi.useFakeTimers();
     let attempts = 0;

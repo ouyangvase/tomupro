@@ -3,7 +3,9 @@ import {
   CUSTOMER_RESCHEDULE_REASON,
   DELIVERY_TOMORROW_REASON,
   getFailedStatusDate,
+  getDriverFailureSubmission,
   getTomorrowDateKey,
+  hasRequiredDeliveryPhotos,
   normalizeFailedReason,
   sortFailedStatusReasons,
 } from './driverFailedStatus';
@@ -15,6 +17,12 @@ describe('driver failed status', () => {
     expect(normalizeFailedReason('  Customer   requested reschedule ')).toBe(
       'customer requested reschedule',
     );
+  });
+
+  it('requires at least one delivery photo for every failed outcome', () => {
+    expect(hasRequiredDeliveryPhotos([])).toBe(false);
+    expect(hasRequiredDeliveryPhotos(undefined)).toBe(false);
+    expect(hasRequiredDeliveryPhotos([ 'uploaded-photo' ])).toBe(true);
   });
 
   it('maps Delivery Tomorrow to the next Brunei calendar date', () => {
@@ -43,6 +51,30 @@ describe('driver failed status', () => {
       valid: true,
       nextDeliveryDate: undefined,
     });
+  });
+
+  it('submits Delivery Tomorrow with its dedicated result type and reason', () => {
+    expect(getDriverFailureSubmission(' Delivery   Tomorrow ', '2026-08-08')).toEqual({
+      resultType: 'DRIVER_DELIVERY_TOMORROW_SUBMITTED',
+      reason: DELIVERY_TOMORROW_REASON,
+      nextDeliveryDate: '2026-08-08',
+    });
+  });
+
+  it('classifies each mixed failed reason independently', () => {
+    const results = [
+      getFailedStatusDate('Cannot contact customer', undefined, today),
+      getFailedStatusDate(DELIVERY_TOMORROW_REASON, undefined, today),
+      getFailedStatusDate(CUSTOMER_RESCHEDULE_REASON, '2026-08-10', today),
+      getFailedStatusDate(CUSTOMER_RESCHEDULE_REASON, undefined, today),
+    ];
+
+    expect(results).toEqual([
+      { valid: true, nextDeliveryDate: undefined },
+      { valid: true, nextDeliveryDate: '2026-08-08' },
+      { valid: true, nextDeliveryDate: '2026-08-10' },
+      { valid: false, nextDeliveryDate: undefined },
+    ]);
   });
 
   it('keeps Delivery Tomorrow before Other in the shared option order', () => {

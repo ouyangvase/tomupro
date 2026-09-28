@@ -2,6 +2,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useMyAssistantScope } from '@/hooks/useRunnerAssistants';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import { CompanyProvider } from '@/contexts/CompanyContext';
 
@@ -23,6 +24,7 @@ const FinanceDashboard = lazy(() => import('@/components/finance/FinanceDashboar
 const FinalReportDashboard = lazy(() => import('@/components/finance/FinalReportDashboard'));
 const MonthlyClosingPage = lazy(() => import('@/components/finance/MonthlyClosingPage'));
 const FinanceAuditLogPage = lazy(() => import('@/components/finance/FinanceAuditLogPage'));
+const RunnerDriverAnalyticsPage = lazy(() => import('@/pages/runner/RunnerDriverAnalyticsPage'));
 
 const Loading = () => (
   <div className="flex items-center justify-center py-16">
@@ -168,11 +170,21 @@ function RunnerFinanceWorkspace({ initialSection }: { initialSection: RunnerWork
 export default function FinanceModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
+  const { data: assistantScope, isLoading: assistantScopeLoading } = useMyAssistantScope();
   const role = profile?.role;
   const requestedTab = searchParams.get('tab') || '';
-  const usesAdminFinanceTabs = role !== 'runner' && role !== 'finance_viewer';
+  const isRunnerFinanceRole = role === 'runner' || role === 'runner_assistant';
+  const usesAdminFinanceTabs = !isRunnerFinanceRole && role !== 'finance_viewer';
   const adminWorkspaceSection = usesAdminFinanceTabs && isAdminWorkspaceSection(requestedTab) ? requestedTab : 'workspace';
   const runnerWorkspaceSection = role === 'runner' && isRunnerWorkspaceSection(requestedTab) ? requestedTab : 'delivery-report';
+
+  if (role === 'runner_assistant' && assistantScopeLoading) {
+    return <Loading />;
+  }
+
+  if (role === 'runner_assistant' && assistantScope?.analyticsRunnerIds.length === 0) {
+    return <Navigate to="/dispatch" replace />;
+  }
 
   if (role === 'runner' && runnerDriverStockTabs.has(requestedTab)) {
     return <Navigate to="/dispatch?tab=driver-stock" replace />;
@@ -188,10 +200,15 @@ export default function FinanceModule() {
   ];
 
   const runnerTabs = [
+    { id: 'driver-analytics', label: 'Driver Analytics' },
     { id: 'my-claims', label: 'My Claims' },
     { id: 'claims-history', label: 'Claim History' },
     { id: 'delivery-charges', label: 'Delivery Charges' },
     { id: 'workspace', label: 'Finance Workspace' },
+  ];
+
+  const assistantTabs = [
+    { id: 'driver-analytics', label: 'Driver Analytics' },
   ];
 
   const financeViewerTabs = [
@@ -199,8 +216,18 @@ export default function FinanceModule() {
     { id: 'workspace', label: 'Workspace' },
   ];
 
-  const tabs = role === 'finance_viewer' ? financeViewerTabs : role === 'runner' ? runnerTabs : adminTabs;
-  const defaultTab = role === 'finance_viewer' ? 'reports' : role === 'runner' ? 'my-claims' : 'reconciliation';
+  const tabs = role === 'finance_viewer'
+    ? financeViewerTabs
+    : role === 'runner'
+      ? runnerTabs
+      : role === 'runner_assistant'
+        ? assistantTabs
+        : adminTabs;
+  const defaultTab = role === 'finance_viewer'
+    ? 'reports'
+    : role === 'runner' || role === 'runner_assistant'
+      ? 'driver-analytics'
+      : 'reconciliation';
   const normalizedTab =
     usesAdminFinanceTabs && isAdminWorkspaceSection(requestedTab)
       ? 'workspace'
@@ -216,6 +243,7 @@ export default function FinanceModule() {
   const renderTabContent = () => {
     switch (currentTab) {
       // Existing tabs
+      case 'driver-analytics': return <RunnerDriverAnalyticsPage />;
       case 'reconciliation': return <ReconciliationAdmin />;
       case 'claims': return <ClaimBatchesAdmin />;
       case 'claims-history': return <ClaimBatchesHistory />;

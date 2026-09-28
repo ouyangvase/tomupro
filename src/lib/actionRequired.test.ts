@@ -1,11 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { CANONICAL_ACTION_REQUIRED_OR, classifyActionRequired } from './actionRequired';
+import { CANONICAL_ACTION_REQUIRED_OR, NOT_ACTION_REQUIRED_OR, classifyActionRequired, hasPendingSalespersonAction } from './actionRequired';
 
 describe('canonical Action Required classification', () => {
   it('keeps the Orders-tab predicate shared by every consumer', () => {
     expect(CANONICAL_ACTION_REQUIRED_OR).toBe(
-      'and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)',
+      'and(salesperson_action_required.eq.true,runner_status.neq.DELIVERED),and(runner_review_status.eq.ACTION_REQUIRED,runner_status.neq.DELIVERED),and(runner_final_outcome.eq.NEED_SALESPERSON_FOLLOWUP,runner_status.neq.DELIVERED),and(runner_status.eq.FAILED_DELIVERY,status.eq.READY)',
     );
+  });
+
+  it('keeps legacy NULL action flags in active order lists', () => {
+    expect(NOT_ACTION_REQUIRED_OR).toBe(
+      'salesperson_action_required.eq.false,salesperson_action_required.is.null',
+    );
+  });
+
+  it('treats every explicit salesperson-action marker as pending action', () => {
+    expect(hasPendingSalespersonAction({
+      salesperson_action_required: true,
+      runner_review_status: 'REVIEWED',
+      runner_final_outcome: 'RESCHEDULE',
+    })).toBe(true);
+    expect(hasPendingSalespersonAction({
+      salesperson_action_required: false,
+      runner_review_status: 'ACTION_REQUIRED',
+      runner_final_outcome: null,
+    })).toBe(true);
+    expect(hasPendingSalespersonAction({
+      salesperson_action_required: false,
+      runner_review_status: 'REVIEWED',
+      runner_final_outcome: 'CONFIRM_DELIVERED',
+    })).toBe(false);
   });
 
   it('classifies reschedule before failed delivery', () => {

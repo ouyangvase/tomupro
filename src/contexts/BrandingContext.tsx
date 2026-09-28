@@ -1,7 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import capybaraHeroFallback from '@/assets/capybara-hero.png';
+import tomuProLogoDisplay from '@/assets/tomupro-logo-display.png';
+import tomuProLogoHorizontal from '@/assets/tomupro-logo-horizontal.png';
+import tomuProLogoMark from '@/assets/tomupro-logo-mark.png';
+import tomuProLogoStacked from '@/assets/tomupro-logo-stacked.png';
 
 /* ─── Types ──────────────────────────────────────────────────────── */
 export interface BrandingConfig {
@@ -10,6 +13,8 @@ export interface BrandingConfig {
   tagline: string;
   logoUrl: string;
   logoSmallUrl: string;
+  logoStackedUrl: string;
+  logoDisplayUrl: string;
   faviconUrl: string;
   favicon32Url: string;
   favicon16Url: string;
@@ -29,8 +34,10 @@ const DEFAULTS: BrandingConfig = {
   appName: 'Tomu Pro',
   appShortName: 'Tomu Pro',
   tagline: 'AI Delivery Solution',
-  logoUrl: capybaraHeroFallback,
-  logoSmallUrl: capybaraHeroFallback,
+  logoUrl: tomuProLogoHorizontal,
+  logoSmallUrl: tomuProLogoMark,
+  logoStackedUrl: tomuProLogoStacked,
+  logoDisplayUrl: tomuProLogoDisplay,
   faviconUrl: '/favicon.ico',
   favicon32Url: '/favicon-32x32.png',
   favicon16Url: '/favicon-16x16.png',
@@ -146,6 +153,8 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
       tagline: dbRow.tagline || DEFAULTS.tagline,
       logoUrl: dbRow.logo_url ? `${dbRow.logo_url}${ts}` : DEFAULTS.logoUrl,
       logoSmallUrl: dbRow.logo_small_url ? `${dbRow.logo_small_url}${ts}` : DEFAULTS.logoSmallUrl,
+      logoStackedUrl: dbRow.logo_url ? `${dbRow.logo_url}${ts}` : DEFAULTS.logoStackedUrl,
+      logoDisplayUrl: dbRow.logo_url ? `${dbRow.logo_url}${ts}` : DEFAULTS.logoDisplayUrl,
       faviconUrl: dbRow.favicon_url ? `${dbRow.favicon_url}${ts}` : DEFAULTS.faviconUrl,
       favicon32Url: dbRow.favicon_32_url ? `${dbRow.favicon_32_url}${ts}` : DEFAULTS.favicon32Url,
       favicon16Url: dbRow.favicon_16_url ? `${dbRow.favicon_16_url}${ts}` : DEFAULTS.favicon16Url,

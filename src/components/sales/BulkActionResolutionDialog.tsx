@@ -28,6 +28,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Order } from '@/types/database';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
 
 type ResolutionType = 'AUTO_RESCHEDULE' | 'CONVERT_TO_BOOKING' | 'CANCEL';
 
@@ -175,31 +176,12 @@ export function BulkActionResolutionDialog({
           }
 
           try {
-            // Record the salesperson decision
-            await supabase.from('reschedule_history').insert({
-              order_id: order.id,
-              cycle_no: (order.reschedule_cycle_no || 0) + 1,
-              from_status: order.operational_status || order.status,
-              to_status: 'BOOKING_AUTO_RESCHEDULE',
-              next_delivery_date: rescheduleDate,
-              comment: `Auto-reschedule confirmed${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || 'Bulk action'}`,
-              rescheduled_by: profile.id,
-            });
-
-            await updateOrder.mutateAsync({
-              id: order.id,
-              status: 'BOOKING',
-              expected_pickup_date: rescheduleDate,
-              next_delivery_date: rescheduleDate,
-              salesperson_action_required: false,
-              salesperson_action_type: 'RESCHEDULE_DELIVERY',
-              last_status_note: `Auto-reschedule confirmed for ${rescheduleDate}${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}`,
-              runner_status: selectedRunnerId ? 'ASSIGNED' : 'UNASSIGNED',
-              runner_id: selectedRunnerId,
-              driver_id: null,
-              driver_status: null,
-              reschedule_flag: true,
-              reschedule_cycle_no: (order.reschedule_cycle_no || 0) + 1,
+            await callSupabaseRpc('set_order_auto_reschedule', {
+              p_order_id: order.id,
+              p_next_delivery_date: rescheduleDate,
+              p_runner_id: selectedRunnerId,
+              p_comment: `Auto-reschedule confirmed${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || 'Bulk action'}`,
+              p_expected_state: order.current_operational_state || null,
             });
 
             resultItems.push({ orderId: order.id, orderCode: order.order_code, status: 'success' });
@@ -251,8 +233,6 @@ export function BulkActionResolutionDialog({
               last_status_note: `Converted to booking for ${format(newDate, 'dd MMM yyyy')}`,
               runner_id: null,
               runner_status: 'UNASSIGNED',
-              driver_id: null,
-              driver_status: null,
               reschedule_cycle_no: (order.reschedule_cycle_no || 0) + 1,
             });
 

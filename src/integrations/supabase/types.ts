@@ -3103,15 +3103,13 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: string | null
           channel: string | null
-          cod_amount: number
-          currency_code: string
           created_at: string
           created_by_name_snapshot: string | null
           created_by_user_id: string
+          current_operational_state: string
           customer_name: string
           delivered_at: string | null
           discount_amount: number | null
-          delivery_fee: number
           dispute_notes: string | null
           dispute_reason: string | null
           driver_cash_amount: number | null
@@ -3122,6 +3120,8 @@ export type Database = {
           driver_id: string | null
           driver_next_delivery_date: string | null
           driver_payment_method: string | null
+          driver_started_at: string | null
+          driver_started_by: string | null
           driver_status: string | null
           driver_transfer_amount: number | null
           expected_pickup_date: string | null
@@ -3141,8 +3141,6 @@ export type Database = {
           order_date: string
           order_owner_id: string
           order_source: string
-          source_delivery_intent_id: string | null
-          source_order_id: string | null
           owner_manager_display_name_snapshot: string | null
           owner_manager_id_snapshot: string | null
           owner_salesperson_display_name_snapshot: string | null
@@ -3183,15 +3181,13 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           channel?: string | null
-          cod_amount?: number
-          currency_code?: string
           created_at?: string
           created_by_name_snapshot?: string | null
           created_by_user_id?: string
+          current_operational_state?: string
           customer_name: string
           delivered_at?: string | null
           discount_amount?: number | null
-          delivery_fee?: number
           dispute_notes?: string | null
           dispute_reason?: string | null
           driver_cash_amount?: number | null
@@ -3202,6 +3198,8 @@ export type Database = {
           driver_id?: string | null
           driver_next_delivery_date?: string | null
           driver_payment_method?: string | null
+          driver_started_at?: string | null
+          driver_started_by?: string | null
           driver_status?: string | null
           driver_transfer_amount?: number | null
           expected_pickup_date?: string | null
@@ -3221,8 +3219,6 @@ export type Database = {
           order_date?: string
           order_owner_id: string
           order_source?: string
-          source_delivery_intent_id?: string | null
-          source_order_id?: string | null
           owner_manager_display_name_snapshot?: string | null
           owner_manager_id_snapshot?: string | null
           owner_salesperson_display_name_snapshot?: string | null
@@ -3263,15 +3259,13 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           channel?: string | null
-          cod_amount?: number
-          currency_code?: string
           created_at?: string
           created_by_name_snapshot?: string | null
           created_by_user_id?: string
+          current_operational_state?: string
           customer_name?: string
           delivered_at?: string | null
           discount_amount?: number | null
-          delivery_fee?: number
           dispute_notes?: string | null
           dispute_reason?: string | null
           driver_cash_amount?: number | null
@@ -3282,6 +3276,8 @@ export type Database = {
           driver_id?: string | null
           driver_next_delivery_date?: string | null
           driver_payment_method?: string | null
+          driver_started_at?: string | null
+          driver_started_by?: string | null
           driver_status?: string | null
           driver_transfer_amount?: number | null
           expected_pickup_date?: string | null
@@ -3301,8 +3297,6 @@ export type Database = {
           order_date?: string
           order_owner_id?: string
           order_source?: string
-          source_delivery_intent_id?: string | null
-          source_order_id?: string | null
           owner_manager_display_name_snapshot?: string | null
           owner_manager_id_snapshot?: string | null
           owner_salesperson_display_name_snapshot?: string | null
@@ -3658,6 +3652,7 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string
+          display_currency: string
           disabled_at: string | null
           disabled_by: string | null
           disabled_reason: string | null
@@ -3679,6 +3674,7 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           created_at?: string
+          display_currency?: string
           disabled_at?: string | null
           disabled_by?: string | null
           disabled_reason?: string | null
@@ -3700,6 +3696,7 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           created_at?: string
+          display_currency?: string
           disabled_at?: string | null
           disabled_by?: string | null
           disabled_reason?: string | null
@@ -4929,6 +4926,25 @@ export type Database = {
         }
         Returns: Json
       }
+      submit_driver_delivery_result: {
+        Args: {
+          p_cash_amount?: number | null
+          p_next_delivery_date?: string | null
+          p_order_id: string
+          p_payment_method?: string | null
+          p_proof_images?: Json
+          p_reason?: string | null
+          p_remark?: string | null
+          p_result_type: string
+          p_submission_mode?: string
+          p_submission_id?: string
+        }
+        Returns: Json
+      }
+      start_driver_assignment: {
+        Args: { p_order_id: string }
+        Returns: Json
+      }
       check_stock_integrity: {
         Args: never
         Returns: {
@@ -5092,6 +5108,10 @@ export type Database = {
           total_delivered: number
         }[]
       }
+      get_order_lifecycle_health: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       get_cash_settlement_details: {
         Args: { p_runner_id: string }
         Returns: {
@@ -5114,6 +5134,14 @@ export type Database = {
       get_delivery_charge: {
         Args: { p_area: string; p_runner_id: string }
         Returns: number
+      }
+      get_delivery_charges_for_runners: {
+        Args: { p_runner_ids: string[] }
+        Returns: {
+          area: string
+          charge_amount: number
+          runner_id: string
+        }[]
       }
       get_driver_blocking_orders: {
         Args: { p_driver_id: string }
@@ -5361,6 +5389,22 @@ export type Database = {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
       }
+      get_or_create_referral_code: { Args: never; Returns: string }
+      get_referral_rewards: { Args: never; Returns: Json }
+      get_referral_admin_overview: {
+        Args: { p_search?: string | null }
+        Returns: Json
+      }
+      get_referral_rebate_for_order: {
+        Args: { p_base_delivery_fee_bnd: number; p_order_id: string }
+        Returns: Json
+      }
+      apply_referral_rebate_for_order: {
+        Args: { p_base_delivery_fee_bnd: number; p_order_id: string }
+        Returns: Json
+      }
+      get_referral_reward_settings: { Args: never; Returns: Json }
+      save_referral_reward_settings: { Args: { p_tiers: Json }; Returns: Json }
       get_visible_owner_ids: { Args: never; Returns: string[] }
       get_visible_owner_ids_for_user: {
         Args: { p_user_id: string }
@@ -5401,6 +5445,36 @@ export type Database = {
         Returns: boolean
       }
       reopen_rescheduled_orders: { Args: never; Returns: Json }
+      resolve_action_required_to_ready: {
+        Args: {
+          p_comment?: string
+          p_expected_state?: string
+          p_order_id: string
+        }
+        Returns: Json
+      }
+      set_order_auto_reschedule: {
+        Args: {
+          p_comment?: string
+          p_expected_state?: string
+          p_next_delivery_date: string
+          p_order_id: string
+          p_runner_id?: string | null
+        }
+        Returns: Json
+      }
+      reconcile_order_lifecycle: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          confidence: string
+          current_state: string
+          legacy_memberships: string[]
+          order_code: string
+          order_id: string
+          recommended_state: string
+          safe_to_repair: boolean
+        }[]
+      }
       repair_missing_stock_deductions: {
         Args: { p_dry_run?: boolean }
         Returns: Json
@@ -5412,17 +5486,45 @@ export type Database = {
       search_visible_orders: {
         Args: { p_limit?: number; p_query: string }
         Returns: {
+          cancelled_at: string | null
           created_at: string
-          customer_name: string
+          customer_name: string | null
+          delivered_at: string | null
+          driver_failed_reason: string | null
+          driver_next_delivery_date: string | null
           id: string
           order_code: string
-          runner_status: string
-          status: string
+          next_delivery_date: string | null
+          operational_status: string | null
+          current_operational_state: string
+          phone: string | null
+          runner_comment: string | null
+          runner_failed_reason_id: string | null
+          runner_final_outcome: string | null
+          runner_id: string | null
+          runner_name: string | null
+          runner_review_status: string | null
+          runner_status: string | null
+          salesperson_action_required: boolean | null
+          salesperson_action_type: string | null
+          status: string | null
+          updated_at: string
         }[]
       }
       share_inventory_with_email: {
         Args: { p_email: string }
         Returns: string
+      }
+      transition_order_lifecycle: {
+        Args: {
+          p_allow_reopen?: boolean
+          p_expected_state?: string
+          p_next_delivery_date?: string
+          p_order_id: string
+          p_reason?: string
+          p_to_state: string
+        }
+        Returns: Json
       }
       set_google_sheet_sync_enabled: {
         Args: { p_enabled: boolean }

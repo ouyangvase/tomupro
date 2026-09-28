@@ -21,6 +21,7 @@ export default function OrdersModule() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'booking';
   const highlightOrderId = searchParams.get('highlight') || null;
+  const initialSearch = searchParams.get('search') || null;
 
   useEffect(() => {
     lifecycleTrace('route_opened', { route: '/orders', tab: activeTab });
@@ -52,11 +53,11 @@ export default function OrdersModule() {
       </Tabs>
       <EmbeddedProvider>
         <div className="mt-4">
-          {activeTab === 'booking' && <BookingSales highlightOrderId={highlightOrderId} />}
-          {activeTab === 'ready' && <ReadySales highlightOrderId={highlightOrderId} />}
-          {activeTab === 'delivered' && <RunnerDeliveredOrders highlightOrderId={highlightOrderId} />}
-          {activeTab === 'cancelled' && <CancelledSales highlightOrderId={highlightOrderId} />}
-          {activeTab === 'action-required' && <SalespersonActionInbox highlightOrderId={highlightOrderId} />}
+          {activeTab === 'booking' && <BookingSales initialSearch={initialSearch} highlightOrderId={highlightOrderId} />}
+          {activeTab === 'ready' && <ReadySales initialSearch={initialSearch} highlightOrderId={highlightOrderId} />}
+          {activeTab === 'delivered' && <RunnerDeliveredOrders initialSearch={initialSearch || ''} highlightOrderId={highlightOrderId} />}
+          {activeTab === 'cancelled' && <CancelledSales initialSearch={initialSearch} highlightOrderId={highlightOrderId} />}
+          {activeTab === 'action-required' && <SalespersonActionInbox initialSearch={initialSearch} highlightOrderId={highlightOrderId} />}
         </div>
       </EmbeddedProvider>
     </div>

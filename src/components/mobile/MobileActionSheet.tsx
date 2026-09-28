@@ -20,9 +20,11 @@ interface MobileActionSheetProps {
   confirmLabel?: string;
   cancelLabel?: string;
   confirmVariant?: "default" | "destructive" | "outline" | "secondary" | "ghost";
-  onConfirm?: () => void | Promise<void>;
+  onConfirm?: () => void | boolean | Promise<void | boolean>;
   isLoading?: boolean;
   confirmDisabled?: boolean;
+  panelClassName?: string;
+  nativeScroll?: boolean;
 }
 
 export function MobileActionSheet({
@@ -37,10 +39,13 @@ export function MobileActionSheet({
   onConfirm,
   isLoading = false,
   confirmDisabled = false,
+  panelClassName,
+  nativeScroll = false,
 }: MobileActionSheetProps) {
   const handleConfirm = async () => {
     if (onConfirm) {
-      await onConfirm();
+      const result = await onConfirm();
+      if (result === false) return;
     }
     onOpenChange(false);
   };
@@ -50,8 +55,9 @@ export function MobileActionSheet({
       <SheetContent
         side="bottom"
         className={cn(
-          "rounded-t-2xl flex flex-col",
-          children ? "max-h-[80vh]" : "h-auto"
+          "rounded-t-2xl flex min-h-0 flex-col overflow-hidden",
+          children ? "max-h-[80vh]" : "h-auto",
+          panelClassName,
         )}
       >
         <SheetHeader className="shrink-0 text-left">
@@ -62,9 +68,18 @@ export function MobileActionSheet({
         </SheetHeader>
 
         {children && (
-          <ScrollArea className="flex-1 -mx-6 px-6 py-4">
-            {children}
-          </ScrollArea>
+          nativeScroll ? (
+            <div
+              className="min-h-0 flex-1 -mx-6 overflow-y-auto overscroll-contain px-6 py-4 touch-pan-y"
+              style={{ WebkitOverflowScrolling: "touch" }}
+            >
+              {children}
+            </div>
+          ) : (
+            <ScrollArea className="min-h-0 flex-1 -mx-6 px-6 py-4">
+              {children}
+            </ScrollArea>
+          )
         )}
 
         <div className="shrink-0 sticky bottom-0 bg-background pt-4 pb-2 flex flex-col gap-2">

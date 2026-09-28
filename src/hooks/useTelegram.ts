@@ -52,6 +52,13 @@ export interface TelegramLog {
   message_preview: string | null;
 }
 
+export interface TelegramQueueHealth {
+  status: string;
+  event_count: number;
+  oldest_at: string | null;
+  oldest_age_seconds: number;
+}
+
 /* ── Bot Settings (Admin) ── */
 
 export function useTelegramBotSettings() {
@@ -165,12 +172,13 @@ export function useMyTelegramDestinations(userId: string | undefined) {
 export function useVerifyTelegramDestination() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ chatId, label }: { userId: string; chatId: string; label?: string }) => {
+    mutationFn: async ({ chatId, label, chatType }: { userId: string; chatId: string; label?: string; chatType?: 'personal' | 'group' }) => {
       const { data, error } = await supabase.functions.invoke('send-telegram-daily', {
         body: {
           action: 'verify_destination',
           chat_id: chatId,
           label,
+          chat_type: chatType,
         },
       });
       if (error) throw error;
@@ -264,6 +272,18 @@ export async function sendTelegramTest(chatId: string, message: string) {
     throw new Error(data?.error || 'Telegram rejected the Chat ID');
   }
   return data;
+}
+
+export function useTelegramQueueHealth() {
+  return useQuery({
+    queryKey: ['telegram-queue-health'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('get_telegram_queue_health');
+      if (error) throw error;
+      return (data || []) as TelegramQueueHealth[];
+    },
+    refetchInterval: 30_000,
+  });
 }
 
 export async function sendTelegramDestinationTest(destinationId: string) {

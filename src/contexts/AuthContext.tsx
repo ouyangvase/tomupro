@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Profile, AppRole } from '@/types/database';
 import type { ProfileStatus } from '@/components/auth/ProfileGate';
+import { setDisplayCurrency } from '@/lib/currency';
 import { clearVisibleOwnerIdsCache } from '@/lib/visibleOwnerIdsCache';
 import { lifecycleTrace } from '@/lib/lifecycleTrace';
 import { subscribeWithReconnect } from '@/lib/subscribeWithReconnect';
@@ -36,7 +37,7 @@ interface AuthContextType {
   retryProfile: () => Promise<void>;
   resetSession: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string, inviteCode?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string, inviteCode?: string, referralCode?: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -62,66 +63,7 @@ const SUPABASE_PROJECT_REF = getSupabaseProjectRef();
 const PROFILE_FETCH_TIMEOUT_MS = 8000;
 const PROFILE_FETCH_MAX_RETRIES = 2;
 const PROFILE_FETCH_BASE_DELAY_MS = 300;
-const PROFILE_CACHE_PREFIX = `tomupro-profile-cache:${SUPABASE_PROJECT_REF}:`;
-const VALID_ROLES: AppRole[] = ['admin', 'manager', 'salesperson', 'runner', 'driver', 'runner_assistant', 'finance_viewer'];
 const ENABLE_PROFILE_REALTIME = import.meta.env.VITE_ENABLE_SUPABASE_REALTIME === 'true';
-
-const getProfileCacheKey = (userId: string) => `${PROFILE_CACHE_PREFIX}${userId}`;
-
-const readCachedProfile = (userId: string): ExtendedProfile | null => {
-  try {
-    const raw = localStorage.getItem(getProfileCacheKey(userId));
-    if (!raw) return null;
-    const cached = JSON.parse(raw) as ExtendedProfile;
-    if (cached?.id !== userId || !cached?.role) return null;
-    if (cached.status && cached.status !== 'active') return null;
-    if (cached.force_password_reset) return null;
-    return cached;
-  } catch {
-    return null;
-  }
-};
-
-const writeCachedProfile = (profile: ExtendedProfile) => {
-  try {
-    localStorage.setItem(getProfileCacheKey(profile.id), JSON.stringify(profile));
-  } catch {
-    // Profile cache is an optimization only.
-  }
-};
-
-const clearProfileCache = () => {
-  try {
-    Object.keys(localStorage)
-      .filter((key) => key.startsWith(PROFILE_CACHE_PREFIX))
-      .forEach((key) => localStorage.removeItem(key));
-  } catch {
-    // Profile cache is an optimization only.
-  }
-};
-
-const buildProfileFromSession = (session: Session): ExtendedProfile | null => {
-  const metadata = session.user.user_metadata || {};
-  const metadataRole = metadata.role as AppRole | undefined;
-  const role = VALID_ROLES.includes(metadataRole as AppRole) ? metadataRole : null;
-
-  if (!role) return null;
-
-  const now = new Date().toISOString();
-  return {
-    id: session.user.id,
-    role,
-    display_name: metadata.display_name || metadata.full_name || session.user.email?.split('@')[0] || 'User',
-    email: session.user.email || '',
-    is_active: true,
-    avatar_url: metadata.avatar_url || null,
-    theme_preference: 'light',
-    created_at: session.user.created_at || now,
-    updated_at: now,
-    manager_id: null,
-    status: 'active',
-  };
-};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -140,6 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const previousRoleRef = useRef<AppRole | null>(null);
   const initDoneRef = useRef(false);
   const authUserIdRef = useRef<string | null>(null);
+  const profileLoadUserIdRef = useRef<string | null>(null);
 
   // Update the ref whenever profile changes
   useEffect(() => {
@@ -154,11 +97,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     profileRequestSeqRef.current += 1;
     isFetchingRef.current = false;
     profileUserIdRef.current = null;
+    profileLoadUserIdRef.current = null;
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
-    clearProfileCache();
     clearVisibleOwnerIdsCache();
     sessionStorage.clear();
+    setDisplayCurrency('BND');
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -180,9 +124,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
-    clearProfileCache();
     clearVisibleOwnerIdsCache();
     sessionStorage.clear();
+    setDisplayCurrency('BND');
 
     setUser(null);
     setSession(null);
@@ -201,6 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     isFetchingRef.current = true;
+    profileLoadUserIdRef.current = userId;
     const requestSeq = profileRequestSeqRef.current + 1;
     const isBackgroundRefresh = Boolean(options?.background);
     profileRequestSeqRef.current = requestSeq;
@@ -248,6 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             const newProfile = data as ExtendedProfile;
+            setDisplayCurrency(newProfile.display_currency);
 
             // Check if account is disabled or resigned
             if (newProfile.status && newProfile.status !== 'active') {
@@ -268,19 +214,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return;
             }
 
-            // Check if role changed while session is active (use ref, not state)
+            // Scope results are role-dependent, so discard them before dependent
+            // order queries can run with the new role.
             if (previousRoleRef.current && previousRoleRef.current !== newProfile.role) {
               setRoleChanged(true);
+              clearVisibleOwnerIdsCache(userId);
             }
 
             previousRoleRef.current = newProfile.role;
             setProfile(newProfile);
-            writeCachedProfile(newProfile);
             setProfileStatus('ready');
             setProfileError(null);
             lifecycleTrace('user_loaded', { userId });
             lifecycleTrace('role_loaded', { userId, role: newProfile.role });
             lifecycleTrace('profile_ready', { userId, role: newProfile.role });
+            lifecycleTrace('auth_ready', { userId, role: newProfile.role, profileStatus: 'ready' });
             return;
           }
 
@@ -402,55 +350,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (newSession?.user) {
           if (authUserIdRef.current && authUserIdRef.current !== newSession.user.id) {
             clearVisibleOwnerIdsCache();
+            profileLoadUserIdRef.current = null;
           }
           authUserIdRef.current = newSession.user.id;
           setSession(newSession);
           setUser(newSession.user);
 
-          // Fetch profile only if we don't already have it for this user
-          if (profileUserIdRef.current !== newSession.user.id) {
-            const cachedProfile = readCachedProfile(newSession.user.id);
-            if (cachedProfile) {
-              previousRoleRef.current = cachedProfile.role;
-              setProfile(cachedProfile);
-              setProfileStatus('ready');
-              setProfileError(null);
-              setLoading(false);
-              window.setTimeout(() => {
-                void fetchProfile(newSession.user.id, { force: true, background: true });
-              }, 0);
-            } else {
-              const sessionProfile = buildProfileFromSession(newSession);
-              if (sessionProfile) {
-                previousRoleRef.current = sessionProfile.role;
-                profileUserIdRef.current = sessionProfile.id;
-                setProfile(sessionProfile);
-                setProfileStatus('ready');
-                setProfileError(null);
-                setLoading(false);
-                window.setTimeout(() => {
-                  void fetchProfile(newSession.user.id, { force: true, background: true });
-                }, 0);
-              } else {
-                setProfileStatus('loading');
-                setProfileError(null);
-                window.setTimeout(() => {
-                  void fetchProfile(newSession.user.id);
-                }, 0);
-              }
-            }
+          // The session identifies the user, but the database profile is authoritative
+          // for role and permissions. Do not publish a cached/session role as ready.
+          if (
+            profileUserIdRef.current !== newSession.user.id &&
+            profileLoadUserIdRef.current !== newSession.user.id
+          ) {
+            setProfile(null);
+            setProfileStatus('loading');
+            setProfileError(null);
+            window.setTimeout(() => {
+              void fetchProfile(newSession.user.id, { force: true });
+            }, 0);
           }
         } else if (event === 'INITIAL_SESSION' && !newSession) {
           // No stored session — user needs to log in
           // Nothing to do, just stop loading
+          lifecycleTrace('auth_ready', { userId: null, profileStatus: 'signed_out' });
         }
 
         if (mounted) {
           setLoading(false);
-          lifecycleTrace('auth_ready', {
-            userId: newSession?.user?.id || null,
-            profileStatus: profileUserIdRef.current === newSession?.user?.id ? 'ready' : 'pending',
-          });
         }
       }
     );
@@ -497,7 +423,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           setProfile(newProfile);
-          writeCachedProfile(newProfile);
+          setDisplayCurrency(newProfile.display_currency);
           previousRoleRef.current = newProfile.role;
         }
       ),
@@ -507,26 +433,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ─── Auth methods ───────────────────────────────────────────────────
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
     return { error: error as Error | null };
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string, inviteCode?: string) => {
+  const signUp = useCallback(async (email: string, password: string, displayName: string, role: AppRole, runnerCode?: string, inviteCode?: string, referralCode?: string) => {
     const redirectUrl = `${window.location.origin}/`;
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedRunnerCode = runnerCode?.trim().toUpperCase() || undefined;
+    const normalizedReferralCode = referralCode?.trim().toUpperCase() || undefined;
 
-    const { error } = await supabase.auth.signUp({
-      email,
+    const { data, error } = await supabase.auth.signUp({
+      email: normalizedEmail,
       password,
       options: {
         emailRedirectTo: redirectUrl,
         data: {
           display_name: displayName,
           role: role,
-          ...(runnerCode ? { runner_code: runnerCode } : {}),
+          ...(normalizedRunnerCode ? { runner_code: normalizedRunnerCode } : {}),
           ...(inviteCode ? { invite_code: inviteCode } : {}),
+          ...(normalizedReferralCode ? { referral_code: normalizedReferralCode } : {}),
         },
       },
     });
+
+    if (!error && data.session && role === 'driver' && normalizedRunnerCode) {
+      const { data: linkData, error: linkError } = await supabase.rpc('link_driver_to_runner_by_code', {
+        p_code: normalizedRunnerCode,
+      });
+      const linkResult = linkData as { success?: boolean; error?: string } | null;
+
+      if (linkError) return { error: linkError as Error };
+      if (!linkResult?.success) {
+        return { error: new Error(linkResult?.error || 'Driver could not be linked to the selected runner') };
+      }
+    }
+
     return { error: error as Error | null };
   }, []);
 
@@ -548,13 +491,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     localStorage.removeItem(`sb-${SUPABASE_PROJECT_REF}-auth-token`);
     localStorage.removeItem('supabase.auth.token');
-    clearProfileCache();
     clearVisibleOwnerIdsCache();
     sessionStorage.clear();
+    setDisplayCurrency('BND');
 
     profileRequestSeqRef.current += 1;
     isFetchingRef.current = false;
     profileUserIdRef.current = null;
+    profileLoadUserIdRef.current = null;
     setUser(null);
     setSession(null);
     setProfile(null);

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
-import { CANONICAL_ACTION_REQUIRED_OR, classifyActionRequired } from '@/lib/actionRequired';
+import { classifyActionRequired } from '@/lib/actionRequired';
 
 export interface ActionRequiredStats {
   total: number;
@@ -22,7 +22,6 @@ export interface ActionRequiredBySalesperson {
 }
 
 const ACTION_REQUIRED_SELECT = 'id, status, salesperson_id, runner_status, next_delivery_date, driver_next_delivery_date, salesperson_action_type, runner_final_outcome, driver_failed_reason, runner_failed_reason_id, runner_comment, salesperson_action_required';
-const ACTION_REQUIRED_OR = CANONICAL_ACTION_REQUIRED_OR;
 
 // For salesperson: Get their own action required stats
 export function useSalespersonActionRequiredStats() {
@@ -38,8 +37,7 @@ export function useSalespersonActionRequiredStats() {
         .from('orders')
         .select(ACTION_REQUIRED_SELECT)
         .eq('salesperson_id', user.id)
-        .neq('status', 'CANCELLED')
-        .or(ACTION_REQUIRED_OR);
+        .eq('current_operational_state', 'ACTION_REQUIRED');
 
       if (error) throw error;
 
@@ -138,8 +136,7 @@ export function useManagerActionRequiredStats() {
         .from('orders')
         .select(ACTION_REQUIRED_SELECT)
         .in('salesperson_id', allMemberIds)
-        .neq('status', 'CANCELLED')
-        .or(ACTION_REQUIRED_OR);
+        .eq('current_operational_state', 'ACTION_REQUIRED');
 
       if (ordersError) throw ordersError;
 
@@ -226,8 +223,7 @@ export function useAdminActionRequiredStats() {
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
         .select(ACTION_REQUIRED_SELECT)
-        .neq('status', 'CANCELLED')
-        .or(ACTION_REQUIRED_OR);
+        .eq('current_operational_state', 'ACTION_REQUIRED');
 
       if (ordersError) throw ordersError;
 

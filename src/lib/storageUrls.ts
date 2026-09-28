@@ -1,14 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
+import { extractStorageObjectPath } from '@/lib/storagePaths';
 
-export function extractStorageObjectPath(url: string, bucket: string): string | null {
-  const marker = `/${bucket}/`;
-  const markerIndex = url.indexOf(marker);
-  if (markerIndex === -1) return null;
-
-  const pathWithQuery = url.slice(markerIndex + marker.length);
-  const path = pathWithQuery.split('?')[0];
-  return path ? decodeURIComponent(path) : null;
-}
+export { extractStorageObjectPath } from '@/lib/storagePaths';
 
 export async function getSignedStorageUrl(url: string, bucket: string, expiresIn = 3600): Promise<string> {
   const objectPath = extractStorageObjectPath(url, bucket);
@@ -18,6 +11,9 @@ export async function getSignedStorageUrl(url: string, bucket: string, expiresIn
     .from(bucket)
     .createSignedUrl(objectPath, expiresIn);
 
-  if (error || !data?.signedUrl) return url;
+  if (error || !data?.signedUrl) {
+    throw new Error(`Unable to load ${bucket} image${error?.message ? `: ${error.message}` : ''}`);
+  }
+
   return data.signedUrl;
 }

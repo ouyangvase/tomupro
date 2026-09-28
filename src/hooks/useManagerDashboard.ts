@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
+import { fetchDeliveredOrdersFastReport } from '@/hooks/useDeliveredOrders';
+import { getKualaLumpurDateKey, isDeliveredInKualaLumpurDateRange } from '@/lib/deliveredOrderReport';
 import { startOfMonth, subDays, format } from 'date-fns';
 
 export type PeriodType = 'last7' | 'mtd';
@@ -63,10 +65,12 @@ export function useManagerDashboard(period: PeriodType = 'mtd') {
       if (!user?.id) throw new Error('Not authenticated');
 
       const now = new Date();
+      const todayKey = getKualaLumpurDateKey(now) || now.toISOString().slice(0, 10);
       const periodStart = period === 'last7'
-        ? subDays(now, 7)
-        : startOfMonth(now);
+        ? subDays(new Date(`${todayKey}T12:00:00+08:00`), 7)
+        : startOfMonth(new Date(`${todayKey}T12:00:00+08:00`));
       const periodStartStr = format(periodStart, 'yyyy-MM-dd');
+      const periodStartKey = getKualaLumpurDateKey(periodStart) || periodStartStr;
 
       // Use shared cache for team visibility (avoids redundant RPC calls)
       const visibleIds = await getVisibleOwnerIdsCached(user.id);
@@ -75,33 +79,37 @@ export function useManagerDashboard(period: PeriodType = 'mtd') {
         ? visibleIds
         : [user.id];
 
-      // Fetch team orders using explicit salesperson_id filter
-      const { data: teamOrders, error: ordersError } = await supabase
-        .from('orders')
-        .select('id, status, runner_status, total_amount, salesperson_id, created_at')
-        .in('salesperson_id', teamIds)
-        .gte('created_at', periodStartStr);
+      // Keep pipeline counts on the existing created_at query. Delivered
+      // metrics use the same source and Kuala Lumpur date rule as Delivered.
+      const [teamOrdersResult, deliveredReportOrders] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('id, status, current_operational_state, runner_status, total_amount, salesperson_id, created_at')
+          .in('salesperson_id', teamIds)
+          .gte('created_at', periodStartStr),
+        fetchDeliveredOrdersFastReport({ salespersonIds: teamIds }),
+      ]);
+
+      const { data: teamOrders, error: ordersError } = teamOrdersResult;
       
       if (ordersError) throw ordersError;
       
       // Calculate team overview stats
-      const deliveredOrders = teamOrders?.filter(o => o.runner_status === 'DELIVERED') || [];
-      const bookingOrders = teamOrders?.filter(o => o.status === 'BOOKING') || [];
-      const readyOrders = teamOrders?.filter(o =>
-        o.status === 'READY' && !['DELIVERED', 'FAILED_DELIVERY'].includes(o.runner_status)
-      ) || [];
-      const actionRequiredOrders = teamOrders?.filter(o => o.runner_status === 'FAILED_DELIVERY') || [];
+      const deliveredOrders = deliveredReportOrders.filter((order) => (
+        isDeliveredInKualaLumpurDateRange(order, periodStartKey, todayKey)
+      ));
+      const bookingOrders = teamOrders?.filter(o => o.current_operational_state === 'BOOKING') || [];
+      const readyOrders = teamOrders?.filter(o => o.current_operational_state === 'READY') || [];
+      const actionRequiredOrders = teamOrders?.filter(o => o.current_operational_state === 'ACTION_REQUIRED') || [];
       
       const realizedGmv = deliveredOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
       const pipelineGmv = [...bookingOrders, ...readyOrders].reduce((sum, o) => sum + (o.total_amount || 0), 0);
       
       // Personal orders (manager as seller)
       const personalOrders = teamOrders?.filter(o => o.salesperson_id === user.id) || [];
-      const personalDelivered = personalOrders.filter(o => o.runner_status === 'DELIVERED');
-      const personalBooking = personalOrders.filter(o => o.status === 'BOOKING');
-      const personalReady = personalOrders.filter(o =>
-        o.status === 'READY' && !['DELIVERED', 'FAILED_DELIVERY'].includes(o.runner_status)
-      );
+      const personalDelivered = deliveredOrders.filter(o => o.salesperson_id === user.id);
+      const personalBooking = personalOrders.filter(o => o.current_operational_state === 'BOOKING');
+      const personalReady = personalOrders.filter(o => o.current_operational_state === 'READY');
       
       // Team health calculations
       const salespersonDeliveries = new Map<string, number>();

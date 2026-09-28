@@ -98,8 +98,7 @@ export function RescheduleOrderDialog({
       nextDate: format(nextDate, 'yyyy-MM-dd'),
       runnerId,
       comment: comment || 'Salesperson confirmed auto-reschedule',
-      currentCycleNo: order.reschedule_cycle_no || 0,
-      currentStatus: order.operational_status || 'NEW',
+      expectedState: order.current_operational_state || undefined,
     });
 
     handleClose();

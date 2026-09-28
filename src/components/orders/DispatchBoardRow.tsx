@@ -23,7 +23,7 @@ interface DispatchBoardRowProps {
   kitaniAction?: ReactNode;
 }
 
-function RunnerAvatar({ name }: { name: string }) {
+function PersonAvatar({ name }: { name: string }) {
   const initials = name
     .split(' ')
     .map(w => w[0])
@@ -139,7 +139,16 @@ export function DispatchBoardRow({ order, isSelected, isHighlighted, selectable,
           {/* Runner */}
           <div className="w-[130px] shrink-0">
             {order.runner ? (
-              <RunnerAvatar name={order.runner.display_name} />
+              <PersonAvatar name={order.runner.display_name} />
+            ) : (
+              <span className="text-sm text-muted-foreground">Unassigned</span>
+            )}
+          </div>
+
+          {/* Driver */}
+          <div className="w-[130px] shrink-0">
+            {order.driver ? (
+              <PersonAvatar name={order.driver.display_name} />
             ) : (
               <span className="text-sm text-muted-foreground">Unassigned</span>
             )}

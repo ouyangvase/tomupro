@@ -4,6 +4,9 @@ import {
   DRIVER_VISIBLE_ASSIGNMENT_STATES,
   getDriverInboxAssignmentSection,
   getDriverInboxVisibleOrders,
+  isDriverOperationalDateDue,
+  isRunnerDriverInboxOrder,
+  isRunnerDriverAssignmentCandidate,
 } from '@/lib/driverOrderScope';
 
 describe('driver-visible assignment states', () => {
@@ -17,14 +20,20 @@ describe('getDriverInboxAssignmentSection', () => {
   it('keeps active assignments in the delivery queue', () => {
     expect(getDriverInboxAssignmentSection({
       assignment_state: 'ACTIVE',
+      runner_id: 'runner-1',
+      current_operational_state: 'READY',
       driver_status: 'ASSIGNED',
+      runner_status: 'ASSIGNED',
     })).toBe('ACTIVE');
   });
 
   it('keeps a submitted failed outcome visible until Runner review', () => {
     expect(getDriverInboxAssignmentSection({
       assignment_state: 'PENDING_ACCEPTANCE',
+      runner_id: 'runner-1',
+      current_operational_state: 'READY',
       driver_status: 'DRIVER_FAILED',
+      runner_status: 'ASSIGNED',
       runner_accept_status: 'PENDING',
     })).toBe('PENDING_FAILED');
   });
@@ -32,7 +41,10 @@ describe('getDriverInboxAssignmentSection', () => {
   it('keeps a submitted delivered outcome visible until Runner review', () => {
     expect(getDriverInboxAssignmentSection({
       assignment_state: 'PENDING_ACCEPTANCE',
+      runner_id: 'runner-1',
+      current_operational_state: 'READY',
       driver_status: 'DRIVER_DELIVERED',
+      runner_status: 'ASSIGNED',
       runner_accept_status: 'PENDING',
     })).toBe('PENDING_DELIVERED');
   });
@@ -40,16 +52,19 @@ describe('getDriverInboxAssignmentSection', () => {
   it('hides action-required orders from the Driver queue', () => {
     expect(getDriverInboxAssignmentSection({
       assignment_state: 'ACTIVE',
+      runner_id: 'runner-1',
+      current_operational_state: 'READY',
       driver_status: 'ASSIGNED',
+      runner_status: 'ASSIGNED',
       salesperson_action_required: true,
     })).toBeNull();
   });
 
   it('returns the exact visible order set used by the Driver Inbox and export', () => {
     const visible = getDriverInboxVisibleOrders([
-      { id: 'active', assignment_state: 'ACTIVE', driver_status: 'ASSIGNED' },
-      { id: 'delivered', assignment_state: 'PENDING_ACCEPTANCE', driver_status: 'DRIVER_DELIVERED' },
-      { id: 'failed', assignment_state: 'PENDING_ACCEPTANCE', driver_status: 'DRIVER_FAILED' },
+      { id: 'active', assignment_state: 'ACTIVE', runner_id: 'runner-1', current_operational_state: 'READY', runner_status: 'ASSIGNED', driver_status: 'ASSIGNED' },
+      { id: 'delivered', assignment_state: 'PENDING_ACCEPTANCE', runner_id: 'runner-1', current_operational_state: 'READY', runner_status: 'ASSIGNED', driver_status: 'DRIVER_DELIVERED' },
+      { id: 'failed', assignment_state: 'PENDING_ACCEPTANCE', runner_id: 'runner-1', current_operational_state: 'READY', runner_status: 'ASSIGNED', driver_status: 'DRIVER_FAILED' },
       { id: 'cancelled', assignment_state: 'ACTIVE', driver_status: 'ASSIGNED', status: 'CANCELLED' },
     ]);
 
@@ -67,7 +82,7 @@ describe('getDriverInboxAssignmentSection', () => {
   );
 
   it.each(['DELIVERED', 'FAILED_DELIVERY'])(
-    'keeps an unreviewed Driver submission visible despite stale Runner status %s',
+    'hides a Driver submission after canonical Runner status %s',
     (runnerStatus) => {
       expect(getDriverInboxAssignmentSection({
         assignment_state: 'PENDING_ACCEPTANCE',
@@ -75,7 +90,7 @@ describe('getDriverInboxAssignmentSection', () => {
         runner_status: runnerStatus,
         runner_accept_status: 'PENDING',
         runner_review_status: 'NOT_REVIEWED',
-      })).toBe('PENDING_FAILED');
+      })).toBeNull();
     },
   );
 
@@ -106,5 +121,87 @@ describe('getDriverInboxAssignmentSection', () => {
       driver_status: 'ASSIGNED',
       runner_status: 'DELIVERED',
     })).toBeNull();
+  });
+
+  it('hides an order after its Runner assignment is removed', () => {
+    expect(getDriverInboxAssignmentSection({
+      assignment_state: 'PENDING_ACCEPTANCE',
+      runner_id: null,
+      current_operational_state: 'READY',
+      runner_status: 'UNASSIGNED',
+      driver_status: 'DRIVER_DELIVERED',
+      runner_accept_status: 'PENDING',
+    })).toBeNull();
+  });
+
+  it('hides non-READY Driver work even when legacy fields look active', () => {
+    expect(getDriverInboxAssignmentSection({
+      assignment_state: 'ACTIVE',
+      runner_id: 'runner-1',
+      current_operational_state: 'ACTION_REQUIRED',
+      runner_status: 'ASSIGNED',
+      driver_status: 'ASSIGNED',
+    })).toBeNull();
+  });
+});
+
+describe('isDriverOperationalDateDue', () => {
+  it('keeps today and overdue work in the active queue', () => {
+    expect(isDriverOperationalDateDue({ next_delivery_date: '2026-08-15' }, '2026-08-15')).toBe(true);
+    expect(isDriverOperationalDateDue({ next_delivery_date: '2026-08-14' }, '2026-08-15')).toBe(true);
+  });
+
+  it('does not expose a future reschedule in today\'s queue', () => {
+    expect(isDriverOperationalDateDue({ next_delivery_date: '2026-08-18' }, '2026-08-15')).toBe(false);
+  });
+});
+
+describe('isRunnerDriverAssignmentCandidate', () => {
+  it('keeps pending Driver reports out of the assignable Runner queue', () => {
+    expect(isRunnerDriverAssignmentCandidate({
+      driver_status: 'DRIVER_FAILED',
+      runner_accept_status: 'PENDING',
+      runner_review_status: 'NOT_REVIEWED',
+      runner_status: 'TAKEN',
+    })).toBe(false);
+  });
+
+  it('keeps normal active Driver work assignable', () => {
+    expect(isRunnerDriverAssignmentCandidate({
+      driver_status: 'ASSIGNED',
+      runner_status: 'TAKEN',
+    })).toBe(true);
+  });
+
+  it('does not block a new Runner cycle after the Driver assignment is released', () => {
+    expect(isRunnerDriverAssignmentCandidate({
+      driver_id: null,
+      driver_status: 'DRIVER_FAILED',
+      runner_accept_status: 'PENDING',
+      runner_review_status: 'NOT_REVIEWED',
+      runner_status: 'TAKEN',
+    })).toBe(true);
+  });
+});
+
+describe('isRunnerDriverInboxOrder', () => {
+  it('keeps a READY order with no Driver visible for Runner assignment', () => {
+    expect(isRunnerDriverInboxOrder({
+      runner_id: 'runner-1',
+      current_operational_state: 'READY',
+      runner_status: 'ASSIGNED',
+      driver_id: null,
+      driver_status: 'UNASSIGNED',
+    })).toBe(true);
+  });
+
+  it('does not show an order after its Runner assignment is removed', () => {
+    expect(isRunnerDriverInboxOrder({
+      runner_id: null,
+      current_operational_state: 'READY',
+      runner_status: 'UNASSIGNED',
+      driver_id: null,
+      driver_status: 'UNASSIGNED',
+    })).toBe(false);
   });
 });

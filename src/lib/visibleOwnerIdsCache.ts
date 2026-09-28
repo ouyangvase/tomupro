@@ -2,7 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { lifecycleTrace } from '@/lib/lifecycleTrace';
 
 /**
- * Shared in-memory cache for get_visible_owner_ids RPC results.
+ * Shared in-memory cache for the canonical orders visibility RPC results.
  *
  * Many hooks independently call this RPC inside their queryFn.
  * Since queryFn runs asynchronously and can't use React hooks,
@@ -46,12 +46,24 @@ export async function getVisibleOwnerIdsCached(userId: string): Promise<string[]
     return entry.inflight;
   }
 
-  lifecycleTrace('scope_fetch_started', { userId });
+  const requestId = crypto.randomUUID();
+  lifecycleTrace('scope_fetch_started', {
+    requestId,
+    queryKey: 'visible-owner-scope',
+    userId,
+  });
   const inflight = (async () => {
     try {
-      const { data, error } = await supabase.rpc('get_visible_owner_ids');
+      const { data, error } = await supabase.rpc('get_accessible_owner_ids', {
+        p_scope: 'orders',
+      });
       if (error) {
-        lifecycleTrace('scope_fetch_failed', { userId, code: error.code || null });
+        lifecycleTrace('scope_fetch_failed', {
+          requestId,
+          queryKey: 'visible-owner-scope',
+          userId,
+          code: error.code || null,
+        });
         if (entry) return entry.ids;
         throw error;
       }
@@ -63,6 +75,8 @@ export async function getVisibleOwnerIdsCached(userId: string): Promise<string[]
         inflight: null,
       });
       lifecycleTrace('scope_fetch_succeeded', {
+        requestId,
+        queryKey: 'visible-owner-scope',
         userId,
         ownerCount: ids?.length ?? 0,
       });

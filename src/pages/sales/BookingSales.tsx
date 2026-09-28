@@ -34,7 +34,7 @@ import { formatBND } from '@/lib/currency';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useUserDirectory } from '@/hooks/useUserDirectory';
-import type { Order } from '@/types/database';
+import type { Order, RunnerStatus } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
 import { CalculateStockButton } from '@/components/orders/CalculateStockButton';
 import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
@@ -43,7 +43,7 @@ import type { OrderStockResult } from '@/hooks/useStockCalculation';
 import { KitaniInvitationButton } from '@/components/orders/KitaniInvitationButton';
 import { useKitaniOrderLinks } from '@/hooks/useKitaniOrderLinks';
 
-export default function BookingSales({ highlightOrderId }: { highlightOrderId?: string | null }) {
+export default function BookingSales({ initialSearch = null, highlightOrderId }: { initialSearch?: string | null; highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -55,8 +55,8 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [rescheduleOrder, setRescheduleOrder] = useState<Order | null>(null);
-  const [mobileSearch, setMobileSearch] = useState('');
-  const [serverSearch, setServerSearch] = useState('');
+  const [mobileSearch, setMobileSearch] = useState(initialSearch || '');
+  const [serverSearch, setServerSearch] = useState(initialSearch || '');
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
   const [datePreset, setDatePreset] = useState<string>('all');
   const [stockDetailOrder, setStockDetailOrder] = useState<Order | null>(null);
@@ -93,6 +93,12 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [mobileSearch]);
 
+  useEffect(() => {
+    const nextSearch = initialSearch?.trim() || '';
+    setMobileSearch(nextSearch);
+    setServerSearch(nextSearch);
+  }, [initialSearch]);
+
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('team');
 
   const orderFilters = useMemo(() => ({
@@ -102,7 +108,9 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
     searchQuery: serverSearch || undefined,
     nextDeliveryDateFrom: dateRange.from,
     nextDeliveryDateTo: dateRange.to,
-  }), [isManager, salespersonIds, role, profile?.id, serverSearch, dateRange]);
+    driverAssignment: panelFilters.driverAssignment,
+    runnerStatus: panelFilters.runnerStatus as RunnerStatus | undefined,
+  }), [isManager, salespersonIds, role, profile?.id, serverSearch, dateRange, panelFilters.driverAssignment, panelFilters.runnerStatus]);
 
   const {
     data: orders,
@@ -459,6 +467,7 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
                     primaryFields={[
                       { label: 'Customer', value: order.customer_name || '-' },
                       { label: 'Amount', value: formatBND(order.total_amount) },
+                      { label: 'Driver', value: order.driver?.display_name || 'Unassigned' },
                       ...(order.next_delivery_date ? [{ label: 'Ready on', value: format(new Date(order.next_delivery_date), 'MMM dd, yyyy') }] : []),
                       { label: 'Items', value: displayText },
                     ]}
@@ -628,7 +637,13 @@ export default function BookingSales({ highlightOrderId }: { highlightOrderId?: 
             showSalespersonFilter={role === 'admin' || role === 'manager'}
             showOrderStatus={false}
             showRunnerStatus={true}
+            runnerStatusOptions={[
+              { label: 'Unassigned', value: 'UNASSIGNED' },
+              { label: 'Assigned', value: 'ASSIGNED' },
+            ]}
+            showDriverAssignmentFilter={role === 'admin' || role === 'manager' || role === 'salesperson'}
             showReconciliationStatus={false}
+            showDeliveryReasonFilter={false}
           />
 
           {isEditable && (

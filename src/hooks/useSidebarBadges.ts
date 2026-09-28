@@ -17,8 +17,7 @@ export function useSidebarBadges(): Record<string, number> {
         const { count, error } = await supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
-          .neq('status', 'CANCELLED')
-          .or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+          .eq('current_operational_state', 'ACTION_REQUIRED');
         if (error) return 0;
         return count || 0;
       }
@@ -28,8 +27,7 @@ export function useSidebarBadges(): Record<string, number> {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('salesperson_id', user.id)
-          .neq('status', 'CANCELLED')
-          .or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+          .eq('current_operational_state', 'ACTION_REQUIRED');
         if (error) return 0;
         return count || 0;
       }
@@ -51,8 +49,7 @@ export function useSidebarBadges(): Record<string, number> {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .in('salesperson_id', visibleIds)
-          .neq('status', 'CANCELLED')
-          .or('salesperson_action_required.eq.true,runner_status.eq.FAILED_DELIVERY');
+          .eq('current_operational_state', 'ACTION_REQUIRED');
         if (error) return 0;
         return count || 0;
       }
@@ -87,10 +84,10 @@ export function useSidebarBadges(): Record<string, number> {
     queryFn: async () => {
       if (!user) return 0;
       const { count, error } = await supabase
-        .from('orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('runner_id', user.id)
-        .eq('status', 'READY');
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('runner_id', user.id)
+          .eq('current_operational_state', 'READY');
       if (error) return 0;
       return count || 0;
     },

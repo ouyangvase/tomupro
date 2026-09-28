@@ -7,21 +7,26 @@ interface AppLogoProps {
 }
 
 const sizeMap = {
-  xs: 'h-7 w-7',
-  sm: 'h-9 w-9',
-  md: 'h-14 w-14',
-  lg: 'h-20 w-20',
+  xs: 'h-7 w-7 object-contain',
+  sm: 'h-9 w-28 object-cover',
+  md: 'h-14 w-14 object-contain',
+  lg: 'h-20 w-64 object-contain',
 };
 
 export function AppLogo({ size = 'sm', className }: AppLogoProps) {
   const { branding } = useBranding();
-  const src = size === 'xs' ? branding.logoSmallUrl : branding.logoUrl;
+  const src = {
+    xs: branding.logoSmallUrl,
+    sm: branding.logoUrl,
+    md: branding.logoStackedUrl,
+    lg: branding.logoDisplayUrl,
+  }[size];
 
   return (
     <img
       src={src}
       alt={branding.appName}
-      className={cn(sizeMap[size], 'object-contain', className)}
+      className={cn(sizeMap[size], className)}
     />
   );
 }

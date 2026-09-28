@@ -182,7 +182,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     [pendingAcceptanceOrders, failedReviewOrders]
   );
 
-  const { data: proofsByOrder = {}, isLoading: proofsLoading } = useQuery({
+  const { data: proofsByOrder = {}, isLoading: proofsLoading, isError: proofsError } = useQuery({
     queryKey: ['driver-management-delivery-proofs', pendingOrderIds],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -406,8 +406,17 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
 
   const handleBatchAcceptAll = () => {
     if (!batchScope) return;
+
+    // Failed reports need their original reason/date handling. Do not send
+    // them through the delivered acceptance path, which produces a misleading
+    // "unable to review" result and can never safely infer a reschedule date.
+    if (batchScope.failedOrders.length > 0) {
+      setBatchStep('failed');
+      return;
+    }
+
     void runBatchReview(
-      [...batchScope.deliveredOrders, ...batchScope.failedOrders].map((order) => order.id),
+      batchScope.deliveredOrders.map((order) => order.id),
       'Accept All',
       true,
     );
@@ -487,6 +496,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
       orderId: changeStatusOrderId,
       reason,
       nextDeliveryDate,
+      source: 'runner',
     });
     setChangeStatusOrderId(null);
   };
@@ -515,7 +525,10 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     ));
   };
 
-  const isBatchProcessing = batchReview.isPending || scheduleFailedOrders.isPending;
+  const isBatchProcessing = batchReview.isPending
+    || acceptDelivery.isPending
+    || reviewOrder.isPending
+    || scheduleFailedOrders.isPending;
   const isAccepting = acceptDelivery.isPending || bulkAcceptDelivery.isPending || reviewOrder.isPending || isBatchProcessing;
 
   const renderReviewOrderRow = (order: Order) => {
@@ -1186,7 +1199,12 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                     <h3 className="font-black">Uploaded photo</h3>
                     {proofsLoading && <span className="text-xs text-muted-foreground">Loading proof...</span>}
                   </div>
-                  {detailProofs.length > 0 ? (
+                  {proofsError ? (
+                    <div className="flex items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      Unable to load the delivery photo. Refresh and try again.
+                    </div>
+                  ) : detailProofs.length > 0 ? (
                     <div className="grid gap-3 sm:grid-cols-2">
                       {detailProofs.map((proof) => (
                         <a key={proof.id} href={proof.signedUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border bg-muted">

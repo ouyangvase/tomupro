@@ -1,8 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  validateKitaniOrderReadyEvent,
-  type KitaniOrderReadyEvent,
-} from "./validation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,148 +38,6 @@ function normalizePhone(phone: string | null | undefined) {
   if (digits.startsWith("60")) return `+${digits}`;
   if (/^01\d{8,9}$/.test(digits)) return `+60${digits.slice(1)}`;
   return `+673${digits.replace(/^0/, "")}`;
-}
-
-const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
-
-function isUuid(value: string | null | undefined) {
-  return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-function receiptExtension(contentType: string) {
-  const normalized = contentType.toLowerCase().split(";")[0];
-  return normalized === "image/png" ? "png"
-    : normalized === "image/webp" ? "webp"
-    : normalized === "image/heic" ? "heic"
-    : normalized === "image/heif" ? "heif"
-    : "jpg";
-}
-
-async function readResponseWithLimit(response: Response, maxBytes: number) {
-  if (!response.body) {
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > maxBytes) throw new Error("Transfer receipt is too large");
-    return bytes;
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxBytes) throw new Error("Transfer receipt is too large");
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-}
-
-async function importTransferReceipt(
-  supabase: ReturnType<typeof createClient>,
-  orderId: string,
-  deliveryIntentId: string,
-  receiptUrl: string,
-) {
-  const sourceUrl = new URL(receiptUrl);
-  if (sourceUrl.protocol !== "https:") throw new Error("Transfer receipt must use HTTPS");
-
-  const response = await fetch(sourceUrl, { redirect: "follow" });
-  if (!response.ok) throw new Error(`Transfer receipt download failed (${response.status})`);
-  const resolvedUrl = new URL(response.url || sourceUrl.toString());
-  if (resolvedUrl.protocol !== "https:") throw new Error("Transfer receipt redirect must use HTTPS");
-
-  const contentType = (response.headers.get("content-type") || "").split(";")[0].toLowerCase();
-  if (!contentType.startsWith("image/")) throw new Error("Transfer receipt is not an image");
-  const contentLength = Number(response.headers.get("content-length") || 0);
-  if (contentLength > MAX_RECEIPT_BYTES) throw new Error("Transfer receipt is too large");
-
-  const bytes = await readResponseWithLimit(response, MAX_RECEIPT_BYTES);
-  const safeDeliveryIntentId = deliveryIntentId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
-  const path = `kitani/${orderId}/${safeDeliveryIntentId}.${receiptExtension(contentType)}`;
-  const { error: uploadError } = await supabase.storage.from("receipts").upload(path, bytes, {
-    contentType,
-    upsert: true,
-  });
-  if (uploadError) throw uploadError;
-
-  const { data: publicUrl } = supabase.storage.from("receipts").getPublicUrl(path);
-  if (!publicUrl.publicUrl) throw new Error("Transfer receipt URL could not be created");
-
-  const { error: updateError } = await supabase
-    .from("orders")
-    .update({
-      receipt_url: publicUrl.publicUrl,
-      receipt_status: "pending",
-      receipt_rejected_reason: null,
-      receipt_confirmed_by: null,
-      receipt_confirmed_at: null,
-    })
-    .eq("id", orderId)
-    .eq("payment_method", "TRANSFER");
-  if (updateError) throw updateError;
-  return publicUrl.publicUrl;
-}
-
-async function recordReceiptImportFailure(
-  supabase: ReturnType<typeof createClient>,
-  orderId: string,
-  deliveryIntentId: string,
-  actorId: string,
-  error: unknown,
-) {
-  const detail = (error instanceof Error ? error.message : String(error)).slice(0, 500);
-  await supabase
-    .from("kitani_order_links")
-    .update({ last_error: `Transfer receipt import failed: ${detail}` })
-    .eq("order_id", orderId);
-  await supabase.from("audit_logs").insert({
-    entity_type: "order",
-    entity_id: orderId,
-    actor_id: actorId,
-    action: "KITANI_RECEIPT_IMPORT_FAILED",
-    after_json: { delivery_intent_id: deliveryIntentId, error: detail },
-  });
-}
-
-async function ensureKitaniReceipt(
-  supabase: ReturnType<typeof createClient>,
-  orderId: string | undefined,
-  event: KitaniOrderReadyEvent,
-  actorId: string,
-) {
-  const receiptUrl = event.financials.transfer_receipt_url;
-  if (!orderId || event.financials.payment_method !== "TRANSFER" || !receiptUrl) {
-    return "not_provided";
-  }
-
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("receipt_url")
-    .eq("id", orderId)
-    .maybeSingle();
-  if (orderError) throw orderError;
-  if (order?.receipt_url) return "already_available";
-
-  try {
-    await importTransferReceipt(supabase, orderId, event.delivery_intent_id, receiptUrl);
-    await supabase.from("kitani_order_links").update({ last_error: null }).eq("order_id", orderId);
-    return "imported";
-  } catch (error) {
-    await recordReceiptImportFailure(supabase, orderId, event.delivery_intent_id, actorId, error);
-    return "failed";
-  }
 }
 
 interface KitaniLocationConfirmedEvent {
@@ -234,13 +88,13 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "Invalid signature" }, 401);
   }
 
-  let event: KitaniLocationConfirmedEvent | KitaniOrderReadyEvent;
+  let event: KitaniLocationConfirmedEvent;
   try {
     event = JSON.parse(bodyText);
   } catch {
     return jsonResponse({ success: false, error: "Invalid JSON body" }, 400);
   }
-  if (event.event_type !== "delivery.location_confirmed" && event.event_type !== "delivery.order_ready") {
+  if (event.event_type !== "delivery.location_confirmed") {
     return jsonResponse({ success: true, status: "ignored" });
   }
 
@@ -248,39 +102,6 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
-
-  if (event.event_type === "delivery.order_ready") {
-    try {
-      validateKitaniOrderReadyEvent(event);
-    } catch (error) {
-      return jsonResponse({ success: false, error: error instanceof Error ? error.message : "Invalid KITANI order" }, 400);
-    }
-    const systemProfileId = Deno.env.get("KITANI_SYSTEM_PROFILE_ID")
-      || Deno.env.get("TOMUPRO_KITANI_SALESPERSON_ID");
-    if (!systemProfileId) {
-      return jsonResponse({ success: false, error: "KITANI system profile is not configured" }, 500);
-    }
-    const kitaniRunnerId = Deno.env.get("TOMUPRO_KITANI_RUNNER_ID");
-    if (!isUuid(kitaniRunnerId)) {
-      return jsonResponse({ success: false, error: "KITANI runner is not configured" }, 500);
-    }
-    const { data: result, error } = await supabase.rpc("ingest_kitani_order", {
-      p_event: event,
-      p_system_profile_id: systemProfileId,
-      p_idempotency_key: idempotencyKey,
-      p_runner_id: kitaniRunnerId,
-    });
-    if (error) return jsonResponse({ success: false, error: error.message }, 500);
-    const receiptImport = await ensureKitaniReceipt(supabase, result?.order_id, event, systemProfileId);
-    return jsonResponse({
-      success: true,
-      status: result?.status || "created",
-      order_id: result?.order_id,
-      order_code: result?.order_code,
-      duplicate: result?.status === "duplicate",
-      receipt_import: receiptImport,
-    });
-  }
 
   const { data: link, error: linkError } = await supabase
     .from("kitani_order_links")

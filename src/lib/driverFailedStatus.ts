@@ -1,11 +1,15 @@
 import { addDays, format } from 'date-fns';
+import { KUALA_LUMPUR_TIME_ZONE } from '@/lib/timezone';
 
 export const DELIVERY_TOMORROW_REASON = 'Delivery Tomorrow';
 export const CUSTOMER_RESCHEDULE_REASON = 'Customer requested reschedule';
-const BRUNEI_TIME_ZONE = 'Asia/Brunei';
 
 export function normalizeFailedReason(value: string | null | undefined) {
   return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function hasRequiredDeliveryPhotos(photos: readonly unknown[] | null | undefined) {
+  return Array.isArray(photos) && photos.length > 0;
 }
 
 export function sortFailedStatusReasons<T extends { label: string }>(reasons: T[]) {
@@ -24,7 +28,7 @@ export function sortFailedStatusReasons<T extends { label: string }>(reasons: T[
 
 export function getTomorrowDateKey(today = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: BRUNEI_TIME_ZONE,
+    timeZone: KUALA_LUMPUR_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -54,4 +58,22 @@ export function getFailedStatusDate(reason: string, requestedDate?: string | nul
   }
 
   return { valid: true, nextDeliveryDate: undefined };
+}
+
+export function getDriverFailureSubmission(reason: string, requestedDate?: string | null) {
+  const normalizedReason = normalizeFailedReason(reason);
+
+  if (normalizedReason === normalizeFailedReason(DELIVERY_TOMORROW_REASON)) {
+    return {
+      resultType: 'DRIVER_DELIVERY_TOMORROW_SUBMITTED' as const,
+      reason: DELIVERY_TOMORROW_REASON,
+      nextDeliveryDate: requestedDate || getTomorrowDateKey(),
+    };
+  }
+
+  return {
+    resultType: 'DRIVER_FAILED_SUBMITTED' as const,
+    reason,
+    nextDeliveryDate: requestedDate || undefined,
+  };
 }

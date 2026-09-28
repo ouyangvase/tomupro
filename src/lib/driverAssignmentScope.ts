@@ -4,6 +4,11 @@ type RunnerDriverLink = {
   is_active?: boolean | null;
 };
 
+type CanonicalDriverAssignment = {
+  id: string;
+  is_active_assignment?: boolean | null;
+};
+
 export function getAssignableDriverIdsForRunners(
   links: RunnerDriverLink[],
   runnerIds: string[],
@@ -24,5 +29,13 @@ export function getAssignableDriverIdsForRunners(
         Array.from(requiredRunnerIds).every((runnerId) => linkedRunnerIds.has(runnerId))
       ))
       .map(([driverId]) => driverId),
+  );
+}
+
+export function getActiveDriverAssignmentIds(assignments: CanonicalDriverAssignment[]) {
+  return new Set(
+    assignments
+      .filter((assignment) => assignment.is_active_assignment === true)
+      .map((assignment) => assignment.id),
   );
 }

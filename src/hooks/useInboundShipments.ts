@@ -8,11 +8,13 @@ interface InboundFilters {
   runnerIds?: string[];
   salespersonId?: string;
   status?: InboundStatus;
+  enabled?: boolean;
 }
 
 export function useInboundShipments(filters?: InboundFilters) {
   return useQuery({
     queryKey: ['inbound_shipments', filters],
+    enabled: filters?.enabled ?? true,
     queryFn: async () => {
       let query = supabase
         .from('inbound_shipments')

@@ -48,6 +48,7 @@ const permissionOptions: Array<{
   { field: 'can_view_stock_audit', label: 'Stock Balance & Audit', description: 'View shared stock balance and audit details' },
   { field: 'can_manage_inbound_stock', label: 'Inbound Stock', description: 'Create and review Runner inbound stock' },
   { field: 'can_view_driver_workload', label: 'Driver Workload', description: 'View performance and export Driver workload' },
+  { field: 'can_view_driver_analytics', label: 'Driver Analytics', description: 'View linked Driver delivery analytics in Finance' },
 ];
 
 const emptyPermissions = () => Object.fromEntries(

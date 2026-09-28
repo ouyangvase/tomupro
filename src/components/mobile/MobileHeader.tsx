@@ -9,7 +9,8 @@ import capybaraRunner from '@/assets/capybara-runner.png';
 import capybaraDriver from '@/assets/capybara-driver.png';
 import capybaraSales from '@/assets/capybara-sales.png';
 import capybaraManager from '@/assets/capybara-manager.png';
-import tomuLogo from '@/assets/tomu-logo.png';
+import tomuLogoMark from '@/assets/tomupro-logo-mark.png';
+import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
   onNotificationClick?: () => void;
@@ -47,7 +48,10 @@ export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHead
   };
 
   return (
-    <header className="mobile-top-island sticky top-0 z-40 mx-3 mt-3 rounded-[2rem] p-1 safe-area-pt">
+    <header className={cn(
+      'mobile-top-island sticky top-0 mx-3 mt-3 rounded-[2rem] p-1 safe-area-pt',
+      searchOpen ? 'z-50' : 'z-40',
+    )}>
       {searchOpen ? (
         /* Search mode — full-width search bar */
         <div className="mobile-top-island-core flex items-center gap-2">
@@ -70,7 +74,7 @@ export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHead
             <div className="relative shrink-0">
               <div className="flex h-[52px] w-[52px] items-center justify-center overflow-hidden rounded-full border border-[#d7c6aa] bg-[#fffaf3] shadow-[inset_0_1px_1px_rgba(255,255,255,0.9),0_10px_24px_rgba(113,78,31,0.10)]">
                 <img
-                  src={roleCapybara[role || 'admin'] || tomuLogo}
+                  src={roleCapybara[role || 'admin'] || tomuLogoMark}
                   alt="avatar"
                   className="h-11 w-11 object-contain"
                 />

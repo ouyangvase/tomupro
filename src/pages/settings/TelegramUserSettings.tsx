@@ -105,7 +105,7 @@ export default function TelegramUserSettings() {
       return;
     }
     if (!TELEGRAM_CHAT_ID_PATTERN.test(normalizedChatId)) {
-      toast.error('Enter a valid personal or group Chat ID using numbers only');
+      toast.error('Enter the full personal or group Chat ID shown by Telegram');
       return;
     }
 
@@ -115,6 +115,7 @@ export default function TelegramUserSettings() {
         userId,
         chatId: normalizedChatId,
         label: newLabel.trim() || undefined,
+        chatType: groupGuideOpen ? 'group' : 'personal',
       });
       setNewChatId('');
       setNewLabel('');
@@ -341,7 +342,7 @@ export default function TelegramUserSettings() {
                       <p>2. Send <span className="font-mono font-semibold text-foreground">/start</span> in the group.</p>
                       <p>3. Copy the group Chat ID shown by the bot.</p>
                       <p>4. Paste it here.</p>
-                      <p className="pt-1 font-medium text-foreground">Note: Group Chat IDs usually start with <span className="font-mono">-100</span>.</p>
+                      <p className="pt-1 font-medium text-foreground">Note: Copy the complete group ID, including the leading <span className="font-mono">-100</span>.</p>
                     </div>
                   )}
                   <Input
@@ -360,7 +361,7 @@ export default function TelegramUserSettings() {
                       onChange={event => setNewChatId(event.target.value)}
                       placeholder="Paste your Chat ID here"
                       className="h-10 rounded-xl font-mono"
-                      inputMode="numeric"
+                      inputMode="text"
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}

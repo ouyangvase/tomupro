@@ -105,9 +105,9 @@ export default function ManagerOversight() {
       failedDelivery: sp.failedDelivery,
       rescheduled: sp.rescheduled,
       runnerFlagged: sp.runnerFlagged,
-      bookingOrders: spOrders.filter(o => o.status === 'BOOKING').length,
-      readyOrders: spOrders.filter(o => o.status === 'READY').length,
-      pendingDelivery: spOrders.filter(o => o.status === 'READY' && o.runner_status !== 'DELIVERED').length,
+      bookingOrders: spOrders.filter(o => o.current_operational_state === 'BOOKING').length,
+      readyOrders: spOrders.filter(o => o.current_operational_state === 'READY').length,
+      pendingDelivery: spOrders.filter(o => o.current_operational_state === 'READY' && o.runner_status !== 'DELIVERED').length,
       
       deliveredToday: spOrders.filter(o => o.delivered_at && o.delivered_at.split('T')[0] === today).length,
     };

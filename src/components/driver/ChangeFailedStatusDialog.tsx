@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   CUSTOMER_RESCHEDULE_REASON,
@@ -20,7 +22,9 @@ export type FailedStatusReasonOption = {
 
 export type ChangeFailedStatusValues = {
   reason: string;
+  remark: string;
   nextDeliveryDate?: string;
+  proofFiles?: File[];
 };
 
 type ChangeFailedStatusDialogProps = {
@@ -28,8 +32,10 @@ type ChangeFailedStatusDialogProps = {
   onOpenChange: (open: boolean) => void;
   orderCode?: string | null;
   initialReason?: string | null;
+  initialRemark?: string | null;
   initialNextDeliveryDate?: string | null;
   reasons: FailedStatusReasonOption[];
+  photoRequired?: boolean;
   isPending?: boolean;
   onApply: (values: ChangeFailedStatusValues) => Promise<void>;
 };
@@ -39,33 +45,70 @@ export function ChangeFailedStatusDialog({
   onOpenChange,
   orderCode,
   initialReason,
+  initialRemark,
   initialNextDeliveryDate,
   reasons,
+  photoRequired = false,
   isPending = false,
   onApply,
 }: ChangeFailedStatusDialogProps) {
   const [reason, setReason] = useState('');
+  const [remark, setRemark] = useState('');
   const [nextDeliveryDate, setNextDeliveryDate] = useState('');
+  const [proofFiles, setProofFiles] = useState<File[]>([]);
+  const [proofPreviews, setProofPreviews] = useState<string[]>([]);
+
+  const replaceProofSelection = (files: File[]) => {
+    proofPreviews.forEach((preview) => URL.revokeObjectURL(preview));
+    setProofFiles(files);
+    setProofPreviews(files.map((file) => URL.createObjectURL(file)));
+  };
+
+  const removeProofFile = (index: number) => {
+    if (proofPreviews[index]) URL.revokeObjectURL(proofPreviews[index]);
+    setProofFiles((files) => files.filter((_, fileIndex) => fileIndex !== index));
+    setProofPreviews((previews) => previews.filter((_, previewIndex) => previewIndex !== index));
+  };
 
   useEffect(() => {
     if (!open) return;
     setReason(initialReason || '');
+    setRemark(initialRemark || '');
     setNextDeliveryDate(initialNextDeliveryDate || '');
-  }, [initialNextDeliveryDate, initialReason, open]);
+    setProofFiles([]);
+    setProofPreviews((current) => {
+      current.forEach((preview) => URL.revokeObjectURL(preview));
+      return [];
+    });
+  }, [initialNextDeliveryDate, initialReason, initialRemark, open]);
+
+  useEffect(() => {
+    if (open) return;
+    setProofFiles([]);
+    setProofPreviews((current) => {
+      current.forEach((preview) => URL.revokeObjectURL(preview));
+      return current.length > 0 ? [] : current;
+    });
+  }, [open]);
 
   const tomorrowDateKey = useMemo(() => getTomorrowDateKey(), []);
   const normalizedReason = normalizeFailedReason(reason);
   const isCustomerReschedule = normalizedReason === normalizeFailedReason(CUSTOMER_RESCHEDULE_REASON);
   const isDeliveryTomorrow = normalizedReason === normalizeFailedReason(DELIVERY_TOMORROW_REASON);
   const dateResult = getFailedStatusDate(reason, nextDeliveryDate);
-  const canApply = Boolean(reason) && dateResult.valid && !isPending;
+  const canApply = Boolean(reason)
+    && dateResult.valid
+    && (!photoRequired || proofFiles.length > 0)
+    && !isPending;
 
   const handleApply = async () => {
     if (!canApply) return;
     try {
       await onApply({
         reason,
+        remark: remark.trim(),
         nextDeliveryDate: dateResult.nextDeliveryDate,
+        proofFiles,
       });
       onOpenChange(false);
     } catch {
@@ -75,7 +118,7 @@ export function ChangeFailedStatusDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="grid max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5 text-primary" />
@@ -87,7 +130,7 @@ export function ChangeFailedStatusDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">
             <Label htmlFor="change-failed-status-reason">Failed option *</Label>
             <Select
@@ -136,6 +179,30 @@ export function ChangeFailedStatusDialog({
             <p className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
               This will set the next delivery date to tomorrow.
             </p>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="change-failed-status-remark">Remark</Label>
+            <Textarea
+              id="change-failed-status-remark"
+              value={remark}
+              onChange={(event) => setRemark(event.target.value)}
+              placeholder="Additional details (optional)"
+              className="min-h-[100px]"
+            />
+          </div>
+
+          {photoRequired && (
+            <ProofPhotoPicker
+              label="Failed Delivery Photos *"
+              previews={proofPreviews}
+              onFilesChange={replaceProofSelection}
+              onRemoveFile={removeProofFile}
+              multiple
+              disabled={isPending}
+              emptyTitle="Take photos or choose from album"
+              helperText="At least 1 photo is required."
+            />
           )}
         </div>
 

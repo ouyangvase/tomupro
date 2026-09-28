@@ -4,7 +4,7 @@
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0Y2NoZHVyb253c3l1bnlha3hqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2Mjc1NzEsImV4cCI6MjA4NTIwMzU3MX0.O7OyK07BNfvY3bz32IQlqdEW_vPuTxiFPCRKcVT9Q_M";
   var STORAGE_KEY = "sb-" + PROJECT_REF + "-auth-token";
   var PUBLIC_TITLE = "TOMUPRO | Brunei Delivery, COD & Logistics Company";
-  var PUBLIC_ASSET_VERSION = "2026071901";
+  var PUBLIC_ASSET_VERSION = "2026081101";
   var PUBLIC_LOGO_SRC = "/landing/tomupro-logo-public.png?v=" + PUBLIC_ASSET_VERSION;
   var PUBLIC_HERO_SRC = "/landing/tomupro-auth-hero-public.png?v=" + PUBLIC_ASSET_VERSION;
   var PUBLIC_IMAGE_FALLBACK_SRC = "/landing/truck-last-mile.jpg?v=" + PUBLIC_ASSET_VERSION;
@@ -188,19 +188,46 @@
     }
   }
 
-  function trackParcel() {
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (character) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character];
+    });
+  }
+
+  async function trackParcel(event) {
+    if (event) event.preventDefault();
     var input = document.querySelector("[data-track-input]");
     var result = document.querySelector("[data-track-result]");
+    var button = document.querySelector("[data-track-button]");
     if (!input || !result) return;
     var value = input.value.trim();
     if (!value) {
       result.textContent = "";
       return;
     }
-    if (value === "310724636") {
-      result.innerHTML = "<strong>#310724636</strong><span>Out for Delivery</span><small>Sengkurong Hub, Brunei-Muara - Today before 5:00 PM</small>";
-    } else {
-      result.innerHTML = "<strong>No parcel found</strong><small>Try example tracking number 310724636.</small>";
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Checking...";
+    }
+    result.innerHTML = "<small>Checking your order...</small>";
+
+    try {
+      var data = await supabaseRequest("/rest/v1/rpc/track_public_order", {
+        p_order_code: value
+      });
+      if (!data || data.found !== true) {
+        result.innerHTML = "<strong>Order not found.</strong><small>Please check your Order ID and try again.</small>";
+        return;
+      }
+      result.innerHTML = "<strong>" + escapeHtml(data.orderCode) + "</strong><span>" + escapeHtml(data.status) + "</span>";
+    } catch (_) {
+      result.innerHTML = "<strong>We could not check that order right now.</strong><small>Please try again.</small>";
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Track";
+      }
     }
   }
 
@@ -269,7 +296,7 @@
     return [
       '<header class="pnav">',
       '  <div class="pnav-inner">',
-      '    <a href="#home" class="pbrand"><img src="' + PUBLIC_LOGO_SRC + '" data-fallback-src="' + PUBLIC_LOGO_FALLBACK_SRC + '" alt="TOMUPRO logo" width="38" height="38"><div class="pbrand-text"><b>TOMU<span>PRO</span></b><small>Brunei Logistics Operating System</small></div></a>',
+      '    <a href="#home" class="pbrand"><img src="' + PUBLIC_LOGO_SRC + '" data-fallback-src="' + PUBLIC_LOGO_FALLBACK_SRC + '" alt="TOMUPRO logo" width="128" height="40"><div class="pbrand-text"><small>Brunei Logistics Operating System</small></div></a>',
       '    <nav class="plinks"><a href="#services">Services</a><a href="#areas">Delivery Areas</a><a href="#track">Tracking</a><a href="#contact">Contact</a></nav>',
       '    <div class="pnav-cta"><button class="pbtn-login" data-open-auth="login">Login</button><button class="pbtn-cta-gold" data-open-auth="signup">Get Started &rarr;</button></div>',
       '    <button class="pmobile-toggle" aria-label="Menu">&#9776;</button>',
@@ -361,7 +388,7 @@
 
   function buildTrack() {
     return [
-      '<section class="full" id="track"><div class="full-bg"></div><div class="full-overlay"></div><div class="full-inner wrap"><div class="eyebrow" style="color:#D4AF37;text-align:center">Fulfillment Center</div><h2>Warehouse, Pick &amp; Pack,<br>Last-Mile Delivery</h2><p>Get warehouse space in Brunei. We handle storage, picking, packing and final delivery for online shops and local businesses.</p></div><div class="track-wrap"><h3>Track Your Parcel</h3><div class="track-row"><input type="text" data-track-input placeholder="Enter tracking number..."><button class="btn btn-primary" data-track-button>Track</button></div><div class="track-eg">Example: 310724636</div><div class="track-result" data-track-result></div></div></section>'
+      '<section class="full" id="track"><div class="full-bg"></div><div class="full-overlay"></div><div class="full-inner wrap"><div class="full-copy"><div class="eyebrow" style="color:#D4AF37;text-align:center">Fulfillment Center</div><h2>Warehouse, Pick &amp; Pack,<br>Last-Mile Delivery</h2><p>Get warehouse space in Brunei. We handle storage, picking, packing and final delivery for online shops and local businesses.</p></div></div><div class="track-wrap"><h3>Track Your Parcel</h3><form class="track-row" data-track-form><input type="text" data-track-input placeholder="Enter order ID or code..." aria-label="Order ID or order code" autocomplete="off"><button class="btn btn-primary" type="submit" data-track-button>Track</button></form><div class="track-eg">Example: JL2048</div><div class="track-result" data-track-result></div></div></section>'
     ].join("");
   }
 
@@ -385,7 +412,7 @@
 
   function buildFooter() {
     return [
-      '<footer><div class="wrap foot"><div class="fbrand"><div class="fbrand-top"><img class="fgriffin" src="' + PUBLIC_LOGO_SRC + '" data-fallback-src="' + PUBLIC_LOGO_FALLBACK_SRC + '" alt="TOMUPRO logo" width="32" height="32"><b>TOMU<span>PRO</span></b></div><p>A one-stop solution for Brunei delivery operations.</p><div class="flegal"><p>TOMUPRO is operated by Tomu Enterprise, Business Registration No.: P30014276</p></div></div><div><h5>Quick Links</h5><div class="frow2"><a href="#about">About</a></div><div class="frow2"><a href="#services">Services</a></div><div class="frow2"><a href="#features">Features</a></div><div class="frow2"><a href="#track">Track Parcel</a></div><div class="frow2"><a href="/blog">Blog</a></div></div><div><h5>Contact</h5><div class="frow2"><a href="mailto:hello@tomu.my">hello@tomu.my</a></div><div class="frow2"><a href="tel:+6738136587">+673 813 6587</a></div><div class="frow2"><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer">Instagram @tomupro</a></div></div></div><div class="foot-bottom">2026 TOMUPRO Brunei. All rights reserved.</div></footer>'
+      '<footer><div class="wrap foot"><div class="fbrand"><div class="fbrand-top"><img class="fgriffin" src="' + PUBLIC_LOGO_SRC + '" data-fallback-src="' + PUBLIC_LOGO_FALLBACK_SRC + '" alt="TOMUPRO logo" width="120" height="38"></div><p>A one-stop solution for Brunei delivery operations.</p><div class="flegal"><p>TOMUPRO is operated by Tomu Enterprise, Business Registration No.: P30014276</p></div></div><div><h5>Quick Links</h5><div class="frow2"><a href="#about">About</a></div><div class="frow2"><a href="#services">Services</a></div><div class="frow2"><a href="#features">Features</a></div><div class="frow2"><a href="#track">Track Parcel</a></div><div class="frow2"><a href="/blog">Blog</a></div></div><div><h5>Contact</h5><div class="frow2"><a href="mailto:hello@tomu.my">hello@tomu.my</a></div><div class="frow2"><a href="tel:+6738136587">+673 813 6587</a></div><div class="frow2"><a href="https://www.instagram.com/tomupro/" target="_blank" rel="noopener noreferrer">Instagram @tomupro</a></div></div></div><div class="foot-bottom">2026 TOMUPRO Brunei. All rights reserved.</div></footer>'
     ].join("");
   }
 
@@ -416,11 +443,11 @@
     });
     var login = document.querySelector("[data-login-form]");
     var signup = document.querySelector("[data-signup-form]");
-    var track = document.querySelector("[data-track-button]");
+    var trackForm = document.querySelector("[data-track-form]");
     var interest = document.querySelector("[data-interest-form]");
     if (login) login.addEventListener("submit", handleLogin);
     if (signup) signup.addEventListener("submit", handleSignup);
-    if (track) track.addEventListener("click", trackParcel);
+    if (trackForm) trackForm.addEventListener("submit", trackParcel);
     if (interest) interest.addEventListener("submit", handleInterestSubmit);
     var forgotLink = document.querySelector("[data-forgot-password]");
     if (forgotLink) forgotLink.addEventListener("click", handleForgotPassword);

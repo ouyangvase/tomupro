@@ -58,6 +58,7 @@ export function summarizeDriverAnalyticsDay(
   assignedValue: number | string | null | undefined,
 ): DriverAnalyticsDayBreakdown {
   const assignedOrders = countValue(assignedValue);
+  let remainingOrders = 0;
   let deliveredOrders = 0;
   let pendingAcceptanceOrders = 0;
   let acceptedFailedOrders = 0;
@@ -70,6 +71,10 @@ export function summarizeDriverAnalyticsDay(
     const finalOutcome = String(order.runner_final_outcome || '').toUpperCase();
     const runnerAcceptStatus = String(order.runner_accept_status || '').toUpperCase();
     const runnerReviewStatus = String(order.runner_review_status || '').toUpperCase();
+
+    if (runnerAcceptStatus !== 'ACCEPTED') {
+      remainingOrders += 1;
+    }
 
     if (state === 'DELIVERED') {
       deliveredOrders += 1;
@@ -96,7 +101,7 @@ export function summarizeDriverAnalyticsDay(
   return {
     assignedOrders,
     deliveredOrders,
-    remainingOrders: Math.max(assignedOrders - deliveredOrders, 0),
+    remainingOrders,
     pendingAcceptanceOrders,
     acceptedFailedOrders,
     rescheduledOrders,

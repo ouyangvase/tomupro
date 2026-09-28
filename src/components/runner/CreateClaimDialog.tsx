@@ -22,8 +22,8 @@ import {
 } from '@/components/ui/select';
 import { AlertCircle, CheckCircle, Truck } from 'lucide-react';
 import { useCreateClaimWithDeliveryFee } from '@/hooks/useClaims';
-import { useActiveDeliveryCharges } from '@/hooks/useDeliveryCharges';
-import { useAuth } from '@/contexts/AuthContext';
+import { useSourceRunnerDeliveryCharges } from '@/hooks/useDeliveryChargePreview';
+import { getRunnerDeliveryCharge } from '@/lib/runnerDeliveryCharges';
 import { logAudit } from '@/hooks/useAuditLogs';
 import { formatBND } from '@/lib/currency';
 import type { Order, ClaimMethod } from '@/types/database';
@@ -35,23 +35,21 @@ interface CreateClaimDialogProps {
 }
 
 export function CreateClaimDialog({ order, open, onOpenChange }: CreateClaimDialogProps) {
-  const { profile } = useAuth();
   const [method, setMethod] = useState<ClaimMethod>('TRANSFER');
   const [note, setNote] = useState('');
   
-  const { data: deliveryCharges = [] } = useActiveDeliveryCharges(profile?.id);
+  const sourceRunnerIds = order?.runner_id ? [order.runner_id] : [];
+  const { data: sourceRunnerCharges = {} } = useSourceRunnerDeliveryCharges(sourceRunnerIds);
   const createClaim = useCreateClaimWithDeliveryFee();
 
-  // Find matching delivery charge for order area
-  const matchingCharge = order?.area 
-    ? deliveryCharges.find(c => c.area.toLowerCase() === order.area?.toLowerCase())
-    : null;
+  // Delivery charges are owned by the order's source runner.
+  const matchingChargeAmount = order ? getRunnerDeliveryCharge(order, sourceRunnerCharges) : undefined;
 
   const grossAmount = order ? Number(order.total_amount) : 0;
-  const deliveryFee = matchingCharge ? Number(matchingCharge.charge_amount) : 0;
+  const deliveryFee = matchingChargeAmount ?? 0;
   const netClaimAmount = grossAmount - deliveryFee;
 
-  const hasNoApprovedCharge = order?.area && !matchingCharge;
+  const hasNoApprovedCharge = Boolean(order?.area && matchingChargeAmount === undefined);
   const canSubmit = !hasNoApprovedCharge && order;
 
   const handleSubmit = async () => {
@@ -128,12 +126,12 @@ export function CreateClaimDialog({ order, open, onOpenChange }: CreateClaimDial
           )}
 
           {/* Delivery Charge Info */}
-          {matchingCharge && (
+          {matchingChargeAmount !== undefined && order.area && (
             <Alert>
               <Truck className="h-4 w-4" />
               <AlertTitle>Delivery Charge Applied</AlertTitle>
               <AlertDescription>
-                Area: {matchingCharge.area} — {formatBND(matchingCharge.charge_amount)}
+                Area: {order.area} — {formatBND(matchingChargeAmount)}
               </AlertDescription>
             </Alert>
           )}

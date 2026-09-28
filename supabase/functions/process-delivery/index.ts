@@ -19,7 +19,10 @@ interface Order {
   fulfillment_warehouse_id: string | null;
   stock_deducted: boolean;
   runner_status: string;
-  order_source?: string | null;
+  order_type?: string | null;
+  actual_pickup_charge?: number | null;
+  seller_charge_amount?: number | null;
+  runner_payable_amount?: number | null;
 }
 
 Deno.serve(async (req) => {
@@ -79,7 +82,7 @@ Deno.serve(async (req) => {
     // Fetch the order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, salesperson_id, runner_id, fulfillment_warehouse_id, stock_deducted, runner_status, order_source')
+      .select('id, salesperson_id, runner_id, fulfillment_warehouse_id, stock_deducted, runner_status, order_type, actual_pickup_charge, seller_charge_amount, runner_payable_amount')
       .eq('id', orderId)
       .single();
 
@@ -104,51 +107,6 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: true, message: 'Stock already deducted', alreadyProcessed: true }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Native KITANI orders carry their catalog and inventory in KITANI. They
-    // still use the normal TOMUPRO driver delivery lifecycle, but must not be
-    // forced through TOMUPRO warehouse or SKU deduction rules.
-    if (order.order_source === 'KITANI') {
-      const { error: kitaniUpdateError } = await supabase
-        .from('orders')
-        .update({
-          runner_status: 'DELIVERED',
-          delivered_at: deliveryTimestamp,
-          stock_deducted: true,
-          operational_status: 'DELIVERED_FINAL',
-        })
-        .eq('id', orderId);
-
-      if (kitaniUpdateError) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Error updating KITANI order status' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
-      }
-
-      await supabase.from('audit_logs').insert({
-        entity_type: 'order',
-        entity_id: orderId,
-        action: 'KITANI_ORDER_DELIVERED',
-        actor_id: authenticatedUserId,
-        before_json: { runner_status: order.runner_status, stock_deducted: false },
-        after_json: {
-          runner_status: 'DELIVERED',
-          stock_deducted: true,
-          inventory_skipped: true,
-          reason: 'Native KITANI inventory remains in KITANI',
-        },
-      });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'KITANI delivery completed without TOMUPRO inventory deduction',
-          inventorySkipped: true,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
@@ -388,20 +346,6 @@ Deno.serve(async (req) => {
       console.error('[sync-to-firebase] trigger error (non-blocking):', syncErr);
     }
 
-    // Fire webhook to PulseOne (non-blocking)
-    try {
-      fetch(`${supabaseUrl}/functions/v1/send-webhook`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({ orderId, eventType: 'order.delivered' }),
-      }).catch((err) => console.error('Webhook fire-and-forget error:', err));
-    } catch (webhookErr) {
-      console.error('Webhook trigger error (non-blocking):', webhookErr);
-    }
-
     // Fire KITANI delivered event only for orders that used a KITANI link (non-blocking).
     try {
       fetch(`${supabaseUrl}/functions/v1/send-kitani-delivered`, {
@@ -414,6 +358,60 @@ Deno.serve(async (req) => {
       }).catch((err) => console.error('KITANI delivered fire-and-forget error:', err));
     } catch (kitaniErr) {
       console.error('KITANI delivered trigger error (non-blocking):', kitaniErr);
+    }
+
+    // Miri inbound pickup uses the existing delivery permission boundary but
+    // never enters the normal warehouse deduction flow. SKU confirmation is a
+    // separate protected operation after delivery.
+    if (order.order_type === 'MIRI_INBOUND_PICKUP') {
+      if (order.runner_status === 'DELIVERED') {
+        return new Response(
+          JSON.stringify({ success: true, alreadyProcessed: true, order_type: order.order_type }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      const { error: miriUpdateError } = await supabase
+        .from('orders')
+        .update({
+          runner_status: 'DELIVERED',
+          delivered_at: deliveryTimestamp,
+          miri_delivered_at: deliveryTimestamp,
+          inventory_status: 'RECEIVED_SKU_PENDING',
+          content_verification_status: 'SKU_PENDING',
+          integration_status: 'DELIVERED',
+          stock_deducted: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+
+      if (miriUpdateError) throw miriUpdateError;
+      await supabase.from('audit_logs').insert({
+        entity_type: 'order',
+        entity_id: orderId,
+        action: 'MIRI_PICKUP_DELIVERED',
+        actor_id: authenticatedUserId,
+        before_json: { runner_status: order.runner_status },
+        after_json: {
+          runner_status: 'DELIVERED',
+          delivered_at: deliveryTimestamp,
+          content_status: 'SKU_PENDING',
+          actual_pickup_charge: order.actual_pickup_charge,
+          runner_payable_amount: order.runner_payable_amount,
+          seller_charge_amount: order.seller_charge_amount,
+        },
+      });
+
+      fetch(`${supabaseUrl}/functions/v1/send-miri-pickup-callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
+        body: JSON.stringify({ orderId, drain: false }),
+      }).catch((err) => console.error('[MIRI] delivered callback fire-and-forget error:', err));
+
+      return new Response(
+        JSON.stringify({ success: true, order_type: order.order_type, content_status: 'SKU_PENDING', stock_deducted: false }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     // Queue/send SNIPERS Confirm Profit event (non-blocking).

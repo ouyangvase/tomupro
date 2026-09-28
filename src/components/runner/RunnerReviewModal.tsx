@@ -18,7 +18,6 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useReasons } from '@/hooks/useReasons';
 import { useRunnerReviewOrder } from '@/hooks/useRunnerReview';
-import { useRunnerAcceptDelivery } from '@/hooks/useDrivers';
 import { useAttachments } from '@/hooks/useAttachments';
 import { getSignedStorageUrl } from '@/lib/storageUrls';
 
@@ -71,7 +70,6 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
 
   const { data: failedReasons } = useReasons('FAILED_DELIVERY', true);
   const reviewMutation = useRunnerReviewOrder();
-  const acceptMutation = useRunnerAcceptDelivery();
   const { data: attachments = [] } = useAttachments({ orderId: order?.id });
 
   const rawDeliveryProofs = useMemo(
@@ -107,11 +105,6 @@ export function RunnerReviewModal({ open, onOpenChange, order }: RunnerReviewMod
 
   const handleSave = async () => {
     if (!order || !outcome) return;
-
-    // If confirming delivered and accept status is pending, also accept the delivery
-    if (outcome === 'CONFIRM_DELIVERED' && order.runner_accept_status === 'PENDING') {
-      await acceptMutation.mutateAsync(order.id);
-    }
 
     const shouldNotifySalesperson = outcome === 'RESCHEDULE' || outcome === 'NEED_SALESPERSON_FOLLOWUP' || outcome === 'CONFIRM_FAILED';
 

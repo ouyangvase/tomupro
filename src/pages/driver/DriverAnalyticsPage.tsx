@@ -24,6 +24,7 @@ import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAttachments, useUploadAttachment } from '@/hooks/useAttachments';
@@ -42,6 +43,14 @@ import {
   getDriverAnalyticsCalendarCell,
   summarizeDriverAnalyticsDay,
 } from '@/lib/driverAnalytics';
+import {
+  filterDriverPaymentOrders,
+  getDriverPaymentFilterLabel,
+  getDriverPaymentSummary,
+  sortDriverPaymentOrders,
+  type DriverPaymentFilter,
+  type DriverPaymentSort,
+} from '@/lib/driverPaymentSummary';
 import { cn } from '@/lib/utils';
 import { AlertCircle, CalendarDays, Camera, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
 import { toast } from 'sonner';
@@ -57,6 +66,14 @@ const periodOptions: Array<{ value: Period; label: string }> = [
 ];
 
 const EMPTY_ANALYTICS_ORDERS: DriverAnalyticsOrder[] = [];
+const driverOrderGroupDefinitions = [
+  { key: 'INACTIVE', label: 'Inactive', description: 'Driver assignment ended, including orders returned to Unassigned.' },
+  { key: 'RESCHEDULED', label: 'Rescheduled', description: 'Runner reschedule outcome or Driver reschedule submission.' },
+  { key: 'DELIVERED', label: 'Delivered', description: 'Delivered and accepted by Runner.' },
+  { key: 'FAILED', label: 'Failed', description: 'Failed delivery and accepted by Runner.' },
+  { key: 'ACTIVE', label: 'Active', description: 'Active Driver assignment.' },
+  { key: 'PENDING_ACCEPTANCE', label: 'Pending acceptance', description: 'Waiting for Runner acceptance.' },
+] as const;
 
 function dateKey(date: Date) {
   return format(date, 'yyyy-MM-dd');
@@ -73,7 +90,7 @@ function getOrderSkuItems(order: DriverAssignment) {
 function formatBruneiTimestamp(value?: string | null) {
   if (!value) return 'Timestamp unavailable';
   return new Intl.DateTimeFormat('en-BN', {
-    timeZone: 'Asia/Brunei',
+    timeZone: 'Asia/Kuala_Lumpur',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -83,6 +100,51 @@ function formatBruneiTimestamp(value?: string | null) {
   }).format(new Date(value));
 }
 
+function getHistoricalDriverResultLabel(order: DriverAnalyticsOrder) {
+  switch (order.historical_driver_result_type) {
+    case 'DRIVER_DELIVERED_SUBMITTED':
+      return 'Delivered';
+    case 'DRIVER_FAILED_SUBMITTED':
+      return `Failed${order.historical_driver_failure_reason ? ` — ${order.historical_driver_failure_reason}` : ''}`;
+    case 'DRIVER_RESCHEDULE_SUBMITTED':
+      return `Reschedule${order.historical_driver_reschedule_date ? ` — ${order.historical_driver_reschedule_date}` : ''}`;
+    case 'DRIVER_DELIVERY_TOMORROW_SUBMITTED':
+      return 'Delivery Tomorrow';
+    default:
+      return order.driver_status === 'DRIVER_FAILED'
+        ? `Failed${order.driver_failed_reason ? ` — ${order.driver_failed_reason}` : ''}`
+        : order.driver_status === 'DRIVER_DELIVERED'
+          ? 'Delivered'
+          : 'No Driver result recorded';
+  }
+}
+
+function getCurrentOrderStateLabel(order: DriverAnalyticsOrder) {
+  if (!order.driver_id || !order.runner_id || String(order.runner_status || '').toUpperCase() === 'UNASSIGNED') {
+    return 'Order unassigned · Driver assignment ended';
+  }
+  if (order.assignment_state === 'DELIVERED') return 'Delivered · Runner accepted';
+  if (order.assignment_state === 'FAILED') return 'Failed · Runner accepted';
+  if (order.assignment_state === 'RESCHEDULED') {
+    return order.reassigned
+      ? 'Rescheduled · Driver removed/reassigned'
+      : 'Rescheduled · Driver retained';
+  }
+  if (order.reassigned) return 'Driver assignment ended · current Runner state shown';
+  if (order.assignment_state === 'PENDING_ACCEPTANCE') return 'Waiting for Runner acceptance';
+  if (order.assignment_state === 'ACTIVE') return 'Active Driver assignment';
+  return order.operational_status ? `Current: ${order.operational_status.replaceAll('_', ' ')}` : 'Current state unavailable';
+}
+
+function formatDriverPaymentBreakdown(order: DriverAnalyticsOrder) {
+  const payment = getDriverPaymentSummary(order);
+  const parts = [
+    payment.cashAmount > 0 ? `Cash ${formatBND(payment.cashAmount)}` : null,
+    payment.transferAmount > 0 ? `Transfer ${formatBND(payment.transferAmount)}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : `Total ${formatBND(payment.totalAmount)}`;
+}
+
 export default function DriverAnalyticsPage() {
   const { profile } = useAuth();
   const [period, setPeriod] = useState<Period>('month');
@@ -90,7 +152,9 @@ export default function DriverAnalyticsPage() {
   const [customFrom, setCustomFrom] = useState(dateKey(startOfMonth(new Date())));
   const [customTo, setCustomTo] = useState(dateKey(new Date()));
   const [selectedDate, setSelectedDate] = useState(dateKey(new Date()));
-  const [pendingAcceptanceOpen, setPendingAcceptanceOpen] = useState(false);
+  const [openOrderGroups, setOpenOrderGroups] = useState<Record<string, boolean>>({});
+  const [paymentFilter, setPaymentFilter] = useState<DriverPaymentFilter>('ALL');
+  const [paymentSort, setPaymentSort] = useState<DriverPaymentSort>('RECENT');
   const [correctionOrder, setCorrectionOrder] = useState<DriverAnalyticsOrder | null>(null);
   const [pendingProofOrder, setPendingProofOrder] = useState<DriverAnalyticsOrder | null>(null);
   const [pendingProofFiles, setPendingProofFiles] = useState<File[]>([]);
@@ -139,9 +203,27 @@ export default function DriverAnalyticsPage() {
   const selectedCalendarDay = analytics?.daily.find((day) => day.date === selectedDate);
   const selectedDay = selectedDayDetails?.summary ?? selectedCalendarDay;
   const selectedOrders = selectedDayDetails?.orders ?? EMPTY_ANALYTICS_ORDERS;
+  const filteredSelectedOrders = useMemo(
+    () => filterDriverPaymentOrders(selectedOrders, paymentFilter),
+    [paymentFilter, selectedOrders],
+  );
+  const sortedSelectedOrders = useMemo(
+    () => sortDriverPaymentOrders(filteredSelectedOrders, paymentSort),
+    [filteredSelectedOrders, paymentSort],
+  );
   const selectedOrderGroups = useMemo(
-    () => groupDriverAnalyticsOrders(selectedOrders),
-    [selectedOrders],
+    () => groupDriverAnalyticsOrders(sortedSelectedOrders),
+    [sortedSelectedOrders],
+  );
+  const selectedPaymentTotals = useMemo(
+    () => filteredSelectedOrders.reduce((totals, order) => {
+      const payment = getDriverPaymentSummary(order);
+      totals.cash += payment.cashAmount;
+      totals.transfer += payment.transferAmount;
+      totals.total += payment.totalAmount;
+      return totals;
+    }, { cash: 0, transfer: 0, total: 0 }),
+    [filteredSelectedOrders],
   );
   const selectedDayBreakdown = useMemo(
     () => summarizeDriverAnalyticsDay(selectedOrders, selectedDay?.assignedOrders ?? 0),
@@ -168,7 +250,7 @@ export default function DriverAnalyticsPage() {
 
   const selectAnalyticsDate = (date: string) => {
     setSelectedDate(date);
-    setPendingAcceptanceOpen(false);
+    setOpenOrderGroups({});
   };
 
   const handleCorrectToDelivered = async (
@@ -181,6 +263,7 @@ export default function DriverAnalyticsPage() {
       paymentMethod,
       cashAmount: split.cashAmount,
       transferAmount: split.transferAmount,
+      submissionMode: 'CORRECTION',
     });
     setCorrectionOrder(null);
   };
@@ -246,12 +329,17 @@ export default function DriverAnalyticsPage() {
 
   const renderOrder = (order: DriverAnalyticsOrder) => {
     const skuItems = getOrderSkuItems(order);
+    const payment = getDriverPaymentSummary(order);
     const isPendingAcceptance = order.assignment_state === 'PENDING_ACCEPTANCE';
     const canCorrectToDelivered =
       isPendingAcceptance
       && order.driver_status === 'DRIVER_FAILED'
       && order.runner_accept_status !== 'ACCEPTED'
       && order.runner_review_status !== 'REVIEWED';
+
+    const eventLabel = getHistoricalDriverResultLabel(order);
+    const eventTimestamp = order.historical_driver_submitted_at
+      || (order.driver_status === 'DRIVER_FAILED' ? order.driver_failed_at : order.driver_delivered_at);
 
     return (
       <div
@@ -287,14 +375,16 @@ export default function DriverAnalyticsPage() {
           )}
           <p className="mt-1 truncate text-xs text-muted-foreground">{order.customer_name}</p>
           <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
-            <p>Driver delivered {formatBruneiTimestamp(order.assignment_timestamp)}</p>
-            <p>{formatBND(Number(order.collect_amount || order.total_amount || 0))} - {order.driver_payment_method || order.payment_method || 'Payment not set'}</p>
+            <p>Driver result: {eventLabel} · {formatBruneiTimestamp(eventTimestamp)}</p>
             <p>
-              Driver {order.driver_status || 'UNKNOWN'} - Runner {order.runner_accept_status || 'PENDING'}
+              {payment.label} · {formatDriverPaymentBreakdown(order)}
+              {payment.isDriverReported ? ' · Driver reported' : ' · Planned payment'}
+            </p>
+            <p>
+              {getCurrentOrderStateLabel(order)} - Runner {order.runner_accept_status || 'PENDING'}
               {order.cash_settlement_status && order.cash_settlement_status !== 'NOT_APPLICABLE'
                 ? ` - Cash ${order.cash_settlement_status.replaceAll('_', ' ')}`
                 : ''}
-              {order.reassigned ? ' - Reassigned' : ''}
             </p>
           </div>
           {isPendingAcceptance && (
@@ -338,7 +428,7 @@ export default function DriverAnalyticsPage() {
         <header className="border-b border-border pb-4">
           <p className="text-xs font-bold uppercase text-primary">Performance</p>
           <h1 className="mt-1 text-2xl font-bold">Delivery calendar</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Grouped by effective Driver assignment date.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Includes historical Driver assignments; each order shows the Driver result and its current Runner state.</p>
         </header>
 
         <div className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1">
@@ -402,7 +492,7 @@ export default function DriverAnalyticsPage() {
             })()}
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Accepted delivered sales</p>
+            <p className="text-xs text-muted-foreground">Total (Cash + Transfer)</p>
             <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.totalSales)}</p>
           </div>
           <div>
@@ -421,13 +511,8 @@ export default function DriverAnalyticsPage() {
               {formatBND(summary.pendingCashAmount)} / {formatBND(summary.pendingTransferAmount)}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              {summary.pendingCashOrderCount} cash · {summary.pendingTransferOrderCount} transfer
+              {summary.pendingCashOrderCount} cash · {summary.pendingTransferOrderCount} transfer · not in Total
             </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Cash on hand</p>
-            <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.cashOnHand)}</p>
-            <p className="text-[11px] text-muted-foreground">{summary.cashOnHandCount} unsettled</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Stock on hand</p>
@@ -485,7 +570,7 @@ export default function DriverAnalyticsPage() {
                     );
                   })()}
                   <span className="mt-2 block text-[10px] text-muted-foreground">
-                    Sales {formatBND(month.totalSales ?? 0)}
+                    Total (Cash + Transfer) {formatBND(month.totalSales ?? 0)}
                   </span>
                   <span className="block text-[10px] text-muted-foreground">
                     Cash {formatBND(month.cashAmount ?? 0)} ({month.cashOrderCount ?? 0})
@@ -583,6 +668,39 @@ export default function DriverAnalyticsPage() {
             <h2 className="mt-1 font-bold">{format(parseISO(selectedDate), 'dd MMMM yyyy')}</h2>
           </div>
 
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <Select value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as DriverPaymentFilter)}>
+              <SelectTrigger className="h-10 rounded-full">
+                <SelectValue placeholder="Payment" />
+              </SelectTrigger>
+              <SelectContent>
+                {(['ALL', 'CASH', 'TRANSFER', 'CASH_TRANSFER'] as DriverPaymentFilter[]).map((filter) => (
+                  <SelectItem key={filter} value={filter}>
+                    {getDriverPaymentFilterLabel(filter)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={paymentSort} onValueChange={(value) => setPaymentSort(value as DriverPaymentSort)}>
+              <SelectTrigger className="h-10 rounded-full">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="RECENT">Recent first</SelectItem>
+                <SelectItem value="PAYMENT">Payment type</SelectItem>
+                <SelectItem value="AMOUNT_DESC">Amount: high to low</SelectItem>
+                <SelectItem value="AMOUNT_ASC">Amount: low to high</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">{filteredSelectedOrders.length} orders shown</span>
+            <span>Cash {formatBND(selectedPaymentTotals.cash)}</span>
+            <span>Transfer {formatBND(selectedPaymentTotals.transfer)}</span>
+            <span>Total {formatBND(selectedPaymentTotals.total)}</span>
+          </div>
+
           {isSelectedDayLoading ? (
             <div className="mt-4 grid grid-cols-2 gap-3">
               {Array.from({ length: 6 }).map((_, index) => (
@@ -605,12 +723,14 @@ export default function DriverAnalyticsPage() {
                 <p className="mt-1 text-2xl font-bold">{selectedDayBreakdown.deliveredOrders}</p>
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Remaining</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Delivery acceptance pending</p>
                 <p className="mt-1 text-2xl font-bold">{selectedDayBreakdown.remainingOrders}</p>
+                <p className="text-[11px] text-muted-foreground">Orders not accepted by Runner</p>
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Awaiting Runner acceptance</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Currently awaiting Runner review</p>
                 <p className="mt-1 text-lg font-bold">{selectedDayBreakdown.pendingAcceptanceOrders}</p>
+                <p className="text-[11px] text-muted-foreground">Subset of Remaining</p>
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold text-muted-foreground">Failed</p>
@@ -629,7 +749,7 @@ export default function DriverAnalyticsPage() {
                 <p className="mt-1 text-lg font-bold">{selectedDayBreakdown.rejectedReopenedOrders}</p>
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Accepted delivered sales</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Total (Cash + Transfer)</p>
                 <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.totalSales)}</p>
               </div>
               <div className="min-w-0">
@@ -648,13 +768,8 @@ export default function DriverAnalyticsPage() {
                   {formatBND(selectedDay.pendingCashAmount)} / {formatBND(selectedDay.pendingTransferAmount)}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {selectedDay.pendingCashOrderCount} cash · {selectedDay.pendingTransferOrderCount} transfer
+                  {selectedDay.pendingCashOrderCount} cash · {selectedDay.pendingTransferOrderCount} transfer · not in Total
                 </p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Cash on hand</p>
-                <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.cashOnHand)}</p>
-                <p className="text-[11px] text-muted-foreground">{selectedDay.cashOnHandCount} unsettled</p>
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold text-muted-foreground">Stock on hand</p>
@@ -669,41 +784,47 @@ export default function DriverAnalyticsPage() {
               <CalendarDays className="mx-auto mb-2 h-7 w-7" />
               No assigned orders on this day.
             </div>
+          ) : filteredSelectedOrders.length === 0 ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              No orders match this payment filter.
+            </div>
           ) : (
             <div className="mt-3">
-              {selectedOrderGroups.visible.length === 0 && (
-                <p className="border-y border-border py-5 text-center text-sm text-muted-foreground">
-                  No Runner-accepted deliveries on this day.
-                </p>
-              )}
               <div className="divide-y divide-border border-y border-border">
-                {selectedOrderGroups.visible.map(renderOrder)}
-              </div>
+                {driverOrderGroupDefinitions.map((group) => {
+                  const orders = selectedOrderGroups[group.key];
+                  if (orders.length === 0) return null;
+                  const isOpen = Boolean(openOrderGroups[group.key]);
 
-              {selectedOrderGroups.pendingAcceptance.length > 0 && (
-                <div className="mt-3 border-y border-border">
-                  <button
-                    type="button"
-                    aria-expanded={pendingAcceptanceOpen}
-                    onClick={() => setPendingAcceptanceOpen((open) => !open)}
-                    className="flex min-h-12 w-full items-center justify-between gap-3 py-3 text-left"
-                  >
-                    <span>
-                      <span className="block text-sm font-bold">Pending acceptance</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {selectedOrderGroups.pendingAcceptance.length} hidden
-                      </span>
-                    </span>
-                    <ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', pendingAcceptanceOpen && 'rotate-180')} />
-                  </button>
-                  {pendingAcceptanceOpen && (
-                    <div className="divide-y divide-border border-t border-border">
-                      {selectedOrderGroups.pendingAcceptance.map(renderOrder)}
+                  return (
+                    <div key={group.key}>
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        onClick={() => setOpenOrderGroups((current) => ({
+                          ...current,
+                          [group.key]: !current[group.key],
+                        }))}
+                        className="flex min-h-14 w-full items-center justify-between gap-3 px-2 py-3 text-left transition-colors hover:bg-muted/50"
+                      >
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 text-sm font-bold">
+                            {group.label}
+                            <Badge variant="secondary">{orders.length}</Badge>
+                          </span>
+                          <span className="mt-1 block truncate text-xs text-muted-foreground">{group.description}</span>
+                        </span>
+                        <ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
+                      </button>
+                      {isOpen && (
+                        <div className="divide-y divide-border border-t border-border px-2">
+                          {orders.map(renderOrder)}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
-
+                  );
+                })}
+              </div>
             </div>
           )}
         </section>

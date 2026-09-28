@@ -41,20 +41,20 @@ export function TeamViewToggle({
   const hasAnyMembers = teamMembers.length > 0;
   
   return (
-    <div className={`flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 ${className}`}>
+    <div className={`flex min-w-0 flex-col flex-wrap gap-3 sm:flex-row sm:items-center sm:gap-4 ${className}`}>
       {/* View Mode Toggle */}
-      <div className="flex min-w-0 items-center gap-2">
-        <Label className="text-xs font-medium text-foreground/70 whitespace-nowrap">View:</Label>
+      <div className="flex shrink-0 items-center gap-2">
+        <Label className="shrink-0 whitespace-nowrap text-xs font-medium text-foreground/70">View:</Label>
         <ToggleGroup
           type="single"
           value={viewMode}
           onValueChange={(value) => value && onViewModeChange(value as ViewMode)}
-          className="min-w-0 bg-muted/50 rounded-lg p-1"
+          className="shrink-0 rounded-lg bg-muted/50 p-1"
         >
           <ToggleGroupItem
             value="my"
             aria-label="My Data"
-            className="data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=off]:text-foreground/60 px-3 h-8 text-xs font-medium"
+            className="shrink-0 whitespace-nowrap px-3 text-xs font-medium data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=off]:text-foreground/60 h-8"
           >
             <User className="h-3 w-3 mr-1" />
             My Data
@@ -62,7 +62,7 @@ export function TeamViewToggle({
           <ToggleGroupItem
             value="team"
             aria-label="Team Data"
-            className="data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=off]:text-foreground/60 px-3 h-8 text-xs font-medium"
+            className="shrink-0 whitespace-nowrap px-3 text-xs font-medium data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=off]:text-foreground/60 h-8"
           >
             <Users className="h-3 w-3 mr-1" />
             Team Data
@@ -75,8 +75,8 @@ export function TeamViewToggle({
         teamLoading ? (
           <span className="text-xs text-muted-foreground">Loading team…</span>
         ) : hasAnyMembers ? (
-          <div className="flex min-w-0 items-center gap-2">
-            <Label className="text-xs font-medium text-foreground/70 whitespace-nowrap">Salesperson:</Label>
+          <div className="flex min-w-0 shrink-0 items-center gap-2">
+            <Label className="shrink-0 whitespace-nowrap text-xs font-medium text-foreground/70">Salesperson:</Label>
             <Select value={selectedMember} onValueChange={onMemberChange}>
               <SelectTrigger className="h-8 min-w-0 flex-1 text-xs sm:w-[200px] sm:flex-none">
                 <SelectValue placeholder="All Team" />

@@ -7,6 +7,8 @@ export interface StockBalanceFilters {
   search?: string;
   ownerId?: string | null;
   hideZero?: boolean;
+  sortField?: 'owner_name' | 'warehouse_name' | 'sku_name' | 'balance_qty' | 'last_movement_time';
+  sortDirection?: 'asc' | 'desc';
 }
 
 export interface StockBalanceStats {
@@ -14,6 +16,11 @@ export interface StockBalanceStats {
   total_qty: number;
   healthy_count: number;
   low_out_count: number;
+}
+
+interface PaginatedStockBalanceResponse {
+  rows?: StockBalance[];
+  total_count?: number;
 }
 
 export interface PaginatedStockBalanceResult {
@@ -32,6 +39,38 @@ export interface PaginatedStockBalanceResult {
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
   refetch: () => void;
+}
+
+export async function fetchAllStockBalance(
+  filters: StockBalanceFilters = {},
+  pageSize = 500,
+): Promise<StockBalance[]> {
+  const rows: StockBalance[] = [];
+  const hideZero = (filters.hideZero ?? true) && !Boolean(filters.search?.trim());
+  const ownerId = filters.ownerId && filters.ownerId !== 'all' ? filters.ownerId : null;
+
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await supabase.rpc('get_stock_balance_paginated', {
+      p_page: page,
+      p_page_size: pageSize,
+      p_search: filters.search || null,
+      p_owner_id: ownerId,
+      p_hide_zero: hideZero,
+      p_sort_field: filters.sortField || 'owner_name',
+      p_sort_direction: filters.sortDirection || 'asc',
+    });
+
+    if (error) throw error;
+
+    const result = data as PaginatedStockBalanceResponse | null;
+    const pageRows = (result?.rows || []) as StockBalance[];
+    rows.push(...pageRows);
+
+    const totalCount = Number(result?.total_count || 0);
+    if (pageRows.length === 0 || rows.length >= totalCount || pageRows.length < pageSize) break;
+  }
+
+  return rows;
 }
 
 export function usePaginatedStockBalance(
@@ -58,19 +97,33 @@ export function usePaginatedStockBalance(
 
   // Main paginated data query
   const { data: queryResult, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ['stock-balance-paginated', filters.search, filters.ownerId, filters.hideZero, page, pageSize],
+    queryKey: [
+      'stock-balance-paginated',
+      filters.search,
+      filters.ownerId,
+      filters.hideZero,
+      filters.sortField,
+      filters.sortDirection,
+      page,
+      pageSize,
+    ],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_stock_balance_paginated', {
         p_page: page,
         p_page_size: pageSize,
         p_search: filters.search || null,
         p_owner_id: (filters.ownerId && filters.ownerId !== 'all') ? filters.ownerId : null,
-        p_hide_zero: filters.hideZero ?? true,
+        // A search should be able to locate a matching SKU even when its
+        // current balance is zero; the default unfiltered list still hides
+        // zero-balance rows when the toggle is enabled.
+        p_hide_zero: (filters.hideZero ?? true) && !Boolean(filters.search?.trim()),
+        p_sort_field: filters.sortField || 'owner_name',
+        p_sort_direction: filters.sortDirection || 'asc',
       });
 
       if (error) throw error;
 
-      const result = data as any;
+      const result = data as PaginatedStockBalanceResponse | null;
       return {
         rows: (result?.rows || []) as StockBalance[],
         totalCount: Number(result?.total_count || 0),

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import type { Profile, AppRole } from '@/types/database';
+import type { Profile, AppRole, DisplayCurrency } from '@/types/database';
 
 export function useUsers() {
   return useQuery({
@@ -27,6 +27,7 @@ export function useUpdateUser() {
       display_name?: string;
       role?: AppRole;
       manager_id?: string | null;
+      display_currency?: DisplayCurrency;
       previousRole?: AppRole;
     }) => {
       const { id, role, manager_id, previousRole, ...otherChanges } = update;

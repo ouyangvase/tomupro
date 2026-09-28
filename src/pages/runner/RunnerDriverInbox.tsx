@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { useRunnerDriverOrders, useMyDrivers, useRunnerDriverLinks, useAllDrivers, useRunnerAcceptDelivery, useRunnerRejectDelivery, useBulkRunnerAcceptDelivery } from '@/hooks/useDrivers';
+import { useRunnerDriverOrders, useMyDrivers, useRunnerDriverLinks, useAllDrivers } from '@/hooks/useDrivers';
 import {
   fetchRunnerDispatchAreaOrderIds,
   useApplyDriverAssignmentBatch,
@@ -30,6 +30,7 @@ import { useRevertDelivery } from '@/hooks/useRevertDelivery';
 import {
   fetchDriverAssignments,
   summarizeDriverAssignments,
+  useDriverAssignments,
   type DriverAssignment,
 } from '@/hooks/useDriverAssignments';
 import { useAuth } from '@/contexts/AuthContext';
@@ -54,7 +55,6 @@ import {
   ShieldAlert,
   Undo2,
 } from 'lucide-react';
-import { RunnerReviewModal } from '@/components/runner/RunnerReviewModal';
 import { RevertDeliveryDialog } from '@/components/admin/RevertDeliveryDialog';
 import { toast } from 'sonner';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
@@ -62,11 +62,11 @@ import { formatBND } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { downloadXlsx } from '@/lib/xlsxExport';
 import { groupRemainingOrdersByLocality } from '@/lib/driverInboxAreaCounts';
-import { getAssignableDriverIdsForRunners } from '@/lib/driverAssignmentScope';
+import { getActiveDriverAssignmentIds, getAssignableDriverIdsForRunners } from '@/lib/driverAssignmentScope';
 import {
   getDriverOperationalDateKey,
   getTodayDateKey,
-  isDriverWorkloadOrder,
+  isRunnerDriverAssignmentCandidate,
   isStaleActiveDriverAssignment,
   normalizeDriverStatus,
 } from '@/lib/driverOrderScope';
@@ -244,12 +244,12 @@ function isNormalArea(areaCode: string) {
   return !['NEEDS_REVIEW', 'SELF_PICKUP', 'CANCELLED'].includes(areaCode);
 }
 
-function isAssignedForAreaSummary(order: RunnerOrder, _targetDateKey?: string) {
-  const driverStatus = normalizeDriverStatus(order.driver_status) || 'UNASSIGNED';
-  return Boolean(order.driver_id) && driverStatus !== 'UNASSIGNED';
+function isAssignedForAreaSummary(order: RunnerOrder, activeAssignmentOrderIds: ReadonlySet<string>) {
+  return activeAssignmentOrderIds.has(order.id)
+    || Boolean(order.driver_id && normalizeDriverStatus(order.driver_status) !== 'UNASSIGNED');
 }
 
-function isActiveQueueUnassigned(order: RunnerOrder, _targetDateKey: string) {
+function isActiveQueueUnassigned(order: RunnerOrder, _targetDateKey?: string) {
   const driverStatus = normalizeDriverStatus(order.driver_status) || 'UNASSIGNED';
   return !order.driver_id || driverStatus === 'UNASSIGNED';
 }
@@ -281,11 +281,15 @@ function makeEmptySummary(area: DeliveryArea): DispatchAreaSummary {
   };
 }
 
-function buildLocalAreaSummary(queueOrders: RunnerOrder[], areas: DeliveryArea[], targetDateKey: string): DispatchAreaSummary[] {
+function buildLocalAreaSummary(
+  queueOrders: RunnerOrder[],
+  areas: DeliveryArea[],
+  activeAssignmentOrderIds: ReadonlySet<string>,
+): DispatchAreaSummary[] {
   return areas.map((area) => {
     const areaOrders = queueOrders.filter((order) => inferAreaFromOrder(order) === area.code);
-    const assigned = area.is_special ? [] : areaOrders.filter((order) => isAssignedForAreaSummary(order, targetDateKey));
-    const unassigned = area.is_special ? [] : areaOrders.filter((order) => isActiveQueueUnassigned(order, targetDateKey));
+    const assigned = area.is_special ? [] : areaOrders.filter((order) => isAssignedForAreaSummary(order, activeAssignmentOrderIds));
+    const unassigned = area.is_special ? [] : areaOrders.filter((order) => isActiveQueueUnassigned(order));
     const totalCollect = areaOrders.reduce((sum, order) => sum + getCollectAmount(order), 0);
     const assignedCollect = assigned.reduce((sum, order) => sum + getCollectAmount(order), 0);
     const unassignedCollect = unassigned.reduce((sum, order) => sum + getCollectAmount(order), 0);
@@ -452,10 +456,13 @@ export default function RunnerDriverInbox({
   const { data: myDrivers = [] } = useMyDrivers(runnerScopeIds);
   const { data: scopedDriverLinks = [], isLoading: scopedDriverLinksLoading } = useRunnerDriverLinks(runnerScopeIds, !isAdmin);
   const { data: allDriverLinks = [], isLoading: allDriverLinksLoading } = useAllDrivers(isAdmin);
+  const { data: canonicalActiveDriverAssignments = [] } = useDriverAssignments({
+    runnerIds: runnerScopeIds,
+    activeOnly: true,
+    includeItems: false,
+    states: ['ACTIVE'],
+  });
   const { data: dbDeliveryAreas = [] } = useDeliveryAreas();
-  const acceptDelivery = useRunnerAcceptDelivery();
-  const rejectDelivery = useRunnerRejectDelivery();
-  const bulkAcceptDelivery = useBulkRunnerAcceptDelivery();
   const manualReopen = useManualReopenOrder();
   const revertDelivery = useRevertDelivery();
   const applyBatch = useApplyDriverAssignmentBatch();
@@ -467,7 +474,6 @@ export default function RunnerDriverInbox({
   const activeQueueScopeDate: string | null = null;
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedAreaOrderSnapshots, setSelectedAreaOrderSnapshots] = useState<DispatchAreaOrderId[]>([]);
-  const [selectedPendingRows, setSelectedPendingRows] = useState<string[]>([]);
   const [targetDriver, setTargetDriver] = useState<string>('');
   const [assignmentOrderLimit, setAssignmentOrderLimit] = useState(0);
   const [assignmentAction, setAssignmentAction] = useState<AssignmentAction>('ASSIGN');
@@ -476,20 +482,19 @@ export default function RunnerDriverInbox({
   const assignmentSnapshotRequestRef = useRef(0);
   const [areaCorrectionDialogOpen, setAreaCorrectionDialogOpen] = useState(false);
   const [correctionAreaCode, setCorrectionAreaCode] = useState('');
-  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [rejectOrderId, setRejectOrderId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [reviewOrder, setReviewOrder] = useState<RunnerOrder | null>(null);
   const [revertDialogOpen, setRevertDialogOpen] = useState(false);
   const [revertOrderData, setRevertOrderData] = useState<RunnerOrder | null>(null);
-  const [driverFilter, setDriverFilter] = useState<string>(() => searchParams.get('driver') || 'all');
+  const requestedDriverId = searchParams.get('driver') || 'all';
+  const routeDriverRef = useRef(requestedDriverId);
+  const [driverFilter, setDriverFilter] = useState<string>(() => requestedDriverId);
   const [driverStatusFilter, setDriverStatusFilter] = useState<string>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeAreaCode, setActiveAreaCode] = useState<string>('all');
-  const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('unassigned');
+  const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>(() => (
+    requestedDriverId === 'all' ? 'all' : 'assigned'
+  ));
   const [performancePeriod, setPerformancePeriod] = useState<DriverPerformancePeriod>('month');
   const [performanceAnchorDate, setPerformanceAnchorDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [driverSearch, setDriverSearch] = useState('');
@@ -499,6 +504,7 @@ export default function RunnerDriverInbox({
   const [workloadExportMonth, setWorkloadExportMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [workloadExportDriverId, setWorkloadExportDriverId] = useState('all');
   const [workloadExporting, setWorkloadExporting] = useState(false);
+  const [viewOrdersDriver, setViewOrdersDriver] = useState<DriverWorkloadView | null>(null);
   const [bulkRevertDialogOpen, setBulkRevertDialogOpen] = useState(false);
   const [bulkRevertDriver, setBulkRevertDriver] = useState<DriverWorkloadView | null>(null);
   const [bulkRevertSnapshot, setBulkRevertSnapshot] = useState<DriverAssignment[]>([]);
@@ -509,6 +515,19 @@ export default function RunnerDriverInbox({
   const [bulkUnassignConfirmation, setBulkUnassignConfirmation] = useState('');
 
   const { data: dbDriverWorkloads = [], isFetching: driverWorkloadFetching } = useRunnerDispatchDriverWorkloads(activeQueueScopeDate);
+  const { data: viewDriverOrders = [], isFetching: viewDriverOrdersFetching } = useQuery({
+    queryKey: ['runner-driver-workload-orders', runnerScopeIds, viewOrdersDriver?.driver_id || 'none'],
+    enabled: Boolean(viewOrdersDriver?.driver_id && runnerScopeIds.length > 0),
+    queryFn: async () => {
+      const rows = (await Promise.all(runnerScopeIds.map((runnerId) => fetchDriverAssignments({
+        runnerId,
+        driverId: viewOrdersDriver?.driver_id,
+        activeOnly: true,
+        includeItems: true,
+      })))).flat();
+      return Array.from(new Map(rows.map((order) => [order.id, order])).values());
+    },
+  });
   const performanceRange = useMemo(() => getDateRange(performanceAnchorDate, performancePeriod), [performanceAnchorDate, performancePeriod]);
   const { data: performanceOrders = [], isFetching: performanceFetching } = useQuery({
     queryKey: ['runner-driver-performance-orders', runnerScopeIds, performancePeriod, performanceRange.start, performanceRange.end],
@@ -541,10 +560,21 @@ export default function RunnerDriverInbox({
     () => allRunnerOrders.filter((order) => isStaleActiveDriverAssignment(order, todayDateKey)),
     [allRunnerOrders, todayDateKey],
   );
+  // Keep the Driver Inbox on the same active queue as Runner Inbox. Driver-reported
+  // outcomes stay visible for tally/review, but remain locked from reassignment
+  // until the Runner processes the result.
   const dispatchAreaOrders = allRunnerOrders;
+  const assignableDispatchOrders = useMemo(
+    () => allRunnerOrders.filter(isRunnerDriverAssignmentCandidate),
+    [allRunnerOrders],
+  );
   const activeDriverAssignments = useMemo(
-    () => dispatchAreaOrders.filter((order) => isDriverWorkloadOrder(order, todayDateKey)),
-    [dispatchAreaOrders, todayDateKey],
+    () => canonicalActiveDriverAssignments,
+    [canonicalActiveDriverAssignments],
+  );
+  const activeAssignmentOrderIds = useMemo(
+    () => getActiveDriverAssignmentIds(activeDriverAssignments),
+    [activeDriverAssignments],
   );
   const staleActiveCollect = useMemo(
     () => staleActiveAssignments.reduce((sum, order) => sum + getCollectAmount(order), 0),
@@ -552,24 +582,26 @@ export default function RunnerDriverInbox({
   );
 
   const localAreaSummary = useMemo(
-    () => buildLocalAreaSummary(dispatchAreaOrders, deliveryAreas, todayDateKey),
-    [deliveryAreas, dispatchAreaOrders, todayDateKey],
+    () => buildLocalAreaSummary(dispatchAreaOrders, deliveryAreas, activeAssignmentOrderIds),
+    [activeAssignmentOrderIds, deliveryAreas, dispatchAreaOrders],
   );
   const areaSummary = localAreaSummary;
 
   const globalSummary = useMemo(() => {
-    const normal = areaSummary.filter((area) => !area.is_special);
     const needsReview = areaSummary.find((area) => area.area_code === 'NEEDS_REVIEW');
     const selfPickup = areaSummary.find((area) => area.area_code === 'SELF_PICKUP');
     const cancelled = areaSummary.find((area) => area.area_code === 'CANCELLED');
-    const assigned = normal.reduce((sum, area) => sum + area.assigned_orders, 0);
-    const total = normal.reduce((sum, area) => sum + area.total_orders, 0);
+    const assigned = dispatchAreaOrders.filter((order) => isAssignedForAreaSummary(order, activeAssignmentOrderIds)).length;
+    const unassigned = dispatchAreaOrders.filter((order) => isActiveQueueUnassigned(order)).length;
+    const total = dispatchAreaOrders.length;
     return {
       assigned,
       total,
-      unassigned: normal.reduce((sum, area) => sum + area.unassigned_orders, 0),
-      totalCollect: normal.reduce((sum, area) => sum + area.total_collect_amount, 0),
-      unassignedCollect: normal.reduce((sum, area) => sum + area.unassigned_collect_amount, 0),
+      unassigned,
+      totalCollect: dispatchAreaOrders.reduce((sum, order) => sum + getCollectAmount(order), 0),
+      unassignedCollect: dispatchAreaOrders
+        .filter((order) => isActiveQueueUnassigned(order))
+        .reduce((sum, order) => sum + getCollectAmount(order), 0),
       needsReview: needsReview?.total_orders || 0,
       selfPickup: selfPickup?.total_orders || 0,
       cancelled: cancelled?.total_orders || 0,
@@ -578,7 +610,7 @@ export default function RunnerDriverInbox({
         : new Set(dispatchAreaOrders.map((order) => order.driver_id).filter(Boolean)).size,
       percentage: total ? Number(((assigned / total) * 100).toFixed(1)) : 0,
     };
-  }, [areaSummary, canUseDbDriverWorkloads, dbDriverWorkloads, dispatchAreaOrders]);
+  }, [activeAssignmentOrderIds, areaSummary, canUseDbDriverWorkloads, dbDriverWorkloads, dispatchAreaOrders]);
 
   const areaOrderPool = useMemo(() => {
     return dispatchAreaOrders.filter((order) => {
@@ -591,9 +623,7 @@ export default function RunnerDriverInbox({
 
   const visibleAssignmentOrders = useMemo(() => {
     let filtered = areaOrderPool.filter((order) => {
-      const code = inferAreaFromOrder(order);
-      if (!isNormalArea(code)) return true;
-      if (assignmentFilter === 'assigned') return isAssignedForAreaSummary(order, todayDateKey);
+      if (assignmentFilter === 'assigned') return isAssignedForAreaSummary(order, activeAssignmentOrderIds);
       if (assignmentFilter === 'unassigned') return isActiveQueueUnassigned(order, todayDateKey);
       return true;
     });
@@ -611,13 +641,17 @@ export default function RunnerDriverInbox({
     }
 
     return filtered.sort((a, b) => {
-      const assignedDiff = Number(isAssignedForAreaSummary(a, todayDateKey)) - Number(isAssignedForAreaSummary(b, todayDateKey));
+      const assignedDiff = Number(isAssignedForAreaSummary(a, activeAssignmentOrderIds)) - Number(isAssignedForAreaSummary(b, activeAssignmentOrderIds));
       if (assignedDiff !== 0) return assignedDiff;
       return (a.order_code || '').localeCompare(b.order_code || '');
     });
-  }, [areaOrderPool, assignmentFilter, searchQuery, todayDateKey]);
+  }, [activeAssignmentOrderIds, areaOrderPool, assignmentFilter, searchQuery, todayDateKey]);
 
   const displayedAssignmentOrders = useMemo(() => visibleAssignmentOrders.slice(0, 300), [visibleAssignmentOrders]);
+  const visibleAssignableOrders = useMemo(
+    () => visibleAssignmentOrders.filter(isRunnerDriverAssignmentCandidate),
+    [visibleAssignmentOrders],
+  );
 
   const localityGroups = useMemo<LocalityGroupView[]>(() => {
     const grouped = new Map<string, RunnerOrder[]>();
@@ -632,14 +666,14 @@ export default function RunnerDriverInbox({
         orders: groupOrders,
         unassigned: groupOrders.filter((order) => isActiveQueueUnassigned(order, todayDateKey)),
         totalOrders: groupOrders.length,
-        assignedOrders: groupOrders.filter((order) => isAssignedForAreaSummary(order, todayDateKey)).length,
+        assignedOrders: groupOrders.filter((order) => isAssignedForAreaSummary(order, activeAssignmentOrderIds)).length,
         unassignedOrders: groupOrders.filter((order) => isActiveQueueUnassigned(order, todayDateKey)).length,
         collectAmount: groupOrders.reduce((sum, order) => sum + getCollectAmount(order), 0),
-        assignedCollectAmount: groupOrders.filter((order) => isAssignedForAreaSummary(order, todayDateKey)).reduce((sum, order) => sum + getCollectAmount(order), 0),
+        assignedCollectAmount: groupOrders.filter((order) => isAssignedForAreaSummary(order, activeAssignmentOrderIds)).reduce((sum, order) => sum + getCollectAmount(order), 0),
         unassignedCollectAmount: groupOrders.filter((order) => isActiveQueueUnassigned(order, todayDateKey)).reduce((sum, order) => sum + getCollectAmount(order), 0),
       }))
       .sort((a, b) => b.unassignedOrders - a.unassignedOrders || a.label.localeCompare(b.label));
-  }, [areaOrderPool, todayDateKey]);
+  }, [activeAssignmentOrderIds, areaOrderPool, todayDateKey]);
 
   const dispatchOrderById = useMemo(() => {
     const byId = new Map<string, RunnerOrder>();
@@ -681,11 +715,11 @@ export default function RunnerDriverInbox({
 
   const assignmentAreaUnassignedOrders = useMemo(() => {
     if (!isNormalArea(activeAreaCode)) return [];
-    return dispatchAreaOrders.filter((order) => (
+    return assignableDispatchOrders.filter((order) => (
       inferAreaFromOrder(order) === activeAreaCode
       && isActiveQueueUnassigned(order, todayDateKey)
     ));
-  }, [activeAreaCode, dispatchAreaOrders, todayDateKey]);
+  }, [activeAreaCode, assignableDispatchOrders, todayDateKey]);
 
   const assignmentAreaLocalityGroups = useMemo(
     () => groupRemainingOrdersByLocality(
@@ -697,7 +731,9 @@ export default function RunnerDriverInbox({
 
   const assignmentAreaStaleOrders = useMemo(() => {
     if (!isNormalArea(activeAreaCode)) return [];
-    return staleActiveAssignments.filter((order) => inferAreaFromOrder(order) === activeAreaCode);
+    return staleActiveAssignments.filter((order) => (
+      isRunnerDriverAssignmentCandidate(order) && inferAreaFromOrder(order) === activeAreaCode
+    ));
   }, [activeAreaCode, staleActiveAssignments]);
 
   const assignmentSelectedAreaGroups = useMemo(
@@ -739,9 +775,10 @@ export default function RunnerDriverInbox({
   );
   const selectedHasAssigned = selectedRows.some((orderId) => {
     const order = dispatchOrderById.get(orderId);
-    return order ? isAssignedForAreaSummary(order, todayDateKey) : false;
+    return order ? isAssignedForAreaSummary(order, activeAssignmentOrderIds) : false;
   });
   const selectedHasSpecial = selectedRows.some((orderId) => !isNormalArea(getSelectedAreaCode(orderId)));
+  const selectedHasPendingReview = selectedOrders.some((order) => !isRunnerDriverAssignmentCandidate(order));
 
   const performanceByDriver = useMemo(() => {
     const grouped = new Map<string, DriverPerformanceOrder[]>();
@@ -757,11 +794,11 @@ export default function RunnerDriverInbox({
   const assignmentOrdersByDriver = useMemo(() => {
     const grouped = new Map<string, RunnerOrder[]>();
     dayOrders.forEach((order) => {
-      if (!order.driver_id || !isDriverWorkloadOrder(order, todayDateKey)) return;
+      if (!order.driver_id || !activeAssignmentOrderIds.has(order.id)) return;
       grouped.set(order.driver_id, [...(grouped.get(order.driver_id) || []), order]);
     });
     return grouped;
-  }, [dayOrders, todayDateKey]);
+  }, [activeAssignmentOrderIds, dayOrders]);
 
   const driverWorkloads = useMemo<DriverWorkloadView[]>(() => {
     if (canUseDbDriverWorkloads && dbDriverWorkloads.length) {
@@ -968,10 +1005,6 @@ export default function RunnerDriverInbox({
     return filtered;
   }, [dayOrders, driverFilter, driverStatusFilter, areaFilter, reviewStatusFilter]);
 
-  const pendingAcceptanceOrders = useMemo(() => {
-    return dayOrders.filter((order) => order.driver_status === 'DRIVER_DELIVERED' && order.runner_accept_status === 'PENDING');
-  }, [dayOrders]);
-
   useEffect(() => {
     setAssignmentOrderLimit(selectedRows.length);
   }, [selectedRows.length]);
@@ -982,6 +1015,16 @@ export default function RunnerDriverInbox({
     setAssignmentOrderLimit(0);
   };
 
+  useEffect(() => {
+    if (routeDriverRef.current === requestedDriverId) return;
+    routeDriverRef.current = requestedDriverId;
+    setDriverFilter(requestedDriverId);
+    setAssignmentFilter(requestedDriverId === 'all' ? 'all' : 'assigned');
+    setSelectedRows([]);
+    setSelectedAreaOrderSnapshots([]);
+    setAssignmentOrderLimit(0);
+  }, [requestedDriverId]);
+
   const selectOrders = (orderIds: string[], snapshots: DispatchAreaOrderId[] = []) => {
     const uniqueIds = Array.from(new Set(orderIds));
     const selectedIds = new Set(uniqueIds);
@@ -991,8 +1034,9 @@ export default function RunnerDriverInbox({
   };
 
   const handleSelectStaleAssignments = () => {
-    if (staleActiveAssignments.length === 0) return;
-    selectOrders(staleActiveAssignments.map((order) => order.id));
+    const assignableStaleOrders = staleActiveAssignments.filter(isRunnerDriverAssignmentCandidate);
+    if (assignableStaleOrders.length === 0) return;
+    selectOrders(assignableStaleOrders.map((order) => order.id));
     setAssignmentAction('REASSIGN');
     setTargetDriver('');
     setAssignmentDialogOpen(true);
@@ -1003,7 +1047,7 @@ export default function RunnerDriverInbox({
       clearSelection();
       return;
     }
-    selectOrders(visibleAssignmentOrders.map((order) => order.id));
+    selectOrders(visibleAssignableOrders.map((order) => order.id));
   };
 
   const handleSelectRow = (id: string, checked: boolean) => {
@@ -1121,7 +1165,7 @@ export default function RunnerDriverInbox({
 
   const handleAssignRemaining = (areaCode: string) => {
     if (!isNormalArea(areaCode)) return;
-    const localOrders = dispatchAreaOrders.filter((order) => (
+    const localOrders = assignableDispatchOrders.filter((order) => (
       inferAreaFromOrder(order) === areaCode &&
       isActiveQueueUnassigned(order, todayDateKey)
     ));
@@ -1175,15 +1219,17 @@ export default function RunnerDriverInbox({
 
   const handleSelectGroup = (ordersToSelect: RunnerOrder[], unassignedOnly = false) => {
     const selected = (unassignedOnly ? ordersToSelect.filter((order) => isActiveQueueUnassigned(order, todayDateKey)) : ordersToSelect)
+      .filter(isRunnerDriverAssignmentCandidate)
       .filter((order) => isNormalArea(inferAreaFromOrder(order)))
       .map((order) => order.id);
     selectOrders(selected);
   };
 
   const selectAssignmentSubset = (orders: RunnerOrder[], action: AssignmentAction) => {
-    if (!orders.length) return;
-    selectOrders(orders.map((order) => order.id));
-    setAssignmentOrderLimit(orders.length);
+    const assignableOrders = orders.filter(isRunnerDriverAssignmentCandidate);
+    if (!assignableOrders.length) return;
+    selectOrders(assignableOrders.map((order) => order.id));
+    setAssignmentOrderLimit(assignableOrders.length);
     setAssignmentAction(action);
     setTargetDriver('');
   };
@@ -1204,6 +1250,10 @@ export default function RunnerDriverInbox({
     }
     if (selectedHasSpecial) {
       toast.error('Resolve Needs Review, Self Pickup, or Cancelled orders before assigning');
+      return;
+    }
+    if (selectedHasPendingReview) {
+      toast.error('Review Driver Delivered or Driver Failed orders before reassigning');
       return;
     }
     if (action === 'ASSIGN' && selectedHasAssigned) {
@@ -1259,26 +1309,6 @@ export default function RunnerDriverInbox({
     }
   };
 
-  const handleSelectAllPending = (checked: boolean) => setSelectedPendingRows(checked ? pendingAcceptanceOrders.map((order) => order.id) : []);
-  const handleSelectPendingRow = (id: string, checked: boolean) => setSelectedPendingRows((previous) => checked ? [...previous, id] : previous.filter((rowId) => rowId !== id));
-  const handleBulkAccept = () => {
-    if (selectedPendingRows.length === 0) return;
-    bulkAcceptDelivery.mutate(selectedPendingRows, { onSuccess: () => setSelectedPendingRows([]) });
-  };
-  const handleAccept = (orderId: string) => acceptDelivery.mutate(orderId);
-  const handleOpenRejectDialog = (orderId: string) => {
-    setRejectOrderId(orderId);
-    setRejectReason('');
-    setRejectDialogOpen(true);
-  };
-  const handleSubmitReject = () => {
-    if (!rejectOrderId || !rejectReason.trim()) return;
-    rejectDelivery.mutate({ orderId: rejectOrderId, reason: rejectReason }, { onSuccess: () => setRejectDialogOpen(false) });
-  };
-  const handleOpenReviewModal = (order: RunnerOrder) => {
-    setReviewOrder(order);
-    setReviewModalOpen(true);
-  };
   const handleManualReopen = useCallback((orderId: string) => {
     manualReopen.mutate(orderId, {
       onSuccess: () => toast.success('Order reopened and ready for assignment'),
@@ -1324,8 +1354,8 @@ export default function RunnerDriverInbox({
           </Button>
         )}
         {(!order.runner_review_status || order.runner_review_status === 'NOT_REVIEWED') && (
-          <Button size="sm" className="h-8 px-3" onClick={() => handleOpenReviewModal(order)}>
-            NEXT <ArrowRight className="ml-1 h-3.5 w-3.5" />
+          <Button size="sm" className="h-8 px-3" onClick={() => navigate('/dispatch?tab=drivers')}>
+            REVIEW IN DRIVERS <ArrowRight className="ml-1 h-3.5 w-3.5" />
           </Button>
         )}
         <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => navigate(`/order/${order.id}`)}>
@@ -1589,7 +1619,7 @@ export default function RunnerDriverInbox({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="unassigned">Unassigned first</SelectItem>
+                          <SelectItem value="unassigned">Unassigned only</SelectItem>
                           <SelectItem value="assigned">Assigned only</SelectItem>
                           <SelectItem value="all">All assignments</SelectItem>
                         </SelectContent>
@@ -1610,8 +1640,8 @@ export default function RunnerDriverInbox({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleSelectVisible(true)} disabled={visibleAssignmentOrders.length === 0} className="rounded-full border-[#d8cbbb]">
-                        Select visible ({visibleAssignmentOrders.length})
+                      <Button variant="outline" size="sm" onClick={() => handleSelectVisible(true)} disabled={visibleAssignableOrders.length === 0} className="rounded-full border-[#d8cbbb]">
+                        Select assignable ({visibleAssignableOrders.length})
                       </Button>
                       <Button
                         variant="outline"
@@ -1622,7 +1652,7 @@ export default function RunnerDriverInbox({
                             .map((order) => order.id);
                           selectOrders(selected);
                         }}
-                        disabled={visibleAssignmentOrders.length === 0}
+                        disabled={visibleAssignableOrders.length === 0}
                         className="rounded-full border-[#d8cbbb]"
                       >
                         Select unassigned
@@ -1691,17 +1721,24 @@ export default function RunnerDriverInbox({
                           areaLabel={getAreaLabel(areaCode, deliveryAreas)}
                           locality={getLocalityLabel(order, areaCode)}
                           isSelected={selectedRows.includes(order.id)}
-                          selectable
+                          selectable={isRunnerDriverAssignmentCandidate(order)}
                           onSelect={(checked) => handleSelectRow(order.id, !!checked)}
                           actions={(
-                            <Button size="sm" variant="outline" onClick={() => {
-                              handleOpenAreaCorrection([order.id]);
-                            }}>
-                              {isNormalArea(areaCode)
-                                ? <MapPin className="mr-1 h-3.5 w-3.5" />
-                                : <AlertTriangle className="mr-1 h-3.5 w-3.5" />}
-                              {isNormalArea(areaCode) ? 'Change Delivery Zone' : 'Resolve Delivery Zone'}
-                            </Button>
+                            <>
+                              {!isRunnerDriverAssignmentCandidate(order) && (
+                                <span className="mr-auto text-xs font-medium text-amber-700">
+                                  Review Driver result before reassigning
+                                </span>
+                              )}
+                              <Button size="sm" variant="outline" onClick={() => {
+                                handleOpenAreaCorrection([order.id]);
+                              }}>
+                                {isNormalArea(areaCode)
+                                  ? <MapPin className="mr-1 h-3.5 w-3.5" />
+                                  : <AlertTriangle className="mr-1 h-3.5 w-3.5" />}
+                                {isNormalArea(areaCode) ? 'Change Delivery Zone' : 'Resolve Delivery Zone'}
+                              </Button>
+                            </>
                           )}
                         />
                       );
@@ -1903,45 +1940,40 @@ export default function RunnerDriverInbox({
                               </Button>
                             )}
 
-                            {canManageDriverAssignments ? (
-                              <div className="mt-2 grid grid-cols-2 gap-2">
+                            {(canManageDriverAssignments || workloadOnly) ? (
+                              <div className={cn('mt-2 grid gap-2', canManageDriverAssignments ? 'grid-cols-2' : 'grid-cols-1')}>
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
-                                    handleDriverFilterChange(driver.driver_id);
-                                    if (workloadOnly) {
-                                      navigate(`/dispatch?tab=driver-inbox&driver=${driver.driver_id}`);
-                                    }
+                                    setViewOrdersDriver(driver);
                                   }}
                                   className="h-9 min-w-0 rounded-full border-white/20 bg-white/[0.05] px-3 text-white hover:bg-white/10 hover:text-white"
                                 >
                                   <ExternalLink className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                                   View Orders
                                 </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={driver.orderCount === 0 || (
-                                    bulkRevertSnapshotLoading && bulkRevertDriver?.driver_id === driver.driver_id
-                                  ) || bulkRevertDriverOrders.isPending}
-                                  onClick={() => handleOpenBulkRevert(driver)}
-                                  className="h-9 min-w-0 rounded-full border-red-400/60 bg-red-500/5 px-3 text-red-200 hover:bg-red-500/15 hover:text-red-100 disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-white/30"
-                                >
-                                  {bulkRevertSnapshotLoading && bulkRevertDriver?.driver_id === driver.driver_id ? (
-                                    <Loader2 className="mr-1.5 h-3.5 w-3.5 shrink-0 animate-spin" />
-                                  ) : (
-                                    <Undo2 className="mr-1.5 h-3.5 w-3.5 shrink-0" />
-                                  )}
-                                  Revert All
-                                </Button>
+                                {canManageDriverAssignments && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={driver.orderCount === 0 || (
+                                      bulkRevertSnapshotLoading && bulkRevertDriver?.driver_id === driver.driver_id
+                                    ) || bulkRevertDriverOrders.isPending}
+                                    onClick={() => handleOpenBulkRevert(driver)}
+                                    className="h-9 min-w-0 rounded-full border-red-400/60 bg-red-500/5 px-3 text-red-200 hover:bg-red-500/15 hover:text-red-100 disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-white/30"
+                                  >
+                                    {bulkRevertSnapshotLoading && bulkRevertDriver?.driver_id === driver.driver_id ? (
+                                      <Loader2 className="mr-1.5 h-3.5 w-3.5 shrink-0 animate-spin" />
+                                    ) : (
+                                      <Undo2 className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                                    )}
+                                    Revert All
+                                  </Button>
+                                )}
                               </div>
-                            ) : workloadOnly ? (
-                              <p className="mt-3 text-center text-xs text-white/42">
-                                View-only workload access
-                              </p>
                             ) : null}
 
                             {driver.orderCount === 0 && (
@@ -2169,6 +2201,45 @@ export default function RunnerDriverInbox({
                 Export
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={Boolean(viewOrdersDriver)} onOpenChange={(open) => !open && setViewOrdersDriver(null)}>
+          <DialogContent className="bottom-0 top-auto max-h-[92dvh] w-screen max-w-none translate-y-0 overflow-y-auto rounded-b-none rounded-t-[1.5rem] bg-white p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:bottom-auto sm:top-[50%] sm:w-[min(92vw,52rem)] sm:translate-y-[-50%] sm:rounded-2xl sm:p-6">
+            <DialogHeader className="pr-7 text-left">
+              <DialogTitle>{viewOrdersDriver?.name || 'Driver'} Orders</DialogTitle>
+              <DialogDescription>
+                Current orders from the same Driver assignment source used by the Driver App.
+              </DialogDescription>
+            </DialogHeader>
+
+            {viewDriverOrdersFetching ? (
+              <div className="flex min-h-32 items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/20 text-sm text-muted-foreground" role="status">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading Driver orders...
+              </div>
+            ) : viewDriverOrders.length === 0 ? (
+              <p className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
+                No current orders are visible for this Driver.
+              </p>
+            ) : (
+              <div className="max-h-[62dvh] space-y-2 overflow-y-auto pr-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {viewDriverOrders.length} current order(s)
+                </p>
+                {viewDriverOrders.map((order) => {
+                  const areaCode = inferAreaFromOrder(order as RunnerOrder);
+                  return (
+                    <OrderCardRow
+                      key={order.id}
+                      order={order as RunnerOrder}
+                      areaLabel={getAreaLabel(areaCode, deliveryAreas)}
+                      locality={getLocalityLabel(order as RunnerOrder, areaCode)}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 
@@ -2461,28 +2532,6 @@ export default function RunnerDriverInbox({
           </DialogContent>
         </Dialog>
 
-        <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Reject Delivery</DialogTitle>
-              <DialogDescription>Please provide a reason for rejecting this delivery. A reason is required before sending it back to the driver.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="driver-inbox-reject-reason">Rejection reason <span className="text-destructive">*</span></Label>
-                <Textarea id="driver-inbox-reject-reason" value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Explain what must be corrected..." aria-required="true" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
-              <Button variant="destructive" onClick={handleSubmitReject} disabled={!rejectReason.trim() || rejectDelivery.isPending}>
-                {rejectDelivery.isPending ? 'Rejecting...' : 'Reject'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <RunnerReviewModal open={reviewModalOpen} onOpenChange={setReviewModalOpen} order={reviewOrder} />
         <RevertDeliveryDialog open={revertDialogOpen} onOpenChange={setRevertDialogOpen} order={revertOrderData} onConfirm={handleRevertConfirm} isPending={revertDelivery.isPending} />
       </div>
     </AppLayout>

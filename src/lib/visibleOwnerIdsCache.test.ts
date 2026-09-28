@@ -36,6 +36,7 @@ describe('visibleOwnerIdsCache', () => {
     expect(first).toEqual(['owner-1']);
     expect(second).toEqual(['owner-1']);
     expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(rpcMock).toHaveBeenCalledWith('get_accessible_owner_ids', { p_scope: 'orders' });
   });
 
   it('never reuses another user scope', async () => {

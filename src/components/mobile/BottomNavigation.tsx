@@ -15,6 +15,7 @@ import {
   GraduationCap,
   Send,
   UserCircle,
+  Gift,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -105,6 +106,7 @@ const allModules: Record<string, NavItem[]> = {
     { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/orders' },
     { id: 'performance', label: 'Performance', icon: <Trophy className="h-5 w-5" />, href: '/performance?tab=leaderboard' },
     { id: 'team', label: 'Team', icon: <Users className="h-5 w-5" />, href: '/team' },
+    { id: 'referral-rewards', label: 'Referral Rewards', icon: <Gift className="h-5 w-5" />, href: '/referral-rewards' },
     { id: 'inventory', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory' },
     { id: 'guide', label: 'Guide', icon: <GraduationCap className="h-5 w-5" />, href: '/guide' },
     { id: 'telegram', label: 'Telegram', icon: <Send className="h-5 w-5" />, href: '/settings/telegram' },
@@ -114,6 +116,7 @@ const allModules: Record<string, NavItem[]> = {
     { id: 'dashboard', label: 'Dashboard', icon: <Home className="h-5 w-5" />, href: '/' },
     { id: 'orders', label: 'Orders', icon: <ClipboardList className="h-5 w-5" />, href: '/orders' },
     { id: 'performance', label: 'Performance', icon: <Trophy className="h-5 w-5" />, href: '/performance?tab=leaderboard' },
+    { id: 'referral-rewards', label: 'Referral Rewards', icon: <Gift className="h-5 w-5" />, href: '/referral-rewards' },
     { id: 'inventory', label: 'Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory' },
     { id: 'claims', label: 'Claims', icon: <DollarSign className="h-5 w-5" />, href: '/finance?tab=claims' },
     { id: 'guide', label: 'Guide', icon: <GraduationCap className="h-5 w-5" />, href: '/guide' },
@@ -220,6 +223,15 @@ export function BottomNavigation() {
     ) {
       modulesWithAssistantAccess.push(
         { id: 'inventory', label: 'Assistant Inventory', icon: <Boxes className="h-5 w-5" />, href: '/inventory' },
+      );
+    }
+    if (
+      assistantBinding?.analyticsRunnerIds?.length &&
+      assistantBinding.can_view_driver_analytics &&
+      !modulesWithAssistantAccess.some((item) => item.href === '/finance')
+    ) {
+      modulesWithAssistantAccess.push(
+        { id: 'finance', label: 'Assistant Finance', icon: <DollarSign className="h-5 w-5" />, href: '/finance' },
       );
     }
     return modulesWithAssistantAccess.filter((item) => {

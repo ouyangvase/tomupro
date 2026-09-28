@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/tooltip';
 import { OrdersLoadError } from '@/components/orders/OrdersLoadError';
 
-export default function CancelledSales({ highlightOrderId }: { highlightOrderId?: string | null }) {
+export default function CancelledSales({ initialSearch = null, highlightOrderId }: { initialSearch?: string | null; highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
@@ -58,8 +58,12 @@ export default function CancelledSales({ highlightOrderId }: { highlightOrderId?
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('team');
 
-  const [serverSearch, setServerSearch] = useState('');
+  const [serverSearch, setServerSearch] = useState(initialSearch || '');
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
+
+  useEffect(() => {
+    setServerSearch(initialSearch?.trim() || '');
+  }, [initialSearch]);
 
   const orderFilters = useMemo(() => ({
     status: 'CANCELLED' as const,
@@ -306,6 +310,7 @@ export default function CancelledSales({ highlightOrderId }: { highlightOrderId?
   const handleRestore = () => {
     bulkUpdateOrders.mutate({
       ids: selectedRows,
+      allowReopen: true,
       updates: { 
         status: restoreTarget, 
         cancel_reason: null, 

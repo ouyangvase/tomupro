@@ -35,6 +35,7 @@ export default function InventoryModule() {
     showWorkspaceSelector,
   } = resolveAssistantWorkspace({
     hasPrimaryWorkspace: hasPrimaryInventoryWorkspace,
+    primaryRunnerId: role === 'runner' ? profile?.id : undefined,
     linkedRunnerIds,
     requestedWorkspace: searchParams.get('runner'),
   });
@@ -105,6 +106,9 @@ export default function InventoryModule() {
                   {runner.display_name || runner.email}
                 </SelectItem>
               ))}
+              {hasPrimaryInventoryWorkspace && linkedRunnerIds.length > 0 && (
+                <SelectItem value="all">ALL</SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>

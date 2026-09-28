@@ -52,14 +52,10 @@ function applyFilters(
 
   // Status
   if (filters.status) {
-    query = query.eq('status', filters.status);
-    if (filters.status === 'READY' || filters.status === 'BOOKING') {
-      query = query.neq('runner_status', 'DELIVERED');
-      query = query.neq('runner_status', 'FAILED_DELIVERY');
-    }
+    query = query.eq('current_operational_state', filters.status);
   }
   if (filters.statusIn && filters.statusIn.length > 0) {
-    query = query.in('status', filters.statusIn);
+    query = query.in('current_operational_state', filters.statusIn);
   }
 
   // Runner status
@@ -77,11 +73,10 @@ function applyFilters(
 
   // Exclude delivered and failed (runner inbox shorthand)
   if (filters.excludeDeliveredAndFailed) {
-    query = query.eq('status', 'READY');
+    query = query.eq('current_operational_state', 'READY');
     query = query.neq('runner_status', 'DELIVERED');
     query = query.neq('runner_status', 'FAILED_DELIVERY');
     query = query.neq('runner_status', 'UNASSIGNED');
-    query = query.neq('status', 'CANCELLED');
   }
 
   // Salesperson action required
@@ -118,6 +113,8 @@ function applyFilters(
   // Direct filters
   if (filters.runnerId) query = query.eq('runner_id', filters.runnerId);
   if (filters.driverId) query = query.eq('driver_id', filters.driverId);
+  if (filters.driverAssignment === 'HAVE_DRIVER') query = query.not('driver_id', 'is', null);
+  if (filters.driverAssignment === 'NO_DRIVER') query = query.is('driver_id', null);
   if (filters.reconciliationStatus) query = query.eq('reconciliation_status', filters.reconciliationStatus);
   if (filters.reconciliationStatusIn && filters.reconciliationStatusIn.length > 0) {
     query = query.in('reconciliation_status', filters.reconciliationStatusIn);

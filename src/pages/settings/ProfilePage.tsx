@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Camera, Save, KeyRound, LogOut, Loader2, Shield, Mail, User } from 'lucide-react';
+import { Camera, Save, KeyRound, LogOut, Loader2, Shield, Mail, User, Copy, Check } from 'lucide-react';
 import RunnerCodeCard from '@/components/runner/RunnerCodeCard';
 import DriverLinkCard from '@/components/driver/DriverLinkCard';
 import { cn } from '@/lib/utils';
@@ -30,6 +30,28 @@ const ProfilePage = () => {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [copiedAccountCode, setCopiedAccountCode] = useState<string | null>(null);
+
+  const sellerAccountsQuery = useQuery({
+    queryKey: ['my-seller-accounts', user?.id],
+    enabled: Boolean(user?.id && (profile?.role === 'salesperson' || profile?.role === 'manager')),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('seller_accounts')
+        .select('store_name, account_code, status')
+        .eq('status', 'ACTIVE')
+        .order('store_name');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const copyAccountCode = async (accountCode: string) => {
+    await navigator.clipboard.writeText(accountCode);
+    setCopiedAccountCode(accountCode);
+    window.setTimeout(() => setCopiedAccountCode(null), 1500);
+    toast({ title: 'Tomu Account Code copied' });
+  };
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
@@ -171,7 +193,7 @@ const ProfilePage = () => {
 
             {/* Capybara */}
             <div className="hidden md:block shrink-0">
-              <AppLogo size="lg" className="h-20 w-20 opacity-80" />
+              <AppLogo size="lg" className="h-20 w-28 opacity-80" />
             </div>
           </div>
         </div>
@@ -229,6 +251,40 @@ const ProfilePage = () => {
             </div>
           </CardContent>
         </Card>
+
+        {(profile.role === 'salesperson' || profile.role === 'manager') && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                Tomu Seller Account
+              </CardTitle>
+              <CardDescription>Use this code when connecting your Tomu account to Sniper or other Tomu integrations.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {sellerAccountsQuery.isLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              ) : sellerAccountsQuery.data?.length ? (
+                <div className="space-y-3">
+                  {sellerAccountsQuery.data.map((seller) => (
+                    <div key={seller.account_code} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-4">
+                      <div>
+                        <p className="font-semibold">{seller.store_name}</p>
+                        <p className="text-sm text-muted-foreground">Tomu Account Code: <span className="font-mono font-medium text-foreground">{seller.account_code}</span></p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => copyAccountCode(seller.account_code)}>
+                        {copiedAccountCode === seller.account_code ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                        {copiedAccountCode === seller.account_code ? 'Copied' : 'Copy'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No active Tomu Seller Account is linked to this profile yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {profile.role === 'runner' && <RunnerCodeCard />}
         {profile.role === 'driver' && <DriverLinkCard />}

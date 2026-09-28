@@ -54,7 +54,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileOrderCard, MobileSelectAllCard } from '@/components/mobile/MobileOrderCard';
 import { cn } from '@/lib/utils';
-import type { Order } from '@/types/database';
+import type { Order, RunnerStatus } from '@/types/database';
 import { CalculateStockButton } from '@/components/orders/CalculateStockButton';
 import { StockStatusBadge } from '@/components/orders/StockStatusBadge';
 import { StockAllocationDetail } from '@/components/orders/StockAllocationDetail';
@@ -62,7 +62,7 @@ import type { OrderStockResult } from '@/hooks/useStockCalculation';
 import { KitaniInvitationButton } from '@/components/orders/KitaniInvitationButton';
 import { useKitaniOrderLinks } from '@/hooks/useKitaniOrderLinks';
 
-export default function ReadySales({ highlightOrderId }: { highlightOrderId?: string | null }) {
+export default function ReadySales({ initialSearch = null, highlightOrderId }: { initialSearch?: string | null; highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
   const { data: userDirectory = [] } = useUserDirectory();
@@ -77,8 +77,8 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [panelFilters, setPanelFilters] = useState<OrderFilters>({});
-  const [mobileSearch, setMobileSearch] = useState('');
-  const [serverSearch, setServerSearch] = useState('');
+  const [mobileSearch, setMobileSearch] = useState(initialSearch || '');
+  const [serverSearch, setServerSearch] = useState(initialSearch || '');
   const [stockDetailOrder, setStockDetailOrder] = useState<Order | null>(null);
   const [stockResults, setStockResults] = useState<Map<string, OrderStockResult>>(new Map());
 
@@ -91,8 +91,12 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [mobileSearch]);
-  
-  const [managerSelectedSalesperson, setManagerSelectedSalesperson] = useState<string>('');
+
+  useEffect(() => {
+    const nextSearch = initialSearch?.trim() || '';
+    setMobileSearch(nextSearch);
+    setServerSearch(nextSearch);
+  }, [initialSearch]);
   
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('team');
 
@@ -101,7 +105,9 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
     searchQuery: serverSearch || undefined,
-  }), [isManager, salespersonIds, role, profile?.id, serverSearch]);
+    driverAssignment: panelFilters.driverAssignment,
+    runnerStatus: panelFilters.runnerStatus as RunnerStatus | undefined,
+  }), [isManager, salespersonIds, role, profile?.id, serverSearch, panelFilters.driverAssignment, panelFilters.runnerStatus]);
 
   const {
     data: orders,
@@ -159,36 +165,18 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     }));
   }, [userDirectory, role, profile?.id, teamMemberIds]);
   
-  const selectedOrdersData = orders.filter((o) => selectedRows.includes(o.id));
-  
-  const uniqueSalespersonIds = useMemo(() => {
-    return [...new Set(selectedOrdersData.map(o => o.salesperson_id))];
-  }, [selectedOrdersData]);
-  
-  const hasMixedSalespersons = uniqueSalespersonIds.length > 1;
-  const autoDetectedSalespersonId = uniqueSalespersonIds.length === 1 ? uniqueSalespersonIds[0] : undefined;
-  
-  const teamSalespersons = useMemo(() => {
-    if (role !== 'manager' && role !== 'admin') return [];
-    const spIds = [...new Set(orders.map(o => o.salesperson_id))];
-    return userDirectory.filter(u => spIds.includes(u.id));
-  }, [orders, userDirectory, role]);
-  
   const runnerAssignmentScope = useMemo(() => {
+    if (role === 'admin') {
+      return { type: 'all' as const };
+    }
     if (role === 'manager' && profile?.id) {
       return { type: 'manager' as const, managerId: profile.id };
     }
     if (role === 'salesperson' && profile?.id) {
       return { type: 'salesperson' as const, salespersonId: profile.id };
     }
-    if (role === 'admin' && (managerSelectedSalesperson || autoDetectedSalespersonId)) {
-      return {
-        type: 'salesperson' as const,
-        salespersonId: managerSelectedSalesperson || autoDetectedSalespersonId!,
-      };
-    }
     return null;
-  }, [autoDetectedSalespersonId, managerSelectedSalesperson, profile?.id, role]);
+  }, [profile?.id, role]);
 
   const { data: runnerOptions = [], isLoading: runnersLoading } = useAssignableRunners(runnerAssignmentScope);
 
@@ -243,9 +231,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
     try {
       const selectedOrders = await fetchOrdersForExport(orderFilters, selectedIds, role);
       const eligibleOrders = selectedOrders.filter((order) => (
-        order.status === 'READY' &&
-        order.runner_status !== 'DELIVERED' &&
-        order.runner_status !== 'FAILED_DELIVERY'
+        order.current_operational_state === 'READY'
       ));
 
       if (eligibleOrders.length !== selectedIds.length) {
@@ -438,7 +424,14 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
             showSalespersonFilter={role === 'admin' || role === 'manager'}
             showOrderStatus={false}
             showRunnerStatus={true}
-            showReconciliationStatus={true}
+            runnerStatusOptions={[
+              { label: 'Unassigned', value: 'UNASSIGNED' },
+              { label: 'Assigned', value: 'ASSIGNED' },
+              { label: 'Taken', value: 'TAKEN' },
+            ]}
+            showDriverAssignmentFilter={role === 'admin' || role === 'manager' || role === 'salesperson'}
+            showReconciliationStatus={false}
+            showDeliveryReasonFilter={false}
           />
 
           {isEditable && (
@@ -549,6 +542,7 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                       { label: 'Items', value: displayText },
                       { label: 'Amount', value: formatBND(order.total_amount) },
                       { label: 'Runner', value: order.runner?.display_name || 'Unassigned' },
+                      { label: 'Driver', value: order.driver?.display_name || 'Unassigned' },
                     ]}
                     expandedFields={[
                       { label: 'Customer', value: order.customer_name },
@@ -638,7 +632,6 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
       <Dialog open={assignDialogOpen} onOpenChange={(open) => {
         setAssignDialogOpen(open);
         if (!open) {
-          setManagerSelectedSalesperson('');
           setSelectedRunner('');
         }
       }}>
@@ -651,34 +644,9 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
           </DialogHeader>
           
           <div className="py-4 space-y-4">
-            {role === 'admin' && hasMixedSalespersons && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-destructive">
-                  Selected orders belong to different salespersons. Please select a salesperson to filter runners:
-                </label>
-                <Select value={managerSelectedSalesperson} onValueChange={(value) => {
-                  setManagerSelectedSalesperson(value);
-                  setSelectedRunner('');
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select salesperson..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teamSalespersons.map((sp) => (
-                      <SelectItem key={sp.id} value={sp.id}>
-                        {sp.display_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {role === 'admin' && !hasMixedSalespersons && autoDetectedSalespersonId && (
+            {role === 'admin' && (
               <div className="text-sm text-muted-foreground">
-                Showing runners bound to: <span className="font-medium text-foreground">
-                  {userDirectory.find(u => u.id === autoDetectedSalespersonId)?.display_name || 'Unknown'}
-                </span>
+                Showing all runners available to Admin.
               </div>
             )}
 
@@ -699,13 +667,13 @@ export default function ReadySales({ highlightOrderId }: { highlightOrderId?: st
                   <div className="p-2 text-sm text-muted-foreground">Loading runners...</div>
                 ) : !runnerAssignmentScope ? (
                   <div className="p-2 text-sm text-muted-foreground">
-                    {hasMixedSalespersons
-                      ? 'Select a salesperson first to see available runners.'
-                      : 'Select orders first to see available runners.'}
+                    Select orders first to see available runners.
                   </div>
                 ) : runnerOptions.length === 0 ? (
                   <div className="p-2 text-sm text-muted-foreground">
-                    {role === 'salesperson'
+                    {role === 'admin'
+                      ? 'No runners available.'
+                      : role === 'salesperson'
                       ? 'No runners bound to your account. Contact admin to set up bindings.'
                       : role === 'manager'
                         ? 'No runners bound to your account. Set up bindings in Settings > Bindings > My Runners.'

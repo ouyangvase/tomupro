@@ -24,15 +24,26 @@ export interface DailyEarning {
   order_count: number;
 }
 
-export function useRunnerEarnings(runnerId?: string) {
+export function useRunnerEarnings(runnerId?: string, runnerIds?: string[]) {
+  const effectiveRunnerIds = Array.from(new Set(
+    (runnerIds?.length ? runnerIds : runnerId ? [runnerId] : [])
+      .map(id => id.trim())
+      .filter(Boolean),
+  )).sort();
+
   return useQuery({
-    queryKey: ['runner-earnings', runnerId],
+    queryKey: ['runner-earnings', effectiveRunnerIds],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_runner_earnings_summary', {
-        p_runner_id: runnerId!,
-      });
-      if (error) throw error;
-      return (data as unknown as RunnerEarnings) || {
+      const summaries = await Promise.all(effectiveRunnerIds.map(async (sourceRunnerId) => {
+        const { data, error } = await supabase.rpc('get_runner_earnings_summary', {
+          p_runner_id: sourceRunnerId,
+        });
+        if (error) throw error;
+        const summary = data as unknown as RunnerEarnings | RunnerEarnings[] | null;
+        return Array.isArray(summary) ? summary[0] : summary;
+      }));
+
+      const empty: RunnerEarnings = {
         today_earnings: 0, today_orders: 0,
         week_earnings: 0, week_orders: 0,
         month_earnings: 0, month_orders: 0,
@@ -41,8 +52,16 @@ export function useRunnerEarnings(runnerId?: string) {
         submitted_amount: 0, submitted_orders: 0,
         total_lifetime_earnings: 0, total_lifetime_orders: 0,
       };
+
+      return summaries.reduce<RunnerEarnings>((total, summary) => {
+        if (!summary) return total;
+        for (const key of Object.keys(empty) as (keyof RunnerEarnings)[]) {
+          total[key] += Number(summary[key] || 0);
+        }
+        return total;
+      }, empty);
     },
-    enabled: !!runnerId,
+    enabled: effectiveRunnerIds.length > 0,
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
   });

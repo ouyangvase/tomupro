@@ -62,7 +62,10 @@ export default function RunnerInbound({ runnerIdOverride }: { runnerIdOverride?:
   const createItem = useCreateInboundItem();
 
   // Fetch inbound stats
-  const { data: allShipments = [] } = useInboundShipments({ runnerId: runnerScopeId });
+  const { data: allShipments = [] } = useInboundShipments({
+    runnerId: runnerScopeId,
+    enabled: Boolean(runnerScopeId),
+  });
 
   const [targetUserId, setTargetUserId] = useState('');
   const [trackingNo, setTrackingNo] = useState('');

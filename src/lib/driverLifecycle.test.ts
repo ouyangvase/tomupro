@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { getDriverLifecycleBucket, getEffectiveDriverAssignmentDate } from '@/lib/driverLifecycle';
 
 describe('driver lifecycle', () => {
-  it('keeps a Driver submission pending when legacy runner status is already final', () => {
+  it('does not revive a Driver submission after canonical Runner finalization', () => {
     expect(getDriverLifecycleBucket({
       assignment_state: 'PENDING_ACCEPTANCE',
       driver_status: 'DRIVER_DELIVERED',
       runner_status: 'DELIVERED',
       runner_accept_status: 'PENDING',
       runner_review_status: 'NOT_REVIEWED',
-    })).toBe('DRIVER_SUBMITTED_DELIVERED');
+    })).toBe('INACTIVE');
   });
 
   it('only treats an explicitly accepted Driver delivery as final', () => {

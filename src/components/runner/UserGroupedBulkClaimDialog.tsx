@@ -24,6 +24,7 @@ import {
 import { formatBND, formatRM, convertBNDtoRM } from '@/lib/currency';
 import { useClaimPreview } from '@/hooks/useDeliveryChargePreview';
 import type { Order } from '@/types/database';
+import type { RunnerDeliveryChargeMap } from '@/lib/runnerDeliveryCharges';
 
 // ── Exported types ──
 
@@ -72,6 +73,7 @@ interface UserGroupedBulkClaimDialogProps {
   isSubmitting: boolean;
   onRemoveInvalidOrders?: (invalidOrderIds: string[]) => void;
   onNavigateToCharges?: () => void;
+  sourceRunnerCharges?: RunnerDeliveryChargeMap;
 }
 
 // ── Component ──
@@ -84,6 +86,7 @@ export function UserGroupedBulkClaimDialog({
   isSubmitting,
   onRemoveInvalidOrders,
   onNavigateToCharges,
+  sourceRunnerCharges,
 }: UserGroupedBulkClaimDialogProps) {
   // PLACEHOLDER: form state
   const [exchangeRate, setExchangeRate] = useState('');
@@ -99,7 +102,7 @@ export function UserGroupedBulkClaimDialog({
   const rate = parseFloat(exchangeRate) || 0;
   const isValidRate = rate > 0 && rate <= 99.9999;
 
-  const preview = useClaimPreview(orders, rate);
+  const preview = useClaimPreview(orders, rate, sourceRunnerCharges);
   const hasMissingCharges = preview.missingAreas.length > 0;
 
   const invalidOrders = useMemo(() => {
@@ -143,7 +146,7 @@ export function UserGroupedBulkClaimDialog({
     return orders.filter(o => selectedSpIds.has(o.salesperson_id || 'unknown'));
   }, [orders, selectedGroups]);
 
-  const selectedPreview = useClaimPreview(selectedOrders, rate);
+  const selectedPreview = useClaimPreview(selectedOrders, rate, sourceRunnerCharges);
 
   // PLACEHOLDER: handlers
   const toggleGroup = (spId: string) => {

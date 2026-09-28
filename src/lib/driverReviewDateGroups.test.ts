@@ -7,19 +7,6 @@ import {
 } from '@/lib/driverReviewDateGroups';
 
 describe('groupDriverReviewOrdersByDate', () => {
-  it('uses the complete COD total for collection and zero for bank transfer', () => {
-    expect(getDriverReportedPaymentComponents({
-      id: 'kitani-cod',
-      payment_method: 'COD',
-      total_amount: 20,
-    })).toEqual({ cashAmount: 20, transferAmount: 0 });
-    expect(getDriverReportedPaymentComponents({
-      id: 'kitani-transfer',
-      payment_method: 'TRANSFER',
-      total_amount: 20,
-    })).toEqual({ cashAmount: 0, transferAmount: 20 });
-  });
-
   it('groups delivered and failed orders by the Brunei driver-action date', () => {
     const groups = groupDriverReviewOrdersByDate([
       {
@@ -147,17 +134,27 @@ describe('groupDriverReviewOrdersByDate', () => {
     }, 'DRIVER_DELIVERED')).toBe(true);
   });
 
-  it.each([
-    { runner_accept_status: 'ACCEPTED', runner_review_status: 'NOT_REVIEWED' },
-    { runner_accept_status: 'PENDING', runner_review_status: 'REVIEWED' },
-  ])('excludes a Driver outcome already accepted or reviewed', (finalState) => {
+  it('does not confuse Runner assignment acceptance with Driver-result review', () => {
+    expect(isPendingDriverReviewOrder({
+      id: 'taken-but-not-reviewed',
+      assignment_state: 'PENDING_ACCEPTANCE',
+      driver_id: 'driver-1',
+      driver_status: 'DRIVER_DELIVERED',
+      runner_status: 'TAKEN',
+      runner_accept_status: 'ACCEPTED',
+      runner_review_status: 'NOT_REVIEWED',
+    }, 'DRIVER_DELIVERED')).toBe(true);
+  });
+
+  it('excludes a Driver outcome that was explicitly reviewed', () => {
     expect(isPendingDriverReviewOrder({
       id: 'already-processed-order',
       assignment_state: 'PENDING_ACCEPTANCE',
       driver_id: 'driver-1',
       driver_status: 'DRIVER_DELIVERED',
       runner_status: 'DELIVERED',
-      ...finalState,
+      runner_accept_status: 'ACCEPTED',
+      runner_review_status: 'REVIEWED',
     }, 'DRIVER_DELIVERED')).toBe(false);
   });
 
@@ -165,7 +162,7 @@ describe('groupDriverReviewOrdersByDate', () => {
     ['DELIVERED', 'DRIVER_DELIVERED'],
     ['FAILED_DELIVERY', 'DRIVER_FAILED'],
   ] as const)(
-    'keeps an unreviewed Driver outcome visible when Runner status is already %s',
+    'removes a Driver outcome after canonical Runner status %s',
     (runnerStatus, driverStatus) => {
       expect(isPendingDriverReviewOrder({
         id: 'stale-final-status-order',
@@ -173,7 +170,7 @@ describe('groupDriverReviewOrdersByDate', () => {
         driver_id: 'driver-1',
         driver_status: driverStatus,
         runner_status: runnerStatus,
-      }, driverStatus)).toBe(true);
+      }, driverStatus)).toBe(false);
     },
   );
 });

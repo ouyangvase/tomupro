@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatBND } from '@/lib/currency';
 import { Sparkles, ArrowRight, AlertCircle, Users, ChevronDown, ChevronUp, MapPin, Clock } from 'lucide-react';
 import type { Order } from '@/types/database';
+import { getRunnerDeliveryCharge, type RunnerDeliveryChargeMap } from '@/lib/runnerDeliveryCharges';
 
 interface ExcludedOrder {
   order: Order;
@@ -15,7 +16,7 @@ interface ExcludedOrder {
 interface AutoClaimSuggestionProps {
   claimableOrders: Order[];
   invalidAreaOrders: Order[];
-  approvedChargeMap: Record<string, number>;
+  approvedChargeMap: RunnerDeliveryChargeMap;
   onClaimAll: () => void;
   totalDeliveryFee?: number;
 }
@@ -56,8 +57,7 @@ export function AutoClaimSuggestion({
       if (!o.area || o.area.trim() === '') {
         return { order: o, reason: 'missing_area' as const, reasonLabel: 'Missing area' };
       }
-      const area = o.area.toLowerCase();
-      if (approvedChargeMap[area] === undefined) {
+      if (getRunnerDeliveryCharge(o, approvedChargeMap) === undefined) {
         return { order: o, reason: 'no_charge_rate' as const, reasonLabel: `No charge rate for "${o.area}"` };
       }
       return { order: o, reason: 'no_charge_rate' as const, reasonLabel: 'Unknown issue' };

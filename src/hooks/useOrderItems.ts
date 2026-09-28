@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { orderItemsQueryKey } from '@/lib/orderItemsQuery';
+import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import type { OrderItem } from '@/types/database';
 
 export function useOrderItems(orderId?: string, enabled = true) {
@@ -42,8 +43,10 @@ export function useCreateOrderItem() {
       return data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['order-items'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // Order item quantities feed every delivery and stock projection. Refresh
+      // them together so a quantity edit cannot leave Driver Inbox or stock
+      // balance showing the previous item quantity.
+      invalidateOrderQueries(queryClient);
     },
     onError: (error: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
@@ -67,8 +70,8 @@ export function useUpdateOrderItem() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['order-items'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // Keep all quantity consumers in sync after an item quantity update.
+      invalidateOrderQueries(queryClient);
     },
     onError: (error: Error) => {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
@@ -88,8 +91,8 @@ export function useDeleteOrderItem() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['order-items'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // Deleting an item changes the order quantity and stock requirements too.
+      invalidateOrderQueries(queryClient);
     },
   });
 }
