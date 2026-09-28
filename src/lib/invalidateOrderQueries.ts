@@ -16,6 +16,8 @@ export function invalidateOrderQueries(queryClient: QueryClient) {
   // Core order lists
   queryClient.invalidateQueries({ queryKey: ['orders'] });
   queryClient.invalidateQueries({ queryKey: ['orders-paginated'] });
+  queryClient.invalidateQueries({ queryKey: ['cancelled-sales'], refetchType: 'none' });
+  queryClient.invalidateQueries({ queryKey: ['cancelled-sales-ids'], refetchType: 'none' });
 
   // Order items
   queryClient.invalidateQueries({ queryKey: ['order-items'] });

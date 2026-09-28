@@ -12,6 +12,8 @@
  *   REMARK/RUNNER_HINT
  */
 
+import { parseTemplatePayment, templateTransferAmount } from './orderTemplateFormat';
+import type { OrderPaymentPlan } from './orderPayment';
 import { isScientificNotation } from '@/lib/phone';
 
 export interface ParsedOrderLine {
@@ -25,6 +27,12 @@ export interface ParsedOrderLine {
 }
 
 export interface ParsedOrder {
+  paymentPlan?: OrderPaymentPlan;
+  transferAmount?: number;
+  area?: string;
+  channel?: string;
+  pickupDate?: string;
+  parseErrors?: string[];
   customerName: string;
   phone: string;
   address: string;
@@ -161,6 +169,7 @@ function parseItemLine(line: string, products: ProductRef[]): ParsedOrderLine {
 }
 
 export function parseOrderTemplate(text: string, products: ProductRef[]): ParsedOrder {
+  if (/^Customer Name:/im.test(text)) return parseLabeledOrder(text, products);
   const warnings: string[] = [];
   const lines = text.split('\n').map(l => l.trim());
 
@@ -272,4 +281,36 @@ export function parseOrderTemplate(text: string, products: ProductRef[]): Parsed
     runnerHint,
     parseWarnings: warnings,
   };
+}
+
+function parseLabeledOrder(text: string, products: ProductRef[]): ParsedOrder {
+  const fields: Record<string, string[]> = {};
+  let field = '';
+  const errors: string[] = [];
+  for (const line of text.replace(/\r/g, '').split('\n')) {
+    const match = line.match(/^(Customer Name|Phone|Address|Area|Channel|Pickup Date|Payment|Transfer Amount|Items|Order Notes):\s*(.*)$/i);
+    if (match) {
+      field = match[1].toLowerCase();
+      if (fields[field]) errors.push('Duplicate field: ' + match[1]);
+      fields[field] = match[2] ? [match[2]] : [];
+    } else if (field && line.trim()) fields[field].push(line.trim());
+  }
+  const value = (name: string) => (fields[name] || []).join('\n');
+  for (const line of fields.items || []) {
+    if (!/^[1-9]\d*\s*[xX×]\s+.+?\s+(?:\$|BND\s*)\d+(?:\.\d{1,2})?(?:\s*\([^)]*\))?$/.test(line)) errors.push('Invalid item. Use QTY X SKU $LINE_TOTAL: ' + line);
+  }
+  const result = parseOrderTemplate([value('customer name'), value('phone'), value('address'), '', value('items')].join('\n'), products);
+  result.remark = value('order notes');
+  result.runnerHint = '';
+  result.area = value('area');
+  result.channel = value('channel');
+  result.pickupDate = value('pickup date');
+  if (result.pickupDate && (!/^\d{4}-\d{2}-\d{2}$/.test(result.pickupDate) || Number.isNaN(Date.parse(result.pickupDate)))) errors.push('Pickup Date must use YYYY-MM-DD.');
+  try {
+    result.paymentPlan = parseTemplatePayment(value('payment'));
+    const total = result.items.reduce((sum, item) => sum + Math.round(item.price * 100), 0) / 100;
+    result.transferAmount = templateTransferAmount(result.paymentPlan, value('transfer amount'), total);
+  } catch (error) { errors.push((error as Error).message); }
+  result.parseErrors = errors;
+  return result;
 }

@@ -22,7 +22,7 @@ const TARGET_FIELDS: { key: string; label: string; required: boolean }[] = [
   { key: 'notes', label: 'Order Notes', required: false },
   { key: 'sku_name_or_code', label: 'SKU', required: false },
   { key: 'qty', label: 'Quantity', required: false },
-  { key: 'price', label: 'Price', required: false },
+  { key: 'price', label: 'Line Total (BND, all units in this row)', required: false },
 ];
 
 interface ColumnMappingStepProps {

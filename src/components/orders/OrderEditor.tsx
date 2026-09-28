@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateOrderQueries } from '@/lib/invalidateOrderQueries';
 import { useForm } from 'react-hook-form';
@@ -15,6 +15,7 @@ import { useValidAreas, isValidArea } from '@/hooks/useValidAreas';
 import { toUpperLatin } from '@/lib/uppercase';
 import { compressImage } from '@/lib/imageCompression';
 import { supabase } from '@/integrations/supabase/client';
+import { ORDER_PASTE_EXAMPLE } from '@/lib/orderTemplateFormat';
 import { parseOrderTemplate, type ParsedOrder } from '@/lib/orderTemplateParser';
 import { isScientificNotation } from '@/lib/phone';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -389,28 +390,34 @@ function PasteTemplateView({
     if (!templateText.trim()) return;
     const result = parseOrderTemplate(templateText, products);
     setParseResult(result);
+    if (result.parseErrors?.length) {
+      toast({ variant: 'destructive', title: 'Check template fields', description: result.parseErrors.join('; ') });
+      return;
+    }
 
     // Populate form fields
     if (result.customerName) form.setValue('customer_name', result.customerName);
     if (result.phone) form.setValue('phone', result.phone);
     if (result.address) form.setValue('address', result.address);
-    if (result.remark) form.setValue('notes', result.remark);
-    form.setValue('payment_method', 'COD');
-    form.setValue('payment_plan', 'COD');
-    form.setValue('transfer_amount', 0);
+    form.setValue('notes', result.remark);
+    form.setValue('payment_method', result.paymentPlan === 'TRANSFER' ? 'TRANSFER' : 'COD');
+    form.setValue('payment_plan', result.paymentPlan || 'COD');
+    form.setValue('transfer_amount', result.transferAmount || 0);
+    if (result.area) form.setValue('area', result.area);
+    if (result.channel) form.setValue('channel', result.channel);
+    if (result.pickupDate) form.setValue('expected_pickup_date', new Date(result.pickupDate + 'T00:00:00'));
 
     // Populate items
     // For paste template: price from text is the FINAL LINE TOTAL, not unit price.
-    // Derive unit price = price / qty so the form displays correctly.
+    // The editor and database both store the whole SKU line amount.
     if (result.items.length > 0) {
       setItems(result.items.map(item => {
         const lineTotal = item.price;
-        const unitPrice = item.qty > 0 ? Math.round((item.price / item.qty) * 100) / 100 : item.price;
         return {
           product_id: item.matchedProductId,
           sku_label: item.matchedProductName || item.skuNameRaw,
           qty: item.qty,
-          price: unitPrice,
+          price: lineTotal,
           line_total: lineTotal,
           notes: item.lineNotes,
           isNew: true,
@@ -444,14 +451,16 @@ function PasteTemplateView({
         <Textarea
           value={templateText}
           onChange={(e) => { setTemplateText(e.target.value); setParseResult(null); }}
-          placeholder={`CUSTOMER NAME\n8888888\nNO 1 SPG 1-1 JALAN LAMBAK KANAN KB\n\n1 X ALIENWARE $12999\nREMARK/RUNNER`}
+          placeholder={ORDER_PASTE_EXAMPLE}
           rows={12}
           className="font-mono text-sm bg-secondary/30 border-border/50 rounded-xl"
         />
         <div className="text-[11px] text-muted-foreground/70 mt-2 space-y-0.5">
-          <p>Format: Name, Phone, Address (separated by blank line from items)</p>
-          <p>Items: QTY X PRODUCT $PRICE</p>
-          <p>Last line: REMARK/RUNNER</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => setTemplateText(ORDER_PASTE_EXAMPLE)}>Use example</Button>
+          <p>Replace sample SKUs with actual product codes. Legacy templates are also accepted.</p>
+          <p>Items: QTY X SKU $LINE TOTAL. 2 X SKU-A $42 means BND42 for both units.</p>
+          <p>Total BND72, transfer BND30, expected COD BND42 after confirmation. Pending transfer: Driver still collects BND72.</p>
+          <p>Upload the receipt in the form before saving. Order Notes supports multiple lines; notes never create payments.</p>
         </div>
       </SectionCard>
 
@@ -638,6 +647,10 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
     isError: existingItemsError,
   } = useOrderItems(order?.id, open && mode === 'edit');
   const createOrder = useCreateOrder();
+  const createRequestId = useRef<string | null>(null);
+  const submitting = useRef(false);
+  const uploadedReceipt = useRef<{ file: File; orderId: string; url: string } | null>(null);
+  useEffect(() => { if (!open) { createRequestId.current = crypto.randomUUID(); uploadedReceipt.current = null; } }, [open]);
   const updateOrder = useUpdateOrder();
   const runnerUpdateArea = useRunnerUpdateArea();
   const createOrderItem = useCreateOrderItem();
@@ -676,6 +689,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
     transferAmount: number,
     savePlan = true,
   ) => {
+    if (uploadedReceipt.current?.file === file && uploadedReceipt.current.orderId === orderId && !savePlan) return uploadedReceipt.current.url;
     setReceiptUploading(true);
     try {
       const { blob, extension } = await compressImage(file, { maxWidth: 1000, quality: 0.8 });
@@ -686,6 +700,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
+      uploadedReceipt.current = { file, orderId, url: publicUrl };
       if (savePlan) {
       const { data: paymentResult, error: paymentError } = await supabase.rpc('set_order_payment_plan', {
         p_order_id: orderId,
@@ -855,6 +870,8 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
   };
 
   const onSubmit = async (values: OrderFormValues) => {
+    if (submitting.current) return;
+    submitting.current = true;
     try {
       const totalAmount = Number(totals.total_amount || 0);
       const transferAmount = Number(values.transfer_amount || 0);
@@ -916,7 +933,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         return;
       }
 
-      let orderId = order?.id || crypto.randomUUID();
+      let orderId = order?.id || (createRequestId.current ||= crypto.randomUUID());
       const receiptUrl = effectivePlan === 'COD' ? null : receiptFile
         ? await uploadReceipt(orderId, receiptFile, effectivePlan, paymentValues.transferAmount, false)
         : order?.receipt_url || null;
@@ -942,6 +959,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         const result = await createOrder.mutateAsync({
           ...orderData,
           transfer_amount: paymentValues.transferAmount,
+          import_items: items.map(item => ({ product_id: item.product_id, sku_label: item.sku_label, qty: item.qty, line_total: item.price, notes: item.notes })),
           id: orderId,
           receipt_url: receiptUrl,
           receipt_status: receiptUrl ? 'pending' : null,
@@ -974,7 +992,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
         await updateOrder.mutateAsync({ id: order.id, ...nonPaymentOrderData } as any);
       }
 
-      if (orderId) {
+      if (orderId && mode === 'edit') {
         for (const deletedId of deletedItemIds) {
           await deleteOrderItem.mutateAsync(deletedId);
         }
@@ -1026,7 +1044,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       onOpenChange(false);
     } catch (error) {
       toast({ variant: 'destructive', title: 'Unable to save order', description: error instanceof Error ? error.message : 'Please try again.' });
-    }
+    } finally { submitting.current = false; }
   };
 
   const handleConfirmDeliveredEdit = () => {

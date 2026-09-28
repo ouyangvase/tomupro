@@ -1,3 +1,4 @@
+import { useValidAreas } from '@/hooks/useValidAreas';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DataGrid, Column } from '@/components/data-grid/DataGrid';
@@ -26,8 +27,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { format, startOfMonth, endOfMonth, subMonths, startOfYear } from 'date-fns';
-import { RotateCcw, Calendar, Filter, Loader2 } from 'lucide-react';
+import { format, subMonths } from 'date-fns';
+import { RefreshCw, RotateCcw, Calendar, Filter, Loader2 } from 'lucide-react';
 import { exportToCSV } from '@/lib/csv';
 import { fetchOrdersForExport, ExportError } from '@/lib/exportFetcher';
 import { formatBND } from '@/lib/currency';
@@ -45,7 +46,7 @@ import { OrdersLoadError } from '@/components/orders/OrdersLoadError';
 export default function CancelledSales({ initialSearch = null, highlightOrderId }: { initialSearch?: string | null; highlightOrderId?: string | null }) {
   const { profile, role } = useAuth();
   const { toast } = useToast();
-  const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [selection, setSelection] = useState<{ key: string; ids: string[] }>({ key: '', ids: [] });
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<OrderStatus>('BOOKING');
   
@@ -58,6 +59,8 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
   // Team view state for managers
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager, teamMembers } = useTeamViewState('team');
 
+  const [sort, setSort] = useState<{ sortField: string; sortDirection: 'asc' | 'desc' }>({ sortField: 'cancelled_at', sortDirection: 'desc' });
+  const [selectingAll, setSelectingAll] = useState(false);
   const [serverSearch, setServerSearch] = useState(initialSearch || '');
   const handleSearchChange = useCallback((q: string) => setServerSearch(q), []);
 
@@ -70,7 +73,13 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
     salespersonIds: isManager ? salespersonIds : undefined,
     salespersonId: role === 'salesperson' ? profile?.id : undefined,
     searchQuery: serverSearch || undefined,
-  }), [isManager, salespersonIds, role, profile?.id, serverSearch]);
+    areaFilter: filterArea,
+    cancelReason: filterReason,
+    cancelledSalespersonId: filterSalesperson,
+    cancelledDateFrom: filterMonth === 'all' ? undefined : new Date(`${filterMonth}-01T00:00:00+08:00`).toISOString(),
+    cancelledDateTo: filterMonth === 'all' ? undefined : new Date(Date.UTC(Number(filterMonth.slice(0,4)), Number(filterMonth.slice(5)), 1) - 8 * 3600000).toISOString(),
+    ...sort,
+  }), [isManager, salespersonIds, role, profile?.id, serverSearch, filterArea, filterReason, filterSalesperson, filterMonth, sort]);
 
   // Use paginated orders hook
   const {
@@ -82,10 +91,24 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
     setPage,
     setPageSize,
     refetch,
+    dataUpdatedAt,
   } = usePaginatedOrders(orderFilters, 50);
 
-  // Fetch ALL matching IDs for cross-page "Select All"
-  const { data: allOrderIds = [] } = useAllOrderIds(orderFilters);
+  // Keep the full-ID query dormant until Select All is clicked.
+  const idsQuery = useAllOrderIds(orderFilters, false);
+  const filterVersion = JSON.stringify(orderFilters);
+  const selectedRows = selection.key === filterVersion ? selection.ids : [];
+  const setSelectedRows = (ids: string[]) => setSelection({ key: filterVersion, ids });
+  const selectAllMatching = async () => {
+    if (selectingAll) return;
+    setSelectingAll(true);
+    try {
+      const result = await idsQuery.refetch();
+      if (result.error) throw result.error;
+      setSelectedRows(result.data || []);
+    } catch { toast({ variant: 'destructive', title: 'Could not select orders. Please try again.' }); }
+    finally { setSelectingAll(false); }
+  };
   
   const { data: userDirectory = [] } = useUserDirectory();
   const { data: cancelReasons = [] } = useReasons('CANCEL', false);
@@ -118,16 +141,9 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
   }, []);
 
   // Get unique values for filter dropdowns
-  const uniqueReasons = useMemo(() => 
-    [...new Set(allOrders.map(o => o.cancel_reason).filter(Boolean))] as string[],
-    [allOrders]
-  );
-  
-  const uniqueAreas = useMemo(() => 
-    ([...new Set(allOrders.map(o => o.area).filter(Boolean))] as string[]).sort(),
-    [allOrders]
-  );
-  
+  const uniqueReasons = cancelReasons.map(reason => reason.label);
+  const { data: uniqueAreas = [] } = useValidAreas();
+
   // Team salesperson IDs for filtering
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
   
@@ -146,31 +162,6 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
     // Admin sees all salespersons/managers
     return userDirectory.filter(u => u.role === 'salesperson' || u.role === 'manager');
   }, [userDirectory, role, profile?.id, teamMemberIds]);
-
-  // Apply filters
-  const filteredOrders = useMemo(() => {
-    return allOrders.filter(order => {
-      // Month filter
-      if (filterMonth !== 'all') {
-        const orderDate = new Date(order.cancelled_at || order.created_at);
-        const [year, month] = filterMonth.split('-');
-        const filterStart = new Date(parseInt(year), parseInt(month) - 1, 1);
-        const filterEnd = endOfMonth(filterStart);
-        if (orderDate < filterStart || orderDate > filterEnd) return false;
-      }
-      
-      // Reason filter
-      if (filterReason !== 'all' && order.cancel_reason !== filterReason) return false;
-      
-      // Salesperson filter
-      if (filterSalesperson !== 'all' && order.salesperson_id !== filterSalesperson) return false;
-      
-      // Area filter
-      if (filterArea !== 'all' && order.area !== filterArea) return false;
-      
-      return true;
-    });
-  }, [allOrders, filterMonth, filterReason, filterSalesperson, filterArea]);
 
   const columns: Column<Order>[] = [
     { 
@@ -318,14 +309,13 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
         cancelled_by: null,
         cancelled_at: null,
       } as any,
-    });
-    setRestoreDialogOpen(false);
-    setSelectedRows([]);
+    }, { onSuccess: () => { refetch(); setRestoreDialogOpen(false); setSelectedRows([]); } });
   };
 
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
+    if (exporting) return;
     setExporting(true);
     try {
       const allExportOrders = await fetchOrdersForExport(orderFilters, undefined, role);
@@ -398,10 +388,10 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
           <div>
             <h1 className="text-2xl font-bold">Cancelled Sales</h1>
             <p className="text-muted-foreground">
-              {filteredOrders.length} cancelled order{filteredOrders.length !== 1 ? 's' : ''}
-              {hasActiveFilters && ` (filtered from ${allOrders.length} total)`}
+              Showing {pagination.totalCount ? (pagination.page - 1) * pagination.pageSize + 1 : 0}–{Math.min(pagination.page * pagination.pageSize, pagination.totalCount)} of {pagination.totalCount} cancelled orders
             </p>
           </div>
+<div className="flex items-center gap-3"><span className="text-xs text-muted-foreground">{dataUpdatedAt ? `Updated ${format(new Date(dataUpdatedAt), 'HH:mm')}` : ''}</span><Button variant="outline" disabled={isFetching} onClick={refetch}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></div>
           <TeamViewToggle
             viewMode={viewMode}
             onViewModeChange={setViewMode}
@@ -491,7 +481,7 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
           <OrdersLoadError error={error} onRetry={refetch} />
         ) : (
         <DataGrid
-          data={filteredOrders}
+          data={allOrders}
           columns={columns}
           keyField="id"
           selectable={isEditable}
@@ -501,7 +491,10 @@ export default function CancelledSales({ initialSearch = null, highlightOrderId 
           emptyMessage="No cancelled orders"
           onExport={handleExport}
           onSearchChange={handleSearchChange}
-          allSelectableIds={allOrderIds}
+          onSelectAllMatching={selectAllMatching}
+          selectingAll={selectingAll}
+          searchDebounceMs={350}
+          onSortChange={(field, direction) => setSort({ sortField: field || 'cancelled_at', sortDirection: direction || 'desc' })}
           serverPagination={{
             enabled: true,
             page: pagination.page,

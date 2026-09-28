@@ -2,6 +2,8 @@ import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +16,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X, ArrowLeft, ArrowRight, Users, FileText, Package, Check, MapPin } from 'lucide-react';
+import { groupImportPayments } from '@/lib/orderImportGroups';
+import { compressImage } from '@/lib/imageCompression';
+import { callSupabaseRpc } from '@/lib/supabaseRpc';
+import { formatBND } from '@/lib/currency';
 import { parseCSVRaw, downloadTemplate, HEADER_ALIASES } from '@/lib/csv';
 import { validateOrderLines, type ValidatedOrderLine } from '@/lib/csvValidation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -79,6 +85,12 @@ function StepIndicator({ current }: { current: ImportStep }) {
   );
 }
 
+function ReceiptFilePreview({ file }: { file: File }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => { const value = URL.createObjectURL(file); setUrl(value); return () => URL.revokeObjectURL(value); }, [file]);
+  return url ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="Selected transfer receipt" className="max-h-40 rounded-lg object-contain" /></a> : null;
+}
+
 export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKING' }: ImportOrdersDialogProps) {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -96,6 +108,11 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const [rawData, setRawData] = useState<{ headers: string[]; rows: Record<string, string>[] } | null>(null);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [step, setStep] = useState<ImportStep>('upload');
+  const [receiptFiles, setReceiptFiles] = useState<Record<string, File>>({});
+  const requestIds = useRef<Record<string, string>>({});
+  const receiptUrls = useRef<Record<string, { file: File; url: string }>>({});
+  const completed = useRef(new Set<string>());
+  const importLock = useRef(false);
   const [importing, setImporting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [successCount, setSuccessCount] = useState(0);
@@ -141,6 +158,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   const clearErrors = () => {
     setErrors([]);
     setFile(null);
+    setReceiptFiles({}); receiptUrls.current = {}; requestIds.current = {}; completed.current.clear();
     setRawData(null);
     setColumnMapping({});
     setStep('upload');
@@ -153,11 +171,12 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       toast({ variant: 'destructive', title: 'File too large', description: 'Maximum file size is 5MB' });
       return;
     }
-    if (!selectedFile.name.endsWith('.csv')) {
+    if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
       toast({ variant: 'destructive', title: 'Invalid format', description: 'Please upload a CSV file' });
       return;
     }
 
+    requestIds.current = {}; receiptUrls.current = {}; completed.current.clear(); setReceiptFiles({});
     setFile(selectedFile);
     setErrors([]);
     setSuccessCount(0);
@@ -165,6 +184,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     const text = await selectedFile.text();
     const parsed = parseCSVRaw(text);
 
+    if (parsed.rows.length > 10000) { toast({ variant: 'destructive', title: 'Maximum 10,000 rows per file' }); return; }
     if (parsed.headers.length === 0) {
       toast({ variant: 'destructive', title: 'Invalid CSV', description: 'No headers found in file' });
       return;
@@ -256,7 +276,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
   };
 
   const handleImport = async () => {
-    if (!rawData || !profile) return;
+    if (!rawData || !profile || importLock.current) return;
+    importLock.current = true;
     setImporting(true);
     setErrors([]);
     setSuccessCount(0);
@@ -275,6 +296,10 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         return;
       }
 
+      const payments = groupImportPayments(validation.valid);
+      for (const [ref, payment] of payments) {
+        if (payment.transfer > 0 && !receiptFiles[ref] && !payment.row.transfer_receipt_url) throw new Error('Order ' + ref + ': Upload a transfer receipt before importing.');
+      }
       const skuValidation = validateSkuOwnership(validation.valid, ownerProducts);
       if (!skuValidation.valid) {
         setErrors(['Import FAILED: Invalid SKUs found. No orders were imported.', '', ...skuValidation.errors]);
@@ -375,7 +400,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               channel: toUpperLatin(group.orderData.channel) || null,
               notes: group.orderData.notes || null,
               order_date: group.orderData.order_date || new Date().toISOString().split('T')[0],
-              payment_method: group.orderData.payment_method as 'COD' | 'TRANSFER',
+              payment_method: group.orderData.payment_method === 'TRANSFER' ? 'TRANSFER' : 'COD',
               expected_pickup_date: group.orderData.expected_pickup_date || null,
               salesperson_id: profile.id,
               order_owner_id: orderOwnerId,
@@ -384,33 +409,28 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               total_qty: totalQty,
               total_amount: totalAmount,
             };
-          const hasTransfer = group.orderData.transfer_amount !== '' || group.orderData.transfer_receipt_url !== '';
-          const result = hasTransfer
-            ? await supabase.rpc('create_order_with_payment', {
-                p_order: { ...orderData, receipt_url: group.orderData.transfer_receipt_url || null },
-                p_transfer_amount: group.orderData.transfer_amount === '' && group.orderData.payment_method === 'TRANSFER'
-                  ? totalAmount : Number(group.orderData.transfer_amount),
-              })
-            : await supabase.from('orders').insert([orderData]).select().single();
-          const order = result.data as { id: string } | null;
-          const orderError = result.error;
-
-          if (orderError) {
-            newErrors.push(`Order ${orderRef}: ${orderError.message}`);
-            continue;
+          if (completed.current.has(orderRef)) continue;
+          const id = requestIds.current[orderRef] ||= crypto.randomUUID();
+          const payment = payments.get(orderRef)!;
+          let receiptUrl = payment.row.transfer_receipt_url || null;
+          const receiptFile = receiptFiles[orderRef];
+          if (payment.transfer > 0 && receiptFile) {
+            if (receiptUrls.current[orderRef]?.file !== receiptFile) {
+              const { blob, extension } = await compressImage(receiptFile, { maxWidth: 1000, quality: 0.8 });
+              const path = 'receipts/' + id + '/' + crypto.randomUUID() + '.' + extension;
+              const { error } = await supabase.storage.from('receipts').upload(path, blob, { contentType: blob.type });
+              if (error) throw error;
+              const { data } = supabase.storage.from('receipts').getPublicUrl(path);
+              receiptUrls.current[orderRef] = { file: receiptFile, url: data.publicUrl };
+            }
+            receiptUrl = receiptUrls.current[orderRef].url;
           }
-          if (!order) continue;
-
-          for (const item of group.items) {
-            await supabase.from('order_items').insert({
-              order_id: order.id,
-              product_id: item.productId,
-              sku_label: item.sku_name_or_code,
-              qty: item.qty,
-              price: item.price,
-              line_total: item.price, // price IS the final sales amount, not multiplied by qty
-            });
-          }
+          await callSupabaseRpc('import_order_with_payment', {
+            p_order: { ...orderData, id, receipt_url: receiptUrl },
+            p_transfer_amount: payment.transfer,
+            p_items: group.items.map(item => ({ product_id: item.productId, sku_label: item.sku_name_or_code, qty: item.qty, line_total: item.price })),
+          });
+          completed.current.add(orderRef);
           created++;
         } catch (err: any) {
           newErrors.push(`Order ${orderRef}: ${err.message}`);
@@ -418,7 +438,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
       }
 
       setErrors(newErrors);
-      setSuccessCount(created);
+      setSuccessCount(completed.current.size);
 
       if (created > 0) {
         toast({
@@ -436,16 +456,25 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Import Failed', description: err.message });
     } finally {
+      importLock.current = false;
       setImporting(false);
     }
   };
 
+  const paymentPreview = useMemo(() => {
+    if (!rawData) return { groups: [], error: '' };
+    const validation = validateOrderLines(applyColumnMapping(rawData.rows, columnMapping));
+    if (validation.errors.length) return { groups: [], error: validation.errors.map(e => 'Row ' + e.row + ': ' + e.message).join('; ') };
+    try { return { groups: Array.from(groupImportPayments(validation.valid).entries()), error: '' }; }
+    catch (error) { return { groups: [], error: (error as Error).message }; }
+  }, [rawData, columnMapping]);
+  const missingReceipts = paymentPreview.groups.some(([ref, payment]) => payment.transfer > 0 && !receiptFiles[ref] && !payment.row.transfer_receipt_url);
   const canProceedToPreview = areRequiredFieldsMapped(columnMapping);
   const selectedSource = inventorySources.find(source => source.warehouse_id === fulfillmentWarehouseId);
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) clearErrors(); onOpenChange(isOpen); }}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] p-0 overflow-hidden rounded-2xl border-border/40">
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[90dvh] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl border-border/40">
         {/* ─── Hero Header ─── */}
         <div className="relative px-6 pt-6 pb-5 bg-gradient-to-br from-primary/8 via-primary/4 to-transparent border-b border-border/40">
           <div className="flex items-start gap-4">
@@ -455,10 +484,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               className="h-16 w-16 object-contain drop-shadow-md flex-shrink-0"
             />
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-bold text-foreground tracking-tight">Import Orders from CSV</h2>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Upload a spreadsheet and automatically create orders
-              </p>
+              <DialogTitle className="text-xl font-bold text-foreground tracking-tight">Import Orders from CSV</DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground mt-0.5">Upload a spreadsheet and automatically create orders</DialogDescription>
             </div>
           </div>
 
@@ -469,7 +496,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         </div>
 
         {/* ─── Content ─── */}
-        <div className="overflow-y-auto px-6 py-5 max-h-[calc(90vh-220px)]">
+        <div className="min-h-0 overflow-y-auto px-6 py-5">
           {/* ═══ Step: Upload ═══ */}
           {step === 'upload' && (
             <div className="space-y-5">
@@ -608,31 +635,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
 
               {/* Template Cards */}
               <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Download Templates</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-border/50 bg-card p-4 hover:border-border hover:shadow-sm transition-all">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary flex-shrink-0">
-                        <FileText className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-semibold text-foreground">Basic Template</h4>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                          name, phone, address, sku, qty, payment
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="mt-2 h-7 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 rounded-lg"
-                          onClick={() => downloadTemplate('orders')}
-                        >
-                          <Download className="h-3 w-3 mr-1" />
-                          Download
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Download Template</h3>
+                <div className="grid grid-cols-1 gap-3">
                   <div className="rounded-xl border border-border/50 bg-card p-4 hover:border-border hover:shadow-sm transition-all">
                     <div className="flex items-start gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent flex-shrink-0">
@@ -641,7 +645,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
                       <div className="flex-1 min-w-0">
                         <h4 className="text-sm font-semibold text-foreground">Multi-SKU Template</h4>
                         <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                          area, channel, pickup date, notes, multiple items
+                          One row per SKU. Includes payment, transfer amount, order notes and line totals. Upload receipts in the review step.
                         </p>
                         <Button
                           variant="ghost"
@@ -717,11 +721,30 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
                     </table>
                   </div>
                   <p className="text-[11px] text-muted-foreground text-center">
-                    Showing 3 of {rawData?.rows.length} total rows
+                    Showing {Math.min(3, rawData?.rows.length || 0)} of {rawData?.rows.length} total rows
                   </p>
                 </div>
               )}
 
+              <section className="space-y-3" aria-label="Payment and receipt review">
+                <h3 className="font-semibold">Payments & transfer receipts</h3>
+                <p className="text-sm text-muted-foreground">Line totals include all units in each SKU row. Example: 42 + 30 = BND72; transfer BND30 leaves expected COD BND42 after confirmation. Pending transfer still means Driver collects BND72.</p>
+                {paymentPreview.error && <p role="alert" className="text-sm text-destructive">{paymentPreview.error}</p>}
+                {paymentPreview.groups.filter(([, payment]) => payment.transfer > 0).map(([ref, payment]) => (
+                  <div key={ref} className="rounded-xl border p-4 space-y-2">
+                    <p className="font-semibold">{ref}</p>
+                    <p className="text-sm">Total {formatBND(payment.total)} · Transfer submitted {formatBND(payment.transfer)} · Expected COD {formatBND(payment.total - payment.transfer)}</p>
+                    <p className="text-xs text-muted-foreground">Receipt will be pending confirmation.</p>
+                    <Label htmlFor={'receipt-' + ref}>Transfer receipt</Label>
+                    <Input id={'receipt-' + ref} type="file" accept="image/*" disabled={importing || completed.current.has(ref)} onChange={event => {
+                      const file = event.target.files?.[0];
+                      if (file && (!file.type.startsWith('image/') || file.size > 10 * 1024 * 1024)) { toast({ variant: 'destructive', title: 'Choose an image up to 10MB' }); event.target.value = ''; return; }
+                      setReceiptFiles(current => { const next = { ...current }; if (file) next[ref] = file; else delete next[ref]; return next; });
+                    }} />
+                    {receiptFiles[ref] ? <div><p className="text-xs">Selected: {receiptFiles[ref].name}</p><ReceiptFilePreview file={receiptFiles[ref]} /></div> : payment.row.transfer_receipt_url ? <a className="text-sm underline" href={payment.row.transfer_receipt_url} target="_blank" rel="noreferrer">View existing receipt</a> : <p className="text-xs text-destructive">Receipt required</p>}
+                  </div>
+                ))}
+              </section>
               {successCount > 0 && (
                 <div className="rounded-xl bg-primary/8 border border-primary/20 p-4 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
@@ -766,7 +789,7 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
         </div>
 
         {/* ─── Footer Actions ─── */}
-        <div className="border-t border-border/40 px-6 py-4 bg-card flex items-center justify-between gap-3">
+        <div className="shrink-0 border-t border-border/40 px-6 py-4 bg-card flex items-center justify-between gap-3">
           <div>
             {step === 'upload' && (
               <Button variant="outline" onClick={() => onOpenChange(false)} className="h-10 rounded-xl">
@@ -801,8 +824,8 @@ export function ImportOrdersDialog({ open, onOpenChange, defaultStatus = 'BOOKIN
               </Button>
             )}
             {step === 'preview' && (
-              <Button onClick={handleImport} disabled={importing || errors.length > 0} className="h-10 rounded-xl font-semibold">
-                {importing ? 'Importing...' : `🚀 Import ${rawData?.rows.length || 0} Orders`}
+              <Button onClick={handleImport} disabled={importing || !!paymentPreview.error || missingReceipts} className="h-10 rounded-xl font-semibold">
+                {importing ? 'Importing...' : `Import ${paymentPreview.groups.length} Orders`}
               </Button>
             )}
           </div>

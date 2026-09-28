@@ -1,4 +1,5 @@
 // CSV Import/Export utilities
+import { MULTI_SKU_TEMPLATE } from './orderTemplateFormat';
 import { format } from 'date-fns';
 import { getRunnerAreaChargeKey } from '@/lib/runnerDeliveryCharges';
 import { formatKualaLumpurDateTime, getDeliveredOrderTimestamp } from '@/lib/deliveredOrderReport';
@@ -55,6 +56,8 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   address: ['address', 'delivery_address', 'deliveryaddress', 'delivery address', 'addr'],
   area: ['area', 'region', 'zone', 'district', 'location'],
   channel: ['channel', 'sales_channel', 'saleschannel', 'sales channel', 'source'],
+  transfer_amount: ['transfer_amount', 'transfer amount', 'already paid by transfer'],
+  transfer_receipt_url: ['transfer_receipt_url', 'transfer receipt url', 'receipt url'],
   payment_method: ['payment_method', 'paymentmethod', 'payment method', 'payment', 'pay_method', 'paymethod'],
   expected_pickup_date: ['expected_pickup_date', 'expectedpickupdate', 'expected pickup date', 'pickup_date', 'pickupdate', 'pickup date', 'delivery_date', 'deliverydate', 'delivery date'],
   notes: ['notes', 'note', 'remark', 'remarks', 'comment', 'comments', 'order notes', 'order_notes', 'ordernotes'],
@@ -206,14 +209,13 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-export function downloadTemplate(type: 'orders' | 'order_lines' | 'delivery_result') {
+export function downloadTemplate(type: 'order_lines' | 'delivery_result') {
   const templates = {
-    orders: 'order_ref,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,remark\n"ORD-001","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-15","Rush order"',
-    order_lines: 'order_ref,order_date,customer_name,phone,address,area,channel,payment_method,expected_pickup_date,remark,sku_name_or_code,qty,price\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","Handle with care","Widget A",2,29.99\n"ORD-001","2024-01-15","John Doe","555-1234","123 Main St","Downtown","Website","COD","2024-01-20","Handle with care","Widget B",1,49.99\n"ORD-002","2024-01-15","Jane Smith","+60123456789","456 Oak Ave","Uptown","Social","TRANSFER","2024-01-21","Gift order","Premium Pack",1,99.99',
+    order_lines: MULTI_SKU_TEMPLATE,
     delivery_result: 'ORDER CODE,STATUS,REMARK\n"ORD-001","DELIVERED",""\n"ORD-002","FAILED","Customer not at home"\n"ORD-003","DELIVERED",""\n"ORD-004","FAILED","Wrong address"',
   };
 
-  const blob = new Blob([templates[type]], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\uFEFF' + templates[type]], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = `${type}_template.csv`;

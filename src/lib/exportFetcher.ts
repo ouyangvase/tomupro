@@ -10,6 +10,8 @@
  * that occur when fetching hundreds of orders with nested relations in one query.
  */
 
+import { applyCancelledFilters } from './cancelledOrderQuery';
+import { orderCodeSearchPattern } from './orderSearch';
 import { supabase } from '@/integrations/supabase/client';
 import { getVisibleOwnerIdsCached } from '@/lib/visibleOwnerIdsCache';
 import type { PaginatedOrderFilters } from '@/hooks/usePaginatedOrders';
@@ -45,10 +47,12 @@ function applyFilters(
   filters: PaginatedOrderFilters,
   visibleUserIds: string[] | null
 ): any | null {
+  if (filters.status === 'CANCELLED' && visibleUserIds !== null && visibleUserIds.length === 0) return null;
   // Sort
   const sortField = filters.sortField || 'created_at';
   const sortAsc = filters.sortDirection === 'asc';
-  query = query.order(sortField, { ascending: sortAsc });
+  query = query.order(sortField, { ascending: sortAsc, ...(filters.status === 'CANCELLED' ? { nullsFirst: false } : {}) });
+  if (filters.status === 'CANCELLED') query = query.order('id');
 
   // Status
   if (filters.status) {
@@ -122,7 +126,11 @@ function applyFilters(
   if (filters.excludeStatus) query = query.neq('status', filters.excludeStatus);
 
   // Search
-  if (filters.searchQuery?.trim()) {
+  if (filters.status === 'CANCELLED') {
+    const term = orderCodeSearchPattern(filters.searchQuery);
+    if (term) query = query.ilike('order_code', term);
+    query = query.neq('order_type', 'MIRI_INBOUND_PICKUP');
+  } else if (filters.searchQuery?.trim()) {
     const searchTerm = `%${filters.searchQuery.trim()}%`;
     query = query.or(
       `order_code.ilike.${searchTerm},customer_name.ilike.${searchTerm},area.ilike.${searchTerm},phone.ilike.${searchTerm},address.ilike.${searchTerm}`
@@ -140,7 +148,7 @@ function applyFilters(
   if (filters.assignedDateFrom) query = query.gte('runner_assigned_at', filters.assignedDateFrom);
   if (filters.assignedDateTo) query = query.lte('runner_assigned_at', filters.assignedDateTo);
 
-  return query;
+  return applyCancelledFilters(query, filters);
 }
 
 /** Enrich orders with user display names (salesperson, runner, driver) */
@@ -321,7 +329,12 @@ export async function fetchOrdersForExport(
 
   // Phase 3: Enrich with user display names
   onProgress?.('enrich', 0, allOrders.length);
-  const enriched = await enrichWithUserNames(allOrders);
+  // Preserve the server-sorted ID order across unordered .in() data batches.
+  const ordersById = new Map(allOrders.map(order => [order.id, order]));
+  const ordered = filters.status === 'CANCELLED'
+    ? idsToFetch.map(id => ordersById.get(id)).filter(Boolean)
+    : allOrders;
+  const enriched = await enrichWithUserNames(ordered);
   onProgress?.('enrich', enriched.length, enriched.length);
 
   return enriched;

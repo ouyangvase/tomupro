@@ -1,3 +1,4 @@
+import { applyCancelledFilters, CANCELLED_ORDER_SELECT } from '@/lib/cancelledOrderQuery';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,6 +13,10 @@ import type { Order, OrderStatus, RunnerStatus, ReconciliationStatus } from '@/t
 
 export interface PaginatedOrderFilters {
   status?: OrderStatus;
+  cancelledDateFrom?: string;
+  cancelledDateTo?: string;
+  cancelReason?: string;
+  cancelledSalespersonId?: string;
   statusIn?: OrderStatus[];
   salespersonIds?: string[];
   salespersonId?: string;
@@ -68,6 +73,7 @@ export interface UsePaginatedOrdersResult {
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
   refetch: () => void;
+  dataUpdatedAt: number;
 }
 
 export function usePaginatedOrders(
@@ -122,13 +128,15 @@ export function usePaginatedOrders(
     });
   }, [filterKey, filters.areaFilter, filters.deliveredDateFrom, filters.deliveredDateTo, filters.runnerStatus, filters.searchQuery, filters.status, page, pageSize, queryReady, role, user?.id]);
 
-  const { data: queryResult, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: orderQueryKeys.paginated(filters, page, pageSize, role, user?.id),
-    staleTime: 15000,
+  const { data: queryResult, isLoading, isFetching, error, refetch, dataUpdatedAt } = useQuery({
+    queryKey: filters.status === 'CANCELLED' ? ['cancelled-sales', filters, page, pageSize, role, user?.id] : orderQueryKeys.paginated(filters, page, pageSize, role, user?.id),
+    staleTime: filters.status === 'CANCELLED' ? 300000 : 15000,
+    gcTime: filters.status === 'CANCELLED' ? 600000 : 300000,
+    refetchOnWindowFocus: filters.status === 'CANCELLED' ? false : undefined,
     retry: 2,
     retryDelay: 1000,
     placeholderData: keepPreviousData,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!user?.id || !role || !queryReady) {
         throw new Error('Orders query started before authentication and profile scope were ready.');
       }
@@ -148,6 +156,7 @@ export function usePaginatedOrders(
       // Get visible owner IDs for team visibility
       // Skip for admin (sees everything) and when runnerId is set (runner views own assigned orders)
       const visibleUserIds = scopeRequired ? ownerScope.ownerIds : null;
+      if (filters.status === 'CANCELLED' && scopeRequired && !visibleUserIds?.length) return { orders: [] as Order[], count: 0 };
       lifecycleTrace('runner_scope_loaded', {
         requestId,
         userId: user.id,
@@ -160,10 +169,7 @@ export function usePaginatedOrders(
       // Build the query with count
       let query = supabase
         .from('orders')
-        .select(`
-          *,
-          order_items(*)
-        `, { count: 'exact' })
+        .select(filters.status === 'CANCELLED' ? CANCELLED_ORDER_SELECT : '*, order_items(*)', { count: 'exact' })
         .range(offset, offset + pageSize - 1);
 
       const includeMiri = filters.includeMiri ?? Boolean(filters.runnerId || filters.runnerIds?.length);
@@ -174,7 +180,8 @@ export function usePaginatedOrders(
       // Apply sorting
       const sortField = filters.sortField || 'created_at';
       const sortAsc = filters.sortDirection === 'asc';
-      query = query.order(sortField, { ascending: sortAsc });
+      query = query.order(sortField, { ascending: sortAsc, ...(filters.status === 'CANCELLED' ? { nullsFirst: false } : {}) });
+      if (filters.status === 'CANCELLED') query = query.order('id');
 
       // Status filter
       if (filters.status) {
@@ -287,7 +294,7 @@ export function usePaginatedOrders(
       // Payment method filter
       if (filters.hasTransfer) query = query.in('payment_plan', ['TRANSFER', 'PARTIAL_TRANSFER_COD']);
       if (filters.paymentMethod) {
-        query = query.eq('payment_method', filters.paymentMethod);
+        query = query.eq('payment_method', filters.paymentMethod as 'COD' | 'TRANSFER');
       }
 
       // Receipt status filter (implies TRANSFER)
@@ -300,7 +307,8 @@ export function usePaginatedOrders(
         }
       }
 
-      const { data: ordersData, error: ordersError, count } = await query;
+      query = applyCancelledFilters(query, filters);
+      const { data: ordersData, error: ordersError, count } = await query.abortSignal(signal).returns<Order[]>();
       if (ordersError) {
         lifecycleTrace('orders_query_failed', {
           requestId,
@@ -325,7 +333,7 @@ export function usePaginatedOrders(
         const { data: usersData } = await supabase
           .from('profiles')
           .select('id, display_name, email')
-          .in('id', Array.from(userIds));
+          .in('id', Array.from(userIds)).abortSignal(signal);
         usersData?.forEach(u => { usersMap[u.id] = u; });
       }
 
@@ -376,7 +384,7 @@ export function usePaginatedOrders(
       return result;
     },
     enabled: queryReady,
-    refetchOnReconnect: true,
+    refetchOnReconnect: filters.status === 'CANCELLED' ? false : true,
   });
 
   const totalCount = queryResult?.count || 0;
@@ -408,6 +416,7 @@ export function usePaginatedOrders(
     setPage,
     setPageSize,
     refetch: refetchOrders,
+    dataUpdatedAt,
   };
 }
 
@@ -431,15 +440,17 @@ export function useAllOrderIds(
   });
 
   return useQuery({
-    queryKey: orderQueryKeys.allIds(filters, role, user?.id),
+    refetchOnWindowFocus: filters.status === 'CANCELLED' ? false : undefined,
+    queryKey: filters.status === 'CANCELLED' ? ['cancelled-sales-ids', filters, role, user?.id] : orderQueryKeys.allIds(filters, role, user?.id),
     staleTime: 30000,
     retry: 1,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!user?.id || !role || !queryReady) throw new Error('Order scope is not ready');
 
       // The owner scope is resolved by useVisibleOwnerScope before this query enables.
       const visibleUserIds = scopeRequired ? ownerScope.ownerIds : null;
 
+      if (filters.status === 'CANCELLED' && scopeRequired && !visibleUserIds?.length) return [];
       // Only select IDs — lightweight query, no joins
       // Use batch fetching to work around Supabase PostgREST max_rows=1000 cap
       const BATCH = 1000;
@@ -453,6 +464,7 @@ export function useAllOrderIds(
           .select('id')
           .range(batchOffset, batchOffset + BATCH - 1);
 
+        if (filters.status === 'CANCELLED') query = query.order('id');
         // Apply same filters as usePaginatedOrders
         if (filters.status) {
           query = query.eq('current_operational_state', filters.status);
@@ -541,7 +553,7 @@ export function useAllOrderIds(
         // Payment method filter
         if (filters.hasTransfer) query = query.in('payment_plan', ['TRANSFER', 'PARTIAL_TRANSFER_COD']);
         if (filters.paymentMethod) {
-          query = query.eq('payment_method', filters.paymentMethod);
+          query = query.eq('payment_method', filters.paymentMethod as 'COD' | 'TRANSFER');
         }
         // Receipt status filter (implies TRANSFER)
         if (filters.receiptStatus) {
@@ -553,7 +565,8 @@ export function useAllOrderIds(
           }
         }
 
-        const { data, error: queryError } = await query;
+        query = applyCancelledFilters(query, filters);
+        const { data, error: queryError } = await query.abortSignal(signal);
         if (queryError) throw queryError;
 
         const batch = (data || []).map(row => row.id as string);
@@ -565,6 +578,6 @@ export function useAllOrderIds(
       return allIds;
     },
     enabled: enabled && queryReady,
-    refetchOnReconnect: true,
+    refetchOnReconnect: filters.status === 'CANCELLED' ? false : true,
   });
 }

@@ -1,12 +1,13 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSearchParams } from 'react-router-dom';
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import BookingSales from '@/pages/sales/BookingSales';
 import ReadySales from '@/pages/sales/ReadySales';
 import SalespersonActionInbox from '@/pages/sales/SalespersonActionInbox';
 import RunnerDeliveredOrders from '@/pages/runner/RunnerDeliveredOrders';
-import CancelledSales from '@/pages/sales/CancelledSales';
+import { lazyWithChunkRecovery } from '@/lib/chunkRecovery';
+const CancelledSales = lazyWithChunkRecovery(() => import('@/pages/sales/CancelledSales'));
 import { lifecycleTrace } from '@/lib/lifecycleTrace';
 
 const tabs = [
@@ -56,7 +57,7 @@ export default function OrdersModule() {
           {activeTab === 'booking' && <BookingSales initialSearch={initialSearch} highlightOrderId={highlightOrderId} />}
           {activeTab === 'ready' && <ReadySales initialSearch={initialSearch} highlightOrderId={highlightOrderId} />}
           {activeTab === 'delivered' && <RunnerDeliveredOrders initialSearch={initialSearch || ''} highlightOrderId={highlightOrderId} />}
-          {activeTab === 'cancelled' && <CancelledSales initialSearch={initialSearch} highlightOrderId={highlightOrderId} />}
+          {activeTab === 'cancelled' && <Suspense fallback={<p className="p-4 text-muted-foreground">Loading cancelled orders…</p>}><CancelledSales initialSearch={initialSearch} highlightOrderId={highlightOrderId} /></Suspense>}
           {activeTab === 'action-required' && <SalespersonActionInbox initialSearch={initialSearch} highlightOrderId={highlightOrderId} />}
         </div>
       </EmbeddedProvider>

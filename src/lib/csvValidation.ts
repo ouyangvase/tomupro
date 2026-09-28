@@ -1,3 +1,4 @@
+import { parseTemplatePayment } from './orderTemplateFormat';
 import { z } from 'zod';
 import { isScientificNotation } from '@/lib/phone';
 
@@ -81,25 +82,17 @@ export const orderLineSchema = z.object({
   address: z.string().min(1, 'Address is required').max(500, 'Address too long'),
   area: z.string().max(100).optional().default(''),
   channel: z.string().max(100).optional().default(''),
-  payment_method: z.string().transform(val => {
-    const upper = val?.toUpperCase?.() || '';
-    return upper === 'TRANSFER' ? 'TRANSFER' : 'COD';
+  payment_method: z.string().transform((val, ctx) => {
+    try { return parseTemplatePayment(val); }
+    catch (error) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: (error as Error).message }); return z.NEVER; }
   }),
   expected_pickup_date: z.string().transform(parseFlexibleDate),
   transfer_amount: z.string().optional().default('').refine(value => value === '' || /^\d+(\.\d{1,2})?$/.test(value), 'Enter a non-negative BND amount with at most two decimals'),
   transfer_receipt_url: z.string().optional().default('').refine(value => value === '' || /^https:\/\/[^\s/]+/.test(value), 'Receipt URL must use HTTPS'),
   notes: z.string().max(1000).optional().default(''),
   sku_name_or_code: z.string().min(1, 'SKU code is required for all order items').max(255, 'SKU too long'),
-  qty: z.string().transform((val) => {
-    const num = parseInt(val || '1', 10);
-    if (isNaN(num) || num < 0 || num > 99999) return 1;
-    return num;
-  }),
-  price: z.string().transform((val) => {
-    const num = parseFloat(val || '0');
-    if (isNaN(num) || num < 0 || num > 999999999) return 0;
-    return num;
-  }),
+  qty: z.string().regex(/^[1-9]\d*$/, 'Quantity must be a positive whole number').transform(Number).refine(n => n <= 99999, 'Quantity is too large'),
+  price: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Line total must be a non-negative amount with at most two decimals').transform(Number).refine(n => n <= 999999999, 'Line total is too large'),
 });
 
 export type ValidatedOrderLine = z.infer<typeof orderLineSchema>;

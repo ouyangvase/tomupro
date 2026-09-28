@@ -84,6 +84,8 @@ interface DataGridProps<T extends object> {
   showSearch?: boolean;
   // Cross-page selection: ALL matching IDs from the full filtered dataset (not just current page)
   allSelectableIds?: string[];
+  onSelectAllMatching?: () => void;
+  selectingAll?: boolean;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -168,6 +170,8 @@ export function DataGrid<T extends object>({
   searchDebounceMs = 400,
   showSearch = true,
   allSelectableIds,
+  onSelectAllMatching,
+  selectingAll = false,
 }: DataGridProps<T>) {
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState('');
@@ -313,7 +317,7 @@ export function DataGrid<T extends object>({
   };
 
   // When allSelectableIds is provided, "all selected" means all IDs across all pages are selected
-  const allIdsCount = allSelectableIds ? allSelectableIds.length : displayData.length;
+  const allIdsCount = onSelectAllMatching && isServerMode ? totalCount : allSelectableIds ? allSelectableIds.length : displayData.length;
   const isAllSelected = allIdsCount > 0 &&
     (allSelectableIds
       ? allSelectableIds.every((id) => selectedRows.includes(id))
@@ -494,15 +498,18 @@ export function DataGrid<T extends object>({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  if (allSelectableIds && allSelectableIds.length > 0) {
+                  if (onSelectAllMatching) {
+                    if (!selectingAll) onSelectAllMatching();
+                  } else if (allSelectableIds && allSelectableIds.length > 0) {
                     onSelectionChange?.(allSelectableIds);
                   } else {
                     onSelectionChange?.((isServerMode ? displayData : filteredData).map((item) => String(item[keyField])));
                   }
                 }}
+                disabled={selectingAll}
                 className="text-primary border-primary/30 hover:bg-primary/10"
               >
-                Select All ({allSelectableIds ? allSelectableIds.length : (isServerMode ? totalCount : filteredData.length)})
+                {selectingAll ? 'Loading…' : 'Select All'} ({allSelectableIds ? allSelectableIds.length : (isServerMode ? totalCount : filteredData.length)})
               </Button>
             )}
             {selectedRows.length > 0 && (
