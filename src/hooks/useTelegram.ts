@@ -8,6 +8,7 @@ export interface TelegramBotSettings {
   bot_token: string | null;
   bot_enabled: boolean;
   daily_send_time: string;
+  last_auto_send_date: string | null;
   updated_at: string;
   updated_by: string | null;
 }
