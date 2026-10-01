@@ -15,6 +15,7 @@ export type DriverReviewOrder = {
   driver_transfer_amount?: number | null;
   total_amount?: number | null;
   cod_amount?: number | null;
+  cod_due_amount?: number | null;
   payment_plan?: string | null;
   receipt_status?: string | null;
   driver_delivered_at?: string | null;
@@ -44,9 +45,18 @@ export type DriverReviewDateGroup<T extends DriverReviewOrder> = {
 };
 
 export function getDriverReportedPaymentComponents(order: DriverReviewOrder) {
-  const orderAmount = order.cod_amount != null ? orderCollectionAmount(order) : Math.max(0, Number(order.total_amount || 0));
-  const paymentMethod = order.payment_plan === 'PARTIAL_TRANSFER_COD' ? '' : String(order.payment_method || '').toUpperCase();
   const driverPaymentMethod = String(order.driver_payment_method || '').toUpperCase();
+  const paymentPlan = String(order.payment_plan || '').toUpperCase();
+  const baseOrderAmount = order.cod_amount != null ? orderCollectionAmount(order) : Math.max(0, Number(order.total_amount || 0));
+  // A legacy Driver Transfer delivery can contain an explicit zero amount even
+  // though the order was COD and the balance was collected. Keep prepaid
+  // Transfer orders at zero while recovering the collectable amount for COD.
+  const orderAmount = baseOrderAmount > 0
+    ? baseOrderAmount
+    : driverPaymentMethod === 'TRANSFER' && paymentPlan === 'COD'
+      ? Math.max(0, Number(order.cod_amount || order.total_amount || 0))
+      : baseOrderAmount;
+  const paymentMethod = order.payment_plan === 'PARTIAL_TRANSFER_COD' ? '' : String(order.payment_method || '').toUpperCase();
 
   const cashAmount = Math.max(0, Number(
     order.driver_cash_amount != null
@@ -62,9 +72,16 @@ export function getDriverReportedPaymentComponents(order: DriverReviewOrder) {
               : 0,
   ));
 
+  const recordedTransferAmount = order.driver_transfer_amount != null
+    ? Math.max(0, Number(order.driver_transfer_amount))
+    : null;
   const transferAmount = Math.max(0, Number(
-    order.driver_transfer_amount != null
-      ? order.driver_transfer_amount
+    recordedTransferAmount != null
+      ? recordedTransferAmount > 0
+        ? recordedTransferAmount
+        : driverPaymentMethod === 'TRANSFER'
+          ? orderAmount
+          : 0
       : driverPaymentMethod === 'TRANSFER'
         ? orderAmount
         : driverPaymentMethod === 'CASH'

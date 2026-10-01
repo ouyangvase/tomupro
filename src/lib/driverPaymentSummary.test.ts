@@ -44,6 +44,18 @@ describe('driver payment summary', () => {
     })).toBe('Transfer · BND 84.00');
 
     expect(formatDriverPaymentDisplay({
+      id: 'legacy-transfer',
+      payment_method: 'COD',
+      payment_plan: 'COD',
+      cod_amount: 45,
+      cod_due_amount: 45,
+      driver_payment_method: 'TRANSFER',
+      driver_cash_amount: 0,
+      driver_transfer_amount: 0,
+      total_amount: 45,
+    })).toBe('Transfer · BND 45.00');
+
+    expect(formatDriverPaymentDisplay({
       id: 'mixed',
       payment_method: 'COD',
       driver_payment_method: 'CASH_TRANSFER',

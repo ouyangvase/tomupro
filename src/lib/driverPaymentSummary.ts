@@ -95,12 +95,12 @@ export function getDriverRecordedPaymentCategory(order: DriverPaymentOrder): Dri
 }
 
 /**
- * Formats only the payment values explicitly recorded by the Driver.
- * The regular order payment method is intentionally ignored here.
+ * Formats the payment values recorded by the Driver. Legacy Driver Transfer
+ * rows with a zero amount use the order's current collectable balance, while
+ * customer-prepaid Transfer orders remain at zero.
  */
 export function formatDriverPaymentDisplay(order: DriverPaymentOrder) {
   const driverPaymentMethod = normalizePaymentMethod(order.driver_payment_method);
-  const orderAmount = Math.max(0, Number(order.total_amount || 0));
   const hasCashAmount = order.driver_cash_amount != null;
   const hasTransferAmount = order.driver_transfer_amount != null;
 
@@ -108,20 +108,7 @@ export function formatDriverPaymentDisplay(order: DriverPaymentOrder) {
     return 'Not recorded';
   }
 
-  const cashAmount = hasCashAmount
-    ? Math.max(0, Number(order.driver_cash_amount))
-    : driverPaymentMethod === 'CASH'
-      ? orderAmount
-      : driverPaymentMethod === 'CASH_TRANSFER' && hasTransferAmount
-        ? Math.max(0, orderAmount - Number(order.driver_transfer_amount))
-        : 0;
-  const transferAmount = hasTransferAmount
-    ? Math.max(0, Number(order.driver_transfer_amount))
-    : driverPaymentMethod === 'TRANSFER' || driverPaymentMethod === 'BANK_TRANSFER'
-      ? orderAmount
-      : driverPaymentMethod === 'CASH_TRANSFER' && hasCashAmount
-        ? Math.max(0, orderAmount - Number(order.driver_cash_amount))
-        : 0;
+  const { cashAmount, transferAmount } = getDriverReportedPaymentComponents(order);
 
   const parts = [
     cashAmount > 0 ? `Cash · ${formatBND(cashAmount)}` : null,

@@ -94,6 +94,45 @@ describe('groupDriverReviewOrdersByDate', () => {
     })).toEqual({ cashAmount: 60, transferAmount: 39 });
   });
 
+  it('recovers a legacy zero-valued COD Transfer collection', () => {
+    expect(getDriverReportedPaymentComponents({
+      id: 'legacy-transfer',
+      payment_method: 'COD',
+      payment_plan: 'COD',
+      cod_amount: 45,
+      cod_due_amount: 45,
+      driver_payment_method: 'TRANSFER',
+      driver_cash_amount: 0,
+      driver_transfer_amount: 0,
+      total_amount: 45,
+    })).toEqual({ cashAmount: 0, transferAmount: 45 });
+  });
+
+  it('does not turn a customer-prepaid Transfer into Driver collection', () => {
+    expect(getDriverReportedPaymentComponents({
+      id: 'prepaid-transfer',
+      payment_method: 'TRANSFER',
+      payment_plan: 'TRANSFER',
+      cod_amount: 0,
+      cod_due_amount: 0,
+      driver_payment_method: 'TRANSFER',
+      driver_cash_amount: 0,
+      driver_transfer_amount: 0,
+      total_amount: 55,
+    })).toEqual({ cashAmount: 0, transferAmount: 0 });
+  });
+
+  it('keeps an explicit zero split amount for CASH_TRANSFER', () => {
+    expect(getDriverReportedPaymentComponents({
+      id: 'cash-only-split',
+      payment_method: 'COD',
+      driver_payment_method: 'CASH_TRANSFER',
+      driver_cash_amount: 45,
+      driver_transfer_amount: 0,
+      total_amount: 45,
+    })).toEqual({ cashAmount: 45, transferAmount: 0 });
+  });
+
   it('uses updated_at only as a historical fallback for failed orders', () => {
     const historicalFailedOrder = {
       id: 'historical-failed',
