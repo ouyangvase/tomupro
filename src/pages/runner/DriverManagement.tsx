@@ -386,15 +386,23 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     setBatchRejectReason('');
   };
 
-  const showBatchResult = (label: string, result: { processed: Array<{ orderId: string }>; failed: Array<{ orderId: string; error?: string }> }) => {
+  const showBatchResult = (label: string, result: { processed: Array<{ orderId: string }>; failed: Array<{ orderId: string; error?: string }>; skipped: Array<{ orderId: string; error?: string }> }) => {
     if (result.failed.length === 0) {
-      toast.success(`${label}: ${result.processed.length} order(s) processed`);
+      if (result.processed.length > 0 && result.skipped.length > 0) {
+        toast.success(`${label}: ${result.processed.length} processed; ${result.skipped.length} already up to date`);
+      } else if (result.skipped.length > 0) {
+        toast.info(`${label}: ${result.skipped.length} order(s) already reviewed; no changes needed`);
+      } else {
+        toast.success(`${label}: ${result.processed.length} order(s) processed`);
+      }
     } else {
-      const failedLabels = result.failed.map((item) => {
+      const failedLabels = result.failed.slice(0, 3).map((item) => {
         const order = assignments.find((candidate) => candidate.id === item.orderId);
         return `${order?.order_code || item.orderId}: ${item.error || 'Needs review'}`;
       });
-      toast.error(`${label}: ${result.processed.length} processed; ${result.failed.length} need review — ${failedLabels.join(' | ')}`);
+      const remainingCount = result.failed.length - failedLabels.length;
+      const suffix = remainingCount > 0 ? ` (+${remainingCount} more)` : '';
+      toast.error(`${label}: ${result.processed.length} processed; ${result.failed.length} need review — ${failedLabels.join(' | ')}${suffix}`);
     }
     closeBatchActions();
   };
@@ -450,7 +458,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     void scheduleFailedOrders.mutateAsync({ orderIds, driverId: batchScope.driverId }).then((result) => {
       const processed = (result.processed || []).map((item) => ({ orderId: item.order_id }));
       const failed = (result.skipped || []).map((item) => ({ orderId: item.order_id, error: item.reason }));
-      showBatchResult('Schedule for Tomorrow', { processed, failed });
+      showBatchResult('Schedule for Tomorrow', { processed, failed, skipped: [] });
     });
   };
 

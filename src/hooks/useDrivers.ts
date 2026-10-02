@@ -42,6 +42,7 @@ export type RunnerDriverBatchItemResult = {
 export type RunnerDriverBatchResult = {
   processed: RunnerDriverBatchItemResult[];
   failed: RunnerDriverBatchItemResult[];
+  skipped: RunnerDriverBatchItemResult[];
 };
 
 type ScheduleDriverTomorrowRpcResult = {
@@ -805,7 +806,51 @@ export function useRunnerBatchReviewDriverDeliveries() {
       if (uniqueOrderIds.length === 0) throw new Error('No orders selected');
       if (!accept && !rejectReason?.trim()) throw new Error('A rejection reason is required');
 
-      const results = await Promise.allSettled(uniqueOrderIds.map(async (orderId) => {
+      // The batch dialog can outlive another review action. Re-read the small
+      // selected set before calling the per-order RPC so stale rows do not
+      // become a wall of "already reviewed" errors.
+      const { data: currentOrders, error: currentOrdersError } = await supabase
+        .from('orders')
+        .select('id, driver_status, runner_accept_status, runner_review_status, runner_status, status, operational_status, salesperson_action_required, runner_final_outcome')
+        .in('id', uniqueOrderIds);
+      if (currentOrdersError) throw currentOrdersError;
+
+      const skipped: RunnerDriverBatchItemResult[] = [];
+      const actionableOrderIds = uniqueOrderIds.filter((orderId) => {
+        const order = currentOrders?.find((candidate) => candidate.id === orderId);
+        if (!order) return true;
+
+        const runnerAcceptStatus = String(order.runner_accept_status || '').toUpperCase();
+        const runnerReviewStatus = String(order.runner_review_status || '').toUpperCase();
+        const runnerStatus = String(order.runner_status || '').toUpperCase();
+        const orderStatus = String(order.status || '').toUpperCase();
+        const operationalStatus = String(order.operational_status || '').toUpperCase();
+        const isAlreadyReviewed = runnerAcceptStatus === 'ACCEPTED'
+          || runnerReviewStatus === 'REVIEWED'
+          || runnerStatus === 'DELIVERED'
+          || runnerStatus === 'FAILED_DELIVERY'
+          || operationalStatus === 'DELIVERED_FINAL'
+          || ['DELIVERED', 'FAILED', 'FAILED_DELIVERY', 'COMPLETED', 'APPROVED'].includes(orderStatus);
+
+        if (isAlreadyReviewed) {
+          skipped.push({ orderId, success: false, error: 'Already reviewed' });
+          return false;
+        }
+
+        if (order.driver_status !== 'DRIVER_DELIVERED' && order.driver_status !== 'DRIVER_FAILED') {
+          skipped.push({ orderId, success: false, error: 'Driver report is no longer pending' });
+          return false;
+        }
+
+        if (order.salesperson_action_required === true || runnerReviewStatus === 'ACTION_REQUIRED' || order.runner_final_outcome === 'NEED_SALESPERSON_FOLLOWUP') {
+          skipped.push({ orderId, success: false, error: 'Requires salesperson follow-up' });
+          return false;
+        }
+
+        return true;
+      });
+
+      const results = await Promise.allSettled(actionableOrderIds.map(async (orderId) => {
         try {
           const result = await reviewDriverDeliveryRpc(
             orderId,
@@ -827,14 +872,18 @@ export function useRunnerBatchReviewDriverDeliveries() {
         result.status === 'fulfilled'
           ? result.value
           : {
-              orderId: uniqueOrderIds[index],
+              orderId: actionableOrderIds[index],
               success: false,
               error: result.reason instanceof Error ? result.reason.message : 'Unable to review Driver report',
             }
       ));
+      const alreadyReviewedDuringBatch = items.filter((item) => (
+        !item.success && /already (been )?reviewed/i.test(item.error || '')
+      ));
       return {
         processed: items.filter((item) => item.success),
-        failed: items.filter((item) => !item.success),
+        failed: items.filter((item) => !item.success && !alreadyReviewedDuringBatch.includes(item)),
+        skipped: [...skipped, ...alreadyReviewedDuringBatch],
       };
     },
     onSuccess: async () => {
