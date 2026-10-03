@@ -26,9 +26,11 @@ export function useAssignableRunners(scope: RunnerAssignmentScope | null) {
 
       if (scope.type === 'all') {
         const { data, error } = await supabase
-          .from('user_directory')
+          .from('profiles')
           .select('id, display_name, email, role')
           .eq('role', 'runner')
+          .eq('is_active', true)
+          .eq('status', 'active')
           .order('display_name', { ascending: true });
 
         if (error) throw error;
@@ -53,9 +55,11 @@ export function useAssignableRunners(scope: RunnerAssignmentScope | null) {
       if (runnerIds.length === 0) return [];
 
       const { data, error } = await supabase
-        .from('user_directory')
+        .from('profiles')
         .select('id, display_name, email, role')
         .eq('role', 'runner')
+        .eq('is_active', true)
+        .eq('status', 'active')
         .in('id', runnerIds)
         .order('display_name', { ascending: true });
 

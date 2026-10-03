@@ -181,7 +181,10 @@ function LegacyBindingsSettings({ embedded = false }: { embedded?: boolean }) {
     return allSalespersons;
   }, [allSalespersons, isManager, teamMembers]);
 
-  const runners = useMemo(() => users.filter((u) => u.role === 'runner'), [users]);
+  const runners = useMemo(() => users.filter((u) => {
+    const status = (u as Profile & { status?: string }).status;
+    return u.role === 'runner' && u.is_active && (!status || status === 'active');
+  }), [users]);
   const managers = useMemo(() => users.filter((u) => u.role === 'manager'), [users]);
 
   // Unified users list for runner binding (managers + salespersons)

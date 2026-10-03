@@ -35,5 +35,19 @@ export function useSalespersons() {
 }
 
 export function useRunners() {
-  return useUserDirectory('runner');
+  return useQuery({
+    queryKey: ['active-runners'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, display_name, email, role, created_at')
+        .eq('role', 'runner')
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .order('display_name', { ascending: true });
+
+      if (error) throw error;
+      return data as UserDirectoryEntry[];
+    },
+  });
 }
