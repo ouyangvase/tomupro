@@ -188,6 +188,12 @@ export function useRealtimePickupUpdates(enabled = true) {
     if (!enabled) return;
     if (!profile) return;
 
+    const pickupFilter = profile.role === 'driver'
+      ? `driver_id=eq.${profile.id}`
+      : profile.role === 'runner'
+        ? `runner_id=eq.${profile.id}`
+        : undefined;
+
     return subscribeWithReconnect(
       () => supabase
         .channel(`pickups-realtime-${profile.id}`)
@@ -197,6 +203,7 @@ export function useRealtimePickupUpdates(enabled = true) {
           event: '*',
           schema: 'public',
           table: 'driver_pickups',
+          ...(pickupFilter ? { filter: pickupFilter } : {}),
         },
         (payload) => {
           queryClient.invalidateQueries({ queryKey: ['driver-pickups'] });
@@ -250,6 +257,12 @@ export function useRealtimeReturnUpdates(enabled = true) {
     if (!enabled) return;
     if (!profile) return;
 
+    const returnFilter = profile.role === 'driver'
+      ? `driver_id=eq.${profile.id}`
+      : profile.role === 'runner'
+        ? `runner_id=eq.${profile.id}`
+        : undefined;
+
     return subscribeWithReconnect(
       () => supabase
         .channel(`returns-realtime-${profile.id}`)
@@ -259,6 +272,7 @@ export function useRealtimeReturnUpdates(enabled = true) {
           event: '*',
           schema: 'public',
           table: 'driver_returns',
+          ...(returnFilter ? { filter: returnFilter } : {}),
         },
         (payload) => {
           queryClient.invalidateQueries({ queryKey: ['driver-returns'] });

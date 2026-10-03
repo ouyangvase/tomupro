@@ -182,14 +182,8 @@ export function useFinanceOverviewReport(params: { runnerId: string | null; area
       scope: 'main',
       onPayload: invalidate,
     });
-    const channel = rpcClient.channel(`finance-overview-${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reschedule_history' }, invalidate)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'runner_assignment_history' }, invalidate)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, invalidate)
-      .subscribe();
     return () => {
       stopOrderSubscription();
-      void rpcClient.removeChannel(channel);
     };
   }, [queryClient, user?.id]);
 
