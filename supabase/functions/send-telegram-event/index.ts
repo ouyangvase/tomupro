@@ -13,6 +13,8 @@ const FUNCTION_VERSION = '20260929_partial_payment_collection_v1';
 const DELIVERY_PHOTO_BUCKET = 'delivery-photos';
 const TELEGRAM_MAX_ATTEMPTS = 3;
 const TELEGRAM_RETRY_DELAYS_MS = [300, 900];
+const SIGNED_PHOTO_URL_TTL_MS = 55 * 60 * 1000;
+const signedPhotoUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -253,6 +255,9 @@ async function resolveTelegramPhotoUrl(supabase: any, url: string): Promise<stri
   const objectPath = extractStorageObjectPath(url, DELIVERY_PHOTO_BUCKET);
   if (!objectPath) return url;
 
+  const cached = signedPhotoUrlCache.get(objectPath);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
   const { data, error } = await supabase.storage
     .from(DELIVERY_PHOTO_BUCKET)
     .createSignedUrl(objectPath, 60 * 60);
@@ -262,6 +267,10 @@ async function resolveTelegramPhotoUrl(supabase: any, url: string): Promise<stri
     return null;
   }
 
+  signedPhotoUrlCache.set(objectPath, {
+    url: data.signedUrl,
+    expiresAt: Date.now() + SIGNED_PHOTO_URL_TTL_MS,
+  });
   return data.signedUrl;
 }
 
