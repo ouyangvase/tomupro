@@ -300,9 +300,8 @@ export function useRunnerPickups(runnerIdOverride?: string | string[]) {
       );
     },
     enabled: runnerScopeIds.length > 0,
-    staleTime: 30_000,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   });
 }
 
@@ -328,9 +327,8 @@ export function useDriverPickups() {
       return data as DriverPickup[];
     },
     enabled: !!user?.id,
-    staleTime: 30_000,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
   });
 }
 
