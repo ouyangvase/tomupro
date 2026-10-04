@@ -61,6 +61,8 @@ export function useRealtimeOrderUpdates(enabled = true) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { profile } = useAuth();
+  const roleNeedsDeliveryRealtime = profile?.role === 'driver' || profile?.role === 'runner';
+  const realtimeEnabled = enabled || roleNeedsDeliveryRealtime;
 
   const handleOrderChange = useCallback((payload: RealtimePayload) => {
     const { eventType, new: newRecord, old: oldRecord } = payload;
@@ -157,7 +159,7 @@ export function useRealtimeOrderUpdates(enabled = true) {
   }, [profile, queryClient, toast]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!realtimeEnabled) return;
     if (!profile?.id) return;
 
     return subscribeToOrderRealtime({
@@ -176,7 +178,7 @@ export function useRealtimeOrderUpdates(enabled = true) {
         });
       },
     });
-  }, [enabled, profile?.id, profile?.role, handleOrderChange, queryClient]);
+  }, [realtimeEnabled, profile?.id, profile?.role, handleOrderChange, queryClient]);
 }
 
 export function useRealtimePickupUpdates(enabled = true) {

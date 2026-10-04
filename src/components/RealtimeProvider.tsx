@@ -10,6 +10,8 @@ const ENABLE_SUPABASE_REALTIME = import.meta.env.VITE_ENABLE_SUPABASE_REALTIME =
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { isSharing } = useLocationContext();
 
+  // Driver and runner assignment visibility is enabled inside the order
+  // realtime hook, while the broader switch remains opt-in for other roles.
   useRealtimeUpdates(ENABLE_SUPABASE_REALTIME);
   // Firebase: track online presence; write driver GPS only after location sharing is enabled.
   useFirebasePresence();
