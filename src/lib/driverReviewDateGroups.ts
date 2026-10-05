@@ -47,7 +47,17 @@ export type DriverReviewDateGroup<T extends DriverReviewOrder> = {
 export function getDriverReportedPaymentComponents(order: DriverReviewOrder) {
   const driverPaymentMethod = String(order.driver_payment_method || '').toUpperCase();
   const paymentPlan = String(order.payment_plan || '').toUpperCase();
-  const baseOrderAmount = order.cod_amount != null ? orderCollectionAmount(order) : Math.max(0, Number(order.total_amount || 0));
+  const paymentMethod = order.payment_plan === 'PARTIAL_TRANSFER_COD' ? '' : String(order.payment_method || '').toUpperCase();
+  const isPureTransferOrder = paymentPlan === 'TRANSFER'
+    || ['TRANSFER', 'BANK_TRANSFER'].includes(paymentMethod);
+  // A pure Transfer order can carry cod_amount = 0 even though its confirmed
+  // customer payment is the full order total. Use that total as the reporting
+  // basis so a zero Driver transfer field cannot erase the collection.
+  const baseOrderAmount = isPureTransferOrder
+    ? Math.max(0, Number(order.total_amount || 0))
+    : order.cod_amount != null
+      ? orderCollectionAmount(order)
+      : Math.max(0, Number(order.total_amount || 0));
   // A legacy Driver Transfer delivery can contain an explicit zero amount even
   // though the order was COD and the balance was collected. Keep prepaid
   // Transfer orders at zero while recovering the collectable amount for COD.
@@ -56,8 +66,6 @@ export function getDriverReportedPaymentComponents(order: DriverReviewOrder) {
     : driverPaymentMethod === 'TRANSFER' && paymentPlan === 'COD'
       ? Math.max(0, Number(order.cod_amount || order.total_amount || 0))
       : baseOrderAmount;
-  const paymentMethod = order.payment_plan === 'PARTIAL_TRANSFER_COD' ? '' : String(order.payment_method || '').toUpperCase();
-
   const cashAmount = Math.max(0, Number(
     order.driver_cash_amount != null
       ? order.driver_cash_amount

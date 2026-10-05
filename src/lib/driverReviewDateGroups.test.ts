@@ -108,9 +108,9 @@ describe('groupDriverReviewOrdersByDate', () => {
     })).toEqual({ cashAmount: 0, transferAmount: 45 });
   });
 
-  it('does not turn a customer-prepaid Transfer into Driver collection', () => {
+  it('recovers a pure Transfer collection when the Driver amount is zero', () => {
     expect(getDriverReportedPaymentComponents({
-      id: 'prepaid-transfer',
+      id: 'legacy-pure-transfer',
       payment_method: 'TRANSFER',
       payment_plan: 'TRANSFER',
       cod_amount: 0,
@@ -119,7 +119,7 @@ describe('groupDriverReviewOrdersByDate', () => {
       driver_cash_amount: 0,
       driver_transfer_amount: 0,
       total_amount: 55,
-    })).toEqual({ cashAmount: 0, transferAmount: 0 });
+    })).toEqual({ cashAmount: 0, transferAmount: 55 });
   });
 
   it('keeps an explicit zero split amount for CASH_TRANSFER', () => {
