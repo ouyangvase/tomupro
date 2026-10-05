@@ -124,6 +124,10 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   const { data: users = [] } = useUserDirectory();
   const { data: assignments = [] } = useDriverAssignments({
     runnerIds: runnerScopeIds,
+    // Driver Operations only needs current workload and unreviewed Driver
+    // outcomes. Loading the full historical assignment ledger here makes the
+    // review page wait on thousands of delivered rows and their item payloads.
+    activeOnly: true,
     includeItems: true,
   });
 

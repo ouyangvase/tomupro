@@ -492,26 +492,29 @@ export default function DriverAnalyticsPage() {
             })()}
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Total (Cash + Transfer)</p>
+            <p className="text-xs text-muted-foreground">Accepted delivered sales</p>
             <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.totalSales)}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Cash</p>
+            <p className="text-xs text-muted-foreground">Accepted cash</p>
             <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.cashAmount)}</p>
             <p className="text-[11px] text-muted-foreground">{summary.cashOrderCount} orders</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Transfer</p>
+            <p className="text-xs text-muted-foreground">Accepted transfer</p>
             <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(summary.transferAmount)}</p>
             <p className="text-[11px] text-muted-foreground">{summary.transferOrderCount} orders</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Pending cash / transfer</p>
+            <p className="text-xs text-muted-foreground">Pending runner review</p>
             <p className="mt-1 break-words text-lg font-bold tabular-nums">
-              {formatBND(summary.pendingCashAmount)} / {formatBND(summary.pendingTransferAmount)}
+              {formatBND(summary.pendingAcceptanceAmount)} total
             </p>
             <p className="text-[11px] text-muted-foreground">
-              {summary.pendingCashOrderCount} cash · {summary.pendingTransferOrderCount} transfer · not in Total
+              Cash {formatBND(summary.pendingCashAmount)} · Transfer {formatBND(summary.pendingTransferAmount)}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {summary.pendingAcceptance} orders · excluded from accepted sales
             </p>
           </div>
           <div>
@@ -570,13 +573,13 @@ export default function DriverAnalyticsPage() {
                     );
                   })()}
                   <span className="mt-2 block text-[10px] text-muted-foreground">
-                    Total (Cash + Transfer) {formatBND(month.totalSales ?? 0)}
+                    Accepted sales {formatBND(month.totalSales ?? 0)}
                   </span>
                   <span className="block text-[10px] text-muted-foreground">
-                    Cash {formatBND(month.cashAmount ?? 0)} ({month.cashOrderCount ?? 0})
+                    Accepted cash {formatBND(month.cashAmount ?? 0)} ({month.cashOrderCount ?? 0})
                   </span>
                   <span className="block text-[10px] text-muted-foreground">
-                    Transfer {formatBND(month.transferAmount ?? 0)} ({month.transferOrderCount ?? 0})
+                    Accepted transfer {formatBND(month.transferAmount ?? 0)} ({month.transferOrderCount ?? 0})
                   </span>
                 </button>
               ))}
@@ -749,26 +752,29 @@ export default function DriverAnalyticsPage() {
                 <p className="mt-1 text-lg font-bold">{selectedDayBreakdown.rejectedReopenedOrders}</p>
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Total (Cash + Transfer)</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Accepted delivered sales</p>
                 <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.totalSales)}</p>
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Cash</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Accepted cash</p>
                 <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.cashAmount)}</p>
                 <p className="text-[11px] text-muted-foreground">{selectedDay.cashOrderCount} orders</p>
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Transfer</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Accepted transfer</p>
                 <p className="mt-1 break-words text-lg font-bold tabular-nums">{formatBND(selectedDay.transferAmount)}</p>
                 <p className="text-[11px] text-muted-foreground">{selectedDay.transferOrderCount} orders</p>
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">Pending cash / transfer</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">Pending runner review</p>
                 <p className="mt-1 break-words text-lg font-bold tabular-nums">
-                  {formatBND(selectedDay.pendingCashAmount)} / {formatBND(selectedDay.pendingTransferAmount)}
+                  {formatBND(selectedDay.pendingAcceptanceAmount)} total
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {selectedDay.pendingCashOrderCount} cash · {selectedDay.pendingTransferOrderCount} transfer · not in Total
+                  Cash {formatBND(selectedDay.pendingCashAmount)} · Transfer {formatBND(selectedDay.pendingTransferAmount)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {selectedDay.pendingAcceptance} orders · excluded from accepted sales
                 </p>
               </div>
               <div className="min-w-0">

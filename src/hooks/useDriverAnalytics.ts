@@ -475,7 +475,9 @@ export function useRunnerDriverAnalytics(
         }));
     },
     enabled: uniqueRunnerIds.length > 0 && options.enabled !== false,
-    placeholderData: (previousData) => previousData,
+    // Keep the lightweight calendar summary stable while it refetches, but
+    // never reuse an older selected-day payload as the new day's result.
+    placeholderData: options.includeDetail ? undefined : (previousData) => previousData,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });

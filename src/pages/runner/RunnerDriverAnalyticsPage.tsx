@@ -189,10 +189,13 @@ export default function RunnerDriverAnalyticsPage() {
     includeDetail: false,
   });
   const detailQuery = useRunnerDriverAnalytics(runnerIds, {
-    dateFrom: range.from,
-    dateTo: range.to,
-    calendarFrom: dateKey(startOfMonth(calendarMonth)),
-    calendarTo: dateKey(endOfMonth(calendarMonth)),
+    // The detail view only needs the selected day. Requesting the whole
+    // month here made the response unnecessarily large and left the UI
+    // showing an empty/zero day while the stale detail query was reused.
+    dateFrom: selectedDate,
+    dateTo: selectedDate,
+    calendarFrom: selectedDate,
+    calendarTo: selectedDate,
     detailDate: selectedDate,
     driverId: selectedDriverId || undefined,
     includeDetail: true,
@@ -212,6 +215,7 @@ export default function RunnerDriverAnalyticsPage() {
   const error = summaryQuery.error;
   const refetch = summaryQuery.refetch;
   const detailLoading = detailQuery.isLoading;
+  const detailError = detailQuery.isError;
 
   const summary = useMemo(
     () => addSummaries(driverRecords.map((record) => record.analytics.summary)),
@@ -390,7 +394,7 @@ export default function RunnerDriverAnalyticsPage() {
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><span className="font-semibold text-foreground">{filteredOrders.length} orders shown</span><span>Cash {formatBND(paymentTotals.cash)}</span><span>Transfer {formatBND(paymentTotals.transfer)}</span><span>Total {formatBND(paymentTotals.total)}</span></div>
         {selectedDay && <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-y border-border py-4 sm:grid-cols-3"><Metric label="Assigned" value={String(selectedDaySummary.assignedOrders)} /><Metric label="Runner-accepted delivered" value={String(selectedDaySummary.deliveredOrders)} /><Metric label="Awaiting acceptance" value={String(selectedDaySummary.pendingAcceptance)} /><Metric label="Failed" value={String(selectedDaySummary.acceptedFailedOrders)} /><Metric label="Total (Cash + Transfer)" value={formatBND(selectedDaySummary.totalSales)} /><Metric label="Cash / Transfer" value={`${formatBND(selectedDaySummary.cashAmount)} / ${formatBND(selectedDaySummary.transferAmount)}`} /></div>}
-        {detailLoading ? <div className="py-10 text-center text-sm text-muted-foreground">Loading day orders…</div> : !selectedDay ? <div className="py-10 text-center text-sm text-muted-foreground">No assigned orders on this day.</div> : filteredOrders.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">No orders match this payment filter.</div> : <div className="mt-3 divide-y divide-border border-y border-border">{orderGroupDefinitions.map((group) => { const orders = orderGroups[group.key]; if (orders.length === 0) return null; const isOpen = Boolean(openGroups[group.key]); return <div key={group.key}><button type="button" aria-expanded={isOpen} onClick={() => setOpenGroups((current) => ({ ...current, [group.key]: !current[group.key] }))} className="flex min-h-14 w-full items-center justify-between gap-3 px-2 py-3 text-left transition-colors hover:bg-muted/50"><span className="min-w-0"><span className="flex items-center gap-2 text-sm font-bold">{group.label}<Badge variant="secondary">{orders.length}</Badge></span><span className="mt-1 block truncate text-xs text-muted-foreground">{group.description}</span></span><ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')} /></button>{isOpen && <div className="divide-y divide-border border-t border-border px-2">{orders.map((order) => <AnalyticsOrder key={order.id} order={order} />)}</div>}</div>; })}</div>}
+        {detailLoading ? <div className="py-10 text-center text-sm text-muted-foreground">Loading day orders…</div> : detailError ? <div className="py-10 text-center text-sm text-destructive">Unable to load this day. Please retry.</div> : !selectedDay ? <div className="py-10 text-center text-sm text-muted-foreground">No assigned orders on this day.</div> : filteredOrders.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">No orders match this payment filter.</div> : <div className="mt-3 divide-y divide-border border-y border-border">{orderGroupDefinitions.map((group) => { const orders = orderGroups[group.key]; if (orders.length === 0) return null; const isOpen = Boolean(openGroups[group.key]); return <div key={group.key}><button type="button" aria-expanded={isOpen} onClick={() => setOpenGroups((current) => ({ ...current, [group.key]: !current[group.key] }))} className="flex min-h-14 w-full items-center justify-between gap-3 px-2 py-3 text-left transition-colors hover:bg-muted/50"><span className="min-w-0"><span className="flex items-center gap-2 text-sm font-bold">{group.label}<Badge variant="secondary">{orders.length}</Badge></span><span className="mt-1 block truncate text-xs text-muted-foreground">{group.description}</span></span><ChevronDown className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')} /></button>{isOpen && <div className="divide-y divide-border border-t border-border px-2">{orders.map((order) => <AnalyticsOrder key={order.id} order={order} />)}</div>}</div>; })}</div>}
       </section>
     </div>
   );
