@@ -175,6 +175,7 @@ export default function DriverInbox() {
   const {
     data: assignmentOrders,
     isLoading,
+    refetch: refetchAssignments,
   } = useDriverAssignments({
     driverId: effectiveDriverId,
     activeOnly: true,
@@ -533,7 +534,28 @@ export default function DriverInbox() {
   };
 
   const handleMarkDelivered = async (orderId: string, paymentMethod: DriverPaymentMethod, split: DriverPaymentSplit) => {
-    if (selectedOrderDetails && !hasPickupForOrder(selectedOrderDetails)) {
+    const shownOrder = selectedCollectionOrder;
+    const shownCodDue = shownOrder ? orderCodDue(shownOrder) : null;
+    const refreshedAssignments = await refetchAssignments();
+    if (refreshedAssignments.error) {
+      toast.error('Unable to refresh the order payment. Please try again.');
+      return;
+    }
+
+    const latestOrder = refreshedAssignments.data?.find(order => order.id === orderId) as DriverInboxOrder | undefined;
+    if (!latestOrder) {
+      toast.error('This order is no longer available. Refresh the delivery list and try again.');
+      return;
+    }
+
+    const latestCodDue = orderCodDue(latestOrder);
+    if (shownCodDue !== null && Math.abs(latestCodDue - shownCodDue) > 0.01) {
+      setSelectedOrderDetails(latestOrder);
+      toast.error(`Payment updated. Current COD due is ${formatBND(latestCodDue)}. Review the amount and submit again.`);
+      return;
+    }
+
+    if (!hasPickupForOrder(latestOrder)) {
       toast.error('Pickup stock must match this order before delivery can be submitted.');
       return;
     }
@@ -545,7 +567,7 @@ export default function DriverInbox() {
       cashAmount: split.cashAmount,
       transferAmount: split.transferAmount,
       proofImages,
-      submissionMode: selectedOrderDetails?.driver_status === 'DRIVER_FAILED' ? 'CORRECTION' : 'NEW',
+      submissionMode: latestOrder.driver_status === 'DRIVER_FAILED' ? 'CORRECTION' : 'NEW',
     });
     setDeliveredDialogOpen(false);
     setSelectedOrder(null);
@@ -553,17 +575,29 @@ export default function DriverInbox() {
     resetProofSelection('delivered');
   };
 
-  const handleOpenDeliveredDialog = useCallback((order: DriverInboxOrder) => {
-    if (!hasPickupForOrder(order)) {
+  const handleOpenDeliveredDialog = useCallback(async (order: DriverInboxOrder) => {
+    const refreshedAssignments = await refetchAssignments();
+    if (refreshedAssignments.error) {
+      toast.error('Unable to refresh the order payment. Please try again.');
+      return;
+    }
+
+    const latestOrder = refreshedAssignments.data?.find(candidate => candidate.id === order.id) as DriverInboxOrder | undefined;
+    if (!latestOrder) {
+      toast.error('This order is no longer available. Refresh the delivery list and try again.');
+      return;
+    }
+
+    if (!hasPickupForOrder(latestOrder)) {
       toast.error('Pickup stock must match this order before delivery can be submitted.');
       return;
     }
 
-    setSelectedOrder(order.id);
-    setSelectedOrderDetails(order);
+    setSelectedOrder(latestOrder.id);
+    setSelectedOrderDetails(latestOrder);
     resetProofSelection('delivered');
     setDeliveredDialogOpen(true);
-  }, [hasPickupForOrder, resetProofSelection]);
+  }, [hasPickupForOrder, refetchAssignments, resetProofSelection]);
 
   const handleStartAssignment = useCallback(async (orderId: string) => {
     await startDriverAssignment.mutateAsync(orderId);
@@ -1277,7 +1311,7 @@ export default function DriverInbox() {
 
         {/* ─── Dialogs ─── */}
         <DeliveryPaymentDialog
-          key={`${selectedCollectionOrder?.id}-${selectedCollectionOrder?.cod_amount}-${selectedCollectionOrder?.receipt_status}`}
+          key={`${selectedCollectionOrder?.id}-${selectedCollectionOrder?.cod_amount}-${selectedCollectionOrder?.cod_due_amount}-${selectedCollectionOrder?.receipt_status}`}
           open={deliveredDialogOpen}
           onOpenChange={(open) => {
             setDeliveredDialogOpen(open);
