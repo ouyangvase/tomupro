@@ -80,6 +80,16 @@ import type { Order, OrderItem } from '@/types/database';
 import capybaraAssistant from '@/assets/capybara-order-assistant.png';
 import capybaraEmptyCart from '@/assets/capybara-empty-cart.png';
 
+function getOrderSaveErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'object' && error !== null) {
+    const candidate = error as { message?: unknown; details?: unknown };
+    if (typeof candidate.message === 'string' && candidate.message) return candidate.message;
+    if (typeof candidate.details === 'string' && candidate.details) return candidate.details;
+  }
+  return 'Please try again.';
+}
+
 const orderSchema = z.object({
   order_code: z.string().min(1, 'Order Reference is required'),
   customer_name: z.string().min(1, 'Customer name is required'),
@@ -1043,7 +1053,7 @@ export function OrderEditor({ open, onOpenChange, order, mode, defaultStatus = '
       }
       onOpenChange(false);
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Unable to save order', description: error instanceof Error ? error.message : 'Please try again.' });
+      toast({ variant: 'destructive', title: 'Unable to save order', description: getOrderSaveErrorMessage(error) });
     } finally { submitting.current = false; }
   };
 
