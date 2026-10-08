@@ -86,6 +86,7 @@ BEGIN
   INTO v_blocked_ids, v_blocked_order_codes
   FROM public.orders selected
   WHERE selected.id = ANY(v_candidate_ids)
+    AND COALESCE(selected.runner_review_status, 'NOT_REVIEWED') <> 'REVIEWED'
     AND EXISTS (
       SELECT 1
       FROM public.delivery_attempts attempt

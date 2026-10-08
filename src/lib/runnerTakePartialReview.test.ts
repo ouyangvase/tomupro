@@ -10,6 +10,7 @@ const migration = readFileSync(
 describe('Runner batch Take review boundary', () => {
   it('keeps pending Driver results blocked per order instead of rejecting the batch', () => {
     expect(migration).toContain("attempt.runner_decision = 'PENDING'");
+    expect(migration).toContain("COALESCE(selected.runner_review_status, 'NOT_REVIEWED') <> 'REVIEWED'");
     expect(migration).toContain('v_blocked_ids');
     expect(migration).toContain('WHERE NOT (candidate_id = ANY(v_blocked_ids))');
     expect(migration).not.toContain('RAISE EXCEPTION\n      \'A Driver result is waiting for Runner review');
