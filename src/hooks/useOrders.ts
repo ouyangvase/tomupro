@@ -404,11 +404,11 @@ export function useRunnerTakeOrders() {
     onSuccess: (result) => {
       invalidateOrderQueries(queryClient);
       const takenCount = Number(result?.taken_count || 0);
-      const releasedCount = Number(result?.released_driver_count || 0);
+      const preservedCount = Number(result?.preserved_driver_count || 0);
       toast({
         title: 'Orders taken',
-        description: releasedCount > 0
-          ? `${takenCount} order(s) taken. ${releasedCount} Driver assignment(s) ended and kept in history.`
+        description: preservedCount > 0
+          ? `${takenCount} order(s) taken. ${preservedCount} Driver assignment(s) kept active.`
           : `${takenCount} order(s) taken.`,
       });
     },

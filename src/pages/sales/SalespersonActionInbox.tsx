@@ -387,8 +387,9 @@ export default function SalespersonActionInbox({ initialSearch = null, highlight
   );
 
   // The current driver is authoritative while assigned. Once a Runner accepts
-  // a Driver outcome or takes the order, the current assignment is released;
-  // keep the last verified Driver visible from immutable audit evidence.
+  // After a Driver outcome is reviewed, the current assignment may be
+  // released; Runner Take now preserves an active Driver assignment. Keep
+  // the last verified Driver visible from immutable audit evidence.
   const { data: historicalDriverEvidence = [] } = useQuery({
     queryKey: ['action-required-driver-history', actionOrderIds],
     enabled: actionOrderIds.length > 0,
