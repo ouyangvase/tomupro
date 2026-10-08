@@ -405,11 +405,14 @@ export function useRunnerTakeOrders() {
       invalidateOrderQueries(queryClient);
       const takenCount = Number(result?.taken_count || 0);
       const preservedCount = Number(result?.preserved_driver_count || 0);
+      const blockedCount = Number(result?.blocked_count || 0);
       toast({
-        title: 'Orders taken',
-        description: preservedCount > 0
-          ? `${takenCount} order(s) taken. ${preservedCount} Driver assignment(s) kept active.`
-          : `${takenCount} order(s) taken.`,
+        title: blockedCount > 0 ? 'Orders taken with review pending' : 'Orders taken',
+        description: [
+          `${takenCount} order(s) taken.`,
+          preservedCount > 0 ? `${preservedCount} Driver assignment(s) kept active.` : '',
+          blockedCount > 0 ? `${blockedCount} order(s) skipped because Driver results need Runner review.` : '',
+        ].filter(Boolean).join(' '),
       });
     },
     onError: (error: Error) => {
