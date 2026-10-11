@@ -39,7 +39,7 @@ export function useCalculateStock() {
       // 1. Fetch current stock balance from the same view the inventory page uses
       const { data: stockData, error: stockError } = await supabase
         .from('stock_balance_view')
-        .select('*');
+        .select('warehouse_id, owner_user_id, product_id, balance_qty');
       if (stockError) throw new Error(`Failed to fetch stock balance: ${stockError.message}`);
       const stockBalance = (stockData || []) as StockBalance[];
 
