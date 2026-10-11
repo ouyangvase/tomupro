@@ -372,11 +372,23 @@ export function useBulkUpdateOrders() {
           if (error) throw error;
         }
       } else {
-        const { error } = await supabase
-          .from('orders')
-          .update(updates as any)
-          .in('id', ids);
-        if (error) throw error;
+        // Runner assignment fires several per-order notification, audit, and
+        // queue triggers. Keep large assignments below the database statement
+        // timeout without changing the update payload or order semantics.
+        const isRunnerAssignment =
+          (updates as any).runner_status === 'ASSIGNED' &&
+          Boolean((updates as any).runner_id) &&
+          Object.keys(updates).every((key) => key === 'runner_id' || key === 'runner_status');
+
+        const batchSize = isRunnerAssignment ? 25 : ids.length;
+        for (let start = 0; start < ids.length; start += batchSize) {
+          const batchIds = ids.slice(start, start + batchSize);
+          const { error } = await supabase
+            .from('orders')
+            .update(updates as any)
+            .in('id', batchIds);
+          if (error) throw error;
+        }
       }
     },
     onSuccess: () => {

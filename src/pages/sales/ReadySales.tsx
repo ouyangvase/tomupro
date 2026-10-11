@@ -214,12 +214,12 @@ export default function ReadySales({ initialSearch = null, highlightOrderId }: {
               logAudit({ entity_type: 'order', entity_id: id, action: 'runner_assigned', after_json: { runner_id: runnerId, runner_status: 'ASSIGNED' } });
             }
           });
+          setAssignDialogOpen(false);
+          setSelectedRunner('');
+          setSelectedRows([]);
         },
       }
     );
-    setAssignDialogOpen(false);
-    setSelectedRunner('');
-    setSelectedRows([]);
   };
 
   const handleOpenConvertToBooking = async () => {
