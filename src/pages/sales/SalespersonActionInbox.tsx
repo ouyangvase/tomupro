@@ -44,6 +44,7 @@ import { toast } from 'sonner';
 import { getSignedStorageUrl } from '@/lib/storageUrls';
 import { classifyActionRequired } from '@/lib/actionRequired';
 import { resolveCurrentOrderState } from '@/lib/orderLifecycle';
+import { orderCodeSearchPattern } from '@/lib/orderSearch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,6 +97,95 @@ const priorityConfig = {
 };
 
 type TimeFilter = 'all' | 'today' | 'week' | 'month';
+
+type ActionRequiredServerFilters = {
+  salespersonId?: string;
+  salespersonIds?: string[];
+  searchQuery?: string;
+};
+
+const ACTION_REQUIRED_EXPORT_BATCH_SIZE = 1000;
+
+function filterActionRequiredOrders(
+  orders: Order[],
+  sourceFilter: string,
+  timeFilter: TimeFilter,
+  priorityFilter: string,
+) {
+  let filtered = [...orders];
+
+  if (sourceFilter !== 'all') filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
+  if (priorityFilter !== 'all') filtered = filtered.filter(o => getOrderPriority(o) === priorityFilter);
+
+  if (timeFilter !== 'all') {
+    filtered = filtered.filter(o => {
+      const date = new Date(o.created_at);
+      if (timeFilter === 'today') return isToday(date);
+      if (timeFilter === 'week') return isThisWeek(date);
+      if (timeFilter === 'month') return isThisMonth(date);
+      return true;
+    });
+  }
+
+  return filtered.sort((a, b) => {
+    const pOrder = { high: 0, medium: 1, low: 2 };
+    return pOrder[getOrderPriority(a)] - pOrder[getOrderPriority(b)];
+  });
+}
+
+async function fetchAllActionRequiredOrders(filters: ActionRequiredServerFilters): Promise<Order[]> {
+  const orders: Order[] = [];
+
+  for (let offset = 0; ; offset += ACTION_REQUIRED_EXPORT_BATCH_SIZE) {
+    let query = supabase
+      .from('orders')
+      .select('*, order_items(*)')
+      .eq('current_operational_state', 'ACTION_REQUIRED')
+      .neq('order_type', 'MIRI_INBOUND_PICKUP')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + ACTION_REQUIRED_EXPORT_BATCH_SIZE - 1);
+
+    if (filters.salespersonId) query = query.eq('salesperson_id', filters.salespersonId);
+    if (filters.salespersonIds?.length) query = query.in('salesperson_id', filters.salespersonIds);
+
+    const searchPattern = orderCodeSearchPattern(filters.searchQuery);
+    if (searchPattern) query = query.ilike('order_code', searchPattern);
+
+    const { data, error } = await query.returns<Order[]>();
+    if (error) throw error;
+
+    orders.push(...(data || []));
+    if (!data || data.length < ACTION_REQUIRED_EXPORT_BATCH_SIZE) break;
+  }
+
+  if (orders.length === 0) return orders;
+
+  const userIds = Array.from(new Set(
+    orders.flatMap(order => [order.salesperson_id, order.runner_id, order.driver_id].filter(Boolean) as string[]),
+  ));
+  if (userIds.length === 0) return orders;
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, display_name, email')
+    .in('id', userIds);
+  if (profilesError) throw profilesError;
+
+  const profilesById = new Map((profiles || []).map(profile => [profile.id, profile]));
+  return orders.map(order => ({
+    ...order,
+    salesperson: order.salesperson_id
+      ? (profilesById.get(order.salesperson_id) || { id: order.salesperson_id, display_name: 'Deleted User', email: null })
+      : null,
+    runner: order.runner_id
+      ? (profilesById.get(order.runner_id) || { id: order.runner_id, display_name: 'Deleted User', email: null })
+      : null,
+    driver: order.driver_id
+      ? (profilesById.get(order.driver_id) || { id: order.driver_id, display_name: 'Deleted User', email: null })
+      : null,
+  }));
+}
 
 type HistoricalDriverEvidence = {
   order_id: string;
@@ -205,6 +295,7 @@ export default function SalespersonActionInbox({ initialSearch = null, highlight
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [showGuide, setShowGuide] = useState(false);
+  const [isExportingAll, setIsExportingAll] = useState(false);
 
   useEffect(() => {
     setSearchQuery(initialSearch?.trim() || '');
@@ -359,25 +450,7 @@ export default function SalespersonActionInbox({ initialSearch = null, highlight
 
   // ── Filter orders (page-level filters only, no redundant re-filtering) ──
   const actionRequiredOrders = useMemo(() => {
-    let filtered = [...allOrders];
-
-    if (sourceFilter !== 'all') filtered = filtered.filter(o => getActionSource(o) === sourceFilter);
-    if (priorityFilter !== 'all') filtered = filtered.filter(o => getOrderPriority(o) === priorityFilter);
-
-    if (timeFilter !== 'all') {
-      filtered = filtered.filter(o => {
-        const date = new Date(o.created_at);
-        if (timeFilter === 'today') return isToday(date);
-        if (timeFilter === 'week') return isThisWeek(date);
-        if (timeFilter === 'month') return isThisMonth(date);
-        return true;
-      });
-    }
-
-    return filtered.sort((a, b) => {
-      const pOrder = { high: 0, medium: 1, low: 2 };
-      return pOrder[getOrderPriority(a)] - pOrder[getOrderPriority(b)];
-    });
+    return filterActionRequiredOrders(allOrders, sourceFilter, timeFilter, priorityFilter);
   }, [allOrders, sourceFilter, timeFilter, priorityFilter]);
 
   // ── Salesperson filter data ──
@@ -543,14 +616,27 @@ export default function SalespersonActionInbox({ initialSearch = null, highlight
     toast.success(`Exported ${selected.length} order(s)`);
   }, [actionRequiredOrders, selectedRows]);
 
-  const handleExportAll = useCallback(() => {
-    if (actionRequiredOrders.length === 0) {
-      toast.error('No orders to export');
-      return;
+  const handleExportAll = useCallback(async () => {
+    if (isExportingAll) return;
+
+    setIsExportingAll(true);
+    try {
+      const allOrders = await fetchAllActionRequiredOrders(orderFilters);
+      const filteredOrders = filterActionRequiredOrders(allOrders, sourceFilter, timeFilter, priorityFilter);
+      if (filteredOrders.length === 0) {
+        toast.error('No orders to export');
+        return;
+      }
+
+      exportOrderLines(filteredOrders, 'action_required_all');
+      toast.success(`Exported ${filteredOrders.length} order(s)`);
+    } catch (error) {
+      console.error('Action Required export failed', error);
+      toast.error('Unable to export all Action Required orders. Please try again.');
+    } finally {
+      setIsExportingAll(false);
     }
-    exportOrderLines(actionRequiredOrders, 'action_required_all');
-    toast.success(`Exported ${actionRequiredOrders.length} order(s)`);
-  }, [actionRequiredOrders]);
+  }, [isExportingAll, orderFilters, priorityFilter, sourceFilter, timeFilter]);
 
   // ── Mission progress ──
   const resolvedToday = 0; // placeholder — would need resolved count from DB
@@ -604,8 +690,8 @@ export default function SalespersonActionInbox({ initialSearch = null, highlight
                     <DropdownMenuItem onClick={handleExportSelected} disabled={selectedRows.size === 0}>
                       Export Selected ({selectedRows.size})
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleExportAll}>
-                      Export All ({actionRequiredOrders.length})
+                    <DropdownMenuItem onClick={handleExportAll} disabled={isExportingAll}>
+                      {isExportingAll ? 'Exporting All...' : 'Export All'}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
