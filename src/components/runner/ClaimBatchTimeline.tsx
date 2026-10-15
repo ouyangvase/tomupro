@@ -52,14 +52,17 @@ export function ClaimBatchTimeline({
   ];
 
   return (
-    <div className={cn("flex items-center gap-0.5", className)}>
+    <div
+      className={cn("flex w-full min-w-[210px] items-start justify-center gap-0.5", className)}
+      aria-label={`Claim batch status: ${status === 'CLAIMED' ? 'Approved' : 'Reviewing'}`}
+    >
       {steps.map((step, i) => {
         const Icon = step.icon;
         return (
           <div key={step.label} className="flex items-center gap-0.5">
             <div className="flex flex-col items-center gap-0.5">
               <div className={cn(
-                "w-5 h-5 rounded-full flex items-center justify-center transition-all",
+                "h-5 w-5 shrink-0 rounded-full flex items-center justify-center transition-all",
                 step.completed
                   ? "bg-[hsl(var(--status-success))] text-white"
                   : step.active
@@ -69,7 +72,7 @@ export function ClaimBatchTimeline({
                 {step.completed ? <Check className="h-2.5 w-2.5" /> : <Icon className="h-2.5 w-2.5" />}
               </div>
               <span className={cn(
-                "text-[8px] leading-tight font-medium whitespace-nowrap",
+                "text-[8px] leading-tight font-medium whitespace-nowrap text-center",
                 step.completed ? "text-[hsl(var(--status-success))]" :
                 step.active ? "text-[hsl(var(--status-warning))]" : "text-muted-foreground"
               )}>
@@ -78,7 +81,7 @@ export function ClaimBatchTimeline({
             </div>
             {i < steps.length - 1 && (
               <div className={cn(
-                "w-3 h-[1.5px] mb-3.5",
+                "w-3 shrink-0 h-[1.5px] mt-2.5",
                 step.completed ? "bg-[hsl(var(--status-success))]" : "bg-border"
               )} />
             )}

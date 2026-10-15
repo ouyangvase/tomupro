@@ -59,7 +59,7 @@ export default function ClaimBatchesHistory() {
 
   // Runner: always filter to own batches; Admin: fetch all
   const batchFilters = useMemo(() => {
-    if (isRunner && user?.id) return { runnerId: user.id };
+    if (isRunner && user?.id) return { runnerId: user.id, includeOwners: true };
     return undefined;
   }, [isRunner, user?.id]);
 
@@ -202,8 +202,19 @@ export default function ClaimBatchesHistory() {
       });
     }
 
+    cols.push({ key: 'items', header: 'Orders', render: (batch) => batch.items?.length || 0 });
+
+    if (isRunner) {
+      cols.push({
+        key: 'owner_names', header: 'Owner', minWidth: '140px',
+        render: (batch) => {
+          const owners = batch.owner_names?.join(', ') || '-';
+          return <span className="block truncate" title={owners}>{owners}</span>;
+        },
+      });
+    }
+
     cols.push(
-      { key: 'items', header: 'Orders', render: (batch) => batch.items?.length || 0 },
       {
         key: 'total_amount', header: 'Total Amount', sortable: true,
         render: (batch) => <span className="font-semibold">{formatBND(Number(batch.total_amount))}</span>,
