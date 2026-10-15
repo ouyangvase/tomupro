@@ -100,14 +100,19 @@ export default function ReadySales({ initialSearch = null, highlightOrderId }: {
   
   const { viewMode, setViewMode, selectedMember, setSelectedMember, salespersonIds, isManager } = useTeamViewState('team');
 
+  const selectedSalespersonId = panelFilters.salespersonId || (
+    role === 'salesperson' ? profile?.id : undefined
+  );
+  const scopedSalespersonIds = isManager && !selectedSalespersonId ? salespersonIds : undefined;
+
   const orderFilters = useMemo(() => ({
     status: 'READY' as const,
-    salespersonIds: isManager ? salespersonIds : undefined,
-    salespersonId: role === 'salesperson' ? profile?.id : undefined,
+    salespersonIds: scopedSalespersonIds,
+    salespersonId: selectedSalespersonId,
     searchQuery: serverSearch || undefined,
     driverAssignment: panelFilters.driverAssignment,
     runnerStatus: panelFilters.runnerStatus as RunnerStatus | undefined,
-  }), [isManager, salespersonIds, role, profile?.id, serverSearch, panelFilters.driverAssignment, panelFilters.runnerStatus]);
+  }), [scopedSalespersonIds, selectedSalespersonId, serverSearch, panelFilters.driverAssignment, panelFilters.runnerStatus]);
 
   const {
     data: orders,
@@ -127,8 +132,8 @@ export default function ReadySales({ initialSearch = null, highlightOrderId }: {
 
   // Server-side stats for summary cards (avoids per-page count bug)
   const { data: readyStats } = useReadyOrderStats(
-    isManager ? salespersonIds : undefined,
-    role === 'salesperson' ? profile?.id : undefined
+    scopedSalespersonIds,
+    selectedSalespersonId,
   );
 
   const handleSearchChange = useCallback((q: string) => {

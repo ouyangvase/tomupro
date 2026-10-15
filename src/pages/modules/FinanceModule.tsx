@@ -201,7 +201,6 @@ export default function FinanceModule() {
 
   const runnerTabs = [
     { id: 'driver-analytics', label: 'Driver Analytics' },
-    { id: 'my-claims', label: 'My Claims' },
     { id: 'claims-history', label: 'Claim History' },
     { id: 'delivery-charges', label: 'Delivery Charges' },
     { id: 'workspace', label: 'Finance Workspace' },
@@ -225,8 +224,10 @@ export default function FinanceModule() {
         : adminTabs;
   const defaultTab = role === 'finance_viewer'
     ? 'reports'
-    : role === 'runner' || role === 'runner_assistant'
-      ? 'driver-analytics'
+    : role === 'runner'
+      ? 'claims-history'
+      : role === 'runner_assistant'
+        ? 'driver-analytics'
       : 'reconciliation';
   const normalizedTab =
     usesAdminFinanceTabs && isAdminWorkspaceSection(requestedTab)

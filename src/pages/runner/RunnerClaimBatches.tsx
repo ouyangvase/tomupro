@@ -24,7 +24,10 @@ const statusColors: Record<ClaimBatchStatus, string> = {
 export default function RunnerClaimBatches() {
   const { user } = useAuth();
   const [claimsViewMode, setClaimsViewMode] = useState<DataViewMode>('my_data');
-  const { data: batches = [], isLoading } = useClaimBatches({ runnerId: user?.id });
+  const { data: batches = [], isLoading } = useClaimBatches({
+    runnerId: user?.id,
+    includeOwners: Boolean(user?.id),
+  });
 
   const stats = useMemo(() => {
     const pending = batches.filter(b => b.status === 'ADMIN_ACK_PENDING');
@@ -63,6 +66,15 @@ export default function RunnerClaimBatches() {
       ),
     },
     {
+      key: 'owner_names',
+      header: 'Owner',
+      minWidth: '140px',
+      render: (batch) => {
+        const owners = batch.owner_names?.join(', ') || '-';
+        return <span className="block truncate" title={owners}>{owners}</span>;
+      },
+    },
+    {
       key: 'net_bnd',
       header: 'Net Earnings (BND)',
       sortable: true,
@@ -88,7 +100,8 @@ export default function RunnerClaimBatches() {
       key: 'status',
       header: 'Status',
       filterable: true,
-      minWidth: '180px',
+      minWidth: '240px',
+      preferredWidth: '20vw',
       render: (batch) => (
         <ClaimBatchTimeline
           status={batch.status}
