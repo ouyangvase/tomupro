@@ -547,12 +547,14 @@ export interface DeliveredOrderExport {
   amount: number;
   payment_method: string;
   delivery_charges: number;
+  claim_batch: string;
 }
 
 export function exportDeliveredOrderLines(
   orders: any[],
   deliveryChargesMap: Map<string, number>, // key: "runnerId:area" -> charge
-  filename: string
+  filename: string,
+  claimBatchByOrderId?: ReadonlyMap<string, string>,
 ) {
   const lines: DeliveredOrderExport[] = [];
 
@@ -596,6 +598,7 @@ export function exportDeliveredOrderLines(
       items: itemsSummary,
       payment_method: order.payment_method || '',
       delivery_charges: deliveryCharge,
+      claim_batch: claimBatchByOrderId?.get(order.id) || '',
     };
 
     const skuCodes = orderItems.map((item: any) => {
@@ -630,6 +633,7 @@ export function exportDeliveredOrderLines(
     { key: 'amount', header: 'amount' },
     { key: 'payment_method', header: 'payment_method' },
     { key: 'delivery_charges', header: 'delivery_charges' },
+    { key: 'claim_batch', header: 'claim_batch' },
   ];
 
   exportToCSV(lines as any, columns, filename);

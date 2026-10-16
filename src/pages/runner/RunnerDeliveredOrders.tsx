@@ -505,6 +505,25 @@ export default function RunnerDeliveredOrders({
   }), [role, user?.id, isAssistantView, runnerIdsOverride]);
   const { data: claimBatches = [] } = useClaimBatches(claimBatchScope);
 
+  // Build the order-to-batch map once so the table and exports show the same claim batch.
+  const orderToBatchRef = useMemo(() => {
+    const map = new Map<string, { batchCode: string; submittedAt: string }>();
+    for (const batch of claimBatches) {
+      for (const item of batch.items || []) {
+        map.set(item.order_id, {
+          batchCode: (batch as any).batch_code || batch.id.slice(0, 8).toUpperCase(),
+          submittedAt: batch.submitted_at,
+        });
+      }
+    }
+    return map;
+  }, [claimBatches]);
+
+  const claimBatchByOrderId = useMemo(
+    () => new Map(Array.from(orderToBatchRef, ([orderId, batch]) => [orderId, batch.batchCode])),
+    [orderToBatchRef],
+  );
+
   // Runner earnings dashboard data
   const { data: runnerEarnings, isLoading: earningsLoading } = useRunnerEarnings(
     undefined,
@@ -666,18 +685,18 @@ export default function RunnerDeliveredOrders({
       return;
     }
     const selectedOrders = allFilteredOrders.filter(o => exportSelectedIds.has(o.id));
-    exportDeliveredOrderLines(selectedOrders, deliveryChargesMap, 'delivered_orders_selected');
+    exportDeliveredOrderLines(selectedOrders, deliveryChargesMap, 'delivered_orders_selected', claimBatchByOrderId);
     toast.success(`Exported ${selectedOrders.length} order(s)`);
-  }, [allFilteredOrders, exportSelectedIds, deliveryChargesMap]);
+  }, [allFilteredOrders, exportSelectedIds, deliveryChargesMap, claimBatchByOrderId]);
 
   const handleExportAll = useCallback(() => {
     if (allFilteredOrders.length === 0) {
       toast.error('No orders to export');
       return;
     }
-    exportDeliveredOrderLines(allFilteredOrders, deliveryChargesMap, 'delivered_orders_all');
+    exportDeliveredOrderLines(allFilteredOrders, deliveryChargesMap, 'delivered_orders_all', claimBatchByOrderId);
     toast.success(`Exported ${allFilteredOrders.length} order(s)`);
-  }, [allFilteredOrders, deliveryChargesMap]);
+  }, [allFilteredOrders, deliveryChargesMap, claimBatchByOrderId]);
 
   // Handle bulk claim submission (grouped — supports multiple batches)
   const handleGroupedClaimSubmit = async (groups: ClaimGroupSubmission[]): Promise<ClaimBatchResult> => {
@@ -1080,20 +1099,6 @@ export default function RunnerDeliveredOrders({
   }, [skuFilter, allFilteredOrders, skuCodeMap, normalizeSku, getItemSkuCode]);
 
   const allClaimableSelected = claimableOrders.length > 0 && selectedClaimableOrders.length === claimableOrders.length;
-
-  // Build a map of order_id -> batch reference for showing claim batch info
-  const orderToBatchRef = useMemo(() => {
-    const map = new Map<string, { batchCode: string; submittedAt: string }>();
-    for (const batch of claimBatches) {
-      for (const item of batch.items || []) {
-        map.set(item.order_id, {
-          batchCode: (batch as any).batch_code || batch.id.slice(0, 8).toUpperCase(),
-          submittedAt: batch.submitted_at,
-        });
-      }
-    }
-    return map;
-  }, [claimBatches]);
 
   const isMobile = useIsMobile();
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
