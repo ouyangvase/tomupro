@@ -22,7 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
 import { format } from 'date-fns';
 import type { Order, ReconciliationStatus } from '@/types/database';
-import { CheckCircle, Search, Send, Loader2, ChevronDown, Package, Users, Phone, Download, Undo2, AlertTriangle, DollarSign, FileCheck, Banknote } from 'lucide-react';
+import { CheckCircle, Search, Send, Loader2, ChevronDown, ChevronUp, Package, Users, Phone, Download, Undo2, AlertTriangle, DollarSign, FileCheck, Banknote } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DateRangePresets, useDateRangeState, type DateRange } from '@/components/filters/DateRangePresets';
 import { PageHero } from '@/components/dashboard/PageHero';
@@ -1102,6 +1102,13 @@ export default function RunnerDeliveredOrders({
 
   const isMobile = useIsMobile();
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [showOrderDetails, setShowOrderDetails] = useState(false);
+  const desktopTableColumnCount = 12
+    + (canExport ? 1 : 0)
+    + (canClaim ? 2 : 0)
+    + (isAdmin ? 1 : 0)
+    + (canViewDriverPayment ? 1 : 0)
+    + (showOrderDetails ? 4 : 0);
 
   const toggleCardExpanded = (id: string) => {
     setExpandedCards(prev => {
@@ -1552,6 +1559,23 @@ export default function RunnerDeliveredOrders({
           /* Desktop Table View */
           <Card>
             <CardContent className="p-0">
+              <div className="flex items-center justify-end border-b border-border/50 px-4 py-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowOrderDetails((current) => !current)}
+                  aria-expanded={showOrderDetails}
+                  className="gap-1.5 text-muted-foreground hover:text-foreground"
+                >
+                  {showOrderDetails ? (
+                    <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {showOrderDetails ? 'Hide details' : 'Show details'}
+                </Button>
+              </div>
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
@@ -1577,19 +1601,19 @@ export default function RunnerDeliveredOrders({
                       <TableHead>Imported</TableHead>
                       <TableHead>Order Ref</TableHead>
                       <TableHead>Customer</TableHead>
-                      <TableHead>Phone</TableHead>
+                      {showOrderDetails && <TableHead>Phone</TableHead>}
                       <TableHead>Area</TableHead>
-                      <TableHead>Address</TableHead>
-                      <TableHead>Items</TableHead>
+                      {showOrderDetails && <TableHead>Address</TableHead>}
+                      {showOrderDetails && <TableHead>Items</TableHead>}
                       <TableHead>Amount (BND)</TableHead>
                       {canClaim && <TableHead>Earning</TableHead>}
                       <TableHead>Payment</TableHead>
                       {canViewDriverPayment && <TableHead>Driver Payment</TableHead>}
-                      <TableHead>Runner</TableHead>
+                      {showOrderDetails && <TableHead>Runner</TableHead>}
                       <TableHead>Driver</TableHead>
                       <TableHead>Salesperson</TableHead>
                       <TableHead>Delivered</TableHead>
-                      <TableHead>Claim Batch</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-[96px]">Claim Batch</TableHead>
                       <TableHead>Claim Status</TableHead>
                       {canClaim && <TableHead>Action</TableHead>}
                       {isAdmin && <TableHead>Admin</TableHead>}
@@ -1598,13 +1622,13 @@ export default function RunnerDeliveredOrders({
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={16 + (canExport ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0) + (canViewDriverPayment ? 1 : 0)} className="text-center py-8">
+                        <TableCell colSpan={desktopTableColumnCount} className="text-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : deliveredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={16 + (canExport ? 1 : 0) + (canClaim ? 2 : 0) + (isAdmin ? 1 : 0) + (canViewDriverPayment ? 1 : 0)} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={desktopTableColumnCount} className="text-center py-8 text-muted-foreground">
                           <div className="flex flex-col items-center gap-2">
                             <span>No delivered orders found</span>
                             {hasActiveFilters && (
@@ -1676,36 +1700,40 @@ export default function RunnerDeliveredOrders({
                               )}
                             </TableCell>
                             <TableCell>{order.customer_name || '-'}</TableCell>
-                            <TableCell><WhatsAppPhoneLink order={order} /></TableCell>
+                            {showOrderDetails && <TableCell><WhatsAppPhoneLink order={order} /></TableCell>}
                             <TableCell><Badge variant="outline">{order.area || '-'}</Badge></TableCell>
-                            <TableCell>
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="text-sm truncate max-w-[180px] block cursor-help">
-                                      {order.address || '-'}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-[400px]">
-                                    <p className="whitespace-pre-wrap">{order.address || 'No address'}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </TableCell>
-                            <TableCell>
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
-                                      {displayText}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-[400px]">
-                                    <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </TableCell>
+                            {showOrderDetails && (
+                              <TableCell>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-sm truncate max-w-[180px] block cursor-help">
+                                        {order.address || '-'}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[400px]">
+                                      <p className="whitespace-pre-wrap">{order.address || 'No address'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </TableCell>
+                            )}
+                            {showOrderDetails && (
+                              <TableCell>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className={`text-sm font-medium cursor-help ${hasError ? 'text-destructive' : ''}`}>
+                                        {displayText}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[400px]">
+                                      <p className="whitespace-pre-wrap">{hasError ? errorMessage : fullText}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </TableCell>
+                            )}
                             <TableCell><span className="font-medium">{formatBND(order.total_amount)}</span></TableCell>
                             {canClaim && (
                               <TableCell>
@@ -1724,7 +1752,7 @@ export default function RunnerDeliveredOrders({
                             )}
                             <TableCell><Badge variant="outline">{order.payment_method}</Badge></TableCell>
                             {canViewDriverPayment && <TableCell className="whitespace-nowrap">{formatDriverPaymentDisplay(order)}</TableCell>}
-                            <TableCell>{order.runner?.display_name || '-'}</TableCell>
+                            {showOrderDetails && <TableCell>{order.runner?.display_name || '-'}</TableCell>}
                             <TableCell>{order.driver?.display_name || '-'}</TableCell>
                             <TableCell>{salespersonDisplayName}</TableCell>
                             <TableCell>
@@ -1732,12 +1760,12 @@ export default function RunnerDeliveredOrders({
                                 ? (formatKualaLumpurDateTime(getDeliveredOrderTimestamp(order)!) || '-')
                                 : '-'}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="whitespace-nowrap min-w-[96px]">
                               {orderToBatchRef.has(order.id) ? (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <span className="font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
+                                      <span className="inline-flex whitespace-nowrap font-mono text-xs bg-muted px-2 py-1 rounded cursor-help">
                                         {orderToBatchRef.get(order.id)?.batchCode}
                                       </span>
                                     </TooltipTrigger>
