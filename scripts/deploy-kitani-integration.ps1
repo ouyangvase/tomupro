@@ -7,7 +7,7 @@ param(
   [string]$KitaniCustomerUrl = "https://www.kitani.my",
   [string]$KitaniClientId = $env:KITANI_CLIENT_ID,
   [string]$KitaniApiSecret = $env:KITANI_API_SECRET,
-  [string]$KitaniRunnerId = $env:TOMUPRO_KITANI_RUNNER_ID,
+  [string]$KitaniSalespersonId = $env:TOMUPRO_KITANI_SALESPERSON_ID,
   [string]$InvitationTemplate = $env:KITANI_INVITATION_TEMPLATE,
   [string]$KitaniRepoPath = $env:KITANI_REPO_PATH
 )
@@ -20,6 +20,10 @@ if (-not $env:SUPABASE_ACCESS_TOKEN) {
 
 if (-not $KitaniClientId) {
   $KitaniClientId = "tomupro-" + ([Guid]::NewGuid().ToString("N"))
+}
+
+if (-not $KitaniSalespersonId) {
+  throw "TOMUPRO_KITANI_SALESPERSON_ID is required. Set it to an existing TOMUPRO profiles.id used as the KITANI system owner."
 }
 
 if (-not $KitaniApiSecret) {
@@ -35,10 +39,6 @@ if (-not $KitaniApiSecret) {
 
 if (-not $InvitationTemplate) {
   $InvitationTemplate = "Your order is ready for KITANI delivery. Get the free delivery, rewards & more!`n`nConfirm your location: {{confirmation_url}}"
-}
-
-if (-not $KitaniRunnerId -or $KitaniRunnerId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$') {
-  throw "TOMUPRO_KITANI_RUNNER_ID must be the UUID of an active Runner profile. Resolve kitani@gmail.com once and set it only in this terminal."
 }
 
 function Set-RailwaySecret {
@@ -63,14 +63,15 @@ npx supabase secrets set `
   "KITANI_API_BASE_URL=$KitaniApiBaseUrl" `
   "KITANI_CLIENT_ID=$KitaniClientId" `
   "KITANI_API_SECRET=$KitaniApiSecret" `
+  "TOMUPRO_KITANI_SALESPERSON_ID=$KitaniSalespersonId" `
   "KITANI_INVITATION_TEMPLATE=$InvitationTemplate" `
-  "TOMUPRO_KITANI_RUNNER_ID=$KitaniRunnerId" `
   "KITANI_APP_URL=$KitaniCustomerUrl" `
   "TOMUPRO_TENANT_ID=tomupro" | Out-Null
 
-Write-Host "Applying pending KITANI integration migrations..."
+Write-Host "Applying only the KITANI integration migration..."
 npx supabase link --project-ref $ProjectRef | Out-Null
-npx supabase db push --linked --yes
+npx supabase db query --linked --file "supabase/migrations/20260718110000_kitani_order_links.sql"
+npx supabase db query --linked --file "supabase/migrations/20260901100000_kitani_order_ready_receiver.sql"
 
 Write-Host "Deploying TOMUPRO Supabase edge functions..."
 npx supabase functions deploy create-kitani-invitation --project-ref $ProjectRef

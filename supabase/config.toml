@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.send-telegram-event]
 verify_jwt = false
+
+[functions.send-kitani-points]
+verify_jwt = false
