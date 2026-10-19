@@ -77,6 +77,8 @@ export function useFinanceReconciliationWorkspace(filters: FinanceWorkspaceFilte
     queryFn: () => callSupabaseRpc<FinanceWorkspacePayload>('get_finance_reconciliation_workspace', workspaceParams(filters)),
     enabled: Boolean(enabled && filters.dateFrom),
     staleTime: 20_000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * (attempt + 1), 3000),
   });
 }
 

@@ -32,6 +32,13 @@ export async function callSupabaseRpc<T>(
   }
 
   const { data, error } = await request;
-  if (error) throw error;
+  if (error) {
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message || 'Request failed')
+        : 'Request failed';
+    throw new Error(`${name}: ${message}`);
+  }
   return data as T;
 }
