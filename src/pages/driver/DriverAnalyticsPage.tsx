@@ -20,6 +20,7 @@ import {
   type DriverPaymentSplit,
 } from '@/components/driver/DeliveryPaymentDialog';
 import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
+import { DriverEndJobSheet } from '@/components/driver/DriverEndJobSheet';
 import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -784,6 +785,10 @@ export default function DriverAnalyticsPage() {
               </div>
             </div>
           ) : null}
+
+          <div className="mt-5">
+            <DriverEndJobSheet driverId={profile?.id} initialDate={selectedDate} />
+          </div>
 
           {isSelectedDayLoading || isSelectedDayError ? null : selectedOrders.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground">

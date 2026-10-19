@@ -21,6 +21,7 @@ import { WhatsAppPhoneLink } from '@/components/orders/WhatsAppPhoneLink';
 import LocationTracker from '@/components/driver/LocationTracker';
 import { DeliveryPaymentDialog, type DriverPaymentMethod, type DriverPaymentSplit } from '@/components/driver/DeliveryPaymentDialog';
 import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
+import { DriverEndJobSheet } from '@/components/driver/DriverEndJobSheet';
 import { ChangeFailedStatusDialog, type ChangeFailedStatusValues } from '@/components/driver/ChangeFailedStatusDialog';
 import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import { AddressActions } from '@/components/driver/AddressActions';
@@ -940,6 +941,7 @@ export default function DriverInbox() {
   return (
     <AppLayout>
       <div className="mx-auto w-full min-w-0 max-w-4xl space-y-4 overflow-x-hidden pb-24">
+        <DriverEndJobSheet driverId={effectiveDriverId} />
         {/* ─── Gradient Header Banner ─── */}
         <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-primary/70 p-5 shadow-lg">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_hsl(38_70%_70%/0.3),transparent_70%)]" />

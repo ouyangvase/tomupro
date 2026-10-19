@@ -18,6 +18,7 @@ const RunnerDeliveryCharges = lazy(() => import('@/pages/runner/RunnerDeliveryCh
 
 // Finance Workspace components
 const WorkspaceSettings = lazy(() => import('@/components/finance/WorkspaceSettings'));
+const FinanceReconciliationWorkspace = lazy(() => import('@/components/finance/FinanceReconciliationWorkspace'));
 const RunnerClaimPage = lazy(() => import('@/components/finance/RunnerClaimPage'));
 const ApprovalCenter = lazy(() => import('@/components/finance/ApprovalCenter'));
 const FinanceDashboard = lazy(() => import('@/components/finance/FinanceDashboard'));
@@ -81,7 +82,7 @@ function AdminFinanceWorkspace({ initialSection }: { initialSection: AdminWorksp
 
   const renderSection = () => {
     switch (section) {
-      case 'workspace': return <WorkspaceSettings />;
+      case 'workspace': return <><FinanceReconciliationWorkspace /><WorkspaceSettings /></>;
       case 'approval-center': return <ApprovalCenter />;
       case 'finance-dashboard': return <FinanceDashboard />;
       case 'monthly-closing': return <MonthlyClosingPage />;
@@ -133,7 +134,7 @@ function RunnerFinanceWorkspace({ initialSection }: { initialSection: RunnerWork
     switch (section) {
       case 'delivery-report': return <DeliveryFeesReport />;
       case 'expense-claim': return <RunnerClaimPage />;
-      case 'workspace': return <WorkspaceSettings />;
+      case 'workspace': return <><FinanceReconciliationWorkspace /><WorkspaceSettings /></>;
       default: return <DeliveryFeesReport />;
     }
   };
