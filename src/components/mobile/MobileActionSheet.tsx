@@ -57,7 +57,7 @@ export function MobileActionSheet({
       <SheetContent
         side="bottom"
         className={cn(
-          "rounded-t-2xl flex min-h-0 flex-col overflow-hidden",
+          "relative rounded-t-2xl flex min-h-0 flex-col overflow-hidden",
           children ? "max-h-[80vh]" : "h-auto",
           panelClassName,
         )}
@@ -72,7 +72,10 @@ export function MobileActionSheet({
         {children && (
           nativeScroll ? (
             <div
-              className="min-h-0 flex-1 -mx-6 overflow-y-auto overscroll-contain px-6 py-4 touch-pan-y"
+              className={cn(
+                "min-h-0 flex-1 -mx-6 overflow-y-auto overscroll-contain px-6 py-4 touch-pan-y",
+                compactActions && "pb-[calc(7rem+env(safe-area-inset-bottom))]",
+              )}
               style={{ WebkitOverflowScrolling: "touch" }}
             >
               {children}
@@ -85,8 +88,11 @@ export function MobileActionSheet({
         )}
 
         <div className={cn(
-          "shrink-0 sticky bottom-0 bg-background flex flex-col",
-          compactActions ? "gap-1 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.25rem)]" : "gap-2 pt-4 pb-2",
+          "bg-background flex flex-col",
+          compactActions
+            ? "absolute inset-x-0 bottom-0 z-10 px-6 gap-1 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.25rem)]"
+            : "shrink-0 sticky bottom-0",
+          !compactActions && "gap-2 pt-4 pb-2",
         )}>
           <Button
             variant={confirmVariant}
