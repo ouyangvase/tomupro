@@ -86,7 +86,7 @@ export function MobileActionSheet({
 
         <div className={cn(
           "shrink-0 sticky bottom-0 bg-background flex flex-col",
-          compactActions ? "gap-1 pt-2 pb-1" : "gap-2 pt-4 pb-2",
+          compactActions ? "gap-1 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.25rem)]" : "gap-2 pt-4 pb-2",
         )}>
           <Button
             variant={confirmVariant}
