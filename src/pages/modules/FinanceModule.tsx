@@ -101,6 +101,17 @@ function AdminFinanceWorkspace({ initialSection, onSectionChange }: { initialSec
     }
   };
 
+  const sectionButtons = adminWorkspaceSections.filter((item) => item.id !== 'daily').map((item) => (
+    <button
+      key={item.id}
+      type="button"
+      onClick={() => selectSection(item.id)}
+      className="shrink-0 rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground sm:px-4 sm:py-2 sm:text-sm"
+    >
+      {item.label}
+    </button>
+  ));
+
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-border/50 bg-card p-2.5 shadow-sm sm:p-3">
@@ -111,23 +122,30 @@ function AdminFinanceWorkspace({ initialSection, onSectionChange }: { initialSec
           </div>
           <span className="hidden text-xs text-muted-foreground sm:block">{activeSection.description}</span>
         </div>
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
-          {adminWorkspaceSections.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => selectSection(item.id)}
-              className={[
-                'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors sm:px-4 sm:py-2 sm:text-sm',
-                section === item.id
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border/60 bg-background text-muted-foreground hover:text-foreground',
-              ].join(' ')}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {section === 'daily' ? (
+          <details className="mt-2 rounded-lg border border-border/50 bg-background/40 px-3 py-1.5">
+            <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">More finance tools</summary>
+            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">{sectionButtons}</div>
+          </details>
+        ) : (
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
+            {adminWorkspaceSections.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => selectSection(item.id)}
+                className={[
+                  'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors sm:px-4 sm:py-2 sm:text-sm',
+                  section === item.id
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border/60 bg-background text-muted-foreground hover:text-foreground',
+                ].join(' ')}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {renderSection()}
     </div>
@@ -157,6 +175,17 @@ function RunnerFinanceWorkspace({ initialSection, onSectionChange }: { initialSe
     }
   };
 
+  const sectionButtons = runnerWorkspaceSections.filter((item) => item.id !== 'daily').map((item) => (
+    <button
+      key={item.id}
+      type="button"
+      onClick={() => selectSection(item.id)}
+      className="shrink-0 rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground sm:px-4 sm:py-2 sm:text-sm"
+    >
+      {item.label}
+    </button>
+  ));
+
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-border/50 bg-card p-2.5 shadow-sm sm:p-3">
@@ -167,23 +196,30 @@ function RunnerFinanceWorkspace({ initialSection, onSectionChange }: { initialSe
           </div>
           <span className="hidden text-xs text-muted-foreground sm:block">{activeSection.description}</span>
         </div>
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
-          {runnerWorkspaceSections.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => selectSection(item.id)}
-              className={[
-                'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors sm:px-4 sm:py-2 sm:text-sm',
-                section === item.id
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border/60 bg-background text-muted-foreground hover:text-foreground',
-              ].join(' ')}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {section === 'daily' ? (
+          <details className="mt-2 rounded-lg border border-border/50 bg-background/40 px-3 py-1.5">
+            <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">More finance tools</summary>
+            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">{sectionButtons}</div>
+          </details>
+        ) : (
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
+            {runnerWorkspaceSections.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => selectSection(item.id)}
+                className={[
+                  'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors sm:px-4 sm:py-2 sm:text-sm',
+                  section === item.id
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border/60 bg-background text-muted-foreground hover:text-foreground',
+                ].join(' ')}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {renderSection()}
     </div>
