@@ -34,7 +34,8 @@ const Loading = () => (
 );
 
 type AdminWorkspaceSection =
-  | 'workspace'
+  | 'daily'
+  | 'settings'
   | 'approval-center'
   | 'finance-dashboard'
   | 'monthly-closing'
@@ -44,10 +45,12 @@ type AdminWorkspaceSection =
 type RunnerWorkspaceSection =
   | 'delivery-report'
   | 'expense-claim'
-  | 'workspace';
+  | 'daily'
+  | 'settings';
 
 const adminWorkspaceSections: { id: AdminWorkspaceSection; label: string; description: string }[] = [
-  { id: 'workspace', label: 'Settings', description: 'Company setup and finance workflow settings' },
+  { id: 'daily', label: 'Daily', description: 'Daily cash and transfer reconciliation' },
+  { id: 'settings', label: 'Settings', description: 'Company setup and finance workflow settings' },
   { id: 'approval-center', label: 'Approvals', description: 'Review pending finance approvals' },
   { id: 'finance-dashboard', label: 'Dashboard', description: 'Finance summary and operating metrics' },
   { id: 'monthly-closing', label: 'Close Month', description: 'Monthly closing controls and status' },
@@ -62,7 +65,8 @@ function isAdminWorkspaceSection(value: string): value is AdminWorkspaceSection 
 const runnerWorkspaceSections: { id: RunnerWorkspaceSection; label: string; description: string }[] = [
   { id: 'delivery-report', label: 'My Income', description: 'Delivery income and fee report' },
   { id: 'expense-claim', label: 'Expense Claim', description: 'Submit and track expense claims' },
-  { id: 'workspace', label: 'Workspace', description: 'Finance workspace setup and status' },
+  { id: 'daily', label: 'Workspace', description: 'Daily cash and transfer reconciliation' },
+  { id: 'settings', label: 'Settings', description: 'Finance workspace setup and status' },
 ];
 
 function isRunnerWorkspaceSection(value: string): value is RunnerWorkspaceSection {
@@ -71,7 +75,7 @@ function isRunnerWorkspaceSection(value: string): value is RunnerWorkspaceSectio
 
 const runnerDriverStockTabs = new Set(['cash-driver', 'cash-settlement', 'driver-pickups', 'driver-returns', 'allocated-stock']);
 
-function AdminFinanceWorkspace({ initialSection }: { initialSection: AdminWorkspaceSection }) {
+function AdminFinanceWorkspace({ initialSection, onSectionChange }: { initialSection: AdminWorkspaceSection; onSectionChange: (section: AdminWorkspaceSection) => void }) {
   const [section, setSection] = useState<AdminWorkspaceSection>(initialSection);
 
   useEffect(() => {
@@ -79,33 +83,42 @@ function AdminFinanceWorkspace({ initialSection }: { initialSection: AdminWorksp
   }, [initialSection]);
 
   const activeSection = adminWorkspaceSections.find((item) => item.id === section) || adminWorkspaceSections[0];
+  const selectSection = (next: AdminWorkspaceSection) => {
+    setSection(next);
+    onSectionChange(next);
+  };
 
   const renderSection = () => {
     switch (section) {
-      case 'workspace': return <><FinanceReconciliationWorkspace /><WorkspaceSettings /></>;
+      case 'daily': return <FinanceReconciliationWorkspace />;
+      case 'settings': return <WorkspaceSettings />;
       case 'approval-center': return <ApprovalCenter />;
       case 'finance-dashboard': return <FinanceDashboard />;
       case 'monthly-closing': return <MonthlyClosingPage />;
       case 'finance-audit': return <FinanceAuditLogPage />;
       case 'delivery-report': return <DeliveryFeesReport />;
-      default: return <WorkspaceSettings />;
+      default: return <FinanceReconciliationWorkspace />;
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-border/50 bg-card p-4 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Finance Workspace</p>
-        <h2 className="mt-2 text-2xl font-black text-foreground">{activeSection.label}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{activeSection.description}</p>
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+    <div className="space-y-3">
+      <div className="rounded-xl border border-border/50 bg-card p-2.5 shadow-sm sm:p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Finance Workspace</p>
+            <h2 className="mt-0.5 text-base font-bold text-foreground sm:text-lg">{activeSection.label}</h2>
+          </div>
+          <span className="hidden text-xs text-muted-foreground sm:block">{activeSection.description}</span>
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
           {adminWorkspaceSections.map((item) => (
             <button
               key={item.id}
               type="button"
-              onClick={() => setSection(item.id)}
+              onClick={() => selectSection(item.id)}
               className={[
-                'shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors',
+                'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors sm:px-4 sm:py-2 sm:text-sm',
                 section === item.id
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'border-border/60 bg-background text-muted-foreground hover:text-foreground',
@@ -121,7 +134,7 @@ function AdminFinanceWorkspace({ initialSection }: { initialSection: AdminWorksp
   );
 }
 
-function RunnerFinanceWorkspace({ initialSection }: { initialSection: RunnerWorkspaceSection }) {
+function RunnerFinanceWorkspace({ initialSection, onSectionChange }: { initialSection: RunnerWorkspaceSection; onSectionChange: (section: RunnerWorkspaceSection) => void }) {
   const [section, setSection] = useState<RunnerWorkspaceSection>(initialSection);
 
   useEffect(() => {
@@ -129,30 +142,39 @@ function RunnerFinanceWorkspace({ initialSection }: { initialSection: RunnerWork
   }, [initialSection]);
 
   const activeSection = runnerWorkspaceSections.find((item) => item.id === section) || runnerWorkspaceSections[0];
+  const selectSection = (next: RunnerWorkspaceSection) => {
+    setSection(next);
+    onSectionChange(next);
+  };
 
   const renderSection = () => {
     switch (section) {
       case 'delivery-report': return <DeliveryFeesReport />;
       case 'expense-claim': return <RunnerClaimPage />;
-      case 'workspace': return <><FinanceReconciliationWorkspace /><WorkspaceSettings /></>;
-      default: return <DeliveryFeesReport />;
+      case 'daily': return <FinanceReconciliationWorkspace />;
+      case 'settings': return <WorkspaceSettings />;
+      default: return <FinanceReconciliationWorkspace />;
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-border/50 bg-card p-4 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Runner Finance</p>
-        <h2 className="mt-2 text-2xl font-black text-foreground">{activeSection.label}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{activeSection.description}</p>
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+    <div className="space-y-3">
+      <div className="rounded-xl border border-border/50 bg-card p-2.5 shadow-sm sm:p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Runner Finance</p>
+            <h2 className="mt-0.5 text-base font-bold text-foreground sm:text-lg">{activeSection.label}</h2>
+          </div>
+          <span className="hidden text-xs text-muted-foreground sm:block">{activeSection.description}</span>
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
           {runnerWorkspaceSections.map((item) => (
             <button
               key={item.id}
               type="button"
-              onClick={() => setSection(item.id)}
+              onClick={() => selectSection(item.id)}
               className={[
-                'shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors',
+                'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors sm:px-4 sm:py-2 sm:text-sm',
                 section === item.id
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'border-border/60 bg-background text-muted-foreground hover:text-foreground',
@@ -174,10 +196,19 @@ export default function FinanceModule() {
   const { data: assistantScope, isLoading: assistantScopeLoading } = useMyAssistantScope();
   const role = profile?.role;
   const requestedTab = searchParams.get('tab') || '';
+  const requestedView = searchParams.get('view') || '';
   const isRunnerFinanceRole = role === 'runner' || role === 'runner_assistant';
   const usesAdminFinanceTabs = !isRunnerFinanceRole && role !== 'finance_viewer';
-  const adminWorkspaceSection = usesAdminFinanceTabs && isAdminWorkspaceSection(requestedTab) ? requestedTab : 'workspace';
-  const runnerWorkspaceSection = role === 'runner' && isRunnerWorkspaceSection(requestedTab) ? requestedTab : 'delivery-report';
+  const adminWorkspaceSection = usesAdminFinanceTabs && isAdminWorkspaceSection(requestedView)
+    ? requestedView
+    : usesAdminFinanceTabs && isAdminWorkspaceSection(requestedTab)
+      ? requestedTab
+      : 'daily';
+  const runnerWorkspaceSection = role === 'runner' && isRunnerWorkspaceSection(requestedView)
+    ? requestedView
+    : role === 'runner' && isRunnerWorkspaceSection(requestedTab)
+      ? requestedTab
+      : 'daily';
 
   if (role === 'runner_assistant' && assistantScopeLoading) {
     return <Loading />;
@@ -238,6 +269,13 @@ export default function FinanceModule() {
         : requestedTab;
   const currentTab = tabs.find(t => t.id === normalizedTab) ? normalizedTab : defaultTab;
 
+  const setWorkspaceSection = (section: AdminWorkspaceSection | RunnerWorkspaceSection) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'workspace');
+    next.set('view', section);
+    setSearchParams(next, { replace: true });
+  };
+
   // Check if current tab is a workspace-related tab that needs CompanyProvider
   const workspaceTabs = ['workspace', 'reports'];
   const needsCompanyProvider = workspaceTabs.includes(currentTab);
@@ -256,22 +294,22 @@ export default function FinanceModule() {
       // New workspace tabs
       case 'workspace':
         return usesAdminFinanceTabs
-          ? <AdminFinanceWorkspace initialSection={adminWorkspaceSection} />
+          ? <AdminFinanceWorkspace initialSection={adminWorkspaceSection} onSectionChange={setWorkspaceSection} />
           : role === 'runner'
-            ? <RunnerFinanceWorkspace initialSection={runnerWorkspaceSection} />
-            : <WorkspaceSettings />;
+            ? <RunnerFinanceWorkspace initialSection={runnerWorkspaceSection} onSectionChange={setWorkspaceSection} />
+            : <FinanceReconciliationWorkspace />;
       case 'reports': return <FinalReportDashboard />;
       default: return null;
     }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-16 md:pb-0">
       <Tabs value={currentTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-          <TabsList className="w-full justify-start bg-secondary/30 h-11">
+          <TabsList className="h-10 w-max min-w-full justify-start bg-secondary/30">
             {tabs.map(t => (
-              <TabsTrigger key={t.id} value={t.id} className="text-xs md:text-sm px-3 md:px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{t.label}</TabsTrigger>
+              <TabsTrigger key={t.id} value={t.id} className="whitespace-nowrap px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground md:px-4 md:text-sm">{t.label}</TabsTrigger>
             ))}
           </TabsList>
         </div>
