@@ -109,9 +109,13 @@ export function DateRangePresets({ value, onChange, className }: DateRangePreset
             <ChevronDown className="h-3 w-3" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-4" align="end">
+        <PopoverContent
+          align="center"
+          sideOffset={8}
+          className="max-h-[calc(100dvh-6rem)] w-[calc(100vw-1rem)] max-w-[720px] overflow-y-auto overflow-x-hidden overscroll-contain p-3 sm:w-auto sm:p-4"
+        >
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-2">From</p>
                 <Calendar
