@@ -339,11 +339,17 @@ export default function FinanceReconciliationWorkspace() {
       </Sheet>
 
       <Sheet open={claimsOpen} onOpenChange={setClaimsOpen}>
-        <SheetContent side="bottom" className="max-h-[88dvh] overflow-y-auto rounded-t-3xl pb-[calc(1rem+env(safe-area-inset-bottom))]">
-          <SheetHeader className="text-left"><SheetTitle>Select claim batches</SheetTitle><SheetDescription>{selectedClaims.length} selected · {money(selectedTotal)}</SheetDescription></SheetHeader>
-          <div className="relative mt-4"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={claimsSearch} onChange={(event) => setClaimsSearch(event.target.value)} placeholder="Search claim batch" /></div>
-          <div className="mt-3 space-y-2">{filteredClaims.length === 0 ? <p className="rounded-lg bg-muted/30 p-4 text-sm text-muted-foreground">No available claim batches.</p> : filteredClaims.map((claim) => <label key={claim.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/50 p-3"><span className="flex items-center gap-3"><Checkbox checked={selectedClaims.includes(claim.id)} onCheckedChange={(value) => setSelectedClaims((current) => value === true ? [...current, claim.id] : current.filter((id) => id !== claim.id))} /><span className="font-semibold">{claim.batch_code}</span></span><span className="text-sm font-semibold">{money(claim.total_bnd)}</span></label>)}</div>
-          <Button type="button" className="mt-4 w-full" onClick={() => setClaimsOpen(false)}>Confirm</Button>
+        <SheetContent side="bottom" className="flex max-h-[88dvh] min-h-0 flex-col overflow-hidden rounded-t-3xl p-0">
+          <div className="shrink-0 px-6 pb-2 pt-6">
+            <SheetHeader className="pr-8 text-left"><SheetTitle>Select claim batches</SheetTitle><SheetDescription>{selectedClaims.length} selected · {money(selectedTotal)}</SheetDescription></SheetHeader>
+            <div className="relative mt-4"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={claimsSearch} onChange={(event) => setClaimsSearch(event.target.value)} placeholder="Search claim batch" /></div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-4 [-webkit-overflow-scrolling:touch]">
+            <div className="space-y-2">{filteredClaims.length === 0 ? <p className="rounded-lg bg-muted/30 p-4 text-sm text-muted-foreground">No available claim batches.</p> : filteredClaims.map((claim) => <label key={claim.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/50 p-3"><span className="flex items-center gap-3"><Checkbox checked={selectedClaims.includes(claim.id)} onCheckedChange={(value) => setSelectedClaims((current) => value === true ? [...current, claim.id] : current.filter((id) => id !== claim.id))} /><span className="font-semibold">{claim.batch_code}</span></span><span className="text-sm font-semibold">{money(claim.total_bnd)}</span></label>)}</div>
+          </div>
+          <div className="shrink-0 border-t bg-background/95 px-6 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur">
+            <Button type="button" className="w-full" onClick={() => setClaimsOpen(false)}>Confirm</Button>
+          </div>
         </SheetContent>
       </Sheet>
     </div>
