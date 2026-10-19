@@ -940,13 +940,13 @@ export default function DriverInbox() {
 
   return (
     <AppLayout>
-      <div className="mx-auto w-full min-w-0 max-w-4xl space-y-4 overflow-x-hidden pb-24">
-        <DriverEndJobSheet driverId={effectiveDriverId} />
+      <div className="mx-auto w-full min-w-0 max-w-4xl space-y-3 overflow-x-hidden pb-28 sm:space-y-4 sm:pb-24">
+        <DriverEndJobSheet driverId={effectiveDriverId} compact />
         {/* ─── Gradient Header Banner ─── */}
-        <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-primary/70 p-5 shadow-lg">
+        <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-primary/70 p-4 shadow-lg sm:p-5">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_hsl(38_70%_70%/0.3),transparent_70%)]" />
           <div className="relative z-10">
-            <h1 className="text-2xl font-bold text-primary-foreground tracking-tight">
+            <h1 className="text-xl font-bold text-primary-foreground tracking-tight sm:text-2xl">
               My Deliveries
             </h1>
             {parentRunner && (
@@ -961,17 +961,17 @@ export default function DriverInbox() {
         <LocationTracker />
 
         {/* ─── Stats Pills ─── */}
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
           {/* Active delivery */}
-          <div className="glass-card p-3 text-center">
-            <div className="text-3xl font-bold tabular-nums tracking-tight">{pendingOrders.length}</div>
+          <div className="glass-card p-2.5 text-center sm:p-3">
+            <div className="text-2xl font-bold tabular-nums tracking-tight sm:text-3xl">{pendingOrders.length}</div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
               To Deliver
             </div>
           </div>
           {/* Driver-submitted outcomes awaiting Runner processing */}
-          <div className="glass-card p-3 text-center border-[hsl(var(--status-pending)/0.3)]">
-            <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-pending))]">
+          <div className="glass-card p-2.5 text-center border-[hsl(var(--status-pending)/0.3)] sm:p-3">
+            <div className="text-2xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-pending))] sm:text-3xl">
               {deliveredPendingAcceptance.length + failedOrdersList.length}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
@@ -979,8 +979,8 @@ export default function DriverInbox() {
             </div>
           </div>
           {/* Runner-finalized delivered orders are intentionally outside the current Driver inbox. */}
-          <div className="glass-card p-3 text-center border-[hsl(var(--status-pending)/0.3)]">
-            <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-pending))]">
+          <div className="glass-card p-2.5 text-center border-[hsl(var(--status-pending)/0.3)] sm:p-3">
+            <div className="text-2xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-pending))] sm:text-3xl">
               {acceptedDeliveredOrders.length}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
@@ -988,8 +988,8 @@ export default function DriverInbox() {
             </div>
           </div>
           {/* Runner-finalized failed orders are intentionally outside the current Driver inbox. */}
-          <div className="glass-card p-3 text-center border-[hsl(var(--status-error)/0.3)]">
-            <div className="text-3xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-error))]">
+          <div className="glass-card p-2.5 text-center border-[hsl(var(--status-error)/0.3)] sm:p-3">
+            <div className="text-2xl font-bold tabular-nums tracking-tight text-[hsl(var(--status-error))] sm:text-3xl">
               {failedOrdersCount}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">

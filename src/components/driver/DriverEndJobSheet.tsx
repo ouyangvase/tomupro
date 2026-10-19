@@ -105,8 +105,13 @@ export function DriverEndJobSheet({ driverId, initialDate = dateKey(new Date()),
   const difference = reconciliation.difference;
   const editable = Boolean(contextValue.editable) && !readOnly;
   const latestDates = useMemo(() => [0, 1, 2].map((offset) => dateKey(subDays(new Date(), offset))), []);
+  const dateOptions = useMemo(
+    () => latestDates.includes(date) ? latestDates : [date, ...latestDates],
+    [date, latestDates],
+  );
   const status = job?.status || 'NOT_SUBMITTED';
   const canSubmit = editable && Math.abs(difference) <= 0.005 && !submit.isPending;
+  const dateSelectionDisabled = readOnly;
 
   const handleSubmit = async () => {
     if (!driverId || !canSubmit) return false;
@@ -130,24 +135,24 @@ export function DriverEndJobSheet({ driverId, initialDate = dateKey(new Date()),
   if (!driverId) return null;
 
   return <>
-    <div className={`rounded-2xl border ${status === 'NEEDS_UPDATE' ? 'border-amber-400/60 bg-amber-50/50' : 'border-primary/20 bg-card'} p-4 shadow-sm`}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className={`${compact ? 'rounded-xl p-3' : 'rounded-2xl p-4'} border ${status === 'NEEDS_UPDATE' ? 'border-amber-400/60 bg-amber-50/50' : 'border-primary/20 bg-card'} shadow-sm`}>
+      <div className={`flex flex-col ${compact ? 'gap-2' : 'gap-3'} sm:flex-row sm:items-center sm:justify-between`}>
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">End Job · {date}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Accepted Cash <span className="font-bold text-foreground">{formatBND(acceptedCash)}</span> · Status <span className="font-semibold text-foreground">{status.replaceAll('_', ' ')}</span></p>
+          <p className={`${compact ? 'text-[11px]' : 'text-xs'} font-bold uppercase tracking-[0.18em] text-primary`}>End Job · {date}</p>
+          <p className={`${compact ? 'text-xs' : 'text-sm'} mt-1 text-muted-foreground`}>Accepted Cash <span className="font-bold text-foreground">{formatBND(acceptedCash)}</span> · Status <span className="font-semibold text-foreground">{status.replaceAll('_', ' ')}</span></p>
           {status === 'NEEDS_UPDATE' && <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-amber-700"><AlertTriangle className="h-4 w-4" /> Accepted Cash changed. Update your declaration.</p>}
           {Number(contextValue.pending_cash_count || 0) > 0 && <p className="mt-2 text-xs text-amber-700">{contextValue.pending_cash_count} cash order(s) are still awaiting Runner review. Your End Job total may change.</p>}
         </div>
-        {!readOnly && <Button size={compact ? 'sm' : 'default'} onClick={() => setOpen(true)} disabled={!editable && status === 'NOT_SUBMITTED'}>{status === 'NOT_SUBMITTED' ? 'END JOB' : 'View / Edit End Job'}</Button>}
+        {!readOnly && <Button size={compact ? 'sm' : 'default'} className={compact ? 'h-10' : undefined} onClick={() => setOpen(true)} disabled={!editable && status === 'NOT_SUBMITTED'}>{status === 'NOT_SUBMITTED' ? 'END JOB' : 'View / Edit End Job'}</Button>}
       </div>
       {job && <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground"><span>Cash {formatBND(job.cash_handed)}</span><span>CDM {formatBND(job.cdm_amount)}</span><span className={Math.abs(Number(job.difference)) <= 0.005 ? 'text-emerald-600' : 'text-amber-700'}>Difference {formatBND(job.difference)}</span></div>}
     </div>
 
-    <MobileActionSheet open={open} onOpenChange={setOpen} title="End Job" description="Reconcile Accepted Cash before handing over physical cash." confirmLabel="Submit End Job" onConfirm={handleSubmit} isLoading={submit.isPending} confirmDisabled={!canSubmit} panelClassName="max-h-[92vh]" nativeScroll>
-      <div className="space-y-4">
-        <div className="grid gap-2"><Label htmlFor="end-job-date">Date</Label><select id="end-job-date" className="h-11 rounded-lg border border-border/60 bg-background px-3" value={date} onChange={(event) => setDate(event.target.value)} disabled={!editable}>{latestDates.map((value) => <option key={value} value={value}>{value}</option>)}</select><p className="text-xs text-muted-foreground">Only the latest 3 Brunei calendar days are editable.</p></div>
-        <div className="rounded-xl bg-muted/40 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Accepted Cash · read only</p><p className="mt-1 text-2xl font-black">{formatBND(acceptedCash)}</p></div>
-        <div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="cash-handed">Cash handed over</Label><Input id="cash-handed" type="number" min="0" step="0.01" value={cash} onChange={(event) => setCash(event.target.value)} disabled={!editable} /></div><div className="grid gap-2"><Label htmlFor="cdm-amount">CDM deposit</Label><Input id="cdm-amount" type="number" min="0" step="0.01" value={cdm} onChange={(event) => setCdm(event.target.value)} disabled={!editable} /></div></div>
+    <MobileActionSheet open={open} onOpenChange={setOpen} title="End Job" description="Reconcile Accepted Cash before handing over physical cash." confirmLabel="Submit End Job" onConfirm={handleSubmit} isLoading={submit.isPending} confirmDisabled={!canSubmit} panelClassName="max-h-[min(760px,calc(100vh-2rem))] supports-[height:100dvh]:max-h-[min(760px,calc(100dvh-2rem))]" compactActions nativeScroll>
+      <div className="space-y-3 sm:space-y-4">
+        <div className="grid gap-2"><Label id="end-job-date-label">Date</Label><div id="end-job-date" className="grid grid-cols-3 gap-1.5" role="group" aria-labelledby="end-job-date-label">{dateOptions.map((value) => <button key={value} type="button" onClick={() => setDate(value)} disabled={dateSelectionDisabled} aria-pressed={date === value} className={`min-w-0 rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${date === value ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border-border/60 bg-background text-foreground hover:border-primary/60'}`}>{value}</button>)}</div><p className="text-xs text-muted-foreground">Only the latest 3 Brunei calendar days are editable.</p></div>
+        <div className="rounded-xl bg-muted/40 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Accepted Cash · read only</p><p className="mt-1 text-xl font-black sm:text-2xl">{formatBND(acceptedCash)}</p></div>
+        <div className="grid gap-2 sm:grid-cols-2"><div className="grid gap-1.5"><Label htmlFor="cash-handed">Cash handed over</Label><Input id="cash-handed" className="h-10" type="number" min="0" step="0.01" value={cash} onChange={(event) => setCash(event.target.value)} disabled={!editable} /></div><div className="grid gap-1.5"><Label htmlFor="cdm-amount">CDM deposit</Label><Input id="cdm-amount" className="h-10" type="number" min="0" step="0.01" value={cdm} onChange={(event) => setCdm(event.target.value)} disabled={!editable} /></div></div>
         <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/50 p-3 text-sm"><div><p className="text-xs text-muted-foreground">Total declared</p><p className="mt-1 font-bold">{formatBND(declared)}</p></div><div><p className="text-xs text-muted-foreground">Difference</p><p className={`mt-1 font-bold ${Math.abs(difference) <= 0.005 ? 'text-emerald-600' : 'text-destructive'}`}>{formatBND(difference)}</p></div></div>
         {Math.abs(difference) > 0.005 && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">Cash handed over + CDM must equal Accepted Cash before submission.</p>}
         <div className="space-y-2"><Label>RECEIPT PHOTO</Label><Input type="file" accept="image/*" multiple capture="environment" onChange={(event) => setPendingFiles((current) => [...current, ...Array.from(event.target.files || [])])} disabled={!editable} /><p className="text-xs text-muted-foreground">Add multiple photos. Photos stay private to the permitted Driver, Runner or Admin.</p><div className="grid grid-cols-3 gap-2">{(photos.data || []).map((photo) => <div key={photo.id} className="relative overflow-hidden rounded-lg border border-border/50">{photoUrls[photo.id] ? <img src={photoUrls[photo.id]} alt="Receipt" className="aspect-square w-full object-cover" /> : <div className="aspect-square animate-pulse bg-muted" />}<button type="button" className="absolute right-1 top-1 rounded-full bg-background/90 p-1" onClick={() => removePhoto.mutate({ id: photo.id, storagePath: photo.storage_path })} disabled={!editable}><Trash2 className="h-3 w-3 text-destructive" /></button></div>)}{pendingFiles.map((file, index) => <div key={`${file.name}-${index}`} className="relative flex aspect-square items-center justify-center rounded-lg border border-dashed border-primary/50 bg-primary/5"><Camera className="h-5 w-5 text-primary" /><button type="button" className="absolute right-1 top-1 rounded-full bg-background/90 p-1" onClick={() => setPendingFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}><Trash2 className="h-3 w-3 text-destructive" /></button></div>)}<label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-border/70"><Plus className="h-5 w-5 text-muted-foreground" /><input type="file" accept="image/*" multiple className="hidden" onChange={(event) => setPendingFiles((current) => [...current, ...Array.from(event.target.files || [])])} disabled={!editable} /></label></div></div>

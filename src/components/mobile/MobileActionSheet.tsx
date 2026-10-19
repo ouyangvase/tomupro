@@ -25,6 +25,7 @@ interface MobileActionSheetProps {
   confirmDisabled?: boolean;
   panelClassName?: string;
   nativeScroll?: boolean;
+  compactActions?: boolean;
 }
 
 export function MobileActionSheet({
@@ -41,6 +42,7 @@ export function MobileActionSheet({
   confirmDisabled = false,
   panelClassName,
   nativeScroll = false,
+  compactActions = false,
 }: MobileActionSheetProps) {
   const handleConfirm = async () => {
     if (onConfirm) {
@@ -82,10 +84,16 @@ export function MobileActionSheet({
           )
         )}
 
-        <div className="shrink-0 sticky bottom-0 bg-background pt-4 pb-2 flex flex-col gap-2">
+        <div className={cn(
+          "shrink-0 sticky bottom-0 bg-background flex flex-col",
+          compactActions ? "gap-1 pt-2 pb-1" : "gap-2 pt-4 pb-2",
+        )}>
           <Button
             variant={confirmVariant}
-            className="w-full h-12 min-h-[44px] text-base"
+            className={cn(
+              "w-full min-h-[44px] text-base",
+              compactActions ? "h-10 text-sm" : "h-12",
+            )}
             onClick={handleConfirm}
             disabled={isLoading || confirmDisabled}
           >
@@ -94,7 +102,10 @@ export function MobileActionSheet({
           </Button>
           <Button
             variant="ghost"
-            className="w-full h-12 min-h-[44px] text-base"
+            className={cn(
+              "w-full min-h-[44px] text-base",
+              compactActions ? "h-10 text-sm" : "h-12",
+            )}
             onClick={() => onOpenChange(false)}
             disabled={isLoading}
           >
