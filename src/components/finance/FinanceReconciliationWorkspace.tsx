@@ -171,12 +171,11 @@ export default function FinanceReconciliationWorkspace() {
   const [selectedClaims, setSelectedClaims] = useState<string[]>([]);
   const [outAmount, setOutAmount] = useState('0');
   const workspace = useFinanceReconciliationWorkspace({
-    dateFrom, dateTo, runnerId: role === 'runner' ? profile?.id : undefined, type, checked, bank, search,
+    dateFrom, dateTo, type, checked, bank, search,
   });
   const endJobPhotos = useFinanceEndJobPhotos({
     dateFrom,
     dateTo,
-    runnerId: role === 'runner' ? profile?.id : undefined,
   }, tab === 'daily');
   const confirmCash = useDailyCashConfirmation();
   const saveClaim = useSaveClaimReconciliation();
