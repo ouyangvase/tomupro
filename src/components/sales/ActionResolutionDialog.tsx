@@ -137,13 +137,21 @@ export function ActionResolutionDialog({ order, open, onOpenChange, onSuccess }:
           ? boundRunners.find(r => r.id === selectedRunnerId)?.display_name || 'Unknown'
           : null;
 
-        await callSupabaseRpc('set_order_auto_reschedule', {
+        const result = await callSupabaseRpc<{
+          changed?: boolean;
+          message?: string;
+        }>('set_order_auto_reschedule', {
           p_order_id: order.id,
           p_next_delivery_date: rescheduleDate,
           p_runner_id: selectedRunnerId,
           p_comment: `${hasRunnerDate ? 'Confirmed' : 'Set'} auto-reschedule${selectedRunnerName ? ` (Runner: ${selectedRunnerName})` : ''}: ${autoRescheduleRemark || 'No comment'}`,
           p_expected_state: order.current_operational_state || null,
         });
+
+        if (result?.changed === false) {
+          toast.info(result.message || 'This order changed before auto-reschedule could be applied.');
+          return;
+        }
 
         toast.success('Order confirmed for auto-reschedule');
         handleClose();

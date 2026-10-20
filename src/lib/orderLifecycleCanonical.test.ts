@@ -74,6 +74,10 @@ const autoRescheduleEnumMigration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260819134441_cast_auto_reschedule_runner_status_enum.sql'),
   'utf8',
 );
+const autoRescheduleRetryGuardMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20261020123000_stop_auto_reschedule_retry_storm.sql'),
+  'utf8',
+);
 const useOrdersSource = readFileSync(resolve(process.cwd(), 'src/hooks/useOrders.ts'), 'utf8');
 const actionResolutionSource = readFileSync(resolve(process.cwd(), 'src/components/sales/ActionResolutionDialog.tsx'), 'utf8');
 const cancelOrdersSource = readFileSync(resolve(process.cwd(), 'src/hooks/useCancelOrder.ts'), 'utf8');
@@ -127,6 +131,17 @@ describe('canonical order lifecycle database contract', () => {
     expect(autoRescheduleEnumMigration).toContain("'UNASSIGNED'::runner_status");
     expect(autoRescheduleEnumMigration).toContain("'ASSIGNED'::runner_status");
     expect(autoRescheduleEnumMigration).toContain('set_order_auto_reschedule runner_status expression');
+  });
+
+  it('makes auto-reschedule requests terminal and idempotent', () => {
+    expect(autoRescheduleRetryGuardMigration).toContain('idx_orders_due_rescheduled_booking');
+    expect(autoRescheduleRetryGuardMigration).toContain('clear_auto_reschedule_marker_on_lifecycle_change');
+    expect(autoRescheduleRetryGuardMigration).toContain("v_order.operational_status = 'BOOKING_AUTO_RESCHEDULE'");
+    expect(autoRescheduleRetryGuardMigration).toContain("'auto_reschedule_cancelled', true");
+    expect(autoRescheduleRetryGuardMigration).toContain("'stale', true");
+    expect(autoRescheduleRetryGuardMigration).toContain("'idempotent', true");
+    expect(autoRescheduleRetryGuardMigration).toContain('v_order.next_delivery_date = p_next_delivery_date');
+    expect(autoRescheduleRetryGuardMigration).toContain('runner_status = CASE WHEN p_runner_id IS NULL THEN');
   });
 
   it('uses an explicit, scoped reopen path for cancelled order restoration', () => {

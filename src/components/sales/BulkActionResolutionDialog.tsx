@@ -176,7 +176,10 @@ export function BulkActionResolutionDialog({
           }
 
           try {
-            await callSupabaseRpc('set_order_auto_reschedule', {
+            const result = await callSupabaseRpc<{
+              changed?: boolean;
+              message?: string;
+            }>('set_order_auto_reschedule', {
               p_order_id: order.id,
               p_next_delivery_date: rescheduleDate,
               p_runner_id: selectedRunnerId,
@@ -184,7 +187,12 @@ export function BulkActionResolutionDialog({
               p_expected_state: order.current_operational_state || null,
             });
 
-            resultItems.push({ orderId: order.id, orderCode: order.order_code, status: 'success' });
+            resultItems.push({
+              orderId: order.id,
+              orderCode: order.order_code,
+              status: result?.changed === false ? 'skipped' : 'success',
+              reason: result?.changed === false ? (result.message || 'Order was already handled or is no longer eligible') : undefined,
+            });
           } catch (error: any) {
             resultItems.push({
               orderId: order.id,

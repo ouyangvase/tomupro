@@ -13,6 +13,13 @@ interface SetAutoRescheduleParams {
   expectedState?: string;
 }
 
+interface AutoRescheduleRpcResult {
+  success?: boolean;
+  changed?: boolean;
+  next_delivery_date?: string;
+  message?: string;
+}
+
 export function useSetAutoReschedule() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -21,7 +28,7 @@ export function useSetAutoReschedule() {
     mutationFn: async (params: SetAutoRescheduleParams) => {
       if (!user) throw new Error('Not authenticated');
 
-      await callSupabaseRpc('set_order_auto_reschedule', {
+      const result = await callSupabaseRpc<AutoRescheduleRpcResult>('set_order_auto_reschedule', {
         p_order_id: params.orderId,
         p_next_delivery_date: params.nextDate,
         p_runner_id: params.runnerId,
@@ -29,11 +36,20 @@ export function useSetAutoReschedule() {
         p_expected_state: params.expectedState || null,
       });
 
-      return { success: true, nextDate: params.nextDate };
+      return {
+        success: result?.success !== false,
+        changed: result?.changed !== false,
+        nextDate: result?.next_delivery_date || params.nextDate,
+        message: result?.message,
+      };
     },
     onSuccess: (data) => {
       invalidateOrderQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['reschedule-history'] });
+      if (!data.changed) {
+        toast.info(data.message || 'Auto-reschedule was already handled or is no longer eligible.');
+        return;
+      }
       toast.success(`Auto reschedule set. Order will move to Ready on ${data.nextDate}`);
     },
     onError: (error) => {
