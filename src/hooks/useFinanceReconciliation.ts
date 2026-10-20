@@ -56,6 +56,20 @@ export type ClaimBatch = {
   submitted_at: string;
 };
 
+export type FinanceEndJobPhoto = {
+  id: string;
+  end_job_id: string;
+  driver_id: string;
+  runner_id: string;
+  job_date: string;
+  driver_name: string;
+  storage_path: string;
+  uploaded_at: string;
+  confirmed: boolean;
+  confirmed_by?: string | null;
+  confirmed_at?: string | null;
+};
+
 function workspaceParams(filters: FinanceWorkspaceFilters) {
   return {
     p_date_from: filters.dateFrom || null,
@@ -75,6 +89,22 @@ export function useFinanceReconciliationWorkspace(filters: FinanceWorkspaceFilte
   return useQuery({
     queryKey: ['finance-reconciliation-workspace', filters],
     queryFn: () => callSupabaseRpc<FinanceWorkspacePayload>('get_finance_reconciliation_workspace', workspaceParams(filters)),
+    enabled: Boolean(enabled && filters.dateFrom),
+    staleTime: 20_000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * (attempt + 1), 3000),
+  });
+}
+
+export function useFinanceEndJobPhotos(filters: Pick<FinanceWorkspaceFilters, 'dateFrom' | 'dateTo' | 'runnerId' | 'driverId'>, enabled = true) {
+  return useQuery({
+    queryKey: ['finance-end-job-photos', filters],
+    queryFn: () => callSupabaseRpc<FinanceEndJobPhoto[]>('get_finance_end_job_photos', {
+      p_date_from: filters.dateFrom || null,
+      p_date_to: filters.dateTo || filters.dateFrom || null,
+      p_runner_id: filters.runnerId || null,
+      p_driver_id: filters.driverId || null,
+    }),
     enabled: Boolean(enabled && filters.dateFrom),
     staleTime: 20_000,
     retry: 2,
@@ -162,6 +192,20 @@ export function useDailyCashConfirmation() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['finance-reconciliation-workspace'] });
+    },
+  });
+}
+
+export function useReviewEndJobPhoto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { photoId: string; confirmed: boolean }) =>
+      callSupabaseRpc<FinanceEndJobPhoto>('review_finance_end_job_photo', {
+        p_photo_id: input.photoId,
+        p_confirmed: input.confirmed,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['finance-end-job-photos'] });
     },
   });
 }
