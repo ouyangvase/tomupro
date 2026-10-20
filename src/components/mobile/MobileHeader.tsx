@@ -54,7 +54,7 @@ export function MobileHeader({ onNotificationClick, onProfileClick }: MobileHead
     )}>
       {searchOpen ? (
         /* Search mode — full-width search bar */
-        <div className="mobile-top-island-core flex items-center gap-2">
+        <div className="mobile-top-island-core mobile-top-island-search-core flex items-center gap-2">
           <div className="flex-1">
             <GlobalSearchBar variant="mobile" />
           </div>

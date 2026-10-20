@@ -415,6 +415,11 @@
     padding: 0.625rem;
   }
 
+  /* Search results extend below the top island while search mode is open. */
+  .mobile-top-island-search-core {
+    overflow: visible;
+  }
+
   .mobile-bottom-dock-core {
     border-radius: calc(2rem - 0.25rem);
   }

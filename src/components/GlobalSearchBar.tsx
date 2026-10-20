@@ -44,6 +44,16 @@ const getSearchSubstatus = (state: CurrentOrderState) => {
   return state.currentSubStatus && date ? `${state.currentSubStatus} · ${date}` : state.currentSubStatus;
 };
 
+const getSearchLocation = (state: CurrentOrderState) => {
+  switch (state.destinationTab) {
+    case 'booking': return 'Booking Orders';
+    case 'ready': return 'Ready Orders';
+    case 'delivered': return 'Delivered Orders';
+    case 'cancelled': return 'Cancelled Orders';
+    case 'action-required': return 'Action Required';
+  }
+};
+
 const getRunnerSearchRoute = (order: SearchResult) => {
   const tab = order.currentState.destinationTab === 'delivered'
     ? 'delivered'
@@ -64,7 +74,7 @@ const getRoleAwareSearchRoute = (order: SearchResult, role?: string | null) => {
   if (role === 'driver') {
     const params = new URLSearchParams({ highlight: order.id });
     if (order.order_code) params.set('search', order.order_code);
-    return `/delivery?${params.toString()}`;
+    return `/delivery/inbox?${params.toString()}`;
   }
 
   const route = getOrderTabRoute(order);
@@ -103,6 +113,10 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
   // Search orders when query changes
   useEffect(() => {
     const requestId = ++searchRequestRef.current;
+    const controller = new AbortController();
+    let timeoutId: number | undefined;
+    let timedOut = false;
+
     const searchOrders = async () => {
       const orderCodeQuery = normalizeOrderCodeQuery(query);
       if (orderCodeQuery.length < 2) {
@@ -116,19 +130,27 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
       setIsLoading(true);
       setSearchError(null);
       if (profileStatus !== 'ready' || !profile?.id || !profile.role) {
-        setShowDropdown(true);
+        setResults([]);
         if (profileStatus === 'error' || profileStatus === 'missing') {
+          setShowDropdown(true);
           setSearchError('Search is unavailable until your account is ready.');
-          setIsLoading(false);
+        } else {
+          setShowDropdown(false);
         }
+        setIsLoading(false);
         return;
       }
 
       try {
+        timeoutId = window.setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, 10000);
+
         const { data, error } = await supabase.rpc('search_visible_orders', {
           p_query: query.trim(),
           p_limit: 20,
-        });
+        }).abortSignal(controller.signal);
         if (error) throw error;
         if (requestId !== searchRequestRef.current) return;
         const currentOrders = dedupeOrderSearchResults(data || []);
@@ -159,17 +181,23 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
         })));
         setShowDropdown(true);
       } catch (error) {
-        if (requestId !== searchRequestRef.current) return;
+        if (requestId !== searchRequestRef.current || (!timedOut && controller.signal.aborted)) return;
         setResults([]);
-        setSearchError(error instanceof Error ? error.message : 'Search failed. Please try again.');
+        setSearchError(timedOut
+          ? 'Search timed out. Please try again.'
+          : error instanceof Error ? error.message : 'Search failed. Please try again.');
         setShowDropdown(true);
       } finally {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
         if (requestId === searchRequestRef.current) setIsLoading(false);
       }
     };
 
     const debounce = setTimeout(searchOrders, 300);
-    return () => clearTimeout(debounce);
+    return () => {
+      clearTimeout(debounce);
+      controller.abort();
+    };
   }, [profile?.id, profile?.role, profileStatus, query, refreshVersion]);
 
   // Re-resolve an open search when the live order row changes. The status is
@@ -284,6 +312,9 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                       const substatus = getSearchSubstatus(order.currentState);
                       return (
                         <div className="flex flex-col items-end gap-1">
+                          <span className="text-[11px] font-medium text-muted-foreground">
+                            In {getSearchLocation(order.currentState)}
+                          </span>
                           <span className={cn(
                             "text-xs px-2 py-0.5 rounded-full",
                             displayStatus === 'BOOKING' && "bg-blue-500/10 text-blue-500",
@@ -370,6 +401,9 @@ export function GlobalSearchBar({ variant = 'desktop', className }: GlobalSearch
                       const substatus = getSearchSubstatus(order.currentState);
                       return (
                       <div className="flex flex-col items-end gap-1">
+                        <span className="text-[11px] font-medium text-muted-foreground">
+                          In {getSearchLocation(order.currentState)}
+                        </span>
                         <span className={cn(
                           "text-xs px-2.5 py-1 rounded-full font-medium",
                           displayStatus === 'BOOKING' && "bg-blue-500/10 text-blue-500",
