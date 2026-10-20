@@ -4,6 +4,7 @@ import {
   normalizeOrderCodeSearch,
   orderCodeSearchPattern,
   dedupeOrderSearchResults,
+  matchesOrderCodeOrPhoneSearch,
 } from './orderSearch';
 
 describe('order code search', () => {
@@ -16,6 +17,14 @@ describe('order code search', () => {
     expect(hasOrderCodeSearch()).toBe(false);
     expect(hasOrderCodeSearch('   ')).toBe(false);
     expect(hasOrderCodeSearch('PL4371')).toBe(true);
+  });
+
+  it('matches delivered orders by formatted or local phone digits', () => {
+    const order = { order_code: 'FX270', phone: '+673 710-9093' };
+    expect(matchesOrderCodeOrPhoneSearch(order, '7109093')).toBe(true);
+    expect(matchesOrderCodeOrPhoneSearch(order, '+6737109093')).toBe(true);
+    expect(matchesOrderCodeOrPhoneSearch(order, 'FX270')).toBe(true);
+    expect(matchesOrderCodeOrPhoneSearch(order, '7100000')).toBe(false);
   });
 
   it('keeps one latest result for duplicate canonical IDs and order codes', () => {

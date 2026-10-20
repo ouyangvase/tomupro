@@ -11,6 +11,22 @@ export function orderCodeSearchPattern(value?: string) {
   return normalized ? `${normalized}%` : undefined;
 }
 
+export function normalizePhoneSearch(value?: string | null) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+export function matchesOrderCodeOrPhoneSearch(
+  order: { order_code?: string | null; phone?: string | null },
+  value?: string,
+) {
+  const normalizedQuery = normalizeOrderCodeSearch(value);
+  if (!normalizedQuery) return true;
+
+  const normalizedPhoneQuery = normalizePhoneSearch(value);
+  return normalizeOrderCodeSearch(order.order_code || '').startsWith(normalizedQuery)
+    || (normalizedPhoneQuery.length > 0 && normalizePhoneSearch(order.phone).includes(normalizedPhoneQuery));
+}
+
 export function dedupeOrderSearchResults<T extends {
   id: string;
   order_code: string;

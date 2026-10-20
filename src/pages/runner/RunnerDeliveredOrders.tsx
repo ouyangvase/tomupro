@@ -17,6 +17,7 @@ import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useRevertDelivery } from '@/hooks/useRevertDelivery';
 import { useValidAreas } from '@/hooks/useValidAreas';
 import { formatBND } from '@/lib/currency';
+import { matchesOrderCodeOrPhoneSearch } from '@/lib/orderSearch';
 import { useDeliveredOrdersFastAll, useVisibleOwnerIds, type DeliveredOrder } from '@/hooks/useDeliveredOrders';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatOrderItemsDisplay } from '@/lib/orderItemsDisplay';
@@ -417,11 +418,7 @@ export default function RunnerDeliveredOrders({
 
     // Search
     if (searchQuery.trim()) {
-      const q = searchQuery.trim().toUpperCase().replace(/\s+/g, '');
-      filtered = filtered.filter(o =>
-        (o.order_code || '').toUpperCase().replace(/\s+/g, '').startsWith(q)
-        || (o.phone || '').replace(/\s+/g, '').includes(q)
-      );
+      filtered = filtered.filter(o => matchesOrderCodeOrPhoneSearch(o, searchQuery));
     }
     // Area
     if (areaFilter === EXCLUDE_P_AREAS_FILTER) {
