@@ -535,7 +535,7 @@ async function submitDriverFailedResult({
   submissionId,
 }: SubmitDriverFailedResultParams) {
   const submission = getDriverFailureSubmission(reason, nextDeliveryDate);
-  const { data, error } = await supabase.rpc('submit_driver_delivery_result', {
+  const { data, error } = await supabase.rpc('submit_driver_failed_result', {
     p_order_id: orderId,
     p_result_type: submission.resultType,
     p_reason: submission.reason,

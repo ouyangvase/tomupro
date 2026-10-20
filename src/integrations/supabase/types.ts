@@ -4874,6 +4874,19 @@ export type Database = {
         Args: { p_order_id: string; p_payment_method: string; p_cash_amount: number; p_transfer_amount: number; p_submission_id: string; p_proof_images?: Json; p_submission_mode?: string }
         Returns: Json
       }
+      submit_driver_failed_result: {
+        Args: {
+          p_order_id: string
+          p_result_type: string
+          p_reason?: string | null
+          p_remark?: string | null
+          p_next_delivery_date?: string | null
+          p_submission_id?: string
+          p_proof_images?: Json
+          p_submission_mode?: string
+        }
+        Returns: Json
+      }
       create_order_with_payment: {
         Args: { p_order: Json; p_transfer_amount: number }
         Returns: Json
