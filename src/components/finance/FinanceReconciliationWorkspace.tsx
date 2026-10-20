@@ -21,15 +21,18 @@ import {
 import { toast } from 'sonner';
 import { calculateClaimGross } from '@/lib/financeReconciliation';
 import { downloadXlsxWorkbook } from '@/lib/xlsxExport';
+import { getSignedStorageUrl } from '@/lib/storageUrls';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   getEndJobPhotoUrl,
   useDailyCashConfirmation,
+  useFinanceDriverProofPhotos,
   useFinanceEndJobPhotos,
   useFinanceReconciliationWorkspace,
   useReviewEndJobPhoto,
   useSaveClaimReconciliation,
   useSaveFinanceReceipt,
+  type FinanceDriverProofPhoto,
   type FinanceEndJobPhoto,
   type FinanceRecord,
 } from '@/hooks/useFinanceReconciliation';
@@ -154,6 +157,29 @@ function EndJobPhotoCard({ photo }: { photo: FinanceEndJobPhoto }) {
   );
 }
 
+function DriverProofPhotoCard({ photo }: { photo: FinanceDriverProofPhoto }) {
+  const photoUrl = useQuery({
+    queryKey: ['finance-driver-proof-photo-url', photo.id, photo.photo_url],
+    queryFn: () => getSignedStorageUrl(photo.photo_url, 'delivery-photos', 10 * 60),
+    staleTime: 9 * 60_000,
+  });
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border/50 bg-background">
+      {photoUrl.data ? (
+        <a href={photoUrl.data} target="_blank" rel="noreferrer" className="block" aria-label={`View delivery proof for ${photo.order_code}`}>
+          <img src={photoUrl.data} alt={`Driver delivery proof for ${photo.order_code}`} className="aspect-square w-full object-cover transition-opacity hover:opacity-80" />
+        </a>
+      ) : (
+        <div className="flex aspect-square items-center justify-center bg-muted/40">
+          {photoUrl.isError ? <span className="px-2 text-center text-[10px] text-muted-foreground">Photo unavailable</span> : <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
+      )}
+      <p className="truncate px-1.5 py-1 text-[10px] text-muted-foreground" title={photo.order_code}>{photo.order_code}</p>
+    </div>
+  );
+}
+
 export default function FinanceReconciliationWorkspace() {
   const { profile, role } = useAuth();
   const [tab, setTab] = useState<WorkspaceTab>('daily');
@@ -174,6 +200,11 @@ export default function FinanceReconciliationWorkspace() {
     dateFrom, dateTo, runnerId: role === 'runner' ? profile?.id : undefined, type, checked, bank, search,
   });
   const endJobPhotos = useFinanceEndJobPhotos({
+    dateFrom,
+    dateTo,
+    runnerId: role === 'runner' ? profile?.id : undefined,
+  }, tab === 'daily');
+  const driverProofPhotos = useFinanceDriverProofPhotos({
     dateFrom,
     dateTo,
     runnerId: role === 'runner' ? profile?.id : undefined,
@@ -343,7 +374,8 @@ export default function FinanceReconciliationWorkspace() {
             </div>
             {open && <div className="border-t border-border/40 bg-muted/20 p-3"><div className="hidden grid-cols-5 gap-2 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid"><span>Driver</span><span>Accepted</span><span>Cash</span><span>CDM</span><span>Status</span></div>{drivers.length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">No submitted End Job for this date.</p> : drivers.map((driver) => {
               const driverPhotos = (endJobPhotos.data || []).filter((photo) => photo.job_date === date && photo.driver_id === String(driver.driver_id));
-              return <div key={String(driver.driver_id)} className="border-t border-border/30 px-2 py-2.5 text-sm sm:py-3"><div className="grid gap-1.5 sm:grid-cols-5 sm:gap-2"><span className="font-medium">{String(driver.driver_name)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Accepted</span>{money(driver.accepted_cash)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Cash</span>{money(driver.cash_handed)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">CDM</span>{money(driver.cdm_amount)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Status</span><span className={Number(driver.difference || 0) === 0 ? 'text-emerald-600' : 'text-amber-600'}>{String(driver.status)}</span></span></div><div className="mt-2 rounded-lg border border-border/40 bg-background/60 p-2"><div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><span>Receipt photos</span><span>{driverPhotos.length ? `${driverPhotos.length} uploaded` : 'None uploaded'}</span></div>{driverPhotos.length > 0 && <div className="mt-2 grid grid-cols-3 gap-2">{driverPhotos.map((photo) => <EndJobPhotoCard key={photo.id} photo={photo} />)}</div>}</div></div>;
+              const driverProofs = (driverProofPhotos.data || []).filter((photo) => photo.job_date === date && photo.driver_id === String(driver.driver_id));
+              return <div key={String(driver.driver_id)} className="border-t border-border/30 px-2 py-2.5 text-sm sm:py-3"><div className="grid gap-1.5 sm:grid-cols-5 sm:gap-2"><span className="font-medium">{String(driver.driver_name)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Accepted</span>{money(driver.accepted_cash)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Cash</span>{money(driver.cash_handed)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">CDM</span>{money(driver.cdm_amount)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Status</span><span className={Number(driver.difference || 0) === 0 ? 'text-emerald-600' : 'text-amber-600'}>{String(driver.status)}</span></span></div><div className="mt-2 rounded-lg border border-border/40 bg-background/60 p-2"><div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><span>End Job receipt photos</span><span>{driverPhotos.length ? `${driverPhotos.length} uploaded` : driverProofs.length ? 'None attached' : 'None uploaded'}</span></div>{driverPhotos.length > 0 && <div className="mt-2 grid grid-cols-3 gap-2">{driverPhotos.map((photo) => <EndJobPhotoCard key={photo.id} photo={photo} />)}</div>}{driverProofs.length > 0 && <div className={`${driverPhotos.length > 0 ? 'mt-3 border-t border-border/40 pt-3' : 'mt-2'}`}><div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><span>Driver delivery photos</span><span>{driverProofs.length} uploaded</span></div><p className="mt-1 text-[11px] text-muted-foreground">These are delivery proof photos, separate from the End Job receipt.</p><div className="mt-2 grid grid-cols-3 gap-2">{driverProofs.slice(0, 6).map((photo) => <DriverProofPhotoCard key={photo.id} photo={photo} />)}</div>{driverProofs.length > 6 && <p className="mt-2 text-[11px] text-muted-foreground">Showing the latest 6 of {driverProofs.length} delivery photos.</p>}</div>}</div></div>;
             })}</div>}
           </div>;
         })}
