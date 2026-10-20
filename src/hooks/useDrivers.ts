@@ -461,7 +461,10 @@ export function useDriverMarkDelivered() {
         p_payment_method: paymentMethod,
         p_cash_amount: cashAmount ?? 0,
         p_transfer_amount: transferAmount ?? 0,
-        p_proof_images: proofImages ?? [],
+        // Let the database reuse proof attachments on a retry when no new
+        // files were selected. An empty JSON array would intentionally replace
+        // the existing proof list and make a Transfer retry fail validation.
+        p_proof_images: proofImages?.length ? proofImages : null,
         p_submission_mode: submissionMode,
         p_submission_id: submissionId,
       });
