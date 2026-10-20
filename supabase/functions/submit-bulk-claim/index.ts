@@ -40,9 +40,14 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+      console.error('[submit-bulk-claim] Supabase authentication configuration is incomplete');
+      return json({ success: false, error: 'Claim submission is temporarily unavailable. Please try again later.' });
+    }
 
     // Auth
     const authHeader = req.headers.get('Authorization');
@@ -50,12 +55,27 @@ serve(async (req) => {
       return json({ success: false, error: 'No authorization header' });
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!token) {
       return json({ success: false, error: 'Invalid authentication' });
     }
+
+    // Verify the caller with the public auth key and pass the caller token through
+    // the client. Keep the service-role client separate for the writes below.
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+
+    if (authError || !user) {
+      console.error('[submit-bulk-claim] Authentication failed:', authError?.message || 'No user returned');
+      return json({ success: false, error: 'Invalid authentication' });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
     const { orderIds, note, exchangeRate } = await req.json();
 
