@@ -311,20 +311,36 @@ export function useDriverPickups() {
 
   return useQuery({
     queryKey: ['driver-pickups', user?.id],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .from('driver_pickups')
-        .select(`
-          *,
-          runner:profiles!driver_pickups_runner_id_fkey(id, display_name, email),
-          items:driver_pickup_items(*, product:products(id, sku_name, sku_code))
-        `)
-        .eq('driver_id', user.id)
-        .order('pickup_date', { ascending: false });
-      if (error) throw error;
-      return data as DriverPickup[];
+      const controller = new AbortController();
+      const abortFromQuery = () => controller.abort();
+      signal.addEventListener('abort', abortFromQuery, { once: true });
+      const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+
+      try {
+        const { data, error } = await supabase
+          .from('driver_pickups')
+          .select(`
+            *,
+            runner:profiles!driver_pickups_runner_id_fkey(id, display_name, email),
+            items:driver_pickup_items(*, product:products(id, sku_name, sku_code))
+          `)
+          .eq('driver_id', user.id)
+          .order('pickup_date', { ascending: false })
+          .abortSignal(controller.signal);
+        if (error) throw error;
+        return data as DriverPickup[];
+      } catch (error) {
+        if (controller.signal.aborted && !signal.aborted) {
+          throw new Error('Pickup records request timed out. Please try again.');
+        }
+        throw error;
+      } finally {
+        window.clearTimeout(timeoutId);
+        signal.removeEventListener('abort', abortFromQuery);
+      }
     },
     enabled: !!user?.id,
     refetchOnMount: 'always',
