@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculatePaymentBreakdown, orderCodDue, orderPaymentBreakdown, paymentPlanValues, validateTransferAmount } from './orderPayment';
+import { calculatePaymentBreakdown, isPureTransferOrder, orderCodDue, orderPaymentBreakdown, paymentPlanValues, validateTransferAmount } from './orderPayment';
 import { getDriverReportedPaymentComponents } from './driverReviewDateGroups';
 
 describe('order payment breakdown', () => {
@@ -16,6 +16,11 @@ describe('order payment breakdown', () => {
   });
   it('full transfer needs no Driver collection', () => {
     expect(orderPaymentBreakdown({ ...partial, payment_plan: 'TRANSFER', payment_method: 'TRANSFER', cod_amount: 0 })).toMatchObject({ totalAmount: 72, transferPaid: 72, codDue: 0, outstanding: 0, paymentStatus: 'PAID' });
+  });
+  it('identifies pure transfer orders even if stale COD fields remain', () => {
+    expect(isPureTransferOrder({ payment_plan: 'TRANSFER', payment_method: 'TRANSFER', total_amount: 39, cod_amount: 39 })).toBe(true);
+    expect(isPureTransferOrder({ payment_plan: 'PARTIAL_TRANSFER_COD', payment_method: 'COD' })).toBe(false);
+    expect(isPureTransferOrder({ payment_plan: 'COD', payment_method: 'COD' })).toBe(false);
   });
   it.each([-1, 80, NaN, Infinity, 30.001])('rejects invalid transfer %s', transfer => {
     expect(() => validateTransferAmount(72, transfer)).toThrow();

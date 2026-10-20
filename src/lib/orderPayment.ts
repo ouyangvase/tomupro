@@ -59,6 +59,12 @@ export function hasCustomerTransfer(order: OrderPaymentFields) {
   return order.payment_plan === 'PARTIAL_TRANSFER_COD' || order.payment_plan === 'TRANSFER' || order.payment_method === 'TRANSFER';
 }
 
+/** A fully prepaid order must never be collected as cash at delivery. */
+export function isPureTransferOrder(order: OrderPaymentFields) {
+  return order.payment_plan === 'TRANSFER'
+    || (order.payment_method === 'TRANSFER' && order.payment_plan !== 'PARTIAL_TRANSFER_COD');
+}
+
 export function orderCollectionAmount(order: OrderPaymentFields) {
   if (order.cod_due_amount != null) return Math.max(0, money(order.cod_due_amount));
   if (order.payment_plan && hasCustomerTransfer(order) && order.receipt_status !== 'confirmed') {
