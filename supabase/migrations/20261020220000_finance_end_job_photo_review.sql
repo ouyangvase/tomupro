@@ -10,6 +10,33 @@ alter table public.finance_end_job_photos
 create index if not exists finance_end_job_photos_review_idx
   on public.finance_end_job_photos (confirmed, deleted_at, end_job_id);
 
+create or replace function private.finance_end_job_photo_review_guard()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, private, pg_temp
+as $$
+begin
+  if private.finance_role() not in ('admin','manager') then
+    if tg_op = 'INSERT' and coalesce(new.confirmed, false) then
+      raise exception 'Receipt photo review is not permitted';
+    elsif tg_op = 'UPDATE' and (
+      new.confirmed is distinct from old.confirmed
+      or new.confirmed_by is distinct from old.confirmed_by
+      or new.confirmed_at is distinct from old.confirmed_at
+    ) then
+      raise exception 'Receipt photo review is not permitted';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_finance_end_job_photo_review_guard on public.finance_end_job_photos;
+create trigger trg_finance_end_job_photo_review_guard
+before insert or update on public.finance_end_job_photos
+for each row execute function private.finance_end_job_photo_review_guard();
+
 create or replace function public.get_finance_end_job_photos(
   p_date_from date default null,
   p_date_to date default null,
