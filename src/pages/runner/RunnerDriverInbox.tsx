@@ -67,6 +67,7 @@ import { getActiveDriverAssignmentIds, getAssignableDriverIdsForRunners } from '
 import {
   getDriverOperationalDateKey,
   getTodayDateKey,
+  isPendingDriverOutcome,
   isRunnerDriverAssignmentCandidate,
   isStaleActiveDriverAssignment,
   normalizeDriverStatus,
@@ -252,6 +253,10 @@ function isAssignedForAreaSummary(order: RunnerOrder, activeAssignmentOrderIds: 
 function isActiveQueueUnassigned(order: RunnerOrder, _targetDateKey?: string) {
   const driverStatus = normalizeDriverStatus(order.driver_status) || 'UNASSIGNED';
   return !order.driver_id || driverStatus === 'UNASSIGNED';
+}
+
+function isPendingDriverReassignmentCandidate(order: RunnerOrder) {
+  return Boolean(order.driver_id) && isPendingDriverOutcome(order);
 }
 
 function getLocalityLabel(order: RunnerOrder, areaCode: string) {
@@ -561,8 +566,8 @@ export default function RunnerDriverInbox({
     [allRunnerOrders, todayDateKey],
   );
   // Keep the Driver Inbox on the same active queue as Runner Inbox. Driver-reported
-  // outcomes stay visible for tally/review, but remain locked from reassignment
-  // until the Runner processes the result.
+  // outcomes stay visible for review and can be explicitly reassigned to a new
+  // Driver; ordinary assignment selection still excludes them.
   const dispatchAreaOrders = allRunnerOrders;
   const assignableDispatchOrders = useMemo(
     () => allRunnerOrders.filter(isRunnerDriverAssignmentCandidate),
@@ -778,7 +783,7 @@ export default function RunnerDriverInbox({
     return order ? isAssignedForAreaSummary(order, activeAssignmentOrderIds) : false;
   });
   const selectedHasSpecial = selectedRows.some((orderId) => !isNormalArea(getSelectedAreaCode(orderId)));
-  const selectedHasPendingReview = selectedOrders.some((order) => !isRunnerDriverAssignmentCandidate(order));
+  const selectedHasPendingReview = selectedOrders.some(isPendingDriverReassignmentCandidate);
 
   const performanceByDriver = useMemo(() => {
     const grouped = new Map<string, DriverPerformanceOrder[]>();
@@ -1252,7 +1257,7 @@ export default function RunnerDriverInbox({
       toast.error('Resolve Needs Review, Self Pickup, or Cancelled orders before assigning');
       return;
     }
-    if (selectedHasPendingReview) {
+    if (selectedHasPendingReview && action !== 'REASSIGN') {
       toast.error('Review Driver Delivered or Driver Failed orders before reassigning');
       return;
     }
@@ -1721,13 +1726,13 @@ export default function RunnerDriverInbox({
                           areaLabel={getAreaLabel(areaCode, deliveryAreas)}
                           locality={getLocalityLabel(order, areaCode)}
                           isSelected={selectedRows.includes(order.id)}
-                          selectable={isRunnerDriverAssignmentCandidate(order)}
+                          selectable={isRunnerDriverAssignmentCandidate(order) || isPendingDriverReassignmentCandidate(order)}
                           onSelect={(checked) => handleSelectRow(order.id, !!checked)}
                           actions={(
                             <>
-                              {!isRunnerDriverAssignmentCandidate(order) && (
+                              {isPendingDriverReassignmentCandidate(order) && (
                                 <span className="mr-auto text-xs font-medium text-amber-700">
-                                  Review Driver result before reassigning
+                                  Pending Driver result — select to reassign
                                 </span>
                               )}
                               <Button size="sm" variant="outline" onClick={() => {

@@ -101,14 +101,14 @@ async function assignOrdersToDriver(orderIds: string[], driverId: string) {
     throw new Error('Some selected orders are no longer available. Refresh and retry.');
   }
 
+  const assignmentAction = resolveDriverAssignmentAction(selectedOrders);
   const pendingDriverReviewCount = selectedOrders.filter(isPendingDriverOutcome).length;
-  if (pendingDriverReviewCount > 0) {
+  if (pendingDriverReviewCount > 0 && assignmentAction !== 'REASSIGN') {
     throw new Error(
-      `${pendingDriverReviewCount} selected order${pendingDriverReviewCount === 1 ? '' : 's'} has a Driver result waiting for Runner review. Review it from Dispatch > Drivers before reassigning.`,
+      `${pendingDriverReviewCount} selected order${pendingDriverReviewCount === 1 ? '' : 's'} has a Driver result waiting for Runner review. Review it from Dispatch > Drivers before assigning.`,
     );
   }
 
-  const assignmentAction = resolveDriverAssignmentAction(selectedOrders);
   const { data, error } = await driverAssignmentSupabase.rpc<AssignmentBatchResult>(
     'apply_driver_assignment_batch',
     {
