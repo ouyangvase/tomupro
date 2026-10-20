@@ -19,7 +19,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { calculateClaimGross } from '@/lib/financeReconciliation';
+import { calculateClaimGross, hasDriverFinanceAmount } from '@/lib/financeReconciliation';
 import { downloadXlsxWorkbook } from '@/lib/xlsxExport';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
@@ -315,9 +315,10 @@ export default function FinanceReconciliationWorkspace() {
         {daily.map((row) => {
           const date = String(row.job_date || '');
           const drivers = Array.isArray(row.drivers) ? row.drivers as Array<Record<string, unknown>> : [];
+          const visibleDrivers = drivers.filter(hasDriverFinanceAmount);
           const open = Boolean(expandedDates[date]);
           const isRunner = role === 'runner' && profile?.id;
-          const driverCount = drivers.length || Number(row.expected_driver_count || 0);
+          const driverCount = visibleDrivers.length;
           return <div key={date} className="overflow-hidden rounded-xl border border-border/50">
             <div className="p-3 sm:p-4">
               <div className="flex items-center justify-between gap-2">
@@ -340,7 +341,7 @@ export default function FinanceReconciliationWorkspace() {
                 {isRunner && <label className="flex items-center gap-2"><Checkbox checked={Boolean(row.physical_cash_received)} onCheckedChange={(value) => confirmCash.mutate({ runnerId: profile.id, date, received: value === true }, { onError: (error) => toast.error(error.message) })} /><span>Received</span></label>}
               </div>
             </div>
-            {open && <div className="border-t border-border/40 bg-muted/20 p-3"><div className="hidden grid-cols-5 gap-2 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid"><span>Driver</span><span>Accepted</span><span>Cash</span><span>CDM</span><span>Status</span></div>{drivers.length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">No submitted End Job for this date.</p> : drivers.map((driver) => {
+            {open && <div className="border-t border-border/40 bg-muted/20 p-3"><div className="hidden grid-cols-5 gap-2 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid"><span>Driver</span><span>Accepted</span><span>Cash</span><span>CDM</span><span>Status</span></div>{visibleDrivers.length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">No driver with finance amount for this date.</p> : visibleDrivers.map((driver) => {
               const driverPhotos = (endJobPhotos.data || []).filter((photo) => photo.job_date === date && photo.driver_id === String(driver.driver_id));
               return <div key={String(driver.driver_id)} className="border-t border-border/30 px-2 py-2.5 text-sm sm:py-3"><div className="grid gap-1.5 sm:grid-cols-5 sm:gap-2"><span className="font-medium">{String(driver.driver_name)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Accepted</span>{money(driver.accepted_cash)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Cash</span>{money(driver.cash_handed)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">CDM</span>{money(driver.cdm_amount)}</span><span><span className="mr-2 text-xs text-muted-foreground sm:hidden">Status</span><span className={Number(driver.difference || 0) === 0 ? 'text-emerald-600' : 'text-amber-600'}>{String(driver.status)}</span></span></div><div className="mt-2 rounded-lg border border-border/40 bg-background/60 p-2"><div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><span>End Job receipt photos</span><span>{driverPhotos.length ? `${driverPhotos.length} uploaded` : 'None uploaded'}</span></div>{driverPhotos.length > 0 && <div className="mt-2 grid grid-cols-3 gap-2">{driverPhotos.map((photo) => <EndJobPhotoCard key={photo.id} photo={photo} />)}</div>}</div></div>;
             })}</div>}

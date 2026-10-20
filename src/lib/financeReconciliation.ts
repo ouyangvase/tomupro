@@ -23,6 +23,17 @@ export function calculateReconciliation(acceptedCash: number, cashHanded: number
   };
 }
 
+export function hasDriverFinanceAmount(driver: {
+  accepted_cash?: unknown;
+  cash_handed?: unknown;
+  cdm_amount?: unknown;
+}) {
+  return [driver.accepted_cash, driver.cash_handed, driver.cdm_amount].some((value) => {
+    const amount = Number(value ?? 0);
+    return Number.isFinite(amount) && amount !== 0;
+  });
+}
+
 export function calculateClaimGross(batchTotal: number, outAmount: number) {
   const total = Math.max(Number(batchTotal || 0), 0);
   const out = Math.max(Number(outAmount || 0), 0);

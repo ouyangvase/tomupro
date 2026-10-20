@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateClaimGross, calculateReconciliation, isLatestThreeCalendarDays } from './financeReconciliation';
+import { calculateClaimGross, calculateReconciliation, hasDriverFinanceAmount, isLatestThreeCalendarDays } from './financeReconciliation';
 
 describe('finance reconciliation rules', () => {
   it('allows only today and the previous two Brunei calendar days', () => {
@@ -15,6 +15,12 @@ describe('finance reconciliation rules', () => {
     expect(calculateReconciliation(448, 300, 148)).toEqual({ declared: 448, difference: 0, balanced: true });
     expect(calculateReconciliation(448, 300, 100).balanced).toBe(false);
     expect(calculateReconciliation(0, 0, 0).balanced).toBe(true);
+  });
+
+  it('hides driver rows when every displayed finance amount is zero', () => {
+    expect(hasDriverFinanceAmount({ accepted_cash: 0, cash_handed: '0.00', cdm_amount: null })).toBe(false);
+    expect(hasDriverFinanceAmount({ accepted_cash: 664, cash_handed: 0, cdm_amount: 664 })).toBe(true);
+    expect(hasDriverFinanceAmount({ accepted_cash: 0, cash_handed: 9, cdm_amount: 0 })).toBe(true);
   });
 
   it('computes claim gross and rejects OUT above the selected total', () => {
