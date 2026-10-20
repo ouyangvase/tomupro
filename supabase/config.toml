@@ -67,4 +67,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-kitani-points]
-verify_jwt = false
+verify_jwt = true

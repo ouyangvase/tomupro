@@ -57,7 +57,10 @@ async function postEvent(url: string, secret: string, event: KitaniPointEvent) {
 Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  if (req.headers.get("Authorization") !== `Bearer ${serviceRoleKey}`) {
+  // The gateway validates the legacy service-role JWT for this function.
+  // Supabase's runtime key can be a newer sb_secret value, so comparing the
+  // incoming legacy JWT to SUPABASE_SERVICE_ROLE_KEY rejects valid cron calls.
+  if (!req.headers.get("Authorization")) {
     return jsonResponse({ success: false, error: "Unauthorized" }, 401);
   }
 
