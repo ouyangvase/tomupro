@@ -70,18 +70,6 @@ export type FinanceEndJobPhoto = {
   confirmed_at?: string | null;
 };
 
-export type FinanceDriverProofPhoto = {
-  id: string;
-  driver_id: string;
-  runner_id: string;
-  job_date: string;
-  driver_name: string;
-  photo_url: string;
-  uploaded_at: string;
-  order_code: string;
-  source: 'DELIVERY_PROOF';
-};
-
 function workspaceParams(filters: FinanceWorkspaceFilters) {
   return {
     p_date_from: filters.dateFrom || null,
@@ -112,22 +100,6 @@ export function useFinanceEndJobPhotos(filters: Pick<FinanceWorkspaceFilters, 'd
   return useQuery({
     queryKey: ['finance-end-job-photos', filters],
     queryFn: () => callSupabaseRpc<FinanceEndJobPhoto[]>('get_finance_end_job_photos', {
-      p_date_from: filters.dateFrom || null,
-      p_date_to: filters.dateTo || filters.dateFrom || null,
-      p_runner_id: filters.runnerId || null,
-      p_driver_id: filters.driverId || null,
-    }),
-    enabled: Boolean(enabled && filters.dateFrom),
-    staleTime: 20_000,
-    retry: 2,
-    retryDelay: (attempt) => Math.min(1000 * (attempt + 1), 3000),
-  });
-}
-
-export function useFinanceDriverProofPhotos(filters: Pick<FinanceWorkspaceFilters, 'dateFrom' | 'dateTo' | 'runnerId' | 'driverId'>, enabled = true) {
-  return useQuery({
-    queryKey: ['finance-driver-proof-photos', filters],
-    queryFn: () => callSupabaseRpc<FinanceDriverProofPhoto[]>('get_finance_driver_proof_photos', {
       p_date_from: filters.dateFrom || null,
       p_date_to: filters.dateTo || filters.dateFrom || null,
       p_runner_id: filters.runnerId || null,
