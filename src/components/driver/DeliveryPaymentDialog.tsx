@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { formatBND } from '@/lib/currency';
 import { Banknote, Check, CreditCard, Loader2, SplitSquareHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { hasCustomerTransfer, orderCodDue, orderPaymentBreakdown } from '@/lib/orderPayment';
+import { hasCustomerTransfer, isPureTransferOrder, orderCodDue, orderPaymentBreakdown } from '@/lib/orderPayment';
 import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
 
 export type DriverPaymentMethod = 'CASH' | 'TRANSFER' | 'CASH_TRANSFER';
@@ -64,6 +64,7 @@ export function DeliveryPaymentDialog({
   const [collectedAmountText, setCollectedAmountText] = useState('');
 
   const orderAmount = order ? orderCodDue(order) : 0;
+  const pureTransfer = order ? isPureTransferOrder(order) : false;
   const receiptPending = order && hasCustomerTransfer(order) && order.receipt_status !== 'confirmed';
   const collectedAmount = collectedAmountText === '' ? orderAmount : Number(collectedAmountText);
   const collectionInvalid = !Number.isFinite(collectedAmount) || collectedAmount < 0 || collectedAmount > orderAmount
@@ -80,8 +81,16 @@ export function DeliveryPaymentDialog({
     enteredCashAmount > collectedAmount ||
     Math.abs(enteredCashAmount * 100 - Math.round(enteredCashAmount * 100)) > 0.000001
   );
+  const transferProofRequired = paymentMethod === 'TRANSFER'
+    || (paymentMethod === 'CASH_TRANSFER' && splitTransferAmount > 0);
+  const hasTransferProof = Boolean(proofPreview || proofPreviews?.length);
+
+  useEffect(() => {
+    if (open && pureTransfer) setPaymentMethod('TRANSFER');
+  }, [open, pureTransfer]);
 
   const handlePaymentChange = (value: string) => {
+    if (pureTransfer && value !== 'TRANSFER') return;
     setPaymentMethod(value as DriverPaymentMethod);
     if (value !== 'CASH_TRANSFER') {
       setCashAmountText('');
@@ -89,7 +98,7 @@ export function DeliveryPaymentDialog({
   };
 
   const handleConfirm = async () => {
-    if (!order || !paymentMethod || splitInvalid || collectionInvalid) return;
+    if (!order || !paymentMethod || splitInvalid || collectionInvalid || (transferProofRequired && !hasTransferProof)) return;
 
     const split =
       paymentMethod === 'CASH'
@@ -166,10 +175,11 @@ export function DeliveryPaymentDialog({
                   'flex min-h-[96px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 p-4 transition-all',
                   paymentMethod === 'CASH'
                     ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border hover:border-primary/50'
+                    : 'border-border hover:border-primary/50',
+                  pureTransfer && 'cursor-not-allowed opacity-50'
                 )}
               >
-                <RadioGroupItem value="CASH" id="cash" className="sr-only" />
+                <RadioGroupItem value="CASH" id="cash" className="sr-only" disabled={pureTransfer} />
                 <Banknote className="h-7 w-7" />
                 <span className="font-semibold">Cash</span>
                 <span className="text-center text-xs text-muted-foreground">All cash</span>
@@ -196,10 +206,11 @@ export function DeliveryPaymentDialog({
                   'flex min-h-[96px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 p-4 transition-all',
                   paymentMethod === 'CASH_TRANSFER'
                     ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border hover:border-primary/50'
+                    : 'border-border hover:border-primary/50',
+                  pureTransfer && 'cursor-not-allowed opacity-50'
                 )}
               >
-                <RadioGroupItem value="CASH_TRANSFER" id="cash-transfer" className="sr-only" />
+                <RadioGroupItem value="CASH_TRANSFER" id="cash-transfer" className="sr-only" disabled={pureTransfer} />
                 <SplitSquareHorizontal className="h-7 w-7" />
                 <span className="font-semibold">Cash + Transfer</span>
                 <span className="text-center text-xs text-muted-foreground">Cash first, balance transfer</span>
@@ -269,6 +280,9 @@ export function DeliveryPaymentDialog({
                 : 'Multiple images are allowed and visible to authorized users in Action Required.'}
             />
           )}
+          {transferProofRequired && !hasTransferProof && (
+            <p className="text-sm font-semibold text-destructive">Attach at least one transfer receipt photo before confirming.</p>
+          )}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
@@ -277,7 +291,7 @@ export function DeliveryPaymentDialog({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={!paymentMethod || collectionInvalid || splitInvalid || isPending}
+            disabled={!paymentMethod || collectionInvalid || splitInvalid || (transferProofRequired && !hasTransferProof) || isPending}
             className="gap-2"
           >
             {isPending ? (
