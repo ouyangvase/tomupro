@@ -8,20 +8,41 @@ import { supabase } from '@/integrations/supabase/client';
 export function useProductsByOwner(ownerUserId: string | null) {
   return useQuery({
     queryKey: ['products', 'by-owner', ownerUserId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!ownerUserId) return [];
+
+      const controller = new AbortController();
+      let timedOut = false;
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 15_000);
+      const abortFromQuery = () => controller.abort();
+      signal?.addEventListener('abort', abortFromQuery, { once: true });
       
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, sku_code, sku_name')
-        .eq('owner_user_id', ownerUserId)
-        .eq('is_active', true)
-        .order('sku_code', { ascending: true });
-      
-      if (error) throw error;
-      return data as Array<{ id: string; sku_code: string | null; sku_name: string }>;
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('id, sku_code, sku_name')
+          .eq('owner_user_id', ownerUserId)
+          .eq('is_active', true)
+          .order('sku_code', { ascending: true })
+          .abortSignal(controller.signal);
+
+        if (error) throw error;
+        return data as Array<{ id: string; sku_code: string | null; sku_name: string }>;
+      } catch (error) {
+        if (timedOut) throw new Error('Product loading timed out. Please retry.');
+        throw error;
+      } finally {
+        window.clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', abortFromQuery);
+      }
     },
     enabled: !!ownerUserId,
+    retry: 1,
+    retryDelay: 1_000,
+    staleTime: 30_000,
   });
 }
 

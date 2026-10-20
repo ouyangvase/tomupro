@@ -76,7 +76,13 @@ export default function RunnerInbound({ runnerIdOverride }: { runnerIdOverride?:
   const [showConfirm, setShowConfirm] = useState(false);
   const submitGuardRef = useRef(false);
 
-  const { data: products = [], isLoading: productsLoading } = useProductsByOwner(targetUserId || null);
+  const {
+    data: products = [],
+    isLoading: productsLoading,
+    isError: productsError,
+    error: productsQueryError,
+    refetch: refetchProducts,
+  } = useProductsByOwner(targetUserId || null);
 
   // Stats
   const pendingShipments = allShipments.filter(s => s.status === 'PENDING_SP_ACK');
@@ -435,6 +441,19 @@ export default function RunnerInbound({ runnerIdOverride }: { runnerIdOverride?:
                       <Package className="h-6 w-6 text-primary" />
                     </div>
                     <p className="text-sm text-muted-foreground">Loading products...</p>
+                  </div>
+                ) : productsError ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="h-12 w-12 rounded-2xl bg-destructive/10 flex items-center justify-center mb-4">
+                      <AlertCircle className="h-6 w-6 text-destructive" />
+                    </div>
+                    <h3 className="text-base font-semibold text-destructive mb-1">Products could not be loaded</h3>
+                    <p className="text-sm text-muted-foreground max-w-xs mb-4">
+                      {productsQueryError instanceof Error ? productsQueryError.message : 'Please try again.'}
+                    </p>
+                    <Button onClick={() => void refetchProducts()} variant="outline" className="rounded-xl">
+                      Retry
+                    </Button>
                   </div>
                 ) : products.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
