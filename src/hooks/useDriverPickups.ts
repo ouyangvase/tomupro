@@ -317,10 +317,10 @@ export function useDriverPickups() {
       const controller = new AbortController();
       const abortFromQuery = () => controller.abort();
       signal.addEventListener('abort', abortFromQuery, { once: true });
-      const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+      let timeoutId: ReturnType<typeof window.setTimeout> | null = null;
 
       try {
-        const { data, error } = await supabase
+        const pickupQuery = supabase
           .from('driver_pickups')
           .select(`
             *,
@@ -330,21 +330,27 @@ export function useDriverPickups() {
           .eq('driver_id', user.id)
           .order('pickup_date', { ascending: false })
           .abortSignal(controller.signal);
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = window.setTimeout(() => {
+            controller.abort();
+            reject(new Error('Pickup records request timed out. Please try again.'));
+          }, 10_000);
+        });
+
+        const { data, error } = await Promise.race([pickupQuery, timeoutPromise]);
         if (error) throw error;
         return data as DriverPickup[];
-      } catch (error) {
-        if (controller.signal.aborted && !signal.aborted) {
-          throw new Error('Pickup records request timed out. Please try again.');
-        }
-        throw error;
       } finally {
-        window.clearTimeout(timeoutId);
+        if (timeoutId) window.clearTimeout(timeoutId);
         signal.removeEventListener('abort', abortFromQuery);
       }
     },
     enabled: !!user?.id,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: 'always',
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
   });
 }
 
