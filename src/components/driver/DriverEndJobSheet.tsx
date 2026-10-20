@@ -12,7 +12,8 @@ import { MobileActionSheet } from '@/components/mobile/MobileActionSheet';
 import {
   deleteEndJobPhoto,
   getEndJobPhotoUrl,
-  uploadEndJobPhoto,
+  removeEndJobPhotoAssets,
+  uploadEndJobPhotoAsset,
   useDriverEndJobContext,
   useUpsertDriverEndJob,
 } from '@/hooks/useFinanceReconciliation';
@@ -53,6 +54,7 @@ export function DriverEndJobSheet({ driverId, initialDate = dateKey(new Date()),
   const [note, setNote] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const context = useDriverEndJobContext(driverId, date, Boolean(driverId));
   const submit = useUpsertDriverEndJob();
   const contextValue = (context.data || {}) as {
@@ -118,25 +120,32 @@ export function DriverEndJobSheet({ driverId, initialDate = dateKey(new Date()),
     [date, latestDates],
   );
   const status = job?.status || 'NOT_SUBMITTED';
-  const canSubmit = editable && Math.abs(difference) <= 0.005 && !submit.isPending;
+  const hasReceiptPhoto = (photos.data || []).length > 0 || pendingFiles.length > 0;
+  const isSubmitting = submit.isPending || uploadingPhotos;
+  const canSubmit = editable && Math.abs(difference) <= 0.005 && hasReceiptPhoto && !isSubmitting;
   const dateSelectionDisabled = readOnly;
 
   const handleSubmit = async () => {
     if (!driverId || !canSubmit) return false;
+    const uploadedPaths: string[] = [];
+    setUploadingPhotos(true);
     try {
-      const result = await submit.mutateAsync({ driverId, date, cashHanded: cashAmount, cdmAmount, note });
+      for (const file of pendingFiles) uploadedPaths.push(await uploadEndJobPhotoAsset({ driverId, file }));
+      const result = await submit.mutateAsync({ driverId, date, cashHanded: cashAmount, cdmAmount, note, photoPaths: uploadedPaths });
       const saved = (result as { end_job?: EndJob }).end_job;
-      if (saved?.id && pendingFiles.length) {
-        for (const file of pendingFiles) await uploadEndJobPhoto({ driverId, endJobId: saved.id, file });
-        setPendingFiles([]);
-        await queryClient.invalidateQueries({ queryKey: ['finance-end-job-photos', saved.id] });
-      }
+      setPendingFiles([]);
+      if (saved?.id) await queryClient.invalidateQueries({ queryKey: ['finance-end-job-photos', saved.id] });
       toast.success('End Job saved');
       setOpen(false);
       return true;
     } catch (error) {
+      if (uploadedPaths.length) {
+        try { await removeEndJobPhotoAssets(uploadedPaths); } catch { /* keep the submit error visible */ }
+      }
       toast.error(error instanceof Error ? error.message : 'Unable to save End Job');
       return false;
+    } finally {
+      setUploadingPhotos(false);
     }
   };
 
@@ -156,14 +165,14 @@ export function DriverEndJobSheet({ driverId, initialDate = dateKey(new Date()),
       {job && <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground"><span>Cash {formatBND(job.cash_handed)}</span><span>CDM {formatBND(job.cdm_amount)}</span><span className={Math.abs(Number(job.difference)) <= 0.005 ? 'text-emerald-600' : 'text-amber-700'}>Difference {formatBND(job.difference)}</span></div>}
     </div>
 
-    <MobileActionSheet open={open} onOpenChange={setOpen} title="End Job" description="Reconcile cash still pending Runner review before handing over physical cash." confirmLabel="Submit End Job" onConfirm={handleSubmit} isLoading={submit.isPending} confirmDisabled={!canSubmit} panelClassName="h-[min(760px,calc(100vh-2rem))] max-h-[min(760px,calc(100vh-2rem))] supports-[height:100dvh]:h-[min(760px,calc(100dvh-2rem))] supports-[height:100dvh]:max-h-[min(760px,calc(100dvh-2rem))]" compactActions nativeScroll>
+    <MobileActionSheet open={open} onOpenChange={setOpen} title="End Job" description="Reconcile cash still pending Runner review before handing over physical cash." confirmLabel="Submit End Job" onConfirm={handleSubmit} isLoading={isSubmitting} confirmDisabled={!canSubmit} panelClassName="h-[min(760px,calc(100vh-2rem))] max-h-[min(760px,calc(100vh-2rem))] supports-[height:100dvh]:h-[min(760px,calc(100dvh-2rem))] supports-[height:100dvh]:max-h-[min(760px,calc(100dvh-2rem))]" compactActions nativeScroll>
       <div className="space-y-3 sm:space-y-4">
         <div className="grid gap-2"><Label id="end-job-date-label">Date</Label><div id="end-job-date" className="grid grid-cols-3 gap-1.5" role="group" aria-labelledby="end-job-date-label">{dateOptions.map((value) => <button key={value} type="button" onClick={() => setDate(value)} disabled={dateSelectionDisabled} aria-pressed={date === value} className={`min-w-0 rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${date === value ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border-border/60 bg-background text-foreground hover:border-primary/60'}`}>{value}</button>)}</div><p className="text-xs text-muted-foreground">Only the latest 3 Brunei calendar days are editable.</p></div>
         <div className="rounded-xl bg-muted/40 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending Runner Review Cash · read only</p><p className="mt-1 text-xl font-black sm:text-2xl">{formatBND(expectedCash)}</p></div>
         <div className="grid gap-2 sm:grid-cols-2"><div className="grid gap-1.5"><Label htmlFor="cash-handed">Cash handed over</Label><Input id="cash-handed" className="h-10" type="number" min="0" step="0.01" value={cash} onChange={(event) => setCash(event.target.value)} disabled={!editable} /></div><div className="grid gap-1.5"><Label htmlFor="cdm-amount">CDM deposit</Label><Input id="cdm-amount" className="h-10" type="number" min="0" step="0.01" value={cdm} onChange={(event) => setCdm(event.target.value)} disabled={!editable} /></div></div>
         <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/50 p-3 text-sm"><div><p className="text-xs text-muted-foreground">Total declared</p><p className="mt-1 font-bold">{formatBND(declared)}</p></div><div><p className="text-xs text-muted-foreground">Difference</p><p className={`mt-1 font-bold ${Math.abs(difference) <= 0.005 ? 'text-emerald-600' : 'text-destructive'}`}>{formatBND(difference)}</p></div></div>
         {Math.abs(difference) > 0.005 && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">Cash handed over + CDM must equal Pending Runner Review Cash before submission.</p>}
-        <div className="space-y-2"><Label>RECEIPT PHOTO</Label><Input type="file" accept="image/*" multiple capture="environment" onChange={(event) => setPendingFiles((current) => [...current, ...Array.from(event.target.files || [])])} disabled={!editable} /><p className="text-xs text-muted-foreground">Add multiple photos. Photos stay private to the permitted Driver, Runner or Admin.</p><div className="grid grid-cols-3 gap-2">{(photos.data || []).map((photo) => <div key={photo.id} className="relative overflow-hidden rounded-lg border border-border/50">{photoUrls[photo.id] ? <img src={photoUrls[photo.id]} alt="Receipt" className="aspect-square w-full object-cover" /> : <div className="aspect-square animate-pulse bg-muted" />}<button type="button" className="absolute right-1 top-1 rounded-full bg-background/90 p-1" onClick={() => removePhoto.mutate({ id: photo.id, storagePath: photo.storage_path })} disabled={!editable}><Trash2 className="h-3 w-3 text-destructive" /></button></div>)}{pendingFiles.map((file, index) => <div key={`${file.name}-${index}`} className="relative flex aspect-square items-center justify-center rounded-lg border border-dashed border-primary/50 bg-primary/5"><Camera className="h-5 w-5 text-primary" /><button type="button" className="absolute right-1 top-1 rounded-full bg-background/90 p-1" onClick={() => setPendingFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}><Trash2 className="h-3 w-3 text-destructive" /></button></div>)}<label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-border/70"><Plus className="h-5 w-5 text-muted-foreground" /><input type="file" accept="image/*" multiple className="hidden" onChange={(event) => setPendingFiles((current) => [...current, ...Array.from(event.target.files || [])])} disabled={!editable} /></label></div></div>
+        <div className="space-y-2"><Label>RECEIPT PHOTO <span className="text-destructive">*</span></Label><Input type="file" accept="image/*" multiple capture="environment" onChange={(event) => setPendingFiles((current) => [...current, ...Array.from(event.target.files || [])])} disabled={!editable} /><p className={`text-xs ${hasReceiptPhoto ? 'text-muted-foreground' : 'font-semibold text-destructive'}`}>{hasReceiptPhoto ? 'At least one receipt photo is attached. Photos stay private to the permitted Driver, Runner or Admin.' : 'Attach at least one receipt photo before submitting End Job.'}</p><div className="grid grid-cols-3 gap-2">{(photos.data || []).map((photo) => <div key={photo.id} className="relative overflow-hidden rounded-lg border border-border/50">{photoUrls[photo.id] ? <img src={photoUrls[photo.id]} alt="Receipt" className="aspect-square w-full object-cover" /> : <div className="aspect-square animate-pulse bg-muted" />}<button type="button" className="absolute right-1 top-1 rounded-full bg-background/90 p-1" onClick={() => removePhoto.mutate({ id: photo.id, storagePath: photo.storage_path })} disabled={!editable}><Trash2 className="h-3 w-3 text-destructive" /></button></div>)}{pendingFiles.map((file, index) => <div key={`${file.name}-${index}`} className="relative flex aspect-square items-center justify-center rounded-lg border border-dashed border-primary/50 bg-primary/5"><Camera className="h-5 w-5 text-primary" /><button type="button" className="absolute right-1 top-1 rounded-full bg-background/90 p-1" onClick={() => setPendingFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}><Trash2 className="h-3 w-3 text-destructive" /></button></div>)}<label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-border/70"><Plus className="h-5 w-5 text-muted-foreground" /><input type="file" accept="image/*" multiple className="hidden" onChange={(event) => setPendingFiles((current) => [...current, ...Array.from(event.target.files || [])])} disabled={!editable} /></label></div></div>
         <div className="grid gap-2"><Label htmlFor="end-job-note">Note (optional)</Label><Textarea id="end-job-note" value={note} onChange={(event) => setNote(event.target.value)} disabled={!editable} placeholder="Add a note for the Runner" className="min-h-[80px]" /></div>
         {status === 'SUBMITTED' && <p className="flex items-center gap-2 text-xs text-emerald-600"><CheckCircle2 className="h-4 w-4" /> This End Job is currently reconciled.</p>}
       </div>

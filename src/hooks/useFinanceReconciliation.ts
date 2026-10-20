@@ -133,12 +133,14 @@ export function useUpsertDriverEndJob() {
       cashHanded: number;
       cdmAmount: number;
       note?: string;
-    }) => callSupabaseRpc<Record<string, unknown>>('upsert_driver_end_job', {
+      photoPaths: string[];
+    }) => callSupabaseRpc<Record<string, unknown>>('upsert_driver_end_job_with_photos', {
       p_driver_id: input.driverId,
       p_job_date: input.date,
       p_cash_handed: input.cashHanded,
       p_cdm_amount: input.cdmAmount,
       p_note: input.note || '',
+      p_photo_paths: input.photoPaths,
     }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['finance-driver-end-job', variables.driverId] });
@@ -210,17 +212,28 @@ export function useReviewEndJobPhoto() {
   });
 }
 
-export async function uploadEndJobPhoto(input: { driverId: string; endJobId: string; file: File }) {
+async function uploadEndJobPhotoObject(input: { driverId: string; file: File; folder: string }) {
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) throw new Error('Your session has expired. Please sign in again.');
   const extension = input.file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const path = `${input.driverId}/${input.endJobId}/${crypto.randomUUID()}.${extension}`;
+  const path = `${input.driverId}/${input.folder}/${crypto.randomUUID()}.${extension}`;
   const upload = await supabase.storage.from('finance-end-job-photos').upload(path, input.file, {
     cacheControl: '3600',
     upsert: false,
     contentType: input.file.type || 'image/jpeg',
   });
   if (upload.error) throw upload.error;
+  return path;
+}
+
+export async function uploadEndJobPhotoAsset(input: { driverId: string; file: File }) {
+  return uploadEndJobPhotoObject({ ...input, folder: 'pending' });
+}
+
+export async function uploadEndJobPhoto(input: { driverId: string; endJobId: string; file: File }) {
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData.user) throw new Error('Your session has expired. Please sign in again.');
+  const path = await uploadEndJobPhotoObject({ driverId: input.driverId, file: input.file, folder: input.endJobId });
   const { data, error } = await (supabase as any)
     .from('finance_end_job_photos')
     .insert({ end_job_id: input.endJobId, storage_path: path, uploaded_by: authData.user.id })
@@ -231,6 +244,12 @@ export async function uploadEndJobPhoto(input: { driverId: string; endJobId: str
     throw error;
   }
   return data;
+}
+
+export async function removeEndJobPhotoAssets(storagePaths: string[]) {
+  if (!storagePaths.length) return;
+  const { error } = await supabase.storage.from('finance-end-job-photos').remove(storagePaths);
+  if (error) throw error;
 }
 
 export async function deleteEndJobPhoto(photo: { id: string; storagePath: string }) {
