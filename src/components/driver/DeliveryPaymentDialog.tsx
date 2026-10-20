@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { formatBND } from '@/lib/currency';
 import { Banknote, Check, CreditCard, Loader2, SplitSquareHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { hasCustomerTransfer, isPureTransferOrder, orderCodDue, orderPaymentBreakdown } from '@/lib/orderPayment';
+import { hasCustomerTransfer, orderCodDue, orderPaymentBreakdown } from '@/lib/orderPayment';
 import { ProofPhotoPicker } from '@/components/driver/ProofPhotoPicker';
 
 export type DriverPaymentMethod = 'CASH' | 'TRANSFER' | 'CASH_TRANSFER';
@@ -64,8 +64,6 @@ export function DeliveryPaymentDialog({
   const [collectedAmountText, setCollectedAmountText] = useState('');
 
   const orderAmount = order ? orderCodDue(order) : 0;
-  const pureTransfer = order ? isPureTransferOrder(order) : false;
-  const effectivePaymentMethod = pureTransfer ? 'TRANSFER' : paymentMethod;
   const receiptPending = order && hasCustomerTransfer(order) && order.receipt_status !== 'confirmed';
   const collectedAmount = collectedAmountText === '' ? orderAmount : Number(collectedAmountText);
   const collectionInvalid = !Number.isFinite(collectedAmount) || collectedAmount < 0 || collectedAmount > orderAmount
@@ -91,16 +89,16 @@ export function DeliveryPaymentDialog({
   };
 
   const handleConfirm = async () => {
-    if (!order || receiptPending || (orderAmount > 0 && !effectivePaymentMethod) || splitInvalid || collectionInvalid) return;
+    if (!order || !paymentMethod || splitInvalid || collectionInvalid) return;
 
     const split =
-      effectivePaymentMethod === 'CASH'
+      paymentMethod === 'CASH'
         ? { cashAmount: collectedAmount, transferAmount: 0 }
-        : effectivePaymentMethod === 'TRANSFER'
+        : paymentMethod === 'TRANSFER'
           ? { cashAmount: 0, transferAmount: collectedAmount }
           : { cashAmount: splitCashAmount, transferAmount: splitTransferAmount };
 
-    await onConfirm(order.id, effectivePaymentMethod || 'TRANSFER', split);
+    await onConfirm(order.id, paymentMethod, split);
     setPaymentMethod('');
     setCashAmountText('');
     setCollectedAmountText('');
@@ -144,15 +142,16 @@ export function DeliveryPaymentDialog({
             <p className="text-sm text-muted-foreground">Total {formatBND(order.total_amount)} · Transfer paid {formatBND(orderPaymentBreakdown(order).transferPaid)}</p>
           </div>
 
-          {receiptPending && <p className="text-sm text-amber-700">Transfer {formatBND(orderPaymentBreakdown(order).transferAmount)} is not confirmed. Ask Runner to review the receipt before collecting the balance.</p>}
+          {receiptPending && <p className="text-sm text-amber-700">Transfer {formatBND(orderPaymentBreakdown(order).transferAmount)} is awaiting receipt review. You can still report the payment collected here and attach the receipt below.</p>}
 
-          {pureTransfer ? (
-            <p className="font-semibold">Paid by transfer — no cash collection required.</p>
-          ) : orderAmount === 0 ? <p className="font-semibold">Paid / No COD — no cash collection required.</p> : <div className="space-y-3">
+          {orderAmount === 0 && <p className="font-semibold">Paid / No COD — choose the payment record and attach a transfer receipt when applicable.</p>}
+          <div className="space-y-3">
+            {orderAmount > 0 && <>
             <Label htmlFor="collected-total">Amount collected now (BND)</Label>
             <Input id="collected-total" type="number" min="0" max={orderAmount} step="0.01" value={collectedAmountText} placeholder={orderAmount.toFixed(2)} onChange={event => setCollectedAmountText(event.target.value)} />
             {collectionInvalid && <p className="text-sm text-destructive">Enter an amount from 0 to {orderAmount.toFixed(2)}, with at most two decimal places.</p>}
             {!collectionInvalid && collectedAmount < orderAmount && <p className="text-sm text-amber-700">Outstanding after collection: {formatBND(orderAmount - collectedAmount)}</p>}
+            </>}
             <Label className="text-sm font-medium">
               Payment Method <span className="text-destructive">*</span>
             </Label>
@@ -206,7 +205,7 @@ export function DeliveryPaymentDialog({
                 <span className="text-center text-xs text-muted-foreground">Cash first, balance transfer</span>
               </Label>
             </RadioGroup>
-            </div>}
+          </div>
 
           {paymentMethod === 'CASH' && (
             <div className="rounded-lg border border-[hsl(var(--status-warning))]/30 bg-[hsl(var(--status-warning))]/10 p-3 text-sm">
@@ -256,7 +255,7 @@ export function DeliveryPaymentDialog({
 
           {(onProofFileChange || onProofFilesChange) && (
             <ProofPhotoPicker
-              label="Delivery Proof Photos"
+              label={paymentMethod === 'TRANSFER' || paymentMethod === 'CASH_TRANSFER' ? 'Transfer Receipt Photo' : 'Delivery Proof Photos'}
               preview={proofPreview ?? null}
               previews={proofPreviews}
               onFileChange={onProofFileChange}
@@ -265,7 +264,9 @@ export function DeliveryPaymentDialog({
               multiple={!!onProofFilesChange}
               disabled={isPending}
               emptyTitle="Take photos or choose from album"
-              helperText="Multiple images are allowed and visible to authorized users in Action Required."
+              helperText={paymentMethod === 'TRANSFER' || paymentMethod === 'CASH_TRANSFER'
+                ? 'Attach the transfer receipt so the Runner can verify the payment.'
+                : 'Multiple images are allowed and visible to authorized users in Action Required.'}
             />
           )}
         </div>
@@ -276,7 +277,7 @@ export function DeliveryPaymentDialog({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={!!receiptPending || (orderAmount > 0 && !effectivePaymentMethod) || collectionInvalid || splitInvalid || isPending}
+            disabled={!paymentMethod || collectionInvalid || splitInvalid || isPending}
             className="gap-2"
           >
             {isPending ? (
