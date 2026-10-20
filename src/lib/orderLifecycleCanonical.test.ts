@@ -78,6 +78,10 @@ const autoRescheduleRetryGuardMigration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20261020123000_stop_auto_reschedule_retry_storm.sql'),
   'utf8',
 );
+const bookingAutoRescheduleMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20261020280000_allow_booking_auto_reschedule.sql'),
+  'utf8',
+);
 const useOrdersSource = readFileSync(resolve(process.cwd(), 'src/hooks/useOrders.ts'), 'utf8');
 const actionResolutionSource = readFileSync(resolve(process.cwd(), 'src/components/sales/ActionResolutionDialog.tsx'), 'utf8');
 const cancelOrdersSource = readFileSync(resolve(process.cwd(), 'src/hooks/useCancelOrder.ts'), 'utf8');
@@ -142,6 +146,15 @@ describe('canonical order lifecycle database contract', () => {
     expect(autoRescheduleRetryGuardMigration).toContain("'idempotent', true");
     expect(autoRescheduleRetryGuardMigration).toContain('v_order.next_delivery_date = p_next_delivery_date');
     expect(autoRescheduleRetryGuardMigration).toContain('runner_status = CASE WHEN p_runner_id IS NULL THEN');
+  });
+
+  it('allows Booking and Action Required, while keeping Ready Sales ineligible', () => {
+    expect(bookingAutoRescheduleMigration).toContain('v_is_booking boolean');
+    expect(bookingAutoRescheduleMigration).toContain("v_from_state = 'BOOKING'");
+    expect(bookingAutoRescheduleMigration).toContain("v_from_state = 'ACTION_REQUIRED'");
+    expect(bookingAutoRescheduleMigration).toContain('v_is_action_required OR v_is_booking OR v_is_auto_booking');
+    expect(bookingAutoRescheduleMigration).toContain("'message', 'Order is no longer eligible for auto-reschedule'");
+    expect(bookingAutoRescheduleMigration).toContain("status::text IN ('READY', 'DELIVERED', 'CANCELLED')");
   });
 
   it('uses an explicit, scoped reopen path for cancelled order restoration', () => {
