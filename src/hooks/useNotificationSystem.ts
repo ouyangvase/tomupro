@@ -176,6 +176,17 @@ export function useRealtimeNotifications() {
           // Invalidate queries to refresh data
           queryClient.invalidateQueries({ queryKey: ['notifications'] });
           queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+
+          // An inbound acknowledgement posts stock in the recipient's
+          // warehouse. Refresh open stock/inbound views on every device that
+          // receives the notification instead of waiting for a manual reload.
+          if (newNotification.type === 'INBOUND_ACKED' && newNotification.entity_type === 'INBOUND') {
+            queryClient.invalidateQueries({ queryKey: ['stock-balance'] });
+            queryClient.invalidateQueries({ queryKey: ['stock-balance-paginated'] });
+            queryClient.invalidateQueries({ queryKey: ['stock-balance-stats'] });
+            queryClient.invalidateQueries({ queryKey: ['salesperson-dashboard'] });
+            queryClient.invalidateQueries({ queryKey: ['inbound_shipments'] });
+          }
           
           // Show toast for new notifications
           if (newNotification.priority === 'HIGH') {
