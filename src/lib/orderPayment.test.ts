@@ -22,6 +22,19 @@ describe('order payment breakdown', () => {
     expect(isPureTransferOrder({ payment_plan: 'PARTIAL_TRANSFER_COD', payment_method: 'COD' })).toBe(false);
     expect(isPureTransferOrder({ payment_plan: 'COD', payment_method: 'COD' })).toBe(false);
   });
+  it('never exposes a COD balance for a pure transfer order while its receipt is pending', () => {
+    const pending = {
+      total_amount: 39,
+      cod_amount: 39,
+      cod_due_amount: 39,
+      payment_plan: 'TRANSFER',
+      payment_method: 'TRANSFER',
+      receipt_status: 'pending',
+      driver_cash_amount: 39,
+    };
+    expect(orderCodDue(pending)).toBe(0);
+    expect(orderPaymentBreakdown(pending)).toMatchObject({ transferAmount: 39, transferPaid: 0, codDue: 0, codCollected: 0 });
+  });
   it.each([-1, 80, NaN, Infinity, 30.001])('rejects invalid transfer %s', transfer => {
     expect(() => validateTransferAmount(72, transfer)).toThrow();
   });

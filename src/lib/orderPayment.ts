@@ -66,6 +66,7 @@ export function isPureTransferOrder(order: OrderPaymentFields) {
 }
 
 export function orderCollectionAmount(order: OrderPaymentFields) {
+  if (isPureTransferOrder(order)) return 0;
   if (order.cod_due_amount != null) return Math.max(0, money(order.cod_due_amount));
   if (order.payment_plan && hasCustomerTransfer(order) && order.receipt_status !== 'confirmed') {
     return Math.max(0, money(order.total_amount));
@@ -83,9 +84,13 @@ export function orderCodDue(order: OrderPaymentFields) {
 
 export function orderPaymentBreakdown(order: OrderPaymentFields) {
   const totalAmount = Math.max(0, money(order.total_amount));
-  const transferAmount = hasCustomerTransfer(order) ? Math.max(0, money(totalAmount - money(order.cod_amount))) : 0;
+  const transferAmount = isPureTransferOrder(order)
+    ? totalAmount
+    : hasCustomerTransfer(order) ? Math.max(0, money(totalAmount - money(order.cod_amount))) : 0;
   const transferPaid = order.receipt_status === 'confirmed' ? transferAmount : 0;
-  const codCollected = Math.min(Math.max(0, money(order.cod_amount ?? orderCollectionAmount(order))), Math.max(0, money(order.driver_cash_amount)) + Math.max(0, money(order.driver_transfer_amount)));
+  const codCollected = isPureTransferOrder(order)
+    ? 0
+    : Math.min(Math.max(0, money(order.cod_amount ?? orderCollectionAmount(order))), Math.max(0, money(order.driver_cash_amount)) + Math.max(0, money(order.driver_transfer_amount)));
   const totalCollected = money(transferPaid + codCollected);
   const outstanding = Math.max(0, money(totalAmount - totalCollected));
   return { totalAmount, transferAmount, transferPaid, codDue: orderCodDue(order), codCollected, totalCollected,
