@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { EmbeddedProvider } from '@/contexts/EmbeddedContext';
 import { SyncNowButton } from '@/components/google-sheet/SyncNowButton';
 import { useMyAssistantScope } from '@/hooks/useRunnerAssistants';
+import { useRunnerSharedWorkspace } from '@/hooks/useRunnerWorkspace';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Layers, X } from 'lucide-react';
@@ -83,11 +84,24 @@ export default function DispatchModule() {
   const { profile } = useAuth();
   const role = profile?.role;
   const { data: assistantBinding, isLoading: assistantBindingLoading } = useMyAssistantScope();
+  const isSharedRunnerWorkspace = role === 'runner' && !assistantBinding;
+  const { data: sharedRunnerWorkspaces = [] } = useRunnerSharedWorkspace(role === 'runner');
   const activeTab = searchParams.get('tab') || 'inbox';
   const highlightOrderId = searchParams.get('highlight') || null;
   const routeSearch = searchParams.get('search') || '';
   const [showDuplicateOrders, setShowDuplicateOrders] = useState(false);
-  const linkedRunnerIds = assistantBinding?.runnerIds || [];
+  const workspaceRunnerOptions = isSharedRunnerWorkspace
+    ? sharedRunnerWorkspaces
+      .filter((runner) => runner.runner_id !== profile?.id)
+      .map((runner) => ({
+        id: runner.runner_id,
+        display_name: runner.display_name,
+        email: runner.email,
+      }))
+    : (assistantBinding?.runners || []);
+  const linkedRunnerIds = isSharedRunnerWorkspace
+    ? workspaceRunnerOptions.map((runner) => runner.id)
+    : (assistantBinding?.runnerIds || []);
   const hasPrimaryDispatchWorkspace = ['runner', 'admin', 'manager', 'operator'].includes(role || '');
   const {
     selectedWorkspace,
@@ -99,6 +113,7 @@ export default function DispatchModule() {
     primaryRunnerId: role === 'runner' ? profile?.id : undefined,
     linkedRunnerIds,
     requestedWorkspace: searchParams.get('runner'),
+    assistantScope: !isSharedRunnerWorkspace,
   });
   const setRouteParam = (key: string, value: string) => {
     setSearchParams((previous) => {
@@ -276,7 +291,7 @@ export default function DispatchModule() {
             <SelectContent>
               {hasPrimaryDispatchWorkspace && <SelectItem value="self">My Workspace</SelectItem>}
               {!hasPrimaryDispatchWorkspace && <SelectItem value="all">All Linked Runners</SelectItem>}
-              {(assistantBinding?.runners || []).map((runner) => (
+              {workspaceRunnerOptions.map((runner) => (
                 <SelectItem key={runner.id} value={runner.id}>
                   {runner.display_name || runner.email}
                 </SelectItem>
@@ -370,7 +385,11 @@ export default function DispatchModule() {
               </TabErrorBoundary>
             )}
             {activeTab === 'failed' && role === 'runner' && !isAssistantContext && (
-              <RunnerFailedOrders initialSearch={routeSearch} highlightOrderId={highlightOrderId} />
+              <RunnerFailedOrders
+                initialSearch={routeSearch}
+                highlightOrderId={highlightOrderId}
+                runnerIdsOverride={assistantRunnerIds}
+              />
             )}
             {activeTab === 'map' && <DriverLocationsPage />}
             {activeTab === 'order-journey' && (['runner', 'admin', 'manager'].includes(role || '') || isAssistantContext) && <OrderJourneyPage />}
@@ -379,6 +398,7 @@ export default function DispatchModule() {
                 initialSearch={routeSearch}
                 highlightOrderId={highlightOrderId}
                 runnerIdsOverride={assistantRunnerIds}
+                assistantMode={isAssistantContext}
               />
             )}
           </div>

@@ -62,4 +62,34 @@ describe('resolveAssistantWorkspace', () => {
       requestedWorkspace: 'removed-runner',
     }).selectedWorkspace).toBe('self');
   });
+
+  it('keeps a normal Runner in Runner mode while selecting a shared workspace', () => {
+    expect(resolveAssistantWorkspace({
+      hasPrimaryWorkspace: true,
+      primaryRunnerId: 'self',
+      linkedRunnerIds: ['yc2'],
+      requestedWorkspace: 'yc2',
+      assistantScope: false,
+    })).toEqual({
+      selectedWorkspace: 'yc2',
+      isAssistantWorkspace: false,
+      runnerIdsOverride: ['yc2'],
+      showWorkspaceSelector: true,
+    });
+  });
+
+  it('combines the normal Runner and shared workspace only for explicit ALL', () => {
+    expect(resolveAssistantWorkspace({
+      hasPrimaryWorkspace: true,
+      primaryRunnerId: 'self',
+      linkedRunnerIds: ['yc2'],
+      requestedWorkspace: 'all',
+      assistantScope: false,
+    })).toEqual({
+      selectedWorkspace: 'all',
+      isAssistantWorkspace: false,
+      runnerIdsOverride: ['self', 'yc2'],
+      showWorkspaceSelector: true,
+    });
+  });
 });

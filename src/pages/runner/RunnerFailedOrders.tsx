@@ -18,22 +18,28 @@ import { OrderFiltersPanel, type OrderFilters } from '@/components/filters/Order
 interface RunnerFailedOrdersProps {
   initialSearch?: string;
   highlightOrderId?: string | null;
+  runnerIdsOverride?: string[];
 }
 
-export default function RunnerFailedOrders({ initialSearch = '', highlightOrderId = null }: RunnerFailedOrdersProps) {
+export default function RunnerFailedOrders({
+  initialSearch = '',
+  highlightOrderId = null,
+  runnerIdsOverride,
+}: RunnerFailedOrdersProps) {
   const { user } = useAuth();
   const [serverSearch, setServerSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [filters, setFilters] = useState<OrderFilters>({});
   const { data: validAreas = [] } = useValidAreas();
-  const { data: myDrivers = [] } = useMyDrivers();
+  const { data: myDrivers = [] } = useMyDrivers(runnerIdsOverride);
 
   const areaOptions = useMemo(() => validAreas.map(a => ({ label: a, value: a })), [validAreas]);
   const driverOptions = useMemo(() => myDrivers.map(d => ({ label: d.driver?.display_name || 'Unknown', value: d.driver_id })), [myDrivers]);
 
   const { data: orders, isLoading, isFetching, pagination, setPage } = usePaginatedOrders({
-    runnerId: user?.id,
+    runnerId: runnerIdsOverride?.length ? undefined : user?.id,
+    runnerIds: runnerIdsOverride?.length ? runnerIdsOverride : undefined,
     runnerStatusIn: ['FAILED_DELIVERY'] as any[],
     searchQuery: serverSearch || undefined,
     areaFilter: filters.area,

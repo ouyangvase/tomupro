@@ -16,7 +16,7 @@ export function getClaimBatchScope({
   isAssistantView,
   runnerIdsOverride,
 }: ClaimBatchScopeInput): ClaimBatchScope {
-  if (isAssistantView && runnerIdsOverride?.length) {
+  if (runnerIdsOverride?.length && (isAssistantView || role === 'runner')) {
     return { runnerIds: Array.from(new Set(runnerIdsOverride)) };
   }
 

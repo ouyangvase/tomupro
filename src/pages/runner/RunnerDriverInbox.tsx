@@ -446,10 +446,17 @@ export default function RunnerDriverInbox({
   [profile?.id, runnerIdOverride]);
   const runnerScopeId = runnerScopeIds.length === 1 ? runnerScopeIds[0] : undefined;
   const hasDelegatedRunnerScope = runnerScopeIds.length > 0 && profile?.role !== 'runner';
+  // This RPC derives its scope from the authenticated actor, so it is safe
+  // only for the actor's own Runner workspace. Shared Runner and ALL views
+  // use the already scoped orders below instead of importing Yc's workload.
   const canUseDbDriverWorkloads =
-    profile?.role === 'runner' ||
-    profile?.role === 'admin' ||
-    hasDelegatedRunnerScope;
+    runnerScopeIds.length === 1 &&
+    runnerScopeIds[0] === profile?.id &&
+    (
+      profile?.role === 'runner' ||
+      profile?.role === 'admin' ||
+      hasDelegatedRunnerScope
+    );
   const hasRunnerScopeAccess =
     profile?.role === 'runner' ||
     profile?.role === 'admin' ||
@@ -1187,6 +1194,14 @@ export default function RunnerDriverInbox({
     setTargetDriver('');
     setAssignmentDialogOpen(true);
     setAssignmentSnapshotLoading(true);
+
+    // The server snapshot RPC is intentionally bound to the logged-in
+    // Runner. For a selected peer or the explicit ALL workspace, the orders
+    // already loaded with runnerScopeIds are the authoritative scoped list.
+    if (runnerScopeIds.length !== 1 || runnerScopeIds[0] !== profile?.id) {
+      setAssignmentSnapshotLoading(false);
+      return;
+    }
 
     const requestId = assignmentSnapshotRequestRef.current + 1;
     assignmentSnapshotRequestRef.current = requestId;

@@ -26,4 +26,13 @@ describe('getClaimBatchScope', () => {
       isAssistantView: false,
     })).toEqual({ runnerId: 'runner-user' });
   });
+
+  it('uses the selected shared workspace for a normal Runner', () => {
+    expect(getClaimBatchScope({
+      role: 'runner',
+      userId: 'runner-user',
+      isAssistantView: false,
+      runnerIdsOverride: ['runner-user', 'yc2-runner'],
+    })).toEqual({ runnerIds: ['runner-user', 'yc2-runner'] });
+  });
 });

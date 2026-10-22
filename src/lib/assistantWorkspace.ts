@@ -10,6 +10,12 @@ type ResolveAssistantWorkspaceInput = {
   primaryRunnerId?: string | null;
   linkedRunnerIds: string[];
   requestedWorkspace?: string | null;
+  /**
+   * A normal Runner can share a driver with another Runner without becoming
+   * an Assistant. Keep that role distinction explicit while reusing the same
+   * workspace selection rules.
+   */
+  assistantScope?: boolean;
 };
 
 export function resolveAssistantWorkspace({
@@ -17,6 +23,7 @@ export function resolveAssistantWorkspace({
   primaryRunnerId,
   linkedRunnerIds,
   requestedWorkspace,
+  assistantScope = true,
 }: ResolveAssistantWorkspaceInput): AssistantWorkspaceSelection {
   const uniqueRunnerIds = Array.from(new Set(linkedRunnerIds));
   const hasAssistantWorkspace = uniqueRunnerIds.length > 0;
@@ -34,16 +41,14 @@ export function resolveAssistantWorkspace({
     ? requestedWorkspace!
     : defaultWorkspace;
   const isCombinedWorkspace = selectedWorkspace === 'all' && hasPrimaryWorkspace;
-  const isAssistantWorkspace = hasAssistantWorkspace
+  const isAssistantWorkspace = assistantScope && hasAssistantWorkspace
     && selectedWorkspace !== 'self'
     && !isCombinedWorkspace;
-  const runnerIdsOverride = isAssistantWorkspace
-    ? selectedWorkspace === 'all'
-      ? combinedRunnerIds
-      : [selectedWorkspace]
-    : isCombinedWorkspace
-      ? combinedRunnerIds
-    : undefined;
+  const runnerIdsOverride = selectedWorkspace === 'all'
+    ? combinedRunnerIds
+    : selectedWorkspace !== 'self'
+      ? [selectedWorkspace]
+      : undefined;
 
   return {
     selectedWorkspace,

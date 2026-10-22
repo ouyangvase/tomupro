@@ -232,10 +232,12 @@ export default function RunnerDeliveredOrders({
   initialSearch = '',
   highlightOrderId,
   runnerIdsOverride,
+  assistantMode = false,
 }: {
   initialSearch?: string;
   highlightOrderId?: string | null;
   runnerIdsOverride?: string[];
+  assistantMode?: boolean;
 }) {
   const { user, profile, role } = useAuth();
   const queryClient = useQueryClient();
@@ -291,7 +293,8 @@ export default function RunnerDeliveredOrders({
   
   // ---------- Unified RPC path for ALL roles (bypasses RLS via SECURITY DEFINER) ----------
   const isRunnerRole = role === 'runner';
-  const isAssistantView = role === 'runner_assistant' || Boolean(runnerIdsOverride?.length);
+  const isAssistantView = assistantMode || role === 'runner_assistant';
+  const scopedRunnerIds = runnerIdsOverride?.length ? runnerIdsOverride : undefined;
   const canViewDriverPayment = isRunnerRole || isAssistantView;
 
   // Get visible owner IDs for role-scoping (admin=null=all, manager/salesperson=team IDs)
@@ -335,8 +338,9 @@ export default function RunnerDeliveredOrders({
 
   // Use the batch-loading RPC for ALL roles
   const { data: rpcOrders = [], isLoading: rpcLoading } = useDeliveredOrdersFastAll({
-    runnerId: isRunnerRole ? user?.id : undefined,
-    runnerIds: isAssistantView ? runnerIdsOverride : undefined,
+    runnerId: isRunnerRole && !scopedRunnerIds ? user?.id : undefined,
+    runnerIds: scopedRunnerIds,
+    assistantScope: isAssistantView,
     salespersonIds: rpcSalespersonIds,
     enabled: rpcEnabled,
   });
@@ -404,12 +408,12 @@ export default function RunnerDeliveredOrders({
     useSourceRunnerDeliveryCharges(sourceRunnerIds);
 
   const dashboardRunnerIds = useMemo(
-    () => isAssistantView
+    () => isAssistantView || scopedRunnerIds
       ? sourceRunnerIds
       : user?.id
         ? [user.id]
         : [],
-    [isAssistantView, sourceRunnerIds, user?.id],
+    [isAssistantView, scopedRunnerIds, sourceRunnerIds, user?.id],
   );
 
   // Apply client-side filters for ALL roles (unified RPC data path)
