@@ -409,9 +409,45 @@ export function useRunnerTakeOrders() {
     mutationFn: async (orderIds: string[]) => {
       if (orderIds.length === 0) return null;
 
-      return callSupabaseRpc<Record<string, unknown>>('runner_take_orders', {
-        p_order_ids: orderIds,
-      });
+      // Taking a large selection in one transaction can exceed the database
+      // statement timeout because each order also writes audit/notification
+      // records. Keep the existing RPC and semantics, but process a selection
+      // in small sequential batches so each transaction stays bounded.
+      const batchSize = 25;
+      const aggregate = {
+        success: true,
+        requested_count: orderIds.length,
+        taken_count: 0,
+        preserved_driver_count: 0,
+        released_driver_count: 0,
+        released_order_ids: [] as string[],
+        blocked_count: 0,
+        blocked_order_codes: [] as string[],
+      };
+
+      for (let start = 0; start < orderIds.length; start += batchSize) {
+        const result = await callSupabaseRpc<Record<string, unknown>>('runner_take_orders', {
+          p_order_ids: orderIds.slice(start, start + batchSize),
+        });
+
+        aggregate.taken_count += Number(result?.taken_count || 0);
+        aggregate.preserved_driver_count += Number(result?.preserved_driver_count || 0);
+        aggregate.released_driver_count += Number(result?.released_driver_count || 0);
+        aggregate.blocked_count += Number(result?.blocked_count || 0);
+
+        if (Array.isArray(result?.released_order_ids)) {
+          aggregate.released_order_ids.push(
+            ...result.released_order_ids.filter((id): id is string => typeof id === 'string'),
+          );
+        }
+        if (Array.isArray(result?.blocked_order_codes)) {
+          aggregate.blocked_order_codes.push(
+            ...result.blocked_order_codes.filter((code): code is string => typeof code === 'string'),
+          );
+        }
+      }
+
+      return aggregate;
     },
     onSuccess: (result) => {
       invalidateOrderQueries(queryClient);
