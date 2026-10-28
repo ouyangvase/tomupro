@@ -613,7 +613,9 @@ export function useOrderBatchLookup(orderCode: string) {
 /**
  * Run integrity check: find orders with inconsistent claim state.
  */
-export function useClaimIntegrityCheck() {
+export function useClaimIntegrityCheck(options: { enabled?: boolean } = {}) {
+  const { enabled = false } = options;
+
   return useQuery({
     queryKey: ['claim-integrity-check'],
     queryFn: async () => {
@@ -694,7 +696,7 @@ export function useClaimIntegrityCheck() {
         totalIssues: issues.length,
       };
     },
-    enabled: false, // Only run on demand
+    enabled,
   });
 }
 

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { useClaimBatches, useApproveClaimBatch, useRejectClaimBatch, useClaimBatchDetails, useRemoveOrderFromBatch, useOrderBatchLookup, useClaimIntegrityCheck, useRepairOrder } from '@/hooks/useClaimBatches';
 import { format } from 'date-fns';
-import { CheckCircle, Receipt, Loader2, XCircle, TrendingDown, Clock, DollarSign, Users, Search, Trash2, AlertTriangle, Wrench, ShieldCheck } from 'lucide-react';
+import { CheckCircle, Receipt, Loader2, XCircle, TrendingDown, Clock, DollarSign, Users, Search, Trash2, Wrench } from 'lucide-react';
 import { formatBND, formatRM, formatExchangeRate } from '@/lib/currency';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -42,10 +42,9 @@ export default function ClaimBatchesAdmin() {
   const [bulkApproving, setBulkApproving] = useState(false);
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderSearchInput, setOrderSearchInput] = useState('');
-  const [showIntegrityPanel, setShowIntegrityPanel] = useState(false);
 
   // Integrity check & repair
-  const integrityCheck = useClaimIntegrityCheck();
+  useClaimIntegrityCheck({ enabled: true });
   const repairOrder = useRepairOrder();
 
   // Order-to-batch lookup
@@ -427,118 +426,6 @@ export default function ClaimBatchesAdmin() {
                     </Button>
                   )}
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Integrity Check Panel */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Claim Integrity Check</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant={showIntegrityPanel ? 'default' : 'outline'}
-                  onClick={() => {
-                    setShowIntegrityPanel(!showIntegrityPanel);
-                    if (!showIntegrityPanel && !integrityCheck.data) {
-                      integrityCheck.refetch();
-                    }
-                  }}
-                >
-                  {showIntegrityPanel ? 'Hide' : 'Run Check'}
-                </Button>
-              </div>
-            </div>
-
-            {showIntegrityPanel && (
-              <div className="mt-3 space-y-3">
-                {integrityCheck.isLoading || integrityCheck.isFetching ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Scanning for integrity issues...
-                  </div>
-                ) : integrityCheck.data ? (
-                  <>
-                    {integrityCheck.data.totalIssues === 0 ? (
-                      <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
-                        <CheckCircle className="h-4 w-4" />
-                        No integrity issues found. All claim batch links are valid.
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm text-orange-700 dark:text-orange-400">
-                          <AlertTriangle className="h-4 w-4" />
-                          Found {integrityCheck.data.totalIssues} order(s) with integrity issues
-                        </div>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-xs">Order</TableHead>
-                              <TableHead className="text-xs">Customer</TableHead>
-                              <TableHead className="text-xs">Status</TableHead>
-                              <TableHead className="text-xs">Delivered</TableHead>
-                              <TableHead className="text-xs">Batch</TableHead>
-                              <TableHead className="text-xs">Issues</TableHead>
-                              <TableHead className="text-xs">Action</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {integrityCheck.data.issues.map((issue) => (
-                              <TableRow key={issue.order_id}>
-                                <TableCell className="font-mono text-xs font-bold">{issue.order_code}</TableCell>
-                                <TableCell className="text-xs">{issue.customer_name}</TableCell>
-                                <TableCell className="text-xs">
-                                  <Badge variant="outline" className="text-[10px]">{issue.runner_status}</Badge>
-                                  <Badge variant="outline" className="text-[10px] ml-1">{issue.reconciliation_status}</Badge>
-                                </TableCell>
-                                <TableCell className="text-xs">{issue.delivered_at ? format(new Date(issue.delivered_at), 'MMM dd HH:mm') : 'N/A'}</TableCell>
-                                <TableCell className="text-xs font-mono">{issue.batch_code || '-'}</TableCell>
-                                <TableCell className="text-xs">
-                                  {issue.issue_types.map(t => (
-                                    <Badge key={t} variant="destructive" className="text-[9px] mr-1 mb-0.5">{t.replace(/_/g, ' ')}</Badge>
-                                  ))}
-                                </TableCell>
-                                <TableCell>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-6 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
-                                    onClick={() => {
-                                      if (confirm(`Repair order ${issue.order_code}? This will remove batch link, delete claim, and reset to NOT_CLAIMED.`)) {
-                                        repairOrder.mutate(issue.order_id);
-                                      }
-                                    }}
-                                    disabled={repairOrder.isPending}
-                                  >
-                                    <Wrench className="h-3 w-3 mr-1" /> Repair
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => integrityCheck.refetch()}
-                          disabled={integrityCheck.isFetching}
-                        >
-                          Re-scan
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <Button size="sm" variant="outline" onClick={() => integrityCheck.refetch()}>
-                    Run Integrity Check
-                  </Button>
-                )}
               </div>
             )}
           </CardContent>
