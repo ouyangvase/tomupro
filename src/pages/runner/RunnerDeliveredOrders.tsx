@@ -125,10 +125,11 @@ import { getClaimBatchScope } from '@/lib/claimBatchScope';
 import { formatDriverPaymentDisplay, getDriverRecordedPaymentCategory, type DriverPaymentFilter } from '@/lib/driverPaymentSummary';
 
 // Claim status filter options for the dropdown
-type ClaimStatusFilter = 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
+type ClaimStatusFilter = 'OPEN' | 'all' | 'NOT_CLAIMED' | 'CLAIM_SUBMITTED' | 'APPROVED' | 'REJECTED';
 
 // Map claim status filter to actual reconciliation_status values
 const claimStatusToReconciliation: Record<ClaimStatusFilter, string[] | null> = {
+  OPEN: ['NOT_CLAIMED', 'ADMIN_ACK_PENDING', 'SP_ACK_PENDING'],
   all: null,
   NOT_CLAIMED: ['NOT_CLAIMED'],
   CLAIM_SUBMITTED: ['ADMIN_ACK_PENDING', 'SP_ACK_PENDING'],
@@ -137,11 +138,12 @@ const claimStatusToReconciliation: Record<ClaimStatusFilter, string[] | null> = 
 };
 
 const claimStatusFilterOptions: { label: string; value: ClaimStatusFilter }[] = [
-  { label: 'All', value: 'all' },
+  { label: 'Open', value: 'OPEN' },
   { label: 'Not Claimed', value: 'NOT_CLAIMED' },
   { label: 'Claim Submitted', value: 'CLAIM_SUBMITTED' },
   { label: 'Approved', value: 'APPROVED' },
   { label: 'Rejected', value: 'REJECTED' },
+  { label: 'All', value: 'all' },
 ];
 
 const driverPaymentFilterOptions: { label: string; value: DriverPaymentFilter }[] = [
@@ -278,7 +280,7 @@ export default function RunnerDeliveredOrders({
   const [driverPaymentFilter, setDriverPaymentFilter] = useState<DriverPaymentFilter>('ALL');
   const [salespersonFilters, setSalespersonFilters] = useState<string[]>([]);
   const [skuFilter, setSkuFilter] = useState('all');
-  const [claimStatusFilter, setClaimStatusFilter] = useState<ClaimStatusFilter>('all');
+  const [claimStatusFilter, setClaimStatusFilter] = useState<ClaimStatusFilter>('OPEN');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [exportSelectedIds, setExportSelectedIds] = useState<Set<string>>(new Set());
   const [bulkClaimOpen, setBulkClaimOpen] = useState(false);
@@ -342,6 +344,7 @@ export default function RunnerDeliveredOrders({
     runnerIds: scopedRunnerIds,
     assistantScope: isAssistantView,
     salespersonIds: rpcSalespersonIds,
+    claimStatus: claimStatusFilter === 'all' ? 'ALL' : claimStatusFilter,
     enabled: rpcEnabled,
   });
 

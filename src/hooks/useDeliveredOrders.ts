@@ -85,6 +85,7 @@ interface UseDeliveredOrdersParams {
   assistantScope?: boolean;
   salespersonId?: string;
   salespersonIds?: string[];
+  claimStatus?: string;
   limit?: number;
   offset?: number;
   enabled?: boolean;
@@ -104,7 +105,7 @@ type DeliveredOrdersRpcClient = {
 const deliveredOrdersRpcClient = supabase as unknown as DeliveredOrdersRpcClient;
 
 export async function fetchDeliveredOrdersFastReport(params: Omit<UseDeliveredOrdersParams, 'limit' | 'offset' | 'enabled'> = {}) {
-  const { runnerId, runnerIds, assistantScope = false, salespersonId, salespersonIds } = params;
+  const { runnerId, runnerIds, assistantScope = false, salespersonId, salespersonIds, claimStatus } = params;
   const BATCH_SIZE = 1000;
   const isAssistantScope = assistantScope;
   const effectiveRunnerIds = runnerIds?.length ? runnerIds : runnerId ? [runnerId] : [];
@@ -126,6 +127,7 @@ export async function fetchDeliveredOrdersFastReport(params: Omit<UseDeliveredOr
           p_salesperson_ids: salespersonIds || null,
           p_limit: BATCH_SIZE,
           p_offset: offset,
+          p_claim_status: claimStatus || null,
         },
       );
 
@@ -185,17 +187,18 @@ export function useDeliveredOrdersFast(params: UseDeliveredOrdersParams = {}) {
  * Use this when you need the complete dataset for client-side filtering.
  */
 export function useDeliveredOrdersFastAll(params: Omit<UseDeliveredOrdersParams, 'limit' | 'offset'> & { totalHint?: number } = {}) {
-  const { runnerId, runnerIds, assistantScope = false, salespersonId, salespersonIds, enabled = true } = params;
+  const { runnerId, runnerIds, assistantScope = false, salespersonId, salespersonIds, claimStatus, enabled = true } = params;
   const effectiveRunnerIds = runnerIds?.length ? runnerIds : runnerId ? [runnerId] : [];
 
   return useQuery({
-    queryKey: ['delivered-orders-fast-all', effectiveRunnerIds, assistantScope, salespersonId, salespersonIds],
+    queryKey: ['delivered-orders-fast-all', effectiveRunnerIds, assistantScope, salespersonId, salespersonIds, claimStatus],
     queryFn: () => fetchDeliveredOrdersFastReport({
       runnerId,
       runnerIds,
       assistantScope,
       salespersonId,
       salespersonIds,
+      claimStatus,
     }),
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes (large dataset, avoid frequent refetches)
