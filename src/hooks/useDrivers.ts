@@ -76,6 +76,37 @@ async function reviewDriverDeliveryRpc(
   return result;
 }
 
+function isTransientDriverReviewError(error: unknown) {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error
+      ? String(error.message)
+      : String(error || '');
+
+  return /statement timeout|canceling statement|deadlock detected|could not serialize|connection reset|network/i.test(message);
+}
+
+async function reviewDriverDeliveryWithRetry(
+  orderId: string,
+  actorId: string,
+  accept: boolean,
+  reason: string | null,
+) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await reviewDriverDeliveryRpc(orderId, actorId, accept, reason);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 1 || !isTransientDriverReviewError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Unable to review Driver report');
+}
+
 type DriverAssignmentRpcClient = {
   rpc: <T = unknown>(
     fn: string,
@@ -853,17 +884,18 @@ export function useRunnerBatchReviewDriverDeliveries() {
         return true;
       });
 
-      // Keep the canonical per-order RPC and its individual outcomes, but do
-      // not start every write in a large batch at the same time. Each review
-      // also updates related delivery, audit, and notification records, so a
-      // small concurrency limit avoids database lock contention and timeouts.
-      const reviewConcurrency = 5;
+      // Process every selected order from one click. The limit only controls
+      // how many canonical writes run at once; it is not a limit on the batch
+      // size. Each review also updates related delivery, audit, and
+      // notification records, so a small concurrency limit avoids database
+      // lock contention and transient timeouts.
+      const reviewConcurrencyLimit = 5;
       const results: PromiseSettledResult<RunnerDriverBatchItemResult>[] = [];
-      for (let start = 0; start < actionableOrderIds.length; start += reviewConcurrency) {
-        const orderIdsInChunk = actionableOrderIds.slice(start, start + reviewConcurrency);
+      for (let start = 0; start < actionableOrderIds.length; start += reviewConcurrencyLimit) {
+        const orderIdsInChunk = actionableOrderIds.slice(start, start + reviewConcurrencyLimit);
         const chunkResults = await Promise.allSettled(orderIdsInChunk.map(async (orderId) => {
           try {
-            const result = await reviewDriverDeliveryRpc(
+            const result = await reviewDriverDeliveryWithRetry(
               orderId,
               user.id,
               accept,
