@@ -853,23 +853,33 @@ export function useRunnerBatchReviewDriverDeliveries() {
         return true;
       });
 
-      const results = await Promise.allSettled(actionableOrderIds.map(async (orderId) => {
-        try {
-          const result = await reviewDriverDeliveryRpc(
-            orderId,
-            user.id,
-            accept,
-            accept ? null : rejectReason!.trim(),
-          );
-          return { orderId, success: true, action: result.action } satisfies RunnerDriverBatchItemResult;
-        } catch (error) {
-          return {
-            orderId,
-            success: false,
-            error: error instanceof Error ? error.message : 'Unable to review Driver report',
-          } satisfies RunnerDriverBatchItemResult;
-        }
-      }));
+      // Keep the canonical per-order RPC and its individual outcomes, but do
+      // not start every write in a large batch at the same time. Each review
+      // also updates related delivery, audit, and notification records, so a
+      // small concurrency limit avoids database lock contention and timeouts.
+      const reviewConcurrency = 5;
+      const results: PromiseSettledResult<RunnerDriverBatchItemResult>[] = [];
+      for (let start = 0; start < actionableOrderIds.length; start += reviewConcurrency) {
+        const orderIdsInChunk = actionableOrderIds.slice(start, start + reviewConcurrency);
+        const chunkResults = await Promise.allSettled(orderIdsInChunk.map(async (orderId) => {
+          try {
+            const result = await reviewDriverDeliveryRpc(
+              orderId,
+              user.id,
+              accept,
+              accept ? null : rejectReason!.trim(),
+            );
+            return { orderId, success: true, action: result.action } satisfies RunnerDriverBatchItemResult;
+          } catch (error) {
+            return {
+              orderId,
+              success: false,
+              error: error instanceof Error ? error.message : 'Unable to review Driver report',
+            } satisfies RunnerDriverBatchItemResult;
+          }
+        }));
+        results.push(...chunkResults);
+      }
 
       const items = results.map((result, index) => (
         result.status === 'fulfilled'

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { subscribeWithReconnect } from '@/lib/subscribeWithReconnect';
+import { useDevice } from '@/hooks/use-device';
 import { useEffect, useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -156,6 +157,7 @@ export function useUpdateNotificationSettings() {
 export function useRealtimeNotifications() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { isDesktop } = useDevice();
 
   useEffect(() => {
     if (!user) return;
@@ -172,10 +174,19 @@ export function useRealtimeNotifications() {
         },
         (payload) => {
           const newNotification = payload.new as Notification;
+          const isDeliveredCompletion = newNotification.type === 'DELIVERED'
+            || newNotification.type === 'ORDER_DELIVERED_ACCEPTED'
+            || newNotification.status_to === 'DELIVERED';
+          const suppressDesktopDeliveredNotification = isDesktop && isDeliveredCompletion;
           
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: ['notifications'] });
-          queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+          // Delivered completions can arrive in a burst when a batch is reviewed.
+          // Keep the persisted notification, but avoid rerendering the desktop
+          // notification UI once per order. Mobile and other notification types
+          // keep the existing realtime behavior.
+          if (!suppressDesktopDeliveredNotification) {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+            queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+          }
 
           // An inbound acknowledgement posts stock in the recipient's
           // warehouse. Refresh open stock/inbound views on every device that
@@ -188,32 +199,34 @@ export function useRealtimeNotifications() {
             queryClient.invalidateQueries({ queryKey: ['inbound_shipments'] });
           }
           
-          // Show toast for new notifications
-          if (newNotification.priority === 'HIGH') {
-            toast.info(newNotification.title, { 
-              description: newNotification.message,
-              duration: 10000,
-            });
-          } else {
-            toast(newNotification.title, { 
-              description: newNotification.message,
-              duration: 5000,
-            });
-          }
+          if (!suppressDesktopDeliveredNotification) {
+            // Show toast for new notifications
+            if (newNotification.priority === 'HIGH') {
+              toast.info(newNotification.title, {
+                description: newNotification.message,
+                duration: 10000,
+              });
+            } else {
+              toast(newNotification.title, {
+                description: newNotification.message,
+                duration: 5000,
+              });
+            }
 
-          // Trigger browser notification if permission granted
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(newNotification.title, {
-              body: newNotification.message,
-              icon: '/favicon.ico',
-              tag: newNotification.id,
-            });
+            // Trigger browser notification if permission granted
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification(newNotification.title, {
+                body: newNotification.message,
+                icon: '/favicon.ico',
+                tag: newNotification.id,
+              });
+            }
           }
         }
       ),
       { name: `notifications-realtime-${user.id}` },
     );
-  }, [user, queryClient]);
+  }, [user, queryClient, isDesktop]);
 }
 
 // Hook to request and manage push notification permission
