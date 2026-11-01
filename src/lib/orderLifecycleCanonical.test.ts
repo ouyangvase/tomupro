@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -94,6 +94,10 @@ const driverAssignmentAuthorityMigration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260827090000_separate_lifecycle_and_driver_assignment_authority.sql'),
   'utf8',
 );
+const staleStateConflictMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20261101055823_stale_lifecycle_state_returns_conflict.sql'),
+  'utf8',
+);
 
 describe('canonical order lifecycle database contract', () => {
   it('stores one non-null state and recalculates it inside the row trigger', () => {
@@ -106,7 +110,15 @@ describe('canonical order lifecycle database contract', () => {
   it('guards concurrent transitions with a row lock and expected state', () => {
     expect(migration).toContain('FOR UPDATE;');
     expect(migration).toContain('Stale lifecycle state');
-    expect(migration).toContain("USING ERRCODE = '40001'");
+    expect(staleStateConflictMigration.match(/USING ERRCODE = 'PT409'/g)).toHaveLength(2);
+  });
+
+  it('never raises SQLSTATE 40001, which PostgREST retries without limit', () => {
+    const migrationsDir = resolve(process.cwd(), 'supabase/migrations');
+    for (const name of readdirSync(migrationsDir).filter((file) => file >= '20261101055823')) {
+      expect(readFileSync(resolve(migrationsDir, name), 'utf8'))
+        .not.toMatch(/(ERRCODE\s*:?=\s*|SQLSTATE\s+)'(40001|serialization_failure)'|RAISE\s+serialization_failure/i);
+    }
   });
 
   it('exposes health/reconciliation and routes search/delivered reads to canonical state', () => {
