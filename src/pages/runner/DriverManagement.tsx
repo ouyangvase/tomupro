@@ -74,6 +74,7 @@ type DriverReviewGroup = {
   deliveredOrders: Order[];
   failedOrders: Order[];
   deliveredAmount: number;
+  failedAmount: number;
   cashAmount: number;
   cashOrderCount: number;
   transferAmount: number;
@@ -224,6 +225,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
         deliveredOrders: [],
         failedOrders: [],
         deliveredAmount: 0,
+        failedAmount: 0,
         cashAmount: 0,
         cashOrderCount: 0,
         transferAmount: 0,
@@ -249,6 +251,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     failedReviewOrders.forEach((order) => {
       const existing = ensureGroup(order);
       existing.failedOrders.push(order);
+      existing.failedAmount += Number(order.total_amount || 0);
       groups.set(existing.driverId, existing);
     });
 
