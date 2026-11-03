@@ -68,13 +68,6 @@ import type { Order, OrderItem } from '@/types/database';
 
 const DRIVER_CAPACITY = 40;
 
-type DeliveryProof = {
-  id: string;
-  order_id: string;
-  signedUrl: string;
-  uploaded_at: string;
-};
-
 type DriverReviewGroup = {
   driverId: string;
   driverName: string;
@@ -187,30 +180,21 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     [pendingAcceptanceOrders, failedReviewOrders]
   );
 
-  const { data: proofsByOrder = {}, isLoading: proofsLoading, isError: proofsError } = useQuery({
+  // Rows only show whether a photo exists. Photos are signed when one order is
+  // opened: each signature runs a storage RLS check, and signing every pending
+  // photo at once saturated the database on 2026-11-03.
+  const { data: orderIdsWithProof = new Set<string>() } = useQuery({
     queryKey: ['driver-management-delivery-proofs', pendingOrderIds],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attachments')
-        .select('id, order_id, type, url, uploaded_at')
+        .select('order_id')
         .eq('type', 'delivery_photo')
         .in('order_id', pendingOrderIds)
         .order('uploaded_at', { ascending: false });
 
       if (error) throw error;
-
-      const proofs = await Promise.all((data || []).map(async (proof) => ({
-        id: proof.id,
-        order_id: proof.order_id as string,
-        signedUrl: await getSignedStorageUrl(proof.url, 'delivery-photos'),
-        uploaded_at: proof.uploaded_at,
-      })));
-
-      return proofs.reduce<Record<string, DeliveryProof[]>>((acc, proof) => {
-        if (!acc[proof.order_id]) acc[proof.order_id] = [];
-        acc[proof.order_id].push(proof);
-        return acc;
-      }, {});
+      return new Set((data || []).map((proof) => proof.order_id as string));
     },
     enabled: pendingOrderIds.length > 0,
     staleTime: 30000,
@@ -308,7 +292,26 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
     () => [...pendingAcceptanceOrders, ...failedReviewOrders].find((order) => order.id === detailOrderId) || null,
     [pendingAcceptanceOrders, failedReviewOrders, detailOrderId]
   );
-  const detailProofs = detailOrder ? proofsByOrder[detailOrder.id] || [] : [];
+  const { data: detailProofs = [], isLoading: proofsLoading, isError: proofsError } = useQuery({
+    queryKey: ['driver-management-delivery-proof-urls', detailOrder?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('attachments')
+        .select('id, url')
+        .eq('type', 'delivery_photo')
+        .eq('order_id', detailOrder!.id)
+        .order('uploaded_at', { ascending: false });
+
+      if (error) throw error;
+
+      return Promise.all((data || []).map(async (proof) => ({
+        id: proof.id,
+        signedUrl: await getSignedStorageUrl(proof.url, 'delivery-photos'),
+      })));
+    },
+    enabled: Boolean(detailOrder),
+    staleTime: 30000,
+  });
   const changeStatusOrder = useMemo(
     () => failedReviewOrders.find((order) => order.id === changeStatusOrderId) || null,
     [changeStatusOrderId, failedReviewOrders],
@@ -545,7 +548,6 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
   const isAccepting = acceptDelivery.isPending || bulkAcceptDelivery.isPending || reviewOrder.isPending || isBatchProcessing;
 
   const renderReviewOrderRow = (order: Order) => {
-    const proofs = proofsByOrder[order.id] || [];
     const isDelivered = order.driver_status === 'DRIVER_DELIVERED';
     const actionTimestamp = getDriverActionTimestamp(order);
     const payment = getDriverReportedPaymentComponents(order);
@@ -594,7 +596,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
             </div>
             {isDelivered ? (
               <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setDetailOrderId(order.id)}>
-                {proofs.length > 0 ? <ImageIcon className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {orderIdsWithProof.has(order.id) ? <ImageIcon className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </Button>
             ) : (
               <Button
@@ -1226,7 +1228,7 @@ export default function DriverManagement({ runnerIdOverride }: { runnerIdOverrid
                         </a>
                       ))}
                     </div>
-                  ) : (
+                  ) : !proofsLoading && (
                     <div className="flex items-center gap-3 rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
                       <AlertTriangle className="h-4 w-4" />
                       No delivery photo uploaded for this order.

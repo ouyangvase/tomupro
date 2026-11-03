@@ -199,11 +199,23 @@ type HistoricalDriverEvidence = {
 interface DeliveryProof {
   id: string;
   order_id: string | null;
-  signedUrl: string;
+  url: string;
   uploaded_at: string;
 }
 
 function DeliveryProofPreview({ proofs, compact = false }: { proofs: DeliveryProof[]; compact?: boolean }) {
+  // Sign only the thumbnails on screen: each signature runs a storage RLS check.
+  const shownProofs = proofs.slice(0, compact ? 2 : 3);
+  const { data: signedProofs = [] } = useQuery({
+    queryKey: ['action-required-delivery-proof-urls', shownProofs.map((proof) => proof.id)],
+    queryFn: async () => Promise.all(shownProofs.map(async (proof) => ({
+      id: proof.id,
+      signedUrl: await getSignedStorageUrl(proof.url, 'delivery-photos'),
+    }))),
+    enabled: shownProofs.length > 0,
+    staleTime: 30000,
+  });
+
   if (proofs.length === 0) {
     return <span className="text-xs text-muted-foreground">-</span>;
   }
@@ -211,7 +223,7 @@ function DeliveryProofPreview({ proofs, compact = false }: { proofs: DeliveryPro
   if (compact) {
     return (
       <div className="flex items-center gap-1.5">
-        {proofs.slice(0, 2).map((proof) => (
+        {signedProofs.map((proof) => (
           <a
             key={proof.id}
             href={proof.signedUrl}
@@ -238,7 +250,7 @@ function DeliveryProofPreview({ proofs, compact = false }: { proofs: DeliveryPro
         Driver proof
       </div>
       <div className="grid grid-cols-3 gap-2">
-        {proofs.slice(0, 3).map((proof) => (
+        {signedProofs.map((proof) => (
           <a
             key={proof.id}
             href={proof.signedUrl}
@@ -494,13 +506,7 @@ export default function SalespersonActionInbox({ initialSearch = null, highlight
         .order('uploaded_at', { ascending: false });
 
       if (error) throw error;
-
-      return Promise.all((data || []).map(async (proof) => ({
-        id: proof.id,
-        order_id: proof.order_id,
-        uploaded_at: proof.uploaded_at,
-        signedUrl: await getSignedStorageUrl(proof.url, 'delivery-photos'),
-      })));
+      return data || [];
     },
     enabled: actionOrderIds.length > 0,
     staleTime: 30000,
