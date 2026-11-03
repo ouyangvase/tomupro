@@ -30,7 +30,7 @@ describe('storage URL handling', () => {
     )).toBe('user/1/proof one.webp');
   });
 
-  it('leaves unrelated absolute URLs untouched for the caller', () => {
+  it('finds no object path in unrelated absolute URLs', () => {
     expect(extractStorageObjectPath('https://cdn.example.com/proof.webp', 'delivery-photos'))
       .toBeNull();
     expect(extractStorageObjectPath('blob:https://example.com/proof', 'delivery-photos'))
