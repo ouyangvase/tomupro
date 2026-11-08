@@ -547,6 +547,7 @@ export interface DeliveredOrderExport {
   amount: number;
   payment_method: string;
   delivery_charges: number;
+  claim_date: string;
   claim_batch: string;
 }
 
@@ -555,6 +556,7 @@ export function exportDeliveredOrderLines(
   deliveryChargesMap: Map<string, number>, // key: "runnerId:area" -> charge
   filename: string,
   claimBatchByOrderId?: ReadonlyMap<string, string>,
+  claimDateByOrderId?: ReadonlyMap<string, string>,
 ) {
   const lines: DeliveredOrderExport[] = [];
 
@@ -598,6 +600,7 @@ export function exportDeliveredOrderLines(
       items: itemsSummary,
       payment_method: order.payment_method || '',
       delivery_charges: deliveryCharge,
+      claim_date: claimDateByOrderId?.get(order.id) || '',
       claim_batch: claimBatchByOrderId?.get(order.id) || '',
     };
 
@@ -633,6 +636,7 @@ export function exportDeliveredOrderLines(
     { key: 'amount', header: 'amount' },
     { key: 'payment_method', header: 'payment_method' },
     { key: 'delivery_charges', header: 'delivery_charges' },
+    { key: 'claim_date', header: 'claim_date' },
     { key: 'claim_batch', header: 'claim_batch' },
   ];
 

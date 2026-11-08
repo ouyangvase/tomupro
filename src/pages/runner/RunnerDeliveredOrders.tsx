@@ -528,6 +528,14 @@ export default function RunnerDeliveredOrders({
     [orderToBatchRef],
   );
 
+  const claimDateByOrderId = useMemo(
+    () => new Map(Array.from(orderToBatchRef, ([orderId, batch]) => [
+      orderId,
+      formatKualaLumpurDateTime(batch.submittedAt) || batch.submittedAt,
+    ])),
+    [orderToBatchRef],
+  );
+
   // Runner earnings dashboard data
   const { data: runnerEarnings, isLoading: earningsLoading } = useRunnerEarnings(
     undefined,
@@ -689,18 +697,18 @@ export default function RunnerDeliveredOrders({
       return;
     }
     const selectedOrders = allFilteredOrders.filter(o => exportSelectedIds.has(o.id));
-    exportDeliveredOrderLines(selectedOrders, deliveryChargesMap, 'delivered_orders_selected', claimBatchByOrderId);
+    exportDeliveredOrderLines(selectedOrders, deliveryChargesMap, 'delivered_orders_selected', claimBatchByOrderId, claimDateByOrderId);
     toast.success(`Exported ${selectedOrders.length} order(s)`);
-  }, [allFilteredOrders, exportSelectedIds, deliveryChargesMap, claimBatchByOrderId]);
+  }, [allFilteredOrders, exportSelectedIds, deliveryChargesMap, claimBatchByOrderId, claimDateByOrderId]);
 
   const handleExportAll = useCallback(() => {
     if (allFilteredOrders.length === 0) {
       toast.error('No orders to export');
       return;
     }
-    exportDeliveredOrderLines(allFilteredOrders, deliveryChargesMap, 'delivered_orders_all', claimBatchByOrderId);
+    exportDeliveredOrderLines(allFilteredOrders, deliveryChargesMap, 'delivered_orders_all', claimBatchByOrderId, claimDateByOrderId);
     toast.success(`Exported ${allFilteredOrders.length} order(s)`);
-  }, [allFilteredOrders, deliveryChargesMap, claimBatchByOrderId]);
+  }, [allFilteredOrders, deliveryChargesMap, claimBatchByOrderId, claimDateByOrderId]);
 
   // Handle bulk claim submission (grouped — supports multiple batches)
   const handleGroupedClaimSubmit = async (groups: ClaimGroupSubmission[]): Promise<ClaimBatchResult> => {
