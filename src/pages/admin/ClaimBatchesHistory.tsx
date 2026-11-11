@@ -65,10 +65,11 @@ export default function ClaimBatchesHistory() {
   const role = profile?.role;
   const isRunner = role === 'runner';
 
-  // Runner: always filter to own batches; Admin: fetch all
+  // Runner: always filter to own batches. RLS scopes other roles to their
+  // visible order owners without changing the existing admin/manager scope.
   const batchFilters = useMemo(() => {
     if (isRunner && user?.id) return { runnerId: user.id, includeOwners: true };
-    return undefined;
+    return { includeOwners: true };
   }, [isRunner, user?.id]);
 
   const { data: batches = [], isLoading } = useClaimBatches({
@@ -143,7 +144,7 @@ export default function ClaimBatchesHistory() {
         exportRows.push({
           batch_code: (batch as any).batch_code || '',
           submitted_at: format(parseISO(batch.submitted_at), 'yyyy-MM-dd HH:mm'),
-          runner: batch.runner?.display_name || '',
+          user: batch.owner_names?.join(', ') || '',
           batch_status: batch.status === 'ADMIN_ACK_PENDING' ? 'Pending' : 'Claimed',
           order_code: order.order_code || '',
           order_date: order.order_date ? format(new Date(order.order_date), 'yyyy-MM-dd') : '',
@@ -160,7 +161,7 @@ export default function ClaimBatchesHistory() {
     }
     exportToCSV(exportRows, [
       { key: 'batch_code', header: 'Batch #' }, { key: 'submitted_at', header: 'Batch Submitted' },
-      { key: 'runner', header: 'Runner' }, { key: 'batch_status', header: 'Batch Status' },
+      { key: 'user', header: 'User' }, { key: 'batch_status', header: 'Batch Status' },
       { key: 'order_code', header: 'Order Ref' }, { key: 'order_date', header: 'Order Date' },
       { key: 'customer_name', header: 'Customer' }, { key: 'area', header: 'Area' },
       { key: 'items', header: 'Items (SKU x Qty)' }, { key: 'total_qty', header: 'Total Qty' },
@@ -203,35 +204,22 @@ export default function ClaimBatchesHistory() {
       },
     ];
 
-    // Only show Runner column for non-runner roles (admin sees all runners)
-    if (!isRunner) {
-      cols.push({
-        key: 'runner', header: 'Runner', sortable: true,
-        render: (batch) => {
-          const name = batch.runner?.display_name || '-';
-          return (
-            <div className="flex items-center gap-2">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(name)}</AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium">{name}</span>
-            </div>
-          );
-        },
-      });
-    }
+    cols.push({
+      key: 'owner_names', header: 'User', sortable: true, minWidth: '140px',
+      render: (batch) => {
+        const name = batch.owner_names?.join(', ') || '-';
+        return (
+          <div className="flex items-center gap-2">
+            <Avatar className="h-7 w-7">
+              <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(name)}</AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-medium">{name}</span>
+          </div>
+        );
+      },
+    });
 
     cols.push({ key: 'items', header: 'Orders', render: (batch) => batch.items?.length || 0 });
-
-    if (isRunner) {
-      cols.push({
-        key: 'owner_names', header: 'Owner', minWidth: '140px',
-        render: (batch) => {
-          const owners = batch.owner_names?.join(', ') || '-';
-          return <span className="block truncate" title={owners}>{owners}</span>;
-        },
-      });
-    }
 
     cols.push(
       {
@@ -272,7 +260,7 @@ export default function ClaimBatchesHistory() {
     );
 
     return cols;
-  }, [isRunner]);
+  }, []);
 
   return (
     <AppLayout>
@@ -281,7 +269,7 @@ export default function ClaimBatchesHistory() {
         <PageHero
           icon={<Receipt className="h-6 w-6 text-primary" />}
           title="Claim Batches History"
-          subtitle={isRunner ? "Your claim batch history" : "Complete history of all runner claim batches"}
+          subtitle={isRunner ? "Your claim batch history" : "Complete claim batch history"}
         />
 
         {/* Financial Summary Cards */}
@@ -465,7 +453,7 @@ export default function ClaimBatchesHistory() {
           <DialogHeader>
             <DialogTitle>Claim Batch {(selectedBatch as any)?.batch_code || ''} Details</DialogTitle>
             <DialogDescription>
-              Submitted by {selectedBatch?.runner?.display_name} on{' '}
+              User {selectedBatch?.owner_names?.join(', ') || '-'} on{' '}
               {selectedBatch && format(parseISO(selectedBatch.submitted_at), 'MMM dd, yyyy HH:mm')}
             </DialogDescription>
           </DialogHeader>

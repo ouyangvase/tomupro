@@ -23,6 +23,11 @@ function chunkIds(ids: string[]) {
   return chunks;
 }
 
+function usableOwnerName(value: string | null | undefined) {
+  const name = value?.trim();
+  return name && !/^unknown(?: user)?$/i.test(name) ? name : null;
+}
+
 export function useClaimBatches(filters?: ClaimBatchFilters) {
   return useQuery({
     queryKey: ['claim-batches', filters],
@@ -87,25 +92,30 @@ export function useClaimBatches(filters?: ClaimBatchFilters) {
           chunkIds(ownerIds).map(async ids => {
             const { data: profiles, error: profilesError } = await supabase
               .from('user_directory')
-              .select('id, display_name')
+              .select('id, display_name, email')
               .in('id', ids);
             if (profilesError) throw profilesError;
             return profiles || [];
           })
         )).flat();
-        const ownerNameById = new Map(ownerProfiles.map(owner => [owner.id, owner.display_name]));
-        const orderOwnerNameById = new Map(orderOwnerRows.map(order => [
+        const ownerNameById = new Map(ownerProfiles.map(owner => [
+          owner.id,
+          usableOwnerName(owner.display_name) || usableOwnerName(owner.email),
+        ]));
+        const orderOwnerNameById = new Map<string, string | null>(orderOwnerRows.map(order => [
           order.id,
           (order.salesperson_id ? ownerNameById.get(order.salesperson_id) : null)
-            || order.owner_salesperson_display_name_snapshot
-            || order.created_by_name_snapshot
-            || 'Unknown',
+            || usableOwnerName(order.owner_salesperson_display_name_snapshot)
+            || usableOwnerName(order.created_by_name_snapshot)
+            || null,
         ]));
 
         (data || []).forEach(batch => {
-          ownerNamesByBatch.set(batch.id, [...new Set(
-            (batch.items || []).map(item => orderOwnerNameById.get(item.order_id) || 'Unknown')
-          )].sort((first, second) => first.localeCompare(second)));
+          const owners = (batch.items || [])
+            .map(item => orderOwnerNameById.get(item.order_id))
+            .filter((name): name is string => Boolean(name));
+          ownerNamesByBatch.set(batch.id, [...new Set(owners)]
+            .sort((first, second) => first.localeCompare(second)));
         });
       }
 
